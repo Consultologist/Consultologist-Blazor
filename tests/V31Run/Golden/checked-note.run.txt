@@ -1,0 +1,37 @@
+# dispatched
+node.plan
+node.sections.planned_terms:1
+node.sections.draft:1
+node.sections.section_terms:1
+
+# rows
+node.plan | completed | - | sha256:1e36b1c33e150e36e107596caae4824ddbec54a02aa34d86975cdf8c54103b48
+node.sections.planned_terms:1 | completed | - | sha256:e0d03864961b356682ed926b4cb0288412d75e07205b6082a976156eae62a0d3
+node.sections.draft:1 | completed | - | sha256:b94d2e0841578b8cceef35c86628901ce980b12c7411e877e94ee30f6b8ae077
+node.sections.section_terms:1 | completed | - | sha256:e6a1feb3e47db4ca6df4b4d67f1f1e76ccfd1e64972fa433127f24d7b69fb1fb
+node.sections:1 | completed | - | sha256:b94d2e0841578b8cceef35c86628901ce980b12c7411e877e94ee30f6b8ae077
+node.sections | completed | - | sha256:ead72e65f108214345bd860d3e9f22bcd9af49259aef69e741349bc3fc0460be
+check.part_coverage.coverage:1 | completed | - | sha256:10e7db2a8967cc0efb333d3d6e3918a0a237a4a28dad2d4de2a085160c5315e7
+check.part_coverage:1 | completed | - | sha256:10e7db2a8967cc0efb333d3d6e3918a0a237a4a28dad2d4de2a085160c5315e7
+check.part_coverage | completed | - | sha256:bc6fd450f998f2696a820a4bb5607bd33b087ca77053bb1285aaddcb337d8c48
+check.all_sections_covered | completed | - | sha256:02c31db5f9238d365e594aa03024218f9b903cc29f4711be43e6eb3d397a4e0a
+check.proofread | completed | - | sha256:df88767de01b71c50c1b2e5346238ef5461145e1c8eee5f4f4428cd72d5eb306
+deliverable.note | blocked | blocked: check 'proofread' failed (it did not pass) | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
+deliverable.patient.patient_letter | released | - | sha256:bc8e591de9ab096c1d9cf0bd3ee1df342003b3c32456f92ef7b1ff0be599e9e7
+
+# decisions
+check.part_coverage.coverage:1 | self | item.state = "completed" | true
+
+# result
+state | completed
+sentence | -
+failed | -
+agentCalls | 4
+peakInFlight | 2
+value | check.all_sections_covered | sha256:d7c54997ad6e421d00537663a69bd5ee7c5d931b092d9ff541345b7834483dce
+value | check.part_coverage | sha256:4998a0817a53a27bcdc90ef9840f015b88acd5cef40b89c6ce287cbc48a009df
+value | check.proofread | sha256:de966e51379bd896e445504646c477bbf14ccf3fdf602a5a8d75fcbcc49c2a8f
+value | deliverable.note | sha256:ccd6b3c1b171fd8e98dc5ab82d77d0c1c33d75ffb2b76d6b3b24c2be129c2800
+value | deliverable.patient.patient_letter | sha256:7341c3fd2618c777706e5d79c7dcf1df7fc0c5aaacf6f18e114f664024ac0f82
+value | node.plan | sha256:145b8a68b700b590052bc2ae4770c58e4d2b6d9e46abeb19ca09026ceadb240c
+value | node.sections | sha256:0965252adb0d4a170e1e180bd349ef9b46b92aee07e213e667424c129f32fcd3

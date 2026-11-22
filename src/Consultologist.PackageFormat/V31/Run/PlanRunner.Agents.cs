@@ -40,6 +40,12 @@ public sealed partial class PlanRunner
         /// <summary>Each agent instance's call, by instance (reference equality: only looked up, never iterated).</summary>
         private readonly Dictionary<RunInstance, AgentState> agentStates = new(ReferenceEqualityComparer.Instance);
 
+        /// <summary>#1505 (D14): the job's 429 waits taken, in all across its nodes, in milliseconds.</summary>
+        private long capacityWaitedInAll;
+
+        /// <summary>#1505 (D14): whether the capacity-wait notice was raised, so it is raised once.</summary>
+        private bool capacityNoticed;
+
         /// <summary>Makes the first attempt of <paramref name="call"/>, in the slot <see cref="DispatchAsync"/> gave it.</summary>
         private void StartAgent(RunInstance instance, AgentCall call)
         {
@@ -87,6 +93,7 @@ public sealed partial class PlanRunner
 
                     state.CapacityWaited += wait;
                     Retry(instance, wait, "capacity", null);
+                    await CapacityWaitedAsync(instance, wait);
                     return;
                 case AgentOutcomeKind.Failed:
                     // Not the model service's: no retry changes it, so the node fails with the sentence for its kind.
@@ -155,13 +162,13 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            if (SourceLayout.Text(entry.Json["failIfEmpty"]) is { } empty && IsEmpty(value))
+            if (SourceLayout.Text(entry.Json["failIfEmpty"]) is { } empty && IsEmpty(value, plan.Formats.TextFormat(entry.Format) is "markdown_block" or "markdown_inline"))
             {
                 await FailAsync(instance, empty);
                 return;
             }
 
-            await CompleteAsync(instance, value, RowState.Completed);
+            await CompleteAsync(instance, value);
         }
 
         /// <summary>
@@ -200,12 +207,16 @@ public sealed partial class PlanRunner
 
         /// <summary>
         /// Whether a valid value is empty for <c>failIfEmpty</c>, as at version 30: text that is blank (white space only),
-        /// or an empty list. An object, a number, a boolean and <c>null</c> are never empty.
+        /// or an empty list. An object, a number, a boolean and <c>null</c> are never empty. #1505 (Task 15's review): in a
+        /// Markdown node (<paramref name="markdown"/>), where a plain-text macro's body is escaped in, the escape's
+        /// <c>&amp;#32;</c> and <c>&amp;#9;</c> are white space too (<see cref="MarkdownEscape.IsBlank"/>), so a blank body
+        /// stays blank under R9; in plain text they are the characters written.
         /// </summary>
-        private static bool IsEmpty(JsonNode? value) => value switch
+        private static bool IsEmpty(JsonNode? value, bool markdown) => value switch
         {
             JsonArray list => list.Count == 0,
-            JsonValue text when text.GetValueKind() == JsonValueKind.String => string.IsNullOrWhiteSpace(text.GetValue<string>()),
+            JsonValue text when text.GetValueKind() == JsonValueKind.String =>
+                markdown ? MarkdownEscape.IsBlank(text.GetValue<string>()) : string.IsNullOrWhiteSpace(text.GetValue<string>()),
             _ => false,
         };
 
@@ -234,6 +245,41 @@ public sealed partial class PlanRunner
         {
             var left = StartedAtUtc + TimeSpan.FromMinutes(limits.JobMinutes) - host.UtcNow;
             return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+        }
+
+        /// <summary>#1505 (D14): the minutes into the job at which it is slow: <see cref="SlowJobPercent"/> of its <see cref="RunLimits.JobMinutes"/>.</summary>
+        private TimeSpan SlowAt => TimeSpan.FromTicks(TimeSpan.FromMinutes(limits.JobMinutes).Ticks / 100 * SlowJobPercent);
+
+        /// <summary>#1505 (D14): the time to <see cref="SlowAt"/> by the host's clock, never below zero.</summary>
+        private TimeSpan TimeToSlow()
+        {
+            var left = StartedAtUtc + SlowAt - host.UtcNow;
+            return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+        }
+
+        /// <summary>
+        /// #1505 (part 09 § 3.9; D14): the slow-job timer ended before the job's limit: the operator is told once, with the
+        /// minutes the job has run (<c>job-slow</c>), and the timer is not made again.
+        /// </summary>
+        private Task SlowAsync()
+        {
+            slowNoticed = true;
+            slowTimer = null;
+            return recorder.NoticeAsync(new RunNotice("job-slow", null, (int)SlowAt.TotalMinutes));
+        }
+
+        /// <summary>
+        /// #1505 (part 09 § 3.9; D14): adds a 429 wait to the job's in all; the first that takes it past
+        /// <see cref="CapacityAlertMinutes"/> tells the operator once (<c>capacity-wait</c>), with the row that waited and the
+        /// waits in all, in whole minutes.
+        /// </summary>
+        private Task CapacityWaitedAsync(RunInstance instance, int wait)
+        {
+            capacityWaitedInAll += wait;
+            if (capacityNoticed || capacityWaitedInAll <= CapacityAlertMinutes * 60_000L)
+                return Task.CompletedTask;
+            capacityNoticed = true;
+            return recorder.NoticeAsync(new RunNotice("capacity-wait", instance.Key, (int)(capacityWaitedInAll / 60_000)));
         }
 
         /// <summary>

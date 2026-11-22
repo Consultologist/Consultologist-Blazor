@@ -109,7 +109,11 @@ public interface IGraphMailClient
         IReadOnlyList<GraphMailAttachment>? attachments = null);
 }
 
-public sealed record GraphMailAttachment(string Name, byte[] Content);
+/// <summary>
+/// An inline attachment. #1505 (specVersion 31, area 08; D11): <paramref name="ContentType"/> is the attachment's media
+/// type, a PDF's unless said (a 31 bundle's archive is <c>application/zip</c>).
+/// </summary>
+public sealed record GraphMailAttachment(string Name, byte[] Content, string ContentType = "application/pdf");
 
 /// <summary>
 /// Raw Microsoft Graph REST (repo idiom — no Graph SDK) authenticated as the
@@ -472,7 +476,7 @@ public sealed class GraphMailClient : IGraphMailClient
                 {
                     ["@odata.type"] = "#microsoft.graph.fileAttachment",
                     ["name"] = attachment.Name,
-                    ["contentType"] = "application/pdf",
+                    ["contentType"] = attachment.ContentType,
                     ["contentBytes"] = Convert.ToBase64String(attachment.Content)
                 })
                 .ToList();

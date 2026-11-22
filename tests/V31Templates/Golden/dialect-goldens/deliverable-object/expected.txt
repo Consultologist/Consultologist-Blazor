@@ -1,0 +1,1 @@
+{"sections":[{"kind":"narrative","title":"History of present illness"},{"kind":"table","title":"Examination"}]}

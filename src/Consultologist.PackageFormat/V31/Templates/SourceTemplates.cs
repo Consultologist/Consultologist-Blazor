@@ -52,6 +52,19 @@ public sealed record CheckedBody(
     /// place, each once, in the order read; none is a unit of <c>placements</c> (a folder item has no <c>if</c>).
     /// </summary>
     public IReadOnlyList<CheckedBody> FolderItems { get; init; } = [];
+
+    /// <summary>
+    /// #1505 (area 08; part 06 § 6.4): what each output of <see cref="TemplateSyntax.Outputs"/> writes, one each in the
+    /// same order (<see cref="WrittenOutput"/>); <c>[]</c> for a body whose syntax is faulted.
+    /// </summary>
+    public IReadOnlyList<WrittenOutput> Writes { get; init; } = [];
+
+    /// <summary>
+    /// #1505 (area 08; D7): for a deliverable's body, each output tag whose value is escaped, in order of appearance with
+    /// the snippets it places expanded: the unit whose text holds it (<c>null</c> for the body) and its
+    /// <c>&lt;line&gt;:&lt;column&gt;</c>; <c>[]</c> for any other body, and for a <c>plaintext</c> or object deliverable.
+    /// </summary>
+    public IReadOnlyList<(string? Unit, string At)> Escapes { get; init; } = [];
 }
 
 /// <summary>
@@ -200,6 +213,7 @@ public static partial class SourceTemplates
         {
             var leaf = host is { Site: TemplateSite.Prompt, Declaration: SourceLeaf agent } ? agent : null;
             var parts = leaf is null ? null : Parts(leaf, host);
+            var said = Refusals.Count;
             if (Body(host, TemplateSyntax.Parse(text), null) is not { } body)
                 return null;
             if (leaf is not null)
@@ -207,7 +221,8 @@ public static partial class SourceTemplates
             var units = Expand(body, null, host.Site, parts, 0, null, null);
             if (leaf is not null)
                 PlacingNode(units, leaf, host);
-            return body with { Units = units };
+            body = body with { Units = units };
+            return host is { Site: TemplateSite.Deliverable, Declaration: SourceDeliverable deliverable } ? Deliverable(body, deliverable, Refusals.Count > said) : body;
         }
 
         /// <summary>
@@ -258,6 +273,7 @@ public static partial class SourceTemplates
         private readonly List<Placement> placements = [];
         private readonly List<TemplateRender> renders = [];
         private readonly List<TemplateRunSpot> spots = [];
+        private readonly List<WrittenOutput> writes = [];
 
         public BodyCheck(
             TemplateHost host, TemplateSyntax syntax, SourcePackage package, Resolution resolution, TypeRegistry registry, Producers producers,
@@ -324,11 +340,12 @@ public static partial class SourceTemplates
                     var read = Record(output.Tag.Start, order++, Typed(path, output.Tag.Line, scope));
                     if (path == output.Path)
                         head ??= read;
-                    if (path == output.Path && output.Pipes.Count == 0 && read?.Format is { } format)
+                    // #1505 (area 08): a deliverable's outputs are held to its format instead (part 06 § 6.4, D8).
+                    if (path == output.Path && output.Pipes.Count == 0 && read?.Format is { } format && host.Site != TemplateSite.Deliverable)
                         Written(path, output.Tag.Line, format);
                 }
 
-                Pipes(output, head);
+                writes.Add(Pipes(output, head));
                 Literal(output);
                 Place(output);
             }
@@ -348,7 +365,10 @@ public static partial class SourceTemplates
             RunSpots();
 
             return new CheckedBody(
-                host, syntax, reads.OrderBy(r => r.Start).ThenBy(r => r.Order).Select(r => r.Read).ToList(), placements, renders, spots, []);
+                host, syntax, reads.OrderBy(r => r.Start).ThenBy(r => r.Order).Select(r => r.Read).ToList(), placements, renders, spots, [])
+            {
+                Writes = writes,
+            };
         }
 
         // ---- scope -----------------------------------------------------------------------------------
@@ -441,7 +461,7 @@ public static partial class SourceTemplates
             return typed.Read;
         }
 
-        /// <summary>A07-007: an output whose whole expression is an object or a list.</summary>
+        /// <summary>A07-007: an output whose whole expression is an object or a list (in a deliverable's own body, S06-021 or D8's form instead).</summary>
         private void Written(string path, int line, JsonNode format)
         {
             var shape = FormatTypes.Shape(format, formats);

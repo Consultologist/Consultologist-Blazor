@@ -32,8 +32,14 @@ public static partial class ExpressionChecker
     /// <summary>The roots JSON Logic reads (part 03 § 4.1).</summary>
     private static readonly HashSet<string> Roots = new(StringComparer.Ordinal) { "input", "node", "check", "item", "pass", "param", "run" };
 
-    /// <summary>The roots that are never read by JSON Logic, S03-019's (part 03 § 4.1); <c>profile</c> has S03-018.</summary>
+    /// <summary>
+    /// The roots that are never read by JSON Logic, S03-019's (part 03 § 4.1); <c>profile</c> has S03-018. #1505 (area 08;
+    /// D1): at a site under <c>checks/</c> <c>deliverable</c> is read (part 06 §§ 1.2, 6.7, 7), and is a root there.
+    /// </summary>
     private static readonly HashSet<string> Unreadable = new(StringComparer.Ordinal) { "snippet", "part", "macro", "renderer", "deliverable" };
+
+    /// <summary>Whether <paramref name="root"/> is S03-019's at <paramref name="site"/>: per site, as D1 reads it.</summary>
+    private static bool IsUnreadable(string root, ExpressionSite site) => Unreadable.Contains(root) && !(root == "deliverable" && site.InChecks);
 
     private static readonly ExpressionType Unknown = new(null, false);
 
@@ -214,9 +220,9 @@ public static partial class ExpressionChecker
             var second = segments.Length > 1 ? segments[1] : null;
             if (root == "profile" && second is not null)
                 return ExpressionSentences.ReadsProfile(Site, path["profile.".Length..]);
-            if (Unreadable.Contains(root) && second is not null)
+            if (IsUnreadable(root, Site) && second is not null)
                 return ExpressionSentences.NotAJsonLogicRoot(Site, path);
-            if (!Roots.Contains(root))
+            if (!Roots.Contains(root) && !(root == "deliverable" && Site.InChecks))
                 return ExpressionSentences.DoesNotExist(Site, path);
 
             switch (Site.Kind)

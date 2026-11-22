@@ -11,14 +11,17 @@ namespace Consultologist.Api.Tests.V31Run;
 /// The clock is manual (<see cref="Advance"/>), and a delay ends when the clock passes it, or ends cancelled when its token is
 /// cancelled first (<see cref="OutstandingDelays"/> counts those still waiting). Releasing completes the task
 /// inline, so a test driving the runner off any synchronization context sees each release's effects before it goes on
-/// (<see cref="Drive"/>).
+/// (<see cref="Drive"/>). #1505 (R6): a rule's evaluation is answered at once, never held: scripted by the call's
+/// <c>Key</c> and <c>Member</c> (<see cref="Rule"/>), else by <see cref="RuleTurn.Evaluate"/> over <paramref name="plan"/>, as the
+/// engine's activity answers; with no plan an unscripted evaluation fails the test.
 /// </summary>
-internal sealed class FakeRunHost(bool auto = false) : IRunHost
+internal sealed class FakeRunHost(bool auto = false, RunPlan? plan = null) : IRunHost
 {
     private readonly Dictionary<string, AgentOutcome[]> agentScript = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> agentServed = new(StringComparer.Ordinal);
     private readonly HashSet<string> faults = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RenderOutcome> renderScript = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Key, string Member), RuleOutcome> ruleScript = new();
     private readonly List<(string Key, Action Answer)> held = [];
     private readonly List<(DateTime Due, TaskCompletionSource Done)> timers = [];
     private readonly List<(string Key, bool Starts)> events = [];
@@ -38,6 +41,9 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
 
     /// <summary>The renders asked for, in order.</summary>
     public List<RenderCall> Renders { get; } = [];
+
+    /// <summary>#1505 (R6): the rule evaluations asked for, in order.</summary>
+    public List<RuleCall> Rules { get; } = [];
 
     /// <summary>The most agent calls held at once.</summary>
     public int InFlightPeak => PeakOf(_ => true);
@@ -74,6 +80,13 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
     public FakeRunHost Render(string key, RenderOutcome outcome)
     {
         renderScript[key] = outcome;
+        return this;
+    }
+
+    /// <summary>#1505 (R6): scripts the outcome of the rule <paramref name="member"/> of the row keyed <paramref name="key"/>.</summary>
+    public FakeRunHost Rule(string key, string member, RuleOutcome outcome)
+    {
+        ruleScript[(key, member)] = outcome;
         return this;
     }
 
@@ -136,6 +149,16 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
             ?? new RenderOutcome($"Rendered {call.Key}.", false, null);
         var answer = new TaskCompletionSource<RenderOutcome>();
         return Hold(call.Key, () => answer.SetResult(outcome), answer.Task);
+    }
+
+    /// <inheritdoc/>
+    public Task<RuleOutcome> EvaluateAsync(RuleCall call)
+    {
+        Rules.Add(call);
+        if (ruleScript.TryGetValue((call.Key, call.Member), out var scripted))
+            return Task.FromResult(scripted);
+        Assert.True(plan != null, $"The fake host has no plan to evaluate {call.Key} {call.Member} over.");
+        return Task.FromResult(RuleTurn.Evaluate(plan!, call));
     }
 
     /// <summary>The delays asked for, cancelled or not.</summary>

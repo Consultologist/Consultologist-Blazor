@@ -46,7 +46,8 @@ public static partial class SourceParser
     /// A flow node's folder. Its <c>kind</c> is read first, and a fault there ends the read with the
     /// folder's children left unsaid; then the members of the kind's shape and the kind's own rules;
     /// then each body's list (flat in the one folder, so an id is listed once across them all) and its
-    /// children, in order. Null only when the folder cannot be read at all (no index, or a refused <c>kind</c>).
+    /// children, in order. Null only when the folder cannot be read at all (no index, or a refused <c>kind</c>). Every
+    /// kind is read under <c>checks/</c> too; a <c>while</c> there is <see cref="SourceChecks"/>' S06-011 (#1505, area 08).
     /// </summary>
     private static SourceNode? ReadFlowNode(SourceWalk walk, string root, string enclosing, ListedMember member)
     {

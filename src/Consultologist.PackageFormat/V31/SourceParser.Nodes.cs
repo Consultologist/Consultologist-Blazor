@@ -80,7 +80,8 @@ public static partial class SourceParser
 
     /// <summary>
     /// A leaf file: split and parsed as every header file; then <c>kind</c> (<see cref="ReadKind"/>);
-    /// then the members of the kind's shape, the producer, the kind's own members and the body.
+    /// then the members of the kind's shape, the producer, the kind's own members and the body. Every kind is read
+    /// under <c>checks/</c> too; which it may hold is <see cref="SourceChecks"/>' (#1505, area 08: S06-010, S06-011).
     /// </summary>
     private static SourceLeaf? ReadLeaf(SourceWalk walk, string root, string enclosing, ListedMember member)
     {
@@ -105,7 +106,8 @@ public static partial class SourceParser
             _ => SourceShapes.NodeCall,
         };
         // An inline format has part 02's own sentence, not A02-001 (area 03's D15): an agent's is S02-014
-        // here; a rendered node's (not a check's: area 08) is read on, and the type rules say S02-013.
+        // here; a rendered node's is read on, and the type rules say S02-013. A check's is the reader's A02-001
+        // (a check's format is text: check_result, S06-009); a rendered leaf in checks/ is S06-010 (#1505, area 08: SourceChecks).
         var inlineFormat = header["format"] is JsonObject && (kind == "agent" || (kind == "rendered" && !isCheck));
         SourceMembers.Check(header, shape, declaration, path, walk.Refusals, inlineFormat ? ["format"] : null);
         if (inlineFormat && kind == "agent")

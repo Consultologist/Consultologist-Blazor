@@ -6,13 +6,16 @@
 engine runs (`RunPlan`, `PlanRunner`, the seams) is described in
 [the package format as a library](package-format-library.md), "specVersion 31: the run". Area 07 (#1504) added
 the template language the activities run, the 31 agents catalogue and `MacroChoices` at a 31 start; the library's
-side is "specVersion 31: templates" in the same guide.*
+side is "specVersion 31: templates" in the same guide. Area 08 (#1505) added what a job does after its run: the
+deliverables' outcomes, delivery, the operator's alerts and the engine-fault log; the library's side is
+"specVersion 31: checks, deliverables and delivery" in the same guide.*
 
 This page is for whoever deploys and operates the engine. It covers:
 
 - how a 31 package is loaded and a 31 job started;
 - the settings and their defaults;
 - the limits and retries;
+- delivery, the `delivering` status, the operator's alerts and the engine-fault log;
 - the drain that comes before every deploy, and what the release workflow must call;
 - how to size the deployment-wide limits.
 
@@ -97,10 +100,15 @@ version against git: the bundled manifest `agents/<name>.yaml` must exist and de
 - `Holds(name, version)`.
 
 `ApiServices.ResolveAtStartup` resolves it, with `SpecVersionAdmission` and `EngineLimitSettings`, before the host
-runs. So a missing file, a file not of the published shape, or a manifest at another version stops the host
-(`InvalidOperationException`) rather than failing job starts. It is attested against git only, not against Foundry:
-`judgement` 1 exists in Foundry only once the contracts are released, and `AgentAttestationService` does not compare
-the 31 agents.
+runs, but only when `WorkflowPackages__PreviewSpecVersions` admits 31: a 5–30 host never touches `agents/v31` (#1505,
+R15). Nothing else reads it there either: the 31 store (`CompiledPackageStore`) takes the engine's capabilities, and
+the 31 agent activity the catalogue, as a `Lazy<…>`, so only a 31 load or a 31 agent call reads it
+(`CompositionTests` builds every registration and function class with a catalogue that throws). Every defect in the
+two files, a version that is not an integer or a missing member included, is the catalogue's own
+`InvalidOperationException` naming the file and the member. So a missing file, a file not of the published shape, or
+a manifest at another version stops the host (`InvalidOperationException`) rather than failing job starts. It is
+attested against git only, not against Foundry: `judgement` 1 exists in Foundry only once the contracts are released,
+and `AgentAttestationService` does not compare the 31 agents.
 
 ## Starting a job
 
@@ -115,8 +123,15 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    documents are read. The documents go through the starter's own extraction, so a document sent to a text input
    arrives as its text, behind the same OCR and speech-to-text gates as today.
 3. **The account.** The profile fields that `needs.profile` lists are read. `name` is the display name,
-   `signature` is the chosen block, and the others are the account settings `profile.credentials`,
-   `profile.organisation` and `profile.closing`. The time zone is `account.timeZone`, an IANA name (D6).
+   `signature` is the block this job signs with, and the others are the account settings `profile.credentials`,
+   `profile.organisation` and `profile.closing`. The time zone is `account.timeZone`, an IANA name (D6). The
+   request's `SignatureBlockId` is read at 31 only, and only when `needs.profile` lists `signature` (D15, #1505).
+   Left out or blank, the job signs with the account's chosen block. Naming a block of the account, it signs with
+   that one. Naming none of the account's blocks, the start is refused with **A08-004** *"The signature chosen
+   for this job isn't in your profile. Choose one in Profile."*, in S06-031's place. The job's header records the
+   block's id as `signatureBlockId`, and `signatureChosen` as `"job"` when the request named a block other than
+   the chosen one, else `"default"`. Both are `null` when the package reads no signature. A 5–30 start ignores
+   the member.
 4. **The checks.** `V31StartChecks.Account` gives S06-031 and S06-032 for the profile, then S06-008 for a zone
    that is blank or not an IANA zone the machine knows. `V31StartChecks.Inputs` gives the input refusals:
    - **A06-011** *"Input '<id>' is required; fill it in to run this workflow."* for a required input that is
@@ -127,6 +142,13 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    An empty list is accepted (R1). Every refusal goes into one start failure, the sentences joined by line ends,
    with outcome `InputsMismatch`. The sender is told every sentence except A06-013, which quotes the caller's own
    ids.
+
+   After these, a start is refused as a 30 start is, with outcome `NoApplicableDeliverable` and today's wording, when
+   no deliverable can exist (R8, #1505). That is when the package has deliverables and every one has an `if`, each
+   `if` reads only `input.*` and the run facts the start knows (`run.id`, `run.engine` and `run.package`), and each
+   is false or `null` on the start's inputs. An `if` that reads anything else, or that fails, is left to the run.
+   `V31StartChecks.NoDeliverableCanExist` decides it, a rule that holds `matches` inline, since no replay exists at
+   a start. The detail names each deliverable by label with its printed `if` (S03-001), and nothing it read.
 5. **The held inputs.** The inputs document
    (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`) is written where the
    job's held inputs live: `org-job-inputs` or `personal-job-inputs`, `{appUserId}/{jobId}.json`. The retention
@@ -186,12 +208,15 @@ has changed since. The orchestration runs these steps in order:
    the job fails with **A06-009**: *"This job's inputs are no longer held, so it can't run. Run the workflow
    again."*
 7. It runs `PlanRunner` with:
-   - `DurableRunHost`: an agent call is `run-agent-node-v31`, a render is `render-node-v31`, and a wait is a durable
-     timer;
+   - `DurableRunHost`: an agent call is `run-agent-node-v31`, a render is `render-node-v31`, a rule that holds
+     `matches` or `has_word` is `evaluate-rule-v31` (below), and a wait is a durable timer;
    - `EntityRunRecorder`: progress counts on the entity through `RecordV31Progress`, and each row to telemetry
      as its key, state and value hash.
-8. It finalises the job: `Completed`, or `Failed` with the run's sentence. A timed-out run is a failed job with
-   S09-012.
+8. **Delivery** (#1505), when the run completed and some released deliverable has a destination: the job enters
+   `delivering`, and the released deliverables are sent (below).
+9. It finalises the job: `Completed`, or `Failed` with the run's sentence. A timed-out run is a failed job with
+   S09-012. A failed job delivers nothing: each destination of each released deliverable is recorded *not sent: the
+   job failed* (S06-038), and the operator is alerted (below).
 
 A fault the run cannot say as a node's sentence fails the job with **A06-010**: *"The engine couldn't finish this
 job. Tell the operator."* The exception's message is never used, since it can carry a service's response; the log
@@ -206,9 +231,21 @@ gets the fault's type only.
 
 The dev dry run measures the history's size and replay time on the largest example package.
 
-**Activities.** `run-agent-node-v31`, `render-node-v31`, `load-plan-v31`, `load-run-inputs-v31` and `check-drain`.
-None of the first four has a Durable retry policy (D7), because the runner retries. `check-drain` has 3 attempts,
-from 5 seconds, so one storage hiccup does not fail a job.
+**Activities.** `run-agent-node-v31`, `render-node-v31`, `load-plan-v31`, `load-run-inputs-v31`, `check-drain`,
+and, since area 08 (#1505), `evaluate-rule-v31`, `deliver-v31` and `alert-operator-v31`. None of the first four has
+a Durable retry policy (D7), because the runner retries; nor have the three area 08 added: a send's failure comes
+back as its outcome and the delivery runner retries it, a rule's failure is part of its answer, and an alert that
+cannot be sent is logged and dropped. `check-drain` has 3 attempts, from 5 seconds, so one storage hiccup does not
+fail a job.
+
+**`evaluate-rule-v31`** (`EvaluateRuleV31Activity`, R6). A rule that holds `matches` or `has_word` is evaluated in
+this activity, not inline, so a replay reads the stored outcome and never decides it again (part 09 § 3.1; the
+regex time limit made a replay's decision depend on the clock). The call is the entry's key, the rule's member
+(`if`, `expression`, …) and the scope the runner would have evaluated it over; the answer is the value, or the
+failure's kind, limit and detail. It evaluates under the job's recorded regex limit (`RegexMilliseconds` is in
+the activity's input), never the setting as it is now. A plan that is not the job's, or that lacks the entry or
+its rule, answers `plan` and the runner says S07-006. A rule that holds neither is still decided inline. The
+log carries the key, the member and the failure kind, never the scope.
 
 ## Agent calls and retries
 
@@ -270,12 +307,116 @@ and the row's detail, with the runner's decisions (`RenderCall.Placed`). Its log
 and hashes of the two texts. `EntityRunRecorder` passes only a row's `inputHash` and `runNeutralHash` to telemetry;
 the whole detail is stored by area 09.
 
+## Delivery
+
+*Part 06 § 8 and part 09 § 3.8, with #1505's decisions D10 to D13.* A job whose run completed delivers its
+**released** deliverables to the destinations their folders list in `delivery`. A job with nothing to send (every
+deliverable held, skipped, blocked, or delivered nowhere) never enters delivery. A job that failed delivers nothing,
+and records each destination of each released deliverable *not sent: the job failed* (S06-038).
+
+**The `delivering` status.** `ConsultGenerationJobStatuses.Delivering` (`"delivering"`) is set from `running` only,
+by the entity's `MarkDelivering`, and the orchestration's custom status says so too. It is not terminal: the job is
+then `Completed`, however delivery went. A destination that failed is a row, not the job's failure. A 5–30 job never
+has the status. These read it:
+
+- **Cancel** refuses it, as it refuses `running`: *"This consult has already started, so it can no longer be
+  cancelled."* (`RefusalForCancel`.) Another status that is not `Scheduled` is refused *"This consult is already
+  <status>."*
+- **The drain** counts the orchestration as producing: delivery runs inside it (the drain section).
+- **The job index** carries the status with the entity's, as it does `running`. History's pages are area 12's.
+
+**The runner.** `DeliveryRunner` (the library's side is in the library guide) runs inside the orchestration. It makes
+the first attempt of every send at once, then waits for one to finish. Each destination gets
+`ConsultGeneration__DeliveryAttempts` attempts (default 3), the wait before the second 2 minutes, doubling after.
+No attempt starts after `ConsultGeneration__DeliveryMinutes` (default 15) from the start of delivering; a
+destination unsent then is `failed`. Delivery runs after the run's own timer is cancelled, so it is outside
+`jobMinutes`. Both limits are the job's recorded ones (the header's `limits`), never the settings as they are now.
+The waits are durable timers, all cancelled when delivery ends, so none is left outstanding.
+
+**`deliver-v31`** (`DeliverV31Activity`) makes one attempt of one send. It has no Durable retry policy: the runner
+retries inside its window. A send's failure comes back as an outcome (`DeliverySendOutcome`), and the activity never
+throws for one; a channel's fault is a failed send `error`. The activity's input carries the documents' composed
+text across the boundary and is never logged; the log has the job, the kind, the folder, the number of documents,
+the attempt and the result.
+
+**The channels, and what sets each up (#1505 D10).** There is no new setting. A kind is set up from what the account
+already has:
+
+| Kind | Set up when | What it sends |
+|---|---|---|
+| `email` | the mailbox is configured (`EmailIntake__MailboxAddress` and `EmailIntake__AppBaseUrl`), the account has `delivery.address`, and `delivery.emailPdf` is not `false` | today's link-only message (the 5–30 reply's `EmailIntakeReply.Compose`: boilerplate and the History link), nothing attached. A bundle's one message names each document by label |
+| `pdf` | `email` is set up and the account has a `delivery.documentPassword` | the same message with the deliverable as a password-protected PDF (`ConsultDocumentPdf`). A bundle's is one `.zip` holding each PDF. Attachments past the 5–30 reply's budget (2 MiB) fail the attempt `too-large` |
+| `emr` | **never, in this build** | nothing: no write-back exists |
+| `zip` | **never, in this build** | nothing: no protected archive exists |
+
+**`emr` and `zip` have no channel yet.** No account can set them up, so each destination is recorded *not sent: EMR
+isn't set up for this account* or *…Zip…* (S08-006), final at once and never retried. The mapping's home in the
+account is still to design (#1505 D10, flagged for the owner; #1408 item 9). A folder asking `["email", "pdf"]` for
+an account with an address and no document password gets one row `sent` and one `not sent`, and nothing is retried
+for the second. The settings are read at the attempt, inside the activity, so a replay reads the stored outcome and a
+retry can see a setting changed between attempts.
+
+**Bundles (#1505 D11).** A folder with `bundle: "zip"` makes one send per kind for all its released deliverables, in
+plan order, and each deliverable still gets its own delivery row with the send's result. A folder with nothing
+released sends nothing.
+
+**The rows (#1505 D13).** A delivery row's key is `delivery:<deliverable key>/<kind>`. Its `reason` is S08-006's
+sentence for a kind not set up, `not sent: the job failed` for a failed job, `failed: <kind>` after the attempts or
+the window, and `null` when sent. A row records each attempt with its start time and `sent` or
+`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `EntityRunRecorder`
+counts the rows on the entity as `delivery:sent`, `delivery:not sent` and `delivery:failed`, apart from the run's row
+states, so a failed delivery is never counted as a failed run row. Storing them is area 09's.
+
+**What the email carries.** Boilerplate, the labels of the documents (package text) and the History link, as today.
+No document's text and no value from an input, a model or a profile is in a body, a log line or a row.
+
+## Alerts and the weekly summary
+
+*Part 09 § 3.9, D14.* The operator is told through the `alert-operator-v31` activity, so a replay reads that an alert
+was raised and never raises it twice. Every alert is logged as a warning (`Operator alert. Kind=…`, with the job,
+the key and the number). It is also mailed to `Operators__AlertAddress`, from `EmailIntake__MailboxAddress`, when
+both are set; with either unset it is only logged. A mail fault is logged, with its type only, and never reaches the
+job. A message holds the kind, a fixed sentence for it, and the `Job`, `Key` and `Number` lines it has: ids, keys
+and counts only, never a value.
+
+| Kind | Raised when | Once |
+|---|---|---|
+| `job-failed` | a job fails, a timed-out job and an engine fault included, and a job that fails before its run (the plan, the lock or the inputs) | per job, after the job is final |
+| `capacity-wait` | the job's 429 waits (the ones taken, not a 429 that fails its node) pass 5 minutes in all; `Number` is the whole minutes | per job |
+| `job-slow` | the job reaches 80% of `jobMinutes`; `Number` is the minutes it has run (a separate host timer, cancelled with the others) | per job |
+| `delivery-failed` | a delivery row is `failed`; `Key` is the first such row and `Number` how many | per job, after delivery |
+
+`publish-failed` and `exporter-warning` are named for areas 10 and 11 to raise; this build raises neither.
+
+**The weekly summary** (`OperatorWeeklySummary`) is a timer function on `%OperatorWeeklySummarySchedule%`, an
+NCRONTAB value, for example `0 0 7 * * 1`. **Unset, the function is disabled** and the host is unaffected, as the
+text retention timer is. It reads nothing unless the engine runs 31 (`WorkflowPackages__PreviewSpecVersions`
+admits it), even with the schedule set. It lists every account's jobs from the job index that ended in the 7 days
+before the run, at every version, and mails `Jobs`, `Failures`, the p50 and p90 of the durations (nearest rank) and
+two lines areas 09 and 10 fill: `Largest record` and `Outstanding migration hand edits` read *not measured in this
+build*. With no alert address it is only logged, as counts.
+
+## The engine-fault log (A08-006)
+
+A template the engine fails to read in a way no text explains is the engine's fault, not the author's: an exception
+other than Scriban's own for unreadable text (`ScriptRuntimeException`, and the stack-depth exception for text too
+deep) is **A08-006** at publish, *"<Subject> couldn't be checked: the engine failed reading its template. This is a
+fault in the engine, not in the package; report it."*, never A07-005. At run time the node fails with A06-008,
+*"<Subject> couldn't be rendered."*, never S07-006, which would say the compiled document is not what was published.
+The log is where the fault is seen: `run-agent-node-v31` (a prompt) and `render-node-v31` (a `rendered` node or a
+deliverable) log once per failed composition, at error level, *V31 engine fault reading a template* with
+`SentenceId=A08-006`, the key, the entry's key, the function and the exception's full type name. Never the
+exception's message, its stack or the text. Publish carries the type on its refusal (`SourceRefusal.EngineFault`) for
+area 11's caller, which has a logger.
+
 ## Settings
 
-Each setting is read once, at startup. `Program.cs` resolves `SpecVersionAdmission` and `EngineLimitSettings`
-before the host runs, so a bad value stops the host, and the message names the setting and the value. An unset,
-empty or white-space value is the default. The limits are read at a job's start, recorded in its orchestration
-input and in the job header's `limits`, and never re-read for that job.
+Each setting is read once, at startup, except those read at each send or alert: `EmailIntake__MailboxAddress` and
+`EmailIntake__AppBaseUrl` by the delivery channels, and `Operators__AlertAddress` (with the mailbox) by the alerts.
+`Program.cs` resolves `SpecVersionAdmission` and `EngineLimitSettings` before the host runs, so a bad value stops the
+host, and the message names the setting and the value. An unset, empty or white-space value is the default. The
+limits are read at a job's start, recorded in its orchestration input and in the job header's `limits`, and never
+re-read for that job.
 
 | Setting | Default | What it is |
 |---|---|---|
@@ -284,14 +425,17 @@ input and in the job header's `limits`, and never re-read for that job.
 | `ConsultGeneration__CapacityWaitMinutes` | 10 | The minutes a node may wait on 429s in all |
 | `ConsultGeneration__ServiceAttempts` | 5 | The attempts a node's call gets for other service failures |
 | `ConsultGeneration__JobMinutes` | 30 | The minutes a job may run from `startedAtUtc` |
-| `ConsultGeneration__DeliveryMinutes` | 15 | Delivery's window. It is recorded in `limits`; delivery itself is area 08's |
-| `ConsultGeneration__DeliveryAttempts` | 3 | The attempts each destination gets. It is recorded in `limits`; delivery itself is area 08's |
+| `ConsultGeneration__DeliveryMinutes` | 15 | Delivery's window, from the start of delivering; no attempt starts after it (recorded in `limits`; a job delivers under its own) |
+| `ConsultGeneration__DeliveryAttempts` | 3 | The attempts each destination gets, the wait before the second 2 minutes and doubling (recorded in `limits`) |
 | `ConsultGeneration__LoopItems` | 200 | The items one loop instance may be given (S04-078 past it) |
 | `ConsultGeneration__JobAgentCalls` | 500 | The agent calls one job may make; a retry or repair is part of its call (S09-015 past it) |
 | `ConsultGeneration__RenderSteps` | 100000 | The steps one render may take (S05-062 past it) |
 | `ConsultGeneration__RegexMilliseconds` | 2000 | R2: the time one evaluation of `matches` or `has_word` may take (A06-001 past it). It is at most 2147483646, and it is not in the record (D8) |
 | `AzureAI__MaxRetries` | 0 | Keep 0 on any app that runs 31 jobs (above) |
 | `Operators__AppUserIds` | nobody | Who may call the drain's endpoints, as for `Operator/*` |
+| `Operators__AlertAddress` | unset | Where the operator's alerts are mailed (from `EmailIntake__MailboxAddress`). Unset, an alert is only logged |
+| `OperatorWeeklySummarySchedule` | unset | An NCRONTAB value. Unset, the weekly summary's function is disabled. A flat name, since a `%…%` binding cannot resolve a `__` key |
+| `EmailIntake__MailboxAddress`, `EmailIntake__AppBaseUrl` | unset | Read as the 5–30 reply reads them. Delivery's `email` and `pdf` need both; an alert needs the mailbox only |
 | `Jobs__HoldNewJobs` | `false` | Unchanged. A held start is refused, not parked, during a drain or not |
 
 Every `ConsultGeneration__*` value is an integer of at least 1. `1.5`, `0`, `-1`, words and an overflowing number
@@ -384,6 +528,15 @@ If the release is abandoned at step 2, the drain stays on and new jobs keep park
   deploy happens replays on the new build through that wait: the schedule timer, `check-drain`,
   `MarkWaitingForUpdate`, the `engine-resumed` wait and the recheck timer, then `check-drain` again. A later
   build must not change that prefix, nor the `DrainAware` check that leads to it.
+- **A 31 orchestration mid-flight at a deploy that changes its history shape must be drained first.** A replay reads
+  the history the earlier build wrote, call for call, so an orchestration that has not finished cannot run on a build
+  that calls its activities in another order. Area 08's build changes the shape of every 31 orchestration: a rule
+  that holds `matches` or `has_word` is an `evaluate-rule-v31` call where it was none, a run that waits makes a
+  second timer (the `job-slow` timer, at `startedAt` plus 80% of `jobMinutes`), and a completed run that has
+  something to send calls `deliver-v31` and its timers and `alert-operator-v31`. So an orchestration that was
+  mid-flight on the build before area 08 would fail its replay. Run the drain (above) before the deploy that
+  carries it, and for any later deploy that changes what a 31 orchestration calls. Only dev admits 31, so the cost
+  is the few preview jobs running then; a 5–30 orchestration is unchanged.
 
 ## Sizing the deployment-wide limits (D10)
 

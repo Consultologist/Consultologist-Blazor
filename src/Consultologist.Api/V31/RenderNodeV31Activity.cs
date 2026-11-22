@@ -35,6 +35,7 @@ public sealed class RenderNodeV31Activity(ICompiledPackageStore store, ILogger<R
 
         var call = input.Call;
         var rendered = RenderTurn.Render(plan, call);
+        V31EngineFaults.Log(logger, rendered.EngineFault, call.Key, call.EntryKey, call.Function);
         logger.LogInformation(
             "V31 render. Key={Key}, TooManySteps={TooManySteps}, Failed={Failed}, Length={Length}, Hash={Hash}, NeutralLength={NeutralLength}, NeutralHash={NeutralHash}",
             call.Key,
@@ -45,6 +46,23 @@ public sealed class RenderNodeV31Activity(ICompiledPackageStore store, ILogger<R
             rendered.NeutralText?.Length,
             rendered.NeutralText == null ? null : CanonicalJson.HashText(rendered.NeutralText));
         return rendered;
+    }
+}
+
+/// <summary>
+/// #1505 ruling 6 (R14): an exception the engine met reading a template (A08-006, the engine's fault, never the author's),
+/// logged once per composition at error level by the sentence id, the row's key, entry and function, and the exception's
+/// type: never its message, its stack or any text.
+/// </summary>
+internal static class V31EngineFaults
+{
+    public static void Log(ILogger logger, string? exceptionType, string key, string entryKey, string? function)
+    {
+        if (exceptionType == null)
+            return;
+        logger.LogError(
+            "V31 engine fault reading a template. SentenceId={SentenceId}, Key={Key}, EntryKey={EntryKey}, Function={Function}, ExceptionType={ExceptionType}",
+            "A08-006", key, entryKey, function, exceptionType);
     }
 }
 

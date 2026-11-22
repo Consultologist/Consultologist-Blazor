@@ -776,7 +776,7 @@ public sealed class ConsultGenerationJobs
     internal static string? RefusalForCancel(string status) => status switch
     {
         ConsultGenerationJobStatuses.Scheduled => null,
-        ConsultGenerationJobStatuses.Queued or ConsultGenerationJobStatuses.Running =>
+        ConsultGenerationJobStatuses.Queued or ConsultGenerationJobStatuses.Running or ConsultGenerationJobStatuses.Delivering =>
             "This consult has already started, so it can no longer be cancelled.",
         _ => $"This consult is already {status.ToLowerInvariant()}."
     };

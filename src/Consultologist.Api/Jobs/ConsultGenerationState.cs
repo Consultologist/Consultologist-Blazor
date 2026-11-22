@@ -333,6 +333,12 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.LockHash ??= input.LockHash;
         State.Limits ??= input.Limits?.ToDictionary(member => member.Key, member => member.Value!.GetValue<int>(), StringComparer.Ordinal);
         State.StartedAtUtc ??= input.StartedAtUtc;
+        // #1505 (D15): the signature block by id and how it was chosen, written once, together.
+        if (State.SignatureBlockId == null && State.SignatureChosen == null)
+        {
+            State.SignatureBlockId = input.SignatureBlockId;
+            State.SignatureChosen = input.SignatureChosen;
+        }
 
         // v10 (#496): a job that starts deciding has no count yet — the
         // boundary stamps it. Every other job is decided at start, as it always
@@ -372,6 +378,25 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         state.Status = ConsultGenerationJobStatuses.Running;
         state.StartedAtUtc ??= DateTimeOffset.UtcNow;
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8): a 31 job that succeeded enters delivering, from running
+    /// only (a replay's second call, or a job already finalised, changes nothing). Not terminal: <see cref="FinalizeJob"/>
+    /// completes it when delivery ends.
+    /// </summary>
+    public async Task MarkDelivering()
+    {
+        var state = EnsureState();
+        if (state.Status != ConsultGenerationJobStatuses.Running)
+        {
+            return;
+        }
+
+        state.Status = ConsultGenerationJobStatuses.Delivering;
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -1613,7 +1638,16 @@ public sealed record ConsultGenerationJobInitialize(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     System.Text.Json.Nodes.JsonObject? Limits = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    DateTimeOffset? StartedAtUtc = null);
+    DateTimeOffset? StartedAtUtc = null,
+    // #1505 (specVersion 31, area 08; part 08 § 3; part 06 § 10.3; D15): the signature
+    // block a 31 job signs with, by id (never its text), and how it was chosen:
+    // "default" (the account's chosen block) or "job" (another, named by the
+    // request). Both null when the package does not read profile.signature, and
+    // below 31; not written when null. Appended last, same rule.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? SignatureBlockId = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? SignatureChosen = null);
 
 /// <summary>
 /// v29 (#1303, design § 1.2): a loop over a node's value, settled — the loop,
@@ -2160,6 +2194,17 @@ public sealed class ConsultGenerationJobState
 
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, int>? Limits { get; set; }
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 08 § 3; D15): the header's <c>signatureBlockId</c> (the block a 31 job signed with,
+    /// by id, never its text) and <c>signatureChosen</c> (<c>default</c> or <c>job</c>), written once at <c>Initialize</c>. Null,
+    /// and not written, when the package reads no signature, below 31, and on a job started before they were recorded.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? SignatureBlockId { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? SignatureChosen { get; set; }
 
     /// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress, counts and the current key only. Null, and not written, below 31.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
@@ -2740,6 +2785,13 @@ public static class ConsultGenerationJobStatuses
     /// a scheduled one whose timer ended during one. Not terminal; it starts after <c>Admin/Resume</c>.
     /// </summary>
     public const string WaitingForUpdate = "Waiting for an update to finish";
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8): a 31 job that succeeded, delivering its released
+    /// deliverables; set by <see cref="ConsultGenerationJobEntity.MarkDelivering"/>, from running only. Not terminal; the job
+    /// is then Completed, however its delivery went. A 5–30 job never has it.
+    /// </summary>
+    public const string Delivering = "delivering";
 }
 
 public static class ConsultGenerationActivityNames
@@ -2763,6 +2815,24 @@ public static class ConsultGenerationActivityNames
 
     /// <summary>#1503 (specVersion 31, area 06): a 31 rendered node's or deliverable's render.</summary>
     public const string RenderNodeV31 = "render-node-v31";
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 8; D10, D11): one attempt of one 31 delivery send. No Durable retry policy:
+    /// the delivery runner retries inside its window. It never throws for a send's failure.
+    /// </summary>
+    public const string DeliverV31 = "deliver-v31";
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; R6): a 31 rule that holds <c>matches</c> or <c>has_word</c>, evaluated so a replay
+    /// reads its stored outcome. No Durable retry policy.
+    /// </summary>
+    public const string EvaluateRuleV31 = "evaluate-rule-v31";
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 09 § 3.9; D14): an alert for the operator, raised by a 31 orchestration so a replay
+    /// never raises it twice. No Durable retry policy; it never throws, and its failure never fails the job.
+    /// </summary>
+    public const string AlertOperatorV31 = "alert-operator-v31";
 
     /// <summary>#1503 (specVersion 31, area 06): a 31 job's verified <c>resolve.json</c>, for its orchestration's plan.</summary>
     public const string LoadPlanV31 = "load-plan-v31";

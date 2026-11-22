@@ -228,6 +228,15 @@ way, with `body`, `bodyHash`, `reads`, `runDependent`, `modelDerived`, `renders`
 deliverable's `reads` are its sources: the retired `sources` member is derived from them
 ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)).
 
+Each `deliverables` entry also carries `delivery` and `bundle`, as its delivery folder's `index.json`
+writes them ([part 06 § 8](06-checks-deliverables-profile.md)): `delivery` an array of `email`, `pdf`,
+`emr` and `zip`, `bundle` `"zip"` or `null`, and `[]` and `null` when the folder writes none. It also
+carries `escapes`: `{ "unit": <site or null>, "at": "<line>:<column>" }` for each output tag whose value
+composition escapes ([part 06 § 6.4](06-checks-deliverables-profile.md#64-strict-formats)), in order of
+appearance with placed snippets expanded, `unit` and `at` as in `runSpots`; `[]` for a `plaintext` or
+object deliverable. They are on the entry because the engine loads only `resolve.json` (§ 1); the
+schema requires all three ([#1505](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)).
+
 ### 2.6 `sourceHash`
 
 `sourceHash` is the SHA-256 of a canonical listing of the source: a JSON array, sorted by path, of
@@ -250,7 +259,7 @@ the engine never runs a test.
 | Member | Type | Meaning |
 |---|---|---|
 | `edges` | array of `{ "from": string, "to": string, "kind": string }` | every dependency, from a node, check, input, `run.*` or `profile.*` read to what reads it. `kind` is one of `reads`, `if`, `for`, `ret`, `placed`, `calls`, `aligned`, `gates`, matching the diagram's edges ([part 09](09-engine-and-pages.md)). Keys are rooted (`node.plan`, `check.coverage`, `input.consult_draft`, `deliverable.note`, `macro.letrozole`) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979256096)) |
-| `order` | array of string | one topological order of the rooted keys, ties broken by source order. It's for readers and tools; the engine schedules by dataflow |
+| `order` | array of string | one topological order of the rooted keys over every edge but `gates`, ties broken by source order: a gate check may read the deliverable it gates, which is composed before the gate runs ([part 06 § 7](06-checks-deliverables-profile.md#7-gating-and-outcomes)). It's for readers and tools; the engine schedules by dataflow |
 
 `dag.mmd` is drawn from this graph.
 

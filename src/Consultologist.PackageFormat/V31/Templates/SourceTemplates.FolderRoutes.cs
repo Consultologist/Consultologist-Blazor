@@ -10,12 +10,13 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <c>.value</c>), and a computed node's <c>expression</c>, whose value is what it reads, as it is. Each route carries a
 /// body when it reads the item (<c>item</c>, <c>item.parent…</c> of a loop over a folder, or its <c>.content</c>), a
 /// folder item (<c>snippet.&lt;folder&gt;.&lt;item&gt;</c>), a folder loop's <c>.items</c> (each element's <c>item</c> holds
-/// the body), or the <c>item</c> of a loop over such <c>.items</c>. On either route each body carried must be plain text,
-/// no tag and no raw block, so that its text and its rendering are one (A07-013). A condition (an <c>if</c>, a
-/// <c>case</c> subject) only decides, and a check's expression gives a check result, so neither carries the text. A
-/// template reaches no body but through <c>item.content</c>: a bare <c>item</c> is A07-008, a <c>.items</c> element's
-/// <c>item</c> is typed without <c>content</c>, and a renderer reads only its input's typed fields. Every walk is
-/// bounded: a loop chain by <see cref="RouteDepth"/>, an expression by its nesting.
+/// the body), or, in a loop over such <c>.items</c> however many loops down (#1505 ruling 5), its <c>item</c> and each
+/// read along the chain to the folder item (<c>item.item</c>, <c>item.item.value.item</c>, …). On either route each body
+/// carried must be plain text, no tag and no raw block, so that its text and its rendering are one (A07-013). A
+/// condition (an <c>if</c>, a <c>case</c> subject) only decides, and a check's expression gives a check result, so
+/// neither carries the text. A template reaches no body but through <c>item.content</c>: a bare <c>item</c> is A07-008,
+/// a <c>.items</c> element's <c>item</c> is typed without <c>content</c>, and a renderer reads only its input's typed
+/// fields. Every walk is bounded: a loop chain by <see cref="RouteDepth"/>, an expression by its nesting.
 /// </summary>
 public static partial class SourceTemplates
 {
@@ -75,8 +76,8 @@ public static partial class SourceTemplates
         /// The folder items whose bodies <paramref name="reference"/>, read at <paramref name="frame"/>, carries as they are
         /// written: <c>item(.parent)*</c> of a loop over a folder, or its <c>.content</c>;
         /// <c>snippet.&lt;folder&gt;.&lt;item&gt;</c> (or its <c>.content</c>); a folder loop's
-        /// <c>node|check.&lt;loop&gt;.items</c>; and <c>item(.parent)*.item</c> of a loop over such <c>.items</c>. Every item of
-        /// the folder, or the one named.
+        /// <c>node|check.&lt;loop&gt;.items</c>; and, of a loop over such <c>.items</c> at any depth, <c>item(.parent)*</c>
+        /// followed by any start of <c>.item(.value.item)*</c> up to the folder item. Every item of the folder, or the one named.
         /// </summary>
         private IEnumerable<(SourceTextFolder, SourceText)> Carried(string reference, ScopeFrame frame)
         {
@@ -92,7 +93,19 @@ public static partial class SourceTemplates
                 var source = resolution.Tree.Source(loop);
                 if (source.KnownLength != null)
                     return rest is [] or ["content"] ? All(FolderOf(loop)) : [];
-                return source.OverItems && rest is ["item"] or ["item", "content"] ? All(ItemsFolder(source.Production)) : [];
+                if (!source.OverItems || ItemsFolder(source.Production) is not ({ } folder, var loops))
+                    return [];
+                // #1505 ruling 5 (R13), at every depth: the item of a loop over .items is its source loop's element, whose
+                // item.value is the element before, down to the folder loop's, whose item is the folder item. A read that
+                // stops on that chain holds the folder item; one that leaves it (an element's content, the item's value)
+                // does not.
+                for (var at = 0; at < rest.Length; at++)
+                {
+                    if (rest[at] != (at % 2 == 0 ? "item" : "value") || at >= 2 * loops - 1)
+                        return [];
+                }
+
+                return All(folder);
             }
 
             if (s.Length is 3 or 4 && s[0] == "snippet" && (s.Length == 3 || s[3] == "content")
@@ -101,7 +114,9 @@ public static partial class SourceTemplates
                 return [(named, item)];
             }
 
-            return s is ["node" or "check", var loopId, "items"] ? All(ItemsFolder(frame.Visible(s[0], loopId) as SourceFor)) : [];
+            return s is ["node" or "check", var loopId, "items"] && ItemsFolder(frame.Visible(s[0], loopId) as SourceFor) is ({ } items, _)
+                ? All(items)
+                : [];
         }
 
         private static IEnumerable<(SourceTextFolder, SourceText)> All(SourceTextFolder? folder) =>
@@ -113,13 +128,17 @@ public static partial class SourceTemplates
                 ? Folder(id, resolution.Tree.FrameOf(loop).Function)
                 : null;
 
-        /// <summary>The folder whose items the <c>.items</c> of <paramref name="loop"/> hold: its own, or through the loops over <c>.items</c> it follows.</summary>
-        private SourceTextFolder? ItemsFolder(SourceFor? loop)
+        /// <summary>
+        /// The folder whose items the <c>.items</c> of <paramref name="loop"/> hold, its own or through the loops over
+        /// <c>.items</c> it follows, and how many loops that is, <paramref name="loop"/> and the folder's loop counted
+        /// (<c>1</c> when <paramref name="loop"/> runs over the folder); <c>null</c> when none does.
+        /// </summary>
+        private (SourceTextFolder Folder, int Loops)? ItemsFolder(SourceFor? loop)
         {
             for (var depth = 0; loop != null && depth < RouteDepth; depth++)
             {
                 if (FolderOf(loop) is { } folder)
-                    return folder;
+                    return (folder, depth + 1);
                 loop = resolution.Tree.Source(loop) is { OverItems: true, Production: var production } ? production : null;
             }
 

@@ -398,7 +398,7 @@ public class DrainDoorsTests
                 TestFormats.Catalog,
                 null,
                 hold,
-                new V31JobStarter(admission, new CompiledPackageStore(_registry, _registry, ThisEngine.Value, admission, limits), new V31Job.FakeInputs(),
+                new V31JobStarter(admission, new CompiledPackageStore(_registry, _registry, ThisEngine, admission, limits), new V31Job.FakeInputs(),
                     limits, accounts, settings, engine, NullLogger<V31JobStarter>.Instance, Drain),
                 Drain);
         }

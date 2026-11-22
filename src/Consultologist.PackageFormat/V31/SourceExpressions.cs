@@ -212,6 +212,8 @@ public static class SourceExpressions
     {
         var path = node is SourceLeaf ? node.Path : SourceLayout.Join(node.Path, "index.json");
         var suffix = function == null ? "" : $" in function '{function.Id}'";
+        // #1505 (area 08; D1): a rule of a node under checks/ (a check, a check loop, a branch there) may read deliverable.*.
+        var inChecks = function == null && node.Key.StartsWith("check.", StringComparison.Ordinal);
 
         switch (node)
         {
@@ -220,13 +222,13 @@ public static class SourceExpressions
                 if (leaf.Header["if"] is { } condition)
                 {
                     yield return Site(isCheck ? ExpressionSiteKind.CheckIf : ExpressionSiteKind.NodeIf,
-                        $"{(isCheck ? "Check" : "Node")} '{leaf.Id}'{suffix}", "if", path, leaf, function, condition);
+                        $"{(isCheck ? "Check" : "Node")} '{leaf.Id}'{suffix}", "if", path, leaf, function, condition, inChecks);
                 }
 
                 if (leaf.Kind == "computed")
                 {
                     var site = new ExpressionSite(ExpressionSiteKind.Expression, $"Computed node '{leaf.Id}'{suffix}", "expression",
-                        path, leaf.Id, leaf.Header["format"]);
+                        path, leaf.Id, leaf.Header["format"], inChecks);
                     yield return (new SiteContext(site, leaf, function, null), leaf.Header["expression"]);
                 }
 
@@ -245,7 +247,7 @@ public static class SourceExpressions
                 break;
             case SourceIf branch:
                 if (branch.Header["if"] is { } test)
-                    yield return Site(ExpressionSiteKind.FlowIf, $"If '{node.Id}'{suffix}", "if", path, node, function, test);
+                    yield return Site(ExpressionSiteKind.FlowIf, $"If '{node.Id}'{suffix}", "if", path, node, function, test, inChecks);
                 break;
             case SourceWhile loop:
                 if (loop.Header["while"] is { } whileRule)
@@ -255,7 +257,7 @@ public static class SourceExpressions
                 break;
             case SourceFor loop:
                 if (loop.Header["until"] is { } until)
-                    yield return Site(ExpressionSiteKind.Until, $"Loop '{node.Id}'{suffix}", "until", path, node, function, until);
+                    yield return Site(ExpressionSiteKind.Until, $"Loop '{node.Id}'{suffix}", "until", path, node, function, until, inChecks);
                 break;
         }
     }
@@ -311,6 +313,7 @@ public static class SourceExpressions
     }
 
     private static (SiteContext, JsonNode?) Site(
-        ExpressionSiteKind kind, string subject, string member, string path, object declaration, SourceFunction? function, JsonNode rule) =>
-        (new SiteContext(new ExpressionSite(kind, subject, member, path, null, null), declaration, function, null), rule);
+        ExpressionSiteKind kind, string subject, string member, string path, object declaration, SourceFunction? function, JsonNode rule,
+        bool inChecks = false) =>
+        (new SiteContext(new ExpressionSite(kind, subject, member, path, null, null, inChecks), declaration, function, null), rule);
 }

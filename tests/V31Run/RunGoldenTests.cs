@@ -9,14 +9,15 @@ using Consultologist.PackageFormat.V31.Run;
 namespace Consultologist.Api.Tests.V31Run;
 
 /// <summary>
-/// #1503 (specVersion 31, area 06; part 09 § 3.2; Review Focus 3): whole runs of the three compiled goldens, pinned. Each
+/// #1503 (specVersion 31, area 06; part 09 § 3.2; Review Focus 3): whole runs of the compiled goldens, pinned. Each
 /// golden's plan, run on <see cref="RunFixture.GoldenInputs"/> with part 10 § 3.1's stubs seeded by each row key
 /// (<see cref="RunFixture.StubReply"/>) answered at once, gives exactly <c>Golden/&lt;name&gt;.run.txt</c>
 /// (<see cref="RunTrace"/>); with <c>GOLDEN_UPDATE_V31=1</c> the test rewrites it instead, to be read before it is committed.
 /// And a run does not depend on the order its replies come back in: what it settles is the same, and every dispatch is in
 /// the fixed order among the calls waiting then (<see cref="DispatchOracle"/>). #1504 (area 07): <c>macros.run.txt</c> is a
 /// run on <see cref="ComposingRunHost"/> of a package with a classifier, a folder macro, a part and a run spot, its rows'
-/// details pinned too.
+/// details pinned too. #1505 (area 08): <c>checked-note-outcomes.run.txt</c> is a run of checked-note whose note is blocked
+/// by its gate and whose patient letter is held empty.
 /// </summary>
 public class RunGoldenTests
 {
@@ -52,7 +53,8 @@ public class RunGoldenTests
     public void TheGoldenFolder_HoldsARunPerCompiledGolden()
     {
         Assert.Equal(
-            CompiledGoldenTests.Cases().Select(c => $"{c.Name}.run.txt").Append("macros.run.txt").Order(StringComparer.Ordinal),
+            CompiledGoldenTests.Cases().Select(c => $"{c.Name}.run.txt").Append("macros.run.txt").Append("checked-note-outcomes.run.txt")
+                .Order(StringComparer.Ordinal),
             Directory.GetFiles(GoldenFolder(), "*.run.txt").Select(f => Path.GetFileName(f)!).Order(StringComparer.Ordinal));
     }
 
@@ -94,6 +96,27 @@ public class RunGoldenTests
         Assert.Contains("History taken from Margaret Okafor", SourceLayout.Text(result.Values["node.draft"]?["content"]), StringComparison.Ordinal);
 
         AssertGolden("macros", RunTrace.Of(host.Dispatched, recorder, result));
+    }
+
+    [Fact]
+    public async Task TheCheckedNoteOutcomes_AreWhatTheRunnerGives()
+    {
+        // #1505 (area 08; part 06 § 7): checked-note on the stubs. The one section's draft covers none of its planned terms
+        // (the stubs' terms never match the plan's, so the note is blocked on the default stubs too; here its section_terms
+        // reply an empty list, which the golden records), so the gate proofread fails and the note is blocked; and the patient
+        // letter, ungated, renders only white space, so under whenEmpty: hold it is held. Each row's reason says which.
+        var plan = RunFixture.Plan("checked-note");
+        var host = RunFixture.Stubbed(plan)
+            .Reply("node.sections.section_terms", "{\"concepts\":[]}")
+            .Render("deliverable.patient.patient_letter", new RenderOutcome(" \n\n", false, null));
+        var recorder = new ListRecorder(() => host.Calls.Count);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(RunFixture.GoldenInputs(), FakeRunHost.Start);
+
+        Assert.True(result.State == RunState.Completed, $"{result.State}: {result.FailedKey} {result.Sentence}");
+        Assert.Equal([DeliverableState.Blocked, DeliverableState.Held], result.Deliverables.Select(d => d.State));
+        Assert.False((bool)result.Values["check.part_coverage"]!["value"]![0]!["pass"]!);
+        AssertGolden("checked-note-outcomes", RunTrace.Of(host, recorder, result));
     }
 
     /// <summary><paramref name="text"/> is <c>Golden/&lt;name&gt;.run.txt</c> to the byte; with <c>GOLDEN_UPDATE_V31=1</c> it is written there first.</summary>

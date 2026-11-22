@@ -78,9 +78,9 @@ public class RunNeutralTests
         Assert.Equal(("node.draft/spot:1", "node.stamp.content"), ((string)draftSpot["id"]!, (string)draftSpot["reads"]!));
         Assert.Null(draftSpot["output"]); // a rendered node's output follows 7-day retention
 
-        // The deliverable reads it too, and settles composed with its own neutral text and spots.
+        // The deliverable reads it too, and is released with its own neutral text and spots.
         var note = result.Values["deliverable.note"]!;
-        Assert.Equal("composed", (string?)note["state"]);
+        Assert.Equal("released", (string?)note["state"]);
         Assert.EndsWith("\nSeen {{run:1}}\n\n", (string?)note["neutral"], StringComparison.Ordinal);
         var noteRow = recorder.Row("deliverable.note").Detail;
         Assert.Equal(CanonicalJson.HashText((string)note["neutral"]!), (string?)noteRow["runNeutralHash"]);

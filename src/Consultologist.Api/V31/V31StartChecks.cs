@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using Consultologist.Api.Auth;
+using Consultologist.Api.Models;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 
@@ -11,12 +13,106 @@ namespace Consultologist.Api.V31;
 /// job's start checks against its plan, pure, so area 12's Create page says the same sentences before submission as the
 /// engine says at the start: the account (<see cref="Account"/>: the profile fields the package needs, then the time zone
 /// every 31 job needs), the inputs (<see cref="Inputs"/>), and the run facts that follow from the start
-/// (<see cref="RunFacts"/>). No sentence quotes a supplied value or a profile's: only input ids, format names and fixed text.
+/// (<see cref="RunFacts"/>). #1505 (area 08; D15, R8): the signature block the job signs with (<see cref="Signature"/>), and
+/// whether no deliverable can exist on the inputs (<see cref="NoDeliverableCanExist"/>). No sentence quotes a supplied value or
+/// a profile's: only input ids, format names, block ids, package text and fixed text.
 /// </summary>
 public static class V31StartChecks
 {
     /// <summary>S06-008: the account has no time zone this engine knows.</summary>
     public const string NoTimeZone = "Set your time zone in your account settings before running a workflow.";
+
+    /// <summary>A08-004 (#1505, area 08; D15): the request names a signature block the account does not have.</summary>
+    public const string SignatureNotInProfile = "The signature chosen for this job isn't in your profile. Choose one in Profile.";
+
+    /// <summary><c>signatureChosen</c> for the account's chosen block (part 08 § 3).</summary>
+    public const string ChosenByDefault = "default";
+
+    /// <summary><c>signatureChosen</c> for another block of the account, named by the request (part 08 § 3).</summary>
+    public const string ChosenForTheJob = "job";
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 10.3; part 08 § 3; D15): the signature block a job reading
+    /// <c>profile.signature</c> signs with, of the account's <paramref name="blocks"/>. With no block <paramref name="requested"/>
+    /// (null or blank) it is the chosen one (<c>ChosenId</c>), <c>"default"</c>; none chosen, there is none (both null, and the
+    /// start says S06-031). A requested id that is a block of the account is that block: <c>"default"</c> when it is the chosen
+    /// one, else <c>"job"</c>. Any other id is refused with A08-004 (both null). A blank block is returned as found: its text
+    /// counts as not set, which the profile check says (S06-031). Ids are compared ordinally; no text is read.
+    /// </summary>
+    public static (SignatureBlocks.SignatureBlock? Block, string? Chosen, string? Refusal) Signature(
+        SignatureBlocks.SignatureBlockSet blocks, string? requested)
+    {
+        ArgumentNullException.ThrowIfNull(blocks);
+
+        if (string.IsNullOrWhiteSpace(requested))
+            return SignatureBlocks.Chosen(blocks) is { } chosen ? (chosen, ChosenByDefault, null) : (null, null, null);
+
+        var named = blocks.Blocks.FirstOrDefault(block => string.Equals(block.Id, requested, StringComparison.Ordinal));
+        if (named == null)
+            return (null, null, SignatureNotInProfile);
+        return (named, string.Equals(named.Id, blocks.ChosenId, StringComparison.Ordinal) ? ChosenByDefault : ChosenForTheJob, null);
+    }
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; R8): whether no deliverable of <paramref name="plan"/> can exist on
+    /// <paramref name="inputs"/>, so the start is refused as a 30 start is (<c>NoApplicableDeliverable</c>): the plan has a
+    /// deliverable, every deliverable has an <c>if</c>, each reads only <c>input.*</c> and the run facts
+    /// <paramref name="inputs"/> gives, and each decides false or <c>null</c> on them. An <c>if</c> that reads anything else
+    /// (a node, a run fact the start does not know), or that fails, is left to the run.
+    /// </summary>
+    public static bool NoDeliverableCanExist(RunPlan plan, RunInputs inputs)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(inputs);
+
+        var deliverables = Deliverables(plan);
+        if (deliverables.Count == 0)
+            return false;
+
+        var scope = new RunScope(inputs);
+        var top = RunFrame.Top(plan);
+        foreach (var deliverable in deliverables)
+        {
+            if (deliverable.If is not { } rule)
+                return false;
+
+            var paths = JsonLogicShape.Paths(deliverable.Json["if"]);
+            if (!paths.All(path => KnownAtStart(path, inputs)))
+                return false;
+
+            var decision = rule.Decide(scope.Data(deliverable, top, paths));
+            if (decision.Failure != null || decision.Result)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// #1505 (R8): the deliverables of <paramref name="plan"/> in <c>graph.order</c>, each by key and label with the reason it
+    /// is not produced: its <c>if</c> as S03-001 prints it (<c>skipped: input.kind.value = "table" is false</c>), the
+    /// record's sentence for a deliverable its <c>if</c> skips. Package text only. Read after
+    /// <see cref="NoDeliverableCanExist"/>.
+    /// </summary>
+    public static IReadOnlyList<ConsultSkippedDocument> NotProduced(RunPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        return Deliverables(plan)
+            .Select(d => new ConsultSkippedDocument(d.Key, SourceLayout.Text(d.Json["label"]) ?? d.Id, JsonLogicPrinter.Reason("skipped", d.Json["if"], false)))
+            .ToList();
+    }
+
+    private static List<PlanEntry> Deliverables(RunPlan plan) =>
+        plan.Entries.Values.Where(e => e.Kind == PlanKind.Deliverable).OrderBy(e => e.Order).ToList();
+
+    /// <summary>Whether <paramref name="path"/> is known at the start: an input's, or a run fact <paramref name="inputs"/> holds.</summary>
+    private static bool KnownAtStart(string path, RunInputs inputs) =>
+        path.Split('.') switch
+        {
+            ["input", _, ..] => true,
+            ["run", var fact, ..] => inputs.RunFacts.ContainsKey(fact),
+            _ => false,
+        };
 
     /// <summary>
     /// The account's refusals for <paramref name="plan"/>: <see cref="RequiresCheck.Profile"/>'s for each field
@@ -168,8 +264,8 @@ public static class V31StartChecks
         return local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Whether <paramref name="timeZone"/> names an IANA zone this machine's zone database has.</summary>
-    private static bool IsZone(string? timeZone) =>
+    /// <summary>Whether <paramref name="timeZone"/> names an IANA zone this machine's zone database has (what S06-008 asks of an account).</summary>
+    public static bool IsZone(string? timeZone) =>
         !string.IsNullOrWhiteSpace(timeZone)
         && TimeZoneInfo.TryFindSystemTimeZoneById(timeZone, out var zone)
         && zone.HasIanaId;

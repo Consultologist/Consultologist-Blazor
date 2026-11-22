@@ -60,6 +60,13 @@ public static class DialectSentences
     public static SourceRefusal CannotBeRead(string subject, int line, string path) =>
         new("A07-005", $"{subject} can't be read as a template at line {Line(line)}: close every tag and every if and for.", path);
 
+    /// <summary>
+    /// A08-006 (#1505 ruling 6, R14): reading the body failed in a way no text explains, a fault of the engine and not of the
+    /// package (<see cref="TemplateSyntax.Parse(string)"/>); no package produces it.
+    /// </summary>
+    public static SourceRefusal EngineFailedReading(string subject, string path) =>
+        new("A08-006", $"{subject} couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it.", path);
+
     /// <summary>S05-007 (R-D7): a body <c>if</c> testing something other than a loop position, a state or whether a check passed; <paramref name="expression"/> is the test as written.</summary>
     public static SourceRefusal TestsInBodyIf(string subject, string expression, int line, string path) =>
         new("S05-007", $"{subject} tests {expression} in a body if at line {Line(line)}; a body if tests only loop position, state and whether a check passed. Decide it in a header: a part, a snippet's if or a macro's if.", path);
@@ -340,6 +347,7 @@ public static class DialectSentences
             "S05-063" => ReadsPosition(subject, Fill(0), Fill(1), fault.Line, path),
             "A07-004" => ForForm(subject, Fill(0), fault.Line, path),
             "A07-005" => CannotBeRead(subject, fault.Line, path),
+            "A08-006" => EngineFailedReading(subject, path) with { EngineFault = Fill(0) },
             _ => throw new ArgumentException($"{fault.Id} is no dialect sentence.", nameof(fault)),
         };
     }

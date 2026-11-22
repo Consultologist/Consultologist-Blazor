@@ -14,7 +14,7 @@ namespace Consultologist.Api.Tests.V31Run;
 /// </summary>
 internal static class RunFixture
 {
-    /// <summary>The plan of one of the three goldens.</summary>
+    /// <summary>The plan of one of the compiled goldens.</summary>
     public static RunPlan Plan(CompiledGoldenTests.GoldenCase golden, TimeSpan? matchTimeLimit = null) =>
         Plan(golden.Source(), null, matchTimeLimit);
 
@@ -65,7 +65,7 @@ internal static class RunFixture
     /// answered at once when <paramref name="auto"/>, else held until released.
     /// </summary>
     public static FakeRunHost Stubbed(RunPlan plan, bool auto = true) =>
-        new FakeRunHost(auto).Stub(call => StubReply(plan, call));
+        new FakeRunHost(auto, plan).Stub(call => StubReply(plan, call));
 
     /// <summary>
     /// Part 10 § 3.1's deterministic stub for <paramref name="call"/> (<see cref="WorkflowStubOutputs"/>), seeded by the

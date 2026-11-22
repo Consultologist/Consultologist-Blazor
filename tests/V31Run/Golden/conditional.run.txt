@@ -36,7 +36,7 @@ node.standing_sections.applies.standing_draft:2 | completed | - | sha256:11ab79c
 node.standing_sections.applies:2 | completed | - | sha256:11ab79c8593d9e292887d024c3d72ae5e2bd4d94b79e9e92d6d6dad1126ee867
 node.standing_sections:2 | completed | - | sha256:11ab79c8593d9e292887d024c3d72ae5e2bd4d94b79e9e92d6d6dad1126ee867
 node.standing_sections | completed | - | sha256:67cfdaa8f29c56d4d40c588f59a28ae9cb6b630584bb2f364ccb397abb72f581
-deliverable.note | composed | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
+deliverable.note | released | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
 
 # decisions
 node.sections_draft.route:0 | case | item.value.kind | branch 1
@@ -55,7 +55,7 @@ sentence | -
 failed | -
 agentCalls | 7
 peakInFlight | 7
-value | deliverable.note | sha256:e93d2b0c68cd11c6095ca032a4743b508c36ac940bdfa5b221f799e0533d0744
+value | deliverable.note | sha256:8ff3c8033f067260cf06557c8dc98eea5f35eb39fdce2debc648f10a5c1baa97
 value | node.patient_summaries | sha256:acf1e72a139699b8b5dc3de118321fc9926f612e7cea80c47e9edcd782bf2837
 value | node.plan | sha256:a53173b62e9ea748eb5cd35a302e3690483a9e7000d7789bc33346240a945003
 value | node.sections_draft | sha256:4c7597dcfbf9094ec32c24252e83f81d3c5f69b5b36c2c3988b170db43e95a3a

@@ -12,6 +12,7 @@ namespace Consultologist.Api.Tests.V31Source;
 /// <c>v31/conformance/index.json</c>, leaving every other byte of that file as it was. A no-op
 /// without the variable, as <see cref="ConformanceFixtureExport"/> is: it is a generator, not a check.
 /// </summary>
+[Collection("V31 conformance export")] // #1505: the exporters each rewrite v31/conformance/index.json, so they run one at a time.
 public class RefusalPackagesExport
 {
     private static readonly UTF8Encoding Utf8NoBom = new(false);

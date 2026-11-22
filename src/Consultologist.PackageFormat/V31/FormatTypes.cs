@@ -214,7 +214,36 @@ public static class FormatTypes
     public static FormatShape Shape(JsonNode? format, FormatSet formats)
     {
         ArgumentNullException.ThrowIfNull(formats);
-        return ShapeOf(format, Defs(format), formats, 0);
+        return ShapeOf(format, Defs(format), (node, defs) => Follow(node, defs, formats), 0);
+    }
+
+    /// <summary>
+    /// #1505 (area 08; part 06 § 6.4; D8): <see cref="Shape"/> of a format as the run holds it, with every reference already
+    /// inlined (<see cref="Run.PlanFormats.Expand"/>): the same reading, so publish and the run cannot differ on a format's
+    /// shape. The expansion writes a reference with annotations beside it (which <see cref="Shape"/> follows) as those
+    /// annotations and an <c>allOf</c> of the one entry it inlines; that <c>allOf</c> is followed here. The dialect writes no
+    /// <c>allOf</c> of its own.
+    /// </summary>
+    internal static FormatShape ExpandedShape(JsonNode? expanded) => ShapeOf(expanded, null, (node, _) => (Inlined(node), null), 0);
+
+    /// <summary>
+    /// <paramref name="node"/> as <see cref="ExpandedShape"/> follows it: through each <c>allOf</c> of one member with only
+    /// annotations beside it (an expanded reference); null when it is no schema.
+    /// </summary>
+    private static JsonObject? Inlined(JsonNode? node)
+    {
+        for (var depth = 0; depth <= SourceBounds.JsonDepth; depth++)
+        {
+            if (node is not JsonObject obj || obj["allOf"] is not JsonArray { Count: 1 } all
+                || !obj.All(p => p.Key is "allOf" or "title" or "description"))
+            {
+                return node as JsonObject;
+            }
+
+            node = all[0];
+        }
+
+        return null;
     }
 
     /// <summary>Whether <paramref name="format"/> admits <c>null</c>: a type array or <c>type</c> with <c>null</c>, or an <c>anyOf</c> with such a member.</summary>
@@ -313,9 +342,14 @@ public static class FormatTypes
         }
     }
 
-    private static FormatShape ShapeOf(JsonNode? node, JsonObject? defs, FormatSet formats, int depth)
+    /// <summary>
+    /// The one reading of a format's shape, <paramref name="follow"/> giving the schema a node stands for (and the
+    /// <c>$defs</c> its references read): publish follows names and <c>#/$defs</c> sites, the run an expanded reference.
+    /// </summary>
+    private static FormatShape ShapeOf(
+        JsonNode? node, JsonObject? defs, Func<JsonNode?, JsonObject?, (JsonObject? Schema, JsonObject? Defs)> follow, int depth)
     {
-        var (schema, inner) = Follow(node, defs, formats);
+        var (schema, inner) = follow(node, defs);
         if (schema is null || depth > SourceBounds.JsonDepth)
         {
             return FormatShape.Unknown;
@@ -327,7 +361,7 @@ public static class FormatTypes
             var others = new List<JsonNode?>();
             foreach (var member in members)
             {
-                if (Follow(member, inner, formats).Schema is { } m && Text(m["type"]) == "null")
+                if (follow(member, inner).Schema is { } m && Text(m["type"]) == "null")
                 {
                     nulls++;
                 }
@@ -341,7 +375,7 @@ public static class FormatTypes
             {
                 (0, 0) => FormatShape.Unknown,
                 (0, _) => FormatShape.Null,
-                (1, > 0) => ShapeOf(others[0], inner, formats, depth + 1),
+                (1, > 0) => ShapeOf(others[0], inner, follow, depth + 1),
                 _ => FormatShape.Union,
             };
         }

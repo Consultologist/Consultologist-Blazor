@@ -201,10 +201,10 @@ public sealed partial class PlanRunner
         private async Task<bool?> DecideAsync(RunInstance instance, IJsonLogicRule rule, string member, string site, RunFrame frame)
         {
             var entry = instance.Entry;
-            var decision = rule.Decide(scope.Data(entry, frame, entry.Reads));
+            var decision = await DecideRuleAsync(instance, rule, member, scope.Data(entry, frame, entry.Reads));
             if (decision.Failure is { } failed)
             {
-                await FailAsync(instance, ExpressionSentences.RunTime(Subject(instance), member, failed));
+                await FailAsync(instance, RuleFailed(Subject(instance), member, failed));
                 return null;
             }
 
@@ -328,10 +328,10 @@ public sealed partial class PlanRunner
                 return null;
             }
 
-            var decision = rule.Decide(scope.Data(entry, instance.Frame, entry.Reads));
+            var decision = await DecideRuleAsync(instance, rule, "if", scope.Data(entry, instance.Frame, entry.Reads));
             if (decision.Failure is { } failed)
             {
-                await FailAsync(instance, ExpressionSentences.RunTime(Subject(instance), "if", failed));
+                await FailAsync(instance, RuleFailed(Subject(instance), "if", failed));
                 return null;
             }
 

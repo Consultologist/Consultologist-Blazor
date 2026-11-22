@@ -19,8 +19,9 @@ public enum RunState
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): what a run gave: its state; for a failed run, the sentence and the key of what failed;
-/// every top-level entry's settled read form (<c>{ value, content, state }</c>), by key; the agent calls made; and the most
-/// agent calls in flight at once (telemetry only, part 09 § 3.2).
+/// every top-level entry's settled read form (<c>{ value, content, state }</c>), by key; the agent calls made; the most
+/// agent calls in flight at once (telemetry only, part 09 § 3.2); and #1505 (area 08) each deliverable's outcome, in plan
+/// order, for those whose outcome was decided (<see cref="DeliverableOutcome"/>).
 /// </summary>
 public sealed record RunResult(
     RunState State,
@@ -28,7 +29,8 @@ public sealed record RunResult(
     string? FailedKey,
     IReadOnlyDictionary<string, JsonNode?> Values,
     int AgentCalls,
-    int PeakInFlight);
+    int PeakInFlight,
+    IReadOnlyList<DeliverableOutcome> Deliverables);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 §§ 3.1, 3.2, 3.4; part 04 § 8): the deterministic scheduler that runs a plan.
@@ -43,7 +45,10 @@ public sealed record RunResult(
 /// the branches of an <c>if</c> and a <c>case</c>, <c>PlanRunner.Flow.cs</c>'s; a <c>call</c>'s function body, run inline
 /// in a frame of its own under the same ceiling, <c>PlanRunner.Calls.cs</c>'s. #1504 (area 07; D3): the placements of an
 /// agent's, a rendered node's or a deliverable's body are decided once its gate holds, and passed with its call,
-/// <c>PlanRunner.Placements.cs</c>'s.
+/// <c>PlanRunner.Placements.cs</c>'s. #1505 (area 08; part 06 § 7): a deliverable's outcome (skipped, failed, held, then
+/// once its gate settles blocked or released) is <c>PlanRunner.Deliverables.cs</c>'s. #1505 (D14): it tells the recorder
+/// once of the job's 429 waits passing <see cref="CapacityAlertMinutes"/> and once of the job reaching
+/// <see cref="SlowJobPercent"/> of its time, on a host timer cancelled with the others (<see cref="RunNotice"/>).
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IRunHost"/>'s (and the recorder's), reads no clock but
@@ -52,6 +57,18 @@ public sealed record RunResult(
 /// </remarks>
 public sealed partial class PlanRunner
 {
+    /// <summary>
+    /// #1505 (area 08; part 09 § 3.9; D14): the minutes of 429 waits, in all across a job's nodes, past which the operator is
+    /// told once (<see cref="RunNotice"/> <c>capacity-wait</c>).
+    /// </summary>
+    public const int CapacityAlertMinutes = 5;
+
+    /// <summary>
+    /// #1505 (area 08; part 09 § 3.9; D14): the share of <see cref="RunLimits.JobMinutes"/>, in percent, at which the operator
+    /// is told once that the job is slow (<see cref="RunNotice"/> <c>job-slow</c>).
+    /// </summary>
+    public const int SlowJobPercent = 80;
+
     private readonly RunPlan plan;
     private readonly RunLimits limits;
     private readonly IRunHost host;
@@ -119,6 +136,15 @@ public sealed partial class PlanRunner
         /// <summary>The host's timer for the job's time left, made the first time the run waits.</summary>
         private Task? jobTimer;
 
+        /// <summary>
+        /// #1505 (D14): the host's timer for <see cref="SlowJobPercent"/> of the job's time, made the first time the run waits
+        /// and cancelled with the others; null again once it has ended and its notice was raised.
+        /// </summary>
+        private Task? slowTimer;
+
+        /// <summary>#1505 (D14): whether the job-slow notice was raised, so it is raised once.</summary>
+        private bool slowNoticed;
+
         /// <summary>Cancels every timer the run made (the job's and each retry's) when the run ends, on every path.</summary>
         private readonly CancellationTokenSource timers = new();
 
@@ -153,12 +179,21 @@ public sealed partial class PlanRunner
                     }
 
                     jobTimer ??= host.DelayAsync(TimeLeft(), timers.Token);
-                    var finished = await Task.WhenAny(flights.Select(f => f.Task).Append(jobTimer));
+                    if (!slowNoticed)
+                        slowTimer ??= host.DelayAsync(TimeToSlow(), timers.Token);
+                    var waits = flights.Select(f => f.Task).Append(jobTimer);
+                    var finished = await Task.WhenAny(slowTimer == null ? waits : waits.Append(slowTimer));
                     if (ReferenceEquals(finished, jobTimer) || PastTheJobLimit())
                     {
                         // Nothing that finished at or after the limit is read.
                         await TimeOutAsync();
                         break;
+                    }
+
+                    if (ReferenceEquals(finished, slowTimer))
+                    {
+                        await SlowAsync();
+                        continue;
                     }
 
                     var flight = flights.First(f => ReferenceEquals(f.Task, finished));
@@ -175,6 +210,8 @@ public sealed partial class PlanRunner
                     Observe(abandoned.Task);
                 if (jobTimer != null)
                     Observe(jobTimer);
+                if (slowTimer != null)
+                    Observe(slowTimer);
                 timers.Dispose();
             }
 
@@ -191,7 +228,8 @@ public sealed partial class PlanRunner
                 failure?.Key,
                 values,
                 agentCalls,
-                peakInFlight);
+                peakInFlight,
+                outcomes.OrderBy(o => o.Order).Select(o => o.Outcome).ToList());
         }
 
         // ---- the round ----------------------------------------------------------------------
@@ -208,7 +246,10 @@ public sealed partial class PlanRunner
         /// <summary>The instances not settled, in the fixed order.</summary>
         private IEnumerable<RunInstance> Unsettled() => pending;
 
-        /// <summary>Settles, in the fixed order, every ready instance that needs no call, until nothing more moves.</summary>
+        /// <summary>
+        /// Settles, in the fixed order, every ready instance that needs no call, then (#1505) decides the outcome of each
+        /// composed deliverable whose gate has settled, until nothing more moves.
+        /// </summary>
         private async Task SettleRoundAsync()
         {
             bool moved;
@@ -224,6 +265,9 @@ public sealed partial class PlanRunner
                     if (instance.WasReady && await StepAsync(instance))
                         moved = true;
                 }
+
+                if (failure == null && await DecideOutcomesAsync())
+                    moved = true;
             }
             while (moved && failure == null);
         }
@@ -261,7 +305,7 @@ public sealed partial class PlanRunner
 
         /// <summary>
         /// Decides a leaf's or a deliverable's <c>if</c>: true when it runs. False or <c>null</c> skips it with S03-001's reason
-        /// and records the decision; a failure fails it with part 03 § 11.3's sentence.
+        /// and records the decision; a failure fails it with part 03 § 11.3's sentence (#1505, D4: a gate check's, not the job).
         /// </summary>
         private async Task<bool> GateAsync(RunInstance instance)
         {
@@ -269,10 +313,10 @@ public sealed partial class PlanRunner
             if (entry.If is not { } rule)
                 return true;
 
-            var decision = rule.Decide(scope.Data(entry, instance.Frame, entry.Reads));
+            var decision = await DecideRuleAsync(instance, rule, "if", scope.Data(entry, instance.Frame, entry.Reads));
             if (decision.Failure is { } failed)
             {
-                await FailAsync(instance, ExpressionSentences.RunTime(Subject(instance), "if", failed));
+                await FailLeafAsync(instance, RuleFailed(Subject(instance), "if", failed));
                 return false;
             }
 
@@ -284,7 +328,10 @@ public sealed partial class PlanRunner
             return false;
         }
 
-        /// <summary>Evaluates a computed node inline; a value that does not fit its format fails it with A06-003 (04-D49: <c>null</c> is a value).</summary>
+        /// <summary>
+        /// Evaluates a computed node inline; a value that does not fit its format fails it with A06-003 (04-D49: <c>null</c>
+        /// is a value; #1505, D4: not for a gate check, whose value is a <c>check_result</c>, and whose failure is its own).
+        /// </summary>
         private async Task ComputeAsync(RunInstance instance)
         {
             var entry = instance.Entry;
@@ -294,21 +341,49 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            var value = expression.Evaluate(scope.Data(entry, instance.Frame, entry.Reads));
+            var value = await EvaluateRuleAsync(instance, expression, "expression", scope.Data(entry, instance.Frame, entry.Reads));
             if (value.Failure is { } failed)
             {
-                await FailAsync(instance, ExpressionSentences.RunTime(ComputedSubject(instance), "expression", failed));
+                await FailLeafAsync(instance, RuleFailed(ComputedSubject(instance), "expression", failed));
                 return;
             }
 
-            if (value.Value != null && !plan.Formats.Validate(value.Value, entry.Format).Valid)
+            if ((value.Value != null || entry.Gates.Count > 0) && !plan.Formats.Validate(value.Value, entry.Format).Valid)
             {
-                await FailAsync(instance, $"Node '{entry.Id}' computed a value that isn't {FormatName(entry.Format)}.");
+                await FailLeafAsync(instance, $"Node '{entry.Id}' computed a value that isn't {FormatName(entry.Format)}.");
                 return;
             }
 
-            await CompleteAsync(instance, value.Value, RowState.Completed);
+            await CompleteAsync(instance, value.Value);
         }
+
+        // ---- rules (#1505, R6) --------------------------------------------------------------
+
+        /// <summary>
+        /// The one seam every rule the runner decides goes through: <paramref name="rule"/> (the instance's
+        /// <paramref name="member"/>: <c>if</c>, <c>while</c>, <c>until</c> or a placement's site) as a condition over
+        /// <paramref name="data"/>. A rule that holds <c>matches</c> or <c>has_word</c> is decided by the host
+        /// (<see cref="IRunHost.EvaluateAsync"/>, awaited here; it takes no slot), so a replay reads the stored outcome rather
+        /// than timing the pattern again; every other rule inline.
+        /// </summary>
+        private async Task<JsonLogicDecision> DecideRuleAsync(RunInstance instance, IJsonLogicRule rule, string member, JsonObject data) =>
+            rule.ReadsPattern ? RuleTurn.DecisionOf(await host.EvaluateAsync(RuleCallOf(instance, member, data))) : rule.Decide(data);
+
+        /// <summary>As <see cref="DecideRuleAsync"/>, for a computed node's <c>expression</c>: its value.</summary>
+        private async Task<JsonLogicValue> EvaluateRuleAsync(RunInstance instance, IJsonLogicRule rule, string member, JsonObject data) =>
+            rule.ReadsPattern ? RuleTurn.ValueOf(await host.EvaluateAsync(RuleCallOf(instance, member, data))) : rule.Evaluate(data);
+
+        private static RuleCall RuleCallOf(RunInstance instance, string member, JsonObject data) =>
+            new(instance.Key, instance.Entry.Key, instance.Frame.Function, member, data);
+
+        /// <summary>
+        /// Part 03 § 11.3's sentence for a rule that failed at run time; a host that answered from a plan not the job's
+        /// (<see cref="RuleTurn.PlanFailure"/>) is S07-006, as an agent call's is.
+        /// </summary>
+        private string RuleFailed(string subject, string member, JsonLogicFailure failed) =>
+            ReferenceEquals(failed, RuleTurn.NotTheJobsPlan)
+                ? ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence
+                : ExpressionSentences.RunTime(subject, member, failed);
 
         /// <summary>Dispatches the waiting calls in the fixed order: an agent call while a slot is free and the job's calls allow.</summary>
         private async Task DispatchAsync()
@@ -377,9 +452,9 @@ public sealed partial class PlanRunner
         }
 
         /// <summary>
-        /// A render's outcome: a rendered node completes with its text; a deliverable settles composed (area 08 takes it from
-        /// there). #1504 (part 05 § 4; part 08 §§ 8.2, 10): its row carries the outcome's detail, and its read form its
-        /// run-neutral text as <c>neutral</c> when it has one.
+        /// A render's outcome: a rendered node completes with its text; a deliverable is composed (#1505:
+        /// <c>ComposedAsync</c>, which decides what it can of its outcome). #1504 (part 05 § 4; part 08 §§ 8.2, 10): its row
+        /// carries the outcome's detail, and its read form its run-neutral text as <c>neutral</c> when it has one.
         /// </summary>
         private async Task RenderedAsync(RunInstance instance, RenderOutcome outcome)
         {
@@ -396,8 +471,13 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            var text = JsonValue.Create(outcome.Text ?? "");
-            await CompleteAsync(instance, text, instance.Entry.Kind == PlanKind.Deliverable ? RowState.Composed : RowState.Completed, outcome.NeutralText);
+            if (instance.Entry.Kind == PlanKind.Deliverable)
+            {
+                await ComposedAsync(instance, outcome.Text ?? "", outcome.NeutralText);
+                return;
+            }
+
+            await CompleteAsync(instance, JsonValue.Create(outcome.Text ?? ""), outcome.NeutralText);
         }
 
         // ---- settling -----------------------------------------------------------------------
@@ -407,25 +487,28 @@ public sealed partial class PlanRunner
         /// else the value's canonical JSON (D11); #1504 (D4): with <paramref name="neutral"/>, a render's run-neutral text, as
         /// its <c>.neutral</c>.
         /// </summary>
-        private Task CompleteAsync(RunInstance instance, JsonNode? value, RowState state, string? neutral = null)
+        private Task CompleteAsync(RunInstance instance, JsonNode? value, string? neutral = null)
         {
             var content = Content(instance.Entry, value);
             var read = new JsonObject
             {
                 ["value"] = value?.DeepClone(),
                 ["content"] = content,
-                ["state"] = state == RowState.Composed ? "composed" : "completed",
+                ["state"] = "completed",
             };
             if (neutral != null)
                 read["neutral"] = neutral;
-            return SettleAsync(instance, state, null, read, content == null ? null : CanonicalJson.HashText(content));
+            return SettleAsync(instance, RowState.Completed, null, read, content == null ? null : CanonicalJson.HashText(content));
         }
 
-        /// <summary>Fails <paramref name="instance"/>, and the job with it, with <paramref name="sentence"/>.</summary>
+        /// <summary>
+        /// Fails <paramref name="instance"/>, and the job with it, with <paramref name="sentence"/>; #1505: a deliverable that
+        /// composed (empty, under <c>whenEmpty: fail</c>) keeps its composed hash for the record.
+        /// </summary>
         private Task FailAsync(RunInstance instance, string sentence)
         {
             failure ??= (sentence, instance.Key);
-            return SettleAsync(instance, RowState.Failed, sentence, RunScope.Absent("failed"), null);
+            return SettleAsync(instance, RowState.Failed, sentence, RunScope.Absent("failed"), instance.ComposedHash);
         }
 
         /// <summary>Settles <paramref name="instance"/> and records its row.</summary>
@@ -437,8 +520,10 @@ public sealed partial class PlanRunner
             ItemNameDetail(instance.Frame, detail);
             if (instance.Entry.Kind == PlanKind.Agent)
                 AgentDetail(instance, detail);
-            else if (instance.Entry.Kind is PlanKind.Rendered or PlanKind.Deliverable)
+            else if (instance.Entry.Kind == PlanKind.Rendered)
                 Merge(instance.CallDetail, detail);
+            else if (instance.Entry.Kind == PlanKind.Deliverable)
+                DeliverableSettled(instance, state, reason, detail);
             else if (instance.Entry.Kind == PlanKind.For)
                 LoopDetail(instance, detail);
             else if (instance.Entry.Kind == PlanKind.While)

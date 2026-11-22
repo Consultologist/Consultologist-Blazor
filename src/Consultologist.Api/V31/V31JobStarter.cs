@@ -97,14 +97,29 @@ public sealed class V31JobStarter(
         request = ConsultGenerationJobStarter.NormalizeInputs(extraction.Request);
         // #1504 (ruled by the owner on #1504, ruling 6): each MacroChoices entry is its boolean input's value.
         var (supplied, choiceRefusals) = V31StartChecks.Choices(plan, Supplied(request), request.MacroChoices);
-        var profile = await ProfileAsync(plan, appUserId, cancellationToken);
+        var (profile, signature) = await ProfileAsync(plan, appUserId, request.SignatureBlockId, cancellationToken);
         var timeZone = (await settings.GetAsync(appUserId, AccountSettingKeys.TimeZone, cancellationToken))?.Value;
 
-        var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, new JsonObject(), profile);
-        var refusals = V31StartChecks.Account(plan, profile, timeZone).Concat(choiceRefusals).Concat(inputRefusals).ToList();
+        // #1505 (R8): the run facts known now as the orchestration will know them (its RunFactsBase, and run.package when the
+        // plan reads it); run.date is worked out when the orchestration starts (D6), so an if that reads it is the run's to decide.
+        var startFacts = new JsonObject { ["id"] = jobId, ["engine"] = engine.Release };
+        if (plan.RunFacts.Contains("run.package", StringComparer.Ordinal))
+            startFacts["package"] = $"{plan.Package}@{plan.Version}";
+
+        var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, startFacts, profile);
+        var accountRefusals = V31StartChecks.Account(plan, profile, timeZone);
+        if (signature.Refusal is { } notTheAccounts)
+        {
+            // #1505 (D15): a block named that the account lacks is A08-004, said in S06-031's place (the account may have one).
+            accountRefusals = accountRefusals.Where(r => r.Id != "S06-031").Prepend(new SourceRefusal("A08-004", notTheAccounts, "")).ToList();
+        }
+
+        var refusals = accountRefusals.Concat(choiceRefusals).Concat(inputRefusals).ToList();
         var header = Header(jobId, appUserId, $"{plan.Package}@{plan.Version}", origin, request, plan) with
         {
             InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins ? origins : null,
+            SignatureBlockId = signature.BlockId,
+            SignatureChosen = signature.Chosen,
         };
         if (refusals.Count > 0)
         {
@@ -117,6 +132,18 @@ public sealed class V31JobStarter(
             return await RecordStartFailureAsync(
                 client, entityId, header, string.Join("\n", refusals.Select(r => r.Sentence)),
                 ConsultGenerationJobStartError.InputsMismatch, senderSafe.Count > 0 ? string.Join("\n", senderSafe) : null);
+        }
+
+        // #1505 (R8): no deliverable can exist on these inputs; refused as a 30 start is, in its words, before anything is held.
+        if (V31StartChecks.NoDeliverableCanExist(plan, runInputs!))
+        {
+            var notProduced = V31StartChecks.NotProduced(plan);
+            var detail = ConsultGenerationJobStarter.NoneApplyDetail(notProduced);
+            logger.LogWarning(
+                "Rejected 31 job start: no deliverable applies to these inputs. JobId={JobId}, Package={Package}@{Version}, Declared={Declared}",
+                jobId, plan.Package, plan.Version, notProduced.Count);
+            return await RecordStartFailureAsync(
+                client, entityId, header with { SkippedDocuments = notProduced }, detail, ConsultGenerationJobStartError.NoApplicableDeliverable, detail);
         }
 
         var accountKind = await accounts.GetAccountKindAsync(appUserId, cancellationToken);
@@ -219,24 +246,35 @@ public sealed class V31JobStarter(
 
     /// <summary>
     /// The profile fields <paramref name="plan"/> needs, each read where the account keeps it (D6): <c>name</c> the
-    /// account's display name, <c>signature</c> the chosen signature block's text, the others their settings.
+    /// account's display name, <c>signature</c> the text of the block <see cref="V31StartChecks.Signature"/> picks for
+    /// <paramref name="requested"/> (#1505, D15), the others their settings. With them, the block used, by id, and how it was
+    /// chosen, or A08-004's sentence; all null when the plan reads no signature.
     /// </summary>
-    private async Task<Dictionary<string, string?>> ProfileAsync(RunPlan plan, string appUserId, CancellationToken cancellationToken)
+    private async Task<(Dictionary<string, string?> Profile, (string? BlockId, string? Chosen, string? Refusal) Signature)> ProfileAsync(
+        RunPlan plan, string appUserId, string? requested, CancellationToken cancellationToken)
     {
         var profile = new Dictionary<string, string?>(StringComparer.Ordinal);
+        (string? BlockId, string? Chosen, string? Refusal) signature = (null, null, null);
         foreach (var field in plan.NeedsProfile.Distinct(StringComparer.Ordinal))
         {
+            if (field == "signature")
+            {
+                var blocks = SignatureBlocks.Parse((await settings.GetAsync(appUserId, AccountSettingKeys.ProfileSignatures, cancellationToken))?.Value);
+                var (block, chosen, refusal) = V31StartChecks.Signature(blocks, requested);
+                profile[field] = block?.Text;
+                signature = (block?.Id, chosen, refusal);
+                continue;
+            }
+
             profile[field] = field switch
             {
                 "name" => await accounts.GetDisplayNameAsync(appUserId, cancellationToken),
-                "signature" => SignatureBlocks.Chosen(SignatureBlocks.Parse(
-                    (await settings.GetAsync(appUserId, AccountSettingKeys.ProfileSignatures, cancellationToken))?.Value))?.Text,
                 _ when ProfileSettings.TryGetValue(field, out var key) => (await settings.GetAsync(appUserId, key, cancellationToken))?.Value,
                 _ => null,
             };
         }
 
-        return profile;
+        return (profile, signature);
     }
 
     /// <summary>The job's Initialize as far as the start knows it before its inputs are held.</summary>

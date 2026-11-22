@@ -32,7 +32,8 @@ internal sealed record RefusalCase(string Id, string About, Dictionary<string, b
 /// step; chapter 3's cases are <c>RefusalPackages.Logic.cs</c>'s. #1502 (specVersion 31, area 05): and to the resolve
 /// step before them; the resolver's cases are <c>RefusalPackages.Resolve.cs</c>'s. #1503 (specVersion 31, area 06): the
 /// rules area 06 adds at publish are <c>RefusalPackages.Engine.cs</c>'s. #1504 (specVersion 31, area 07): and to the
-/// dialect, the sixth step; its cases are <c>RefusalPackages.Templates.cs</c>'s.
+/// dialect, the sixth step; its cases are <c>RefusalPackages.Templates.cs</c>'s. #1505 (specVersion 31, area 08): the rules
+/// of <c>checks/</c> and of what gates a deliverable are <c>RefusalPackages.Checks.cs</c>'s.
 /// </summary>
 internal static partial class RefusalPackages
 {
@@ -65,7 +66,7 @@ internal static partial class RefusalPackages
     public static IReadOnlyList<RefusalCase> All() =>
         Intake().Concat(Layout()).Concat(Headers()).Concat(Members()).Concat(Ids()).Concat(Kinds())
             .Concat(Loops()).Concat(Branches()).Concat(Functions()).Concat(Scopes()).Concat(Registry())
-            .Concat(Types()).Concat(Logic()).Concat(Resolve()).Concat(Engine()).Concat(Templates())
+            .Concat(Types()).Concat(Logic()).Concat(Resolve()).Concat(Engine()).Concat(Templates()).Concat(Checks())
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
 

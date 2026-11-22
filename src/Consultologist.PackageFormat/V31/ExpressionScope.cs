@@ -41,9 +41,10 @@ public enum ExpressionSiteKind
 /// (<c>Node 'gate'</c>, <c>Part 'p' of node 'x'</c>, <c>Computed node 'total'</c>, with <c> in function 'f'</c> inside a
 /// function); <paramref name="Member"/> is <c>if</c>, <c>while</c>, <c>until</c> or <c>expression</c>; <paramref name="Path"/>
 /// is the file a refusal names. <paramref name="ComputedId"/> and <paramref name="Declared"/> (the node's format as
-/// written) are set for an <see cref="ExpressionSiteKind.Expression"/> only.
+/// written) are set for an <see cref="ExpressionSiteKind.Expression"/> only. #1505 (area 08; D1): <paramref name="InChecks"/>
+/// is true for a rule of a node under <c>checks/</c>, the one place JSON Logic reads <c>deliverable.*</c>.
 /// </summary>
-public sealed record ExpressionSite(ExpressionSiteKind Kind, string Subject, string Member, string Path, string? ComputedId, JsonNode? Declared);
+public sealed record ExpressionSite(ExpressionSiteKind Kind, string Subject, string Member, string Path, string? ComputedId, JsonNode? Declared, bool InChecks = false);
 
 /// <summary>#1501 (specVersion 31, area 04): what the start of a path names at a site (see <see cref="ScopeHead"/>).</summary>
 public enum ScopeHeadKind

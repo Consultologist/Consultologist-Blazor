@@ -206,6 +206,11 @@ public sealed partial class ScopeTree
     /// element, <see cref="Source"/>'s; <see cref="ScopeHeadKind.Deferred"/> when the source is refused), a snippet folder item's
     /// <c>.content</c>; over a loop's <c>.items</c>, the element of § 2.6 itself (a Value head ending at <c>item</c>). No
     /// loop: unknown, S04-040 for <c>item.parent</c> in an outermost loop, S04-051 inside a function.</item>
+    /// <item>#1505 (area 08; D1, D2): <c>deliverable.&lt;id&gt;</c> under <c>checks/</c> only (elsewhere unknown; the
+    /// expression checker says S03-019 first): the longest key that names a deliverable (<c>deliverable.emr.note</c>),
+    /// then <c>.content</c> (a nullable <c>string</c>), <c>.value</c> (an object format's value, else the text; nullable)
+    /// or <c>.state</c> (<c>released</c>, <c>held</c>, <c>skipped</c> or <c>blocked</c>), a Value head ending at the
+    /// member; any other member, or none, is unknown.</item>
     /// <item><c>pass</c>, <c>pass.parent</c>, …: <c>.number</c>, <c>.history</c>, <c>.node.&lt;id&gt;</c> (read as
     /// <c>node.&lt;id&gt;</c> is, the id anywhere in the while; #1504: one hidden inside an inner loop is S04-039) and
     /// <c>.previous</c> (nullable); S04-036, S04-037, S04-038, S04-051 inside a function.</item>
@@ -241,6 +246,8 @@ public sealed partial class ScopeTree
                 return Item(read);
             case "pass":
                 return Pass(read);
+            case "deliverable" when frame.InChecks && frame.Function == null:
+                return Deliverable(s);
             default:
                 return Unknown;
         }
@@ -348,6 +355,40 @@ public sealed partial class ScopeTree
 
         return null;
     }
+
+    // ---- deliverable ---------------------------------------------------------------------------
+
+    /// <summary>D2's states of a deliverable a check reads (a <c>failed</c> one fails the job, so is never read).</summary>
+    private static readonly string[] DeliverableStates = ["released", "held", "skipped", "blocked"];
+
+    /// <summary>
+    /// <c>deliverable.&lt;key path&gt;.&lt;member&gt;</c> (D2): the deliverable whose key is the longest prefix of the
+    /// path that names one, read through <c>.content</c>, <c>.value</c> or <c>.state</c>.
+    /// </summary>
+    private Resolved Deliverable(IReadOnlyList<string> s)
+    {
+        for (var length = s.Count - 1; length >= 2; length--)
+        {
+            var key = string.Join('.', s.Take(length));
+            if (Deliverables(package.Deliverables).FirstOrDefault(d => d.Key == key) is not { } deliverable)
+                continue;
+            var format = deliverable.Header["format"];
+            var text = format is null || FormatTypes.TextKind(format, types.Formats) != null;
+            return s[length] switch
+            {
+                "content" => Head(ScopeHeadKind.Value, key, length + 1, JsonValue.Create("string"), true),
+                "value" => Head(ScopeHeadKind.Value, key, length + 1, text ? JsonValue.Create("string") : format!.DeepClone(), true),
+                "state" => Head(ScopeHeadKind.Value, key, length + 1, Enum(DeliverableStates), false),
+                _ => Unknown,
+            };
+        }
+
+        return Unknown;
+    }
+
+    /// <summary>Every deliverable of <paramref name="folder"/> and its delivery folders, in folder order.</summary>
+    internal static IEnumerable<SourceDeliverable> Deliverables(SourceDeliveryFolder folder) =>
+        folder.Deliverables.Concat(folder.Folders.SelectMany(Deliverables));
 
     // ---- item ----------------------------------------------------------------------------------
 

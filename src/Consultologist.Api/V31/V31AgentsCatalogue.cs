@@ -53,29 +53,50 @@ public sealed class V31AgentsCatalogue
         var bindings = Read(Path.Combine(directory, Folder, "bindings.json"));
         var agents = Read(Path.Combine(directory, Folder, "agents.json"));
 
+        // Everything read from the two files happens inside this wrap: a defect in either is the catalogue's own startup
+        // error naming the file and the member, never a bare FormatException or NullReferenceException (#1505 R15).
         AgentBindings checkedBindings;
+        Dictionary<(string Name, int Version), IReadOnlyList<string>> held;
         try
         {
             checkedBindings = AgentBindings.Read(bindings, agents);
+            held = Held(agents);
         }
         catch (FormatException ex)
         {
             throw new InvalidOperationException($"The 31 agents catalogue at '{Path.Combine(directory, Folder)}' is not the published shape: {ex.Message}", ex);
         }
 
-        // AgentBindings.Read has held agents.json to its shape: agents.<name>.<version>.strictRejects, a list of text.
+        foreach (var (name, version) in held.Keys)
+            Attest(directory, name, version);
+
+        return new V31AgentsCatalogue(checkedBindings.Version, held);
+    }
+
+    /// <summary>Each agent version of <c>agents.json</c> with its <c>strictRejects</c>; a member that is missing or of another type is a <see cref="FormatException"/> naming it.</summary>
+    private static Dictionary<(string Name, int Version), IReadOnlyList<string>> Held(JsonObject agents)
+    {
         var held = new Dictionary<(string Name, int Version), IReadOnlyList<string>>();
-        foreach (var (name, versions) in agents["agents"]!.AsObject())
+        var byName = agents["agents"] as JsonObject ?? throw new FormatException("agents.json has no 'agents' object.");
+        foreach (var (name, versions) in byName)
         {
-            foreach (var (number, definition) in versions!.AsObject())
+            var byVersion = versions as JsonObject ?? throw new FormatException($"agents.json: agents.{name} is not an object.");
+            foreach (var (number, definition) in byVersion)
             {
-                var version = int.Parse(number, NumberStyles.None, CultureInfo.InvariantCulture);
-                Attest(directory, name, version);
-                held[(name, version)] = definition!["strictRejects"]!.AsArray().Select(k => k!.GetValue<string>()).ToList();
+                var path = $"agents.{name}.{number}";
+                if (!int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out var version))
+                    throw new FormatException($"agents.json: {path} is not a version number.");
+                var rejects = (definition as JsonObject)?["strictRejects"] as JsonArray
+                    ?? throw new FormatException($"agents.json: {path}.strictRejects is not a list.");
+                held[(name, version)] = rejects
+                    .Select(k => k is JsonValue v && v.TryGetValue<string>(out var text)
+                        ? text
+                        : throw new FormatException($"agents.json: {path}.strictRejects holds a non-text item."))
+                    .ToList();
             }
         }
 
-        return new V31AgentsCatalogue(checkedBindings.Version, held);
+        return held;
     }
 
     /// <summary>The bundled manifest of <paramref name="name"/> is there and declares <paramref name="version"/>.</summary>

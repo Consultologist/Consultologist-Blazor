@@ -20,6 +20,8 @@ namespace Consultologist.Api.Tests.V31Source;
 /// #1502 (specVersion 31, area 05): and every sentence of <see cref="ResolveSentences"/>.
 /// #1504 (specVersion 31, area 07): and every sentence of <see cref="DialectSentences"/>, except
 /// <c>TemplatesNotShipped</c>.
+/// #1505 (specVersion 31, area 08): and of <see cref="CheckSentences"/> and <see cref="DeliverableSentences"/>, except
+/// <c>ChecksNotShipped</c>.
 /// </summary>
 public class RefusalPackagesTests
 {
@@ -89,6 +91,12 @@ public class RefusalPackagesTests
         "S05-012", "S05-014", "S05-053", "S05-054", "S05-055", "S05-056", "S05-057", "S05-058", "S05-059", "S05-062", "A07-006",
     ];
 
+    /// <summary>
+    /// #1505 (area 08): the sentences of this area the suite has no case for. A08-006 (#1505 ruling 6): the engine failed
+    /// reading a template, a fault of the engine and not of the package, so no package content produces it.
+    /// </summary>
+    private static readonly string[] ChecksNotShipped = ["A08-006"];
+
     /// <summary>The ids of <see cref="TemplatesNotShipped"/> said at run time, by no method of <see cref="DialectSentences"/>.</summary>
     private static readonly string[] TemplatesRunTime =
         ["S05-012", "S05-014", "S05-053", "S05-054", "S05-055", "S05-056", "S05-057", "S05-058", "S05-059", "S05-062", "A07-006"];
@@ -121,16 +129,17 @@ public class RefusalPackagesTests
     [Fact]
     public void EverySentence_TheCheckerCanSay_HasACase()
     {
-        // Each method of SourceSentences, FormatSentences, ExpressionSentences and ResolveSentences that returns a refusal makes one sentence
+        // Each method of SourceSentences, FormatSentences, ExpressionSentences, ResolveSentences, DialectSentences, CheckSentences and DeliverableSentences that returns a refusal makes one sentence
         // with a fixed id; calling it with any arguments gives that id (FormatSentences.Subject, which
         // returns text, is not one; nor is ExpressionSentences.Shape, which gives the sentence of a fault of the
         // written form by calling the others).
-        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences), typeof(DialectSentences))
+        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences), typeof(DialectSentences), typeof(CheckSentences), typeof(DeliverableSentences))
             .Except(NotShipped)
             .Except(TypesNotShipped)
             .Except(LogicNotShipped)
             .Except(ResolveNotShipped)
             .Except(TemplatesNotShipped)
+            .Except(ChecksNotShipped)
             .Order(StringComparer.Ordinal)
             .ToList();
 
@@ -168,6 +177,13 @@ public class RefusalPackagesTests
         var said = SaidBy(typeof(DialectSentences));
         Assert.All(TemplatesNotShipped, id => Assert.True(said.Contains(id) || TemplatesRunTime.Contains(id), id));
         Assert.All(TemplatesRunTime, id => Assert.DoesNotContain(id, said));
+    }
+
+    [Fact]
+    public void EveryCheckNotShipped_IsASentenceTheCheckerHas()
+    {
+        var said = SaidBy(typeof(DialectSentences), typeof(CheckSentences), typeof(DeliverableSentences));
+        Assert.All(ChecksNotShipped, id => Assert.Contains(id, said));
     }
 
     [Fact]

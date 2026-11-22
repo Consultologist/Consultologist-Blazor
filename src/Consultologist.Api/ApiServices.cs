@@ -29,14 +29,20 @@ public static class ApiServices
     /// What <c>Program.cs</c> resolves after the host is built and before it runs, so a bad setting or catalogue fails at
     /// startup, not at the first job: #1503's <see cref="SpecVersionAdmission"/> and
     /// <see cref="Consultologist.Api.V31.EngineLimitSettings"/>, and #1504's <see cref="Consultologist.Api.V31.V31AgentsCatalogue"/>
-    /// (resolved lazily, a defect in it would fail every job start, 5–30 included, through the 31 starter's store).
+    /// when <see cref="SpecVersionAdmission.Runs31"/>, so a defect in it stops the host rather than failing a 31 job. With the
+    /// preview setting unset it is not read at all (#1505 R15): its consumers take it lazily (the 31 store's engine
+    /// capabilities, the 31 agent activity's catalogue), and only a 31 load or a 31 agent call reads it.
     /// </summary>
     public static void ResolveAtStartup(IServiceProvider services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.GetRequiredService<SpecVersionAdmission>();
+        var admission = services.GetRequiredService<SpecVersionAdmission>();
         services.GetRequiredService<Consultologist.Api.V31.EngineLimitSettings>();
-        services.GetRequiredService<Consultologist.Api.V31.V31AgentsCatalogue>();
+        // #1505 (R15): only a host that admits 31 resolves the 31 catalogue; a 5–30 host never touches agents/v31.
+        if (admission.Runs31)
+        {
+            services.GetRequiredService<Consultologist.Api.V31.V31AgentsCatalogue>();
+        }
     }
 
     public static IServiceCollection AddApiServices(this IServiceCollection services)
@@ -170,9 +176,15 @@ public static class ApiServices
         services.AddSingleton<Consultologist.Api.V31.IRegistryFiles, Consultologist.Api.V31.BlobRegistryFiles>();
         // #1504 (D9): the 31 agents catalogue (agents/v31, bundled from the pinned agents repo), loaded and attested once:
         // its agents are among what this engine runs, and an agent call's sent format leaves out their strictRejects.
+        // #1505 (R15): its consumers take it, and the capabilities built from it, lazily, so a host that does not run 31
+        // never reads agents/v31 (only ResolveAtStartup, when 31 is admitted, reads it before the first job).
         services.AddSingleton(_ => Consultologist.Api.V31.V31AgentsCatalogue.Load());
+        services.AddSingleton(sp => new Lazy<Consultologist.Api.V31.V31AgentsCatalogue>(
+            () => sp.GetRequiredService<Consultologist.Api.V31.V31AgentsCatalogue>()));
         services.AddSingleton<Consultologist.Api.V31.EngineCapabilitiesFactory>();
         services.AddSingleton(sp => sp.GetRequiredService<Consultologist.Api.V31.EngineCapabilitiesFactory>().Current());
+        services.AddSingleton(sp => new Lazy<Consultologist.PackageFormat.V31.EngineCapabilities>(
+            () => sp.GetRequiredService<Consultologist.PackageFormat.V31.EngineCapabilities>()));
         services.AddSingleton<Consultologist.Api.V31.ICompiledPackageStore, Consultologist.Api.V31.CompiledPackageStore>();
         // #1503 (part 09 §§ 3.1, 3.4): a 31 job's orchestration — one attempt per agent activity
         // (the orchestration retries; #1504: its prompt composed by the template library), and the
@@ -180,6 +192,12 @@ public static class ApiServices
         services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
         services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
         services.AddSingleton<Consultologist.Api.V31.V31JobStarter>();
+        // #1505 (part 06 § 8; D10): a 31 job's delivery channels, email and pdf, over the mailbox and the account's
+        // delivery settings, as the 5–30 reply reads them (deliver-v31's).
+        services.AddSingleton<Consultologist.Api.V31.DeliveryChannels>();
+        // #1505 (part 09 § 3.9; D14): alerts for the operator, logged and mailed from the mailbox to Operators__AlertAddress when
+        // both are set (alert-operator-v31's); the weekly summary's function reads the job index on its own schedule.
+        services.AddSingleton<Consultologist.Api.V31.IOperatorAlerts, Consultologist.Api.V31.OperatorAlerts>();
         // #1503 (part 09 § 3.6; D9): the drain before a deploy — its state on the text account (drain/ in the job outputs'
         // container), read on every call; both starters park behind it; Admin/Drain, Admin/Resume and GET Admin/Drain drive it.
         services.AddSingleton<IDrainBlobs, TextDrainBlobs>();

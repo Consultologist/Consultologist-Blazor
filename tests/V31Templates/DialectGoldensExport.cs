@@ -14,12 +14,13 @@ namespace Consultologist.Api.Tests.V31Templates;
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 10 § 5): the three families of the dialect, generated from the code, and their
-/// export into the content repository named by <c>CONFORMANCE_EXPORT_V31</c> (its root): it deletes and rewrites
-/// <c>v31/conformance/dialect-goldens/</c>, <c>renderer-goldens/</c> and <c>markdown-escape-vectors/</c> with
-/// <see cref="Files"/>, then sets each family's <c>cases</c> in <c>v31/conformance/index.json</c> to <see cref="Cases"/>,
-/// leaving every other byte of that file as it was. A no-op without the variable, as <see cref="RefusalPackagesExport"/>
+/// export into the content repository named by <c>CONFORMANCE_EXPORT_V31</c> (its root): it merges <see cref="Files"/>
+/// into <c>v31/conformance/dialect-goldens/</c>, <c>renderer-goldens/</c> and <c>markdown-escape-vectors/</c>, keeping a
+/// case it does not produce (#1505, R11: <see cref="ExportTo"/>), then sets each family's <c>cases</c> in
+/// <c>v31/conformance/index.json</c> to <see cref="Cases"/> and the kept ones, leaving every other byte of that file as it was. A no-op without the variable, as <see cref="RefusalPackagesExport"/>
 /// is: it is a generator, not a check. <see cref="DialectGoldenTests"/> holds the in-repo goldens and the pin to it.
 /// </summary>
+[Collection("V31 conformance export")] // #1505: the exporters each rewrite v31/conformance/index.json, so they run one at a time.
 public class DialectGoldensExport
 {
     public const string DialectGoldens = "dialect-goldens";
@@ -52,7 +53,7 @@ public class DialectGoldensExport
     /// </summary>
     internal sealed record DialectCase(
         string Name, string About, Dictionary<string, byte[]> Package, string? Template, string Entry,
-        JsonObject Scope, IReadOnlyList<(string Site, bool Placed)> Placed, string? Reply = null);
+        JsonObject Scope, IReadOnlyList<(string Site, bool Placed)> Placed, string? Reply = null, bool ObjectValue = false);
 
     [Fact]
     public void Export()
@@ -61,16 +62,61 @@ public class DialectGoldensExport
         if (string.IsNullOrWhiteSpace(root))
             return;
 
+        ExportTo(root);
+    }
+
+    /// <summary>
+    /// #1505 comment 4, ruling 3 (R11): the three families are shared by areas 07 and 08, so the export merges into the
+    /// content repository at <paramref name="root"/>: each case it produces is written afresh (its folder deleted first, so
+    /// no stale file stays), each case already there that it does not produce is kept, files and index entry, and the
+    /// family's <c>cases</c> are the two together, sorted. <c>vectors.json</c> is merged by vector: the produced vectors,
+    /// then each vector already there whose <c>plain</c> none of them has, in its order. Nothing is deleted but a produced case's old files.
+    /// </summary>
+    internal static void ExportTo(string root)
+    {
         var conformance = Path.Combine(root, "v31", "conformance");
         var indexPath = Path.Combine(conformance, "index.json");
         var index = File.ReadAllText(indexPath, Utf8NoBom);
+        var listed = JsonNode.Parse(index)!["families"]!.AsArray();
         foreach (var family in Families)
         {
-            Write(Path.Combine(conformance, family), Files(family));
-            index = RefusalPackagesExport.WithCases(index, family, Cases(family));
+            var folder = Path.Combine(conformance, family);
+            var files = Files(family);
+            if (family == EscapeVectors)
+            {
+                var path = Path.Combine(folder, "vectors.json");
+                files["vectors.json"] = Text(JsonText(MergedVectors(
+                    JsonNode.Parse(files["vectors.json"])!.AsArray(), File.Exists(path) ? JsonNode.Parse(File.ReadAllBytes(path)) as JsonArray : null)));
+            }
+
+            var produced = Cases(family);
+            foreach (var name in produced)
+            {
+                var caseFolder = Path.Combine([folder, .. name.Split('/')]);
+                if (family != EscapeVectors && Directory.Exists(caseFolder))
+                    Directory.Delete(caseFolder, recursive: true);
+            }
+
+            foreach (var (path, bytes) in files)
+            {
+                var file = Path.Combine([folder, .. path.Split('/')]);
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllBytes(file, bytes);
+            }
+
+            var already = (listed.SingleOrDefault(f => (string?)f!["id"] == family)?["cases"] as JsonArray ?? []).Select(c => (string)c!);
+            index = RefusalPackagesExport.WithCases(index, family, produced.Union(already, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
         }
 
         File.WriteAllText(indexPath, index, Utf8NoBom);
+    }
+
+    /// <summary>R11: <paramref name="produced"/>, then each vector of <paramref name="existing"/> whose <c>plain</c> none of them has, in its order.</summary>
+    private static JsonArray MergedVectors(JsonArray produced, JsonArray? existing)
+    {
+        var plains = produced.Select(v => (string?)v!["plain"]).ToHashSet(StringComparer.Ordinal);
+        var kept = (existing ?? []).Where(v => v is JsonObject o && o["plain"] is JsonValue p && p.TryGetValue<string>(out var plain) && !plains.Contains(plain));
+        return new JsonArray([.. produced.Select(v => v!.DeepClone()), .. kept.Select(v => v!.DeepClone())]);
     }
 
     /// <summary>Deletes <paramref name="folder"/> and writes <paramref name="files"/> under it.</summary>
@@ -151,8 +197,20 @@ public class DialectGoldensExport
     {
         var plan = RunFixture.Plan(golden.Package);
         var placed = golden.Placed.ToDictionary(p => p.Site, p => p.Placed, StringComparer.Ordinal);
-        var composition = BodyComposer.Compose(plan, new ComposeRequest(golden.Entry, null, golden.Scope.DeepClone().AsObject(), placed, Steps));
-        Assert.True(composition.Failure == null && !composition.TooManySteps, $"{golden.Name}: {composition.Failure}");
+        string? text, neutral;
+        if (golden.Entry.StartsWith("deliverable.", StringComparison.Ordinal))
+        {
+            // #1505 (area 08): a deliverable is rendered as the run renders it, so an object one is its canonical JSON (D8).
+            var outcome = RenderTurn.Render(plan, new RenderCall(golden.Entry, golden.Entry, null, golden.Scope.DeepClone().AsObject(), Steps, placed));
+            Assert.True(outcome.Failure == null && !outcome.TooManySteps, $"{golden.Name}: {outcome.Failure}");
+            (text, neutral) = (outcome.Text, outcome.NeutralText);
+        }
+        else
+        {
+            var composition = BodyComposer.Compose(plan, new ComposeRequest(golden.Entry, null, golden.Scope.DeepClone().AsObject(), placed, Steps));
+            Assert.True(composition.Failure == null && !composition.TooManySteps, $"{golden.Name}: {composition.Failure}");
+            (text, neutral) = (composition.Text, composition.NeutralText);
+        }
 
         var placedJson = new JsonObject();
         foreach (var (site, decision) in golden.Placed)
@@ -172,14 +230,14 @@ public class DialectGoldensExport
 
         files["scope.json"] = Text(JsonText(golden.Scope));
         files["placed.json"] = Text(JsonText(placedJson));
-        files["expected.txt"] = Text(composition.Text!);
-        if (composition.NeutralText != null)
-            files["expected.neutral.txt"] = Text(composition.NeutralText);
+        files["expected.txt"] = Text(text!);
+        if (neutral != null)
+            files["expected.neutral.txt"] = Text(neutral);
         if (golden.Reply != null)
         {
             var call = new AgentCall(golden.Entry, golden.Entry, null, 1, false, golden.Scope.DeepClone().AsObject(), placed);
             var prepared = AgentTurn.Prepare(plan, call, Steps, []);
-            Assert.Equal(composition.Text, prepared.Text);
+            Assert.Equal(text, prepared.Text);
             var outcome = AgentTurn.Finish(prepared, golden.Reply);
             Assert.True(outcome.Invalid == null, $"{golden.Name}: " + string.Join(" | ", outcome.Invalid?.Select(f => f.Sentence) ?? []));
             files["reply.txt"] = Text(golden.Reply);
@@ -203,6 +261,14 @@ public class DialectGoldensExport
             ? " reply.txt is the model's reply, and expected.reply.txt that reply with each offered macro's marker replaced by "
               + "the macro's rendered body (chapter 5 § 5.8.6); the reply is never rendered."
             : "";
+        if (golden.ObjectValue)
+        {
+            // #1505 (area 08, D8): an object deliverable is not rendered; its text is its one value's canonical JSON.
+            return golden.About + "\n\n" + what + " Its format is an object format, so its text is the RFC 8785 JSON of the "
+                + "value scope.json holds at the one path its template reads, with no final line end: expected.txt byte for byte. "
+                + "placed.json is empty: an object deliverable places nothing.\n";
+        }
+
         return golden.About + "\n\n" + what + " Composing it over scope.json (the data, keys rooted as the run holds them), "
             + "with each placement decided as placed.json says (a site it does not name is not placed), gives expected.txt "
             + "byte for byte: Scriban 7.2.5, the invariant culture, strict variables."
@@ -459,8 +525,64 @@ public class DialectGoldensExport
                 Scope(("run.date", "2026-11-21"), ("run.id", "job-0001"))),
         };
         cases.AddRange(NullCases());
+        cases.AddRange(DeliverableCases());
         return cases;
     }
+
+    /// <summary>
+    /// #1505 (area 08; part 06 § 6.4; D7, D8): a deliverable composed as the run composes it, of each kind of format: a
+    /// Markdown one escaping what its <c>escapes</c> lists, a plain-text one escaping nothing, an object one written as
+    /// canonical JSON.
+    /// </summary>
+    private static IEnumerable<DialectCase> DeliverableCases()
+    {
+        const string summary = "Fatigue (2 weeks) - check FBC & ferritin; see note #1.";
+        yield return new("deliverable-escaped",
+            "A markdown_block deliverable: each output resolve.json lists in its escapes is escaped where it is written "
+            + "(CommonMark's backslash escapes for ASCII punctuation, markdown-escape-vectors): the plain-text summary, each "
+            + "item of the list lines on its own (its line end kept, a null writing nothing), and the plain-text snippet "
+            + "sign_off, whole, once. The Markdown assessment and the renderer bullets' output are written as they are "
+            + "(chapter 6 § 6.6.4).",
+            DeliverablePackage("markdown_block",
+                    "## Assessment\n{{ node.assessment.content }}\n\n## Summary\n{{ node.summary.content }}\n"
+                    + "{{ node.summary.value | renderer.bullets }}\n## Lines\n{{ for t in input.lines.value }}- {{ t }}\n{{ end }}\n"
+                    + "{{~ snippet.sign_off.content }}\n")
+                .WithRenderer("bullets", "\"plaintext\"", "- {{ value }}\n")
+                .WithSnippet("sign_off", "Dr A. Sample (consultant), Sample Oncology Clinic."),
+            null, "deliverable.note",
+            Scope(("node.assessment.content", "**Fatigue** for two weeks; _no_ weight loss."), ("node.summary.content", summary),
+                ("node.summary.value", summary), ("input.lines.value", new JsonArray("# 1", "*bold*", "a\nb", null))),
+            [("snippet.sign_off", true)]);
+        yield return new("deliverable-plaintext",
+            "A plaintext deliverable escapes nothing: its escapes is [], and the plain-text summary is written as it is, "
+            + "punctuation and all (chapter 6 § 6.6.4).",
+            DeliverablePackage("plaintext", "Dear Margaret Okafor,\n\n{{ node.summary.content }}\n\nKind regards,\nDr A. Sample\n"),
+            null, "deliverable.note", Scope(("node.summary.content", summary)), []);
+        yield return new("deliverable-object",
+            "An object deliverable (format section_plan) is its one value, {{ node.plan.value }}, written as RFC 8785 "
+            + "canonical JSON (members sorted, no white space) with no final line end: the template's own final line end is "
+            + "not written (chapter 6 § 6.6.4).",
+            DeliverablePackage("section_plan", "{{ node.plan.value }}\n"),
+            null, "deliverable.note",
+            Scope(("node.plan.value", JsonNode.Parse(
+                "{ \"sections\": [{ \"title\": \"History of present illness\", \"kind\": \"narrative\" }, "
+                + "{ \"kind\": \"table\", \"title\": \"Examination\" }] }"))),
+            [], ObjectValue: true);
+    }
+
+    /// <summary>
+    /// <see cref="TemplateFixture.Package"/> with the list input <c>lines</c> (nullable strings), the plain-text agent
+    /// <c>summary</c>, the <c>markdown_block</c> agent <c>assessment</c>, and the deliverable <c>note</c> of
+    /// <paramref name="format"/> with <paramref name="body"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> DeliverablePackage(string format, string body) =>
+        Package()
+            .WithJson("manifest.json", m => m["inputs"]!["lines"] = JsonNode.Parse(
+                "{ \"label\": \"Lines\", \"description\": null, "
+                + "\"format\": { \"type\": \"array\", \"items\": { \"type\": [\"string\", \"null\"] } }, \"required\": true, \"channel\": null }"))
+            .WithAgent("summary", "Summarise the draft below for Dr A. Sample.\n\n{{ input.consult_draft.content }}\n")
+            .WithAgent("assessment", "Write the assessment for Dr A. Sample.\n\n{{ input.consult_draft.content }}\n", "\"markdown_block\"")
+            .With("deliverables/note.md", Md(Deliverable("Consultation note", $"\"{format}\"", "null", "hold"), body));
 
     private static DialectCase BuiltIn(string name, string about, string template, JsonNode value, string path = "node.summary.content") =>
         OfTemplate(name, $"{about} (chapter 5 § 5.2.2).", template + "\n", Scope((path, value)));
@@ -546,7 +668,11 @@ public class DialectGoldensExport
 
     // ---- markdown-escape-vectors --------------------------------------------------------------
 
-    /// <summary>The ten sentences of fictional clinical text the escape vectors hold beside the 32 characters.</summary>
+    /// <summary>
+    /// The sentences of fictional clinical text the escape vectors hold beside the 32 characters: area 07's ten, then
+    /// #1505's five (R9): a line led by one space, lines led by a tab, a run of spaces mid-line (unchanged), a line of white
+    /// space only, and a text of white space only (each still led by its entity).
+    /// </summary>
     private static readonly string[] Sentences =
     [
         "Margaret Okafor, 58, seen by Dr A. Sample on 20/11/2026.",
@@ -559,6 +685,11 @@ public class DialectGoldensExport
         "Allergies: penicillin (rash) | none known @ home; see note #4.",
         "    Seen with her daughter; the four spaces before this line stay as written.",
         "Fatigue – two weeks, worse ≥ 3 pm; café visit with her daughter, née Adeyemi.\nSecond line: \\ back-slashed.",
+        " One space leads this line for Margaret Okafor.",
+        "Plan for Dr A. Sample:\n\tFBC and ferritin\n\t\tthen review in clinic",
+        "Hb 104 g/L    ferritin 9 ug/L: the four spaces mid-line stay.",
+        "Seen by Dr A. Sample.\n  \nPlan to follow.",
+        " \t ",
     ];
 
     private static JsonArray EscapeVectorsDocument()

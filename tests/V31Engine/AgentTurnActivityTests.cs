@@ -179,6 +179,90 @@ public class AgentTurnActivityTests
         Assert.Equal(CanonicalJson.HashText(outcome.NeutralText!), (string?)run.Recorder.Row("node.stamp").Detail["runNeutralHash"]);
     }
 
+    // ---- an engine fault in reading a template (#1505 ruling 6, R14) -----------------------------------
+
+    /// <summary>The error lines of <paramref name="log"/> that say A08-006.</summary>
+    private static List<string> EngineFaults<T>(CapturingLogger<T> log) =>
+        log.Entries.Where(e => e.Level == LogLevel.Error && e.Message.Contains("A08-006", StringComparison.Ordinal)).Select(e => e.Message).ToList();
+
+    private static Func<string, Scriban.Template> Throwing(Exception exception) => _ => throw exception;
+
+    [Fact]
+    public async Task AnEngineFault_ComposingAPrompt_IsLoggedOnce_ByItsType()
+    {
+        var run = new ActivityRun(MacrosGolden);
+        var call = await run.CallOfAsync("node.draft");
+
+        TemplateSyntax.TestParser.Value = Throwing(new InvalidOperationException("Margaret Okafor's history"));
+        AgentOutcome outcome;
+        try
+        {
+            outcome = await run.AgentAsync(call);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Equal((AgentOutcomeKind.Failed, "compose"), (outcome.Kind, outcome.ErrorKind));
+        Assert.Empty(run.Agent.Sent);
+        var line = Assert.Single(EngineFaults(run.AgentLog));
+        Assert.Contains("node.draft", line, StringComparison.Ordinal);
+        Assert.Contains("System.InvalidOperationException", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("Margaret", run.AgentLog.Everything, StringComparison.Ordinal);
+        Assert.DoesNotContain("Draft", run.AgentLog.Everything, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnEngineFault_InARender_IsLoggedOnce_ByItsType()
+    {
+        var run = new ActivityRun(MacrosGolden);
+        await run.RunAsync(RunFixture.GoldenInputs() with { RunFacts = new JsonObject { ["date"] = "2026-11-21" } });
+        var (call, _) = run.Renders.Single(r => r.Call.Key == "node.stamp");
+
+        TemplateSyntax.TestParser.Value = Throwing(new NullReferenceException("Seen 21 November 2026"));
+        RenderOutcome outcome;
+        try
+        {
+            outcome = await run.RenderAsync(call);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Null(outcome.Text);
+        Assert.EndsWith("couldn't be rendered.", outcome.Failure, StringComparison.Ordinal); // A06-008, not the package's S07-006
+        var line = Assert.Single(EngineFaults(run.RenderLog));
+        Assert.Contains("node.stamp", line, StringComparison.Ordinal);
+        Assert.Contains("System.NullReferenceException", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("Seen", run.RenderLog.Everything, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheAuthorsFault_LogsNoEngineFault()
+    {
+        // What Scriban throws for unreadable text is A07-005, the author's: the call fails as before and nothing says A08-006.
+        var run = new ActivityRun(MacrosGolden);
+        var call = await run.CallOfAsync("node.draft");
+        var (render, _) = run.Renders.Single(r => r.Call.Key == "node.stamp");
+
+        TemplateSyntax.TestParser.Value = Throwing(new Scriban.Syntax.ScriptRuntimeException(default, "unreadable"));
+        try
+        {
+            Assert.Equal(AgentOutcomeKind.Failed, (await run.AgentAsync(call)).Kind);
+            Assert.Null((await run.RenderAsync(render)).Text);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Empty(EngineFaults(run.AgentLog));
+        Assert.Empty(EngineFaults(run.RenderLog));
+        Assert.DoesNotContain(run.AgentLog.Entries.Concat(run.RenderLog.Entries), e => e.Level == LogLevel.Error);
+    }
+
     [Fact]
     public async Task NoLogLine_CarriesText()
     {
@@ -239,6 +323,13 @@ public class AgentTurnActivityTests
         var renderedBack = RoundTrip(rendered);
         Assert.Equal(("Seen today", "Seen {{run:1}}"), (renderedBack.Text, renderedBack.NeutralText));
         Assert.Equal(CanonicalJson.Write(detail), CanonicalJson.Write(renderedBack.Detail));
+
+        // #1505 (R6): a rule's evaluation, its value a node and its failure the kind, the limit and the detail
+        var ruleInput = new EvaluateRuleV31Input("example", "1.0.0", "sha256:r", 2000, new RuleCall("node.draft", "node.draft", null, "macro.m", scope));
+        Assert.Equal(Json(ruleInput), Json(RoundTrip(ruleInput)));
+        foreach (var ruled in new[] { new RuleOutcome(JsonValue.Create(true), null, null), new RuleOutcome(new JsonObject { ["named"] = false }, null, null),
+            new RuleOutcome(null, "MatchTooSlow", 0.05, "has_word") })
+            Assert.Equal(Json(ruled), Json(RoundTrip(ruled)));
     }
 
     private static T RoundTrip<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, Durable), Durable)!;
@@ -255,6 +346,7 @@ public class AgentTurnActivityTests
     {
         private readonly RunAgentNodeV31Activity _agent;
         private readonly RenderNodeV31Activity _render;
+        private readonly EvaluateRuleV31Activity _rule;
         private readonly WorkflowPackageRef _ref;
         private readonly CompiledPackage _pair;
 
@@ -267,8 +359,9 @@ public class AgentTurnActivityTests
             Assert.True(load.Plan != null, $"{load.RefusalId} {load.OperatorDetail}");
             Plan = load.Plan!;
             Agent = new FakeAttempts(this);
-            _agent = new RunAgentNodeV31Activity(store, Agent, Catalogue, AgentLog, new Random(1));
+            _agent = new RunAgentNodeV31Activity(store, Agent, new Lazy<V31AgentsCatalogue>(() => Catalogue), AgentLog, new Random(1));
             _render = new RenderNodeV31Activity(store, RenderLog);
+            _rule = new EvaluateRuleV31Activity(store, NullLogger<EvaluateRuleV31Activity>.Instance);
         }
 
         public RunPlan Plan { get; }
@@ -326,6 +419,9 @@ public class AgentTurnActivityTests
                 Renders.Add((input.Call, outcome));
             return outcome;
         }
+
+        public async Task<RuleOutcome> EvaluateAsync(RuleCall call) =>
+            RoundTrip(await _rule.RunAsync(RoundTrip(new EvaluateRuleV31Input(_ref.Name, _ref.Version, _pair.ResolveHash, 2000, call)), CancellationToken.None));
 
         public Task DelayAsync(TimeSpan wait, CancellationToken cancel) =>
             wait < TimeSpan.FromMinutes(1) ? Task.CompletedTask : Task.Delay(Timeout.Infinite, cancel);

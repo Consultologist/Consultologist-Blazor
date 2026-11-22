@@ -477,6 +477,19 @@ Chronological prose narrative. Open with a one-sentence orientation to the patie
 
 - A folder is read by a loop (`"in": "snippet.standards"`), where `item.value.title` is the
   header and `item.content` the body, rendered in the loop's scope.
+- **A folder item's `.content` is `markdown_block`**, whatever the folder's `format` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)):
+  the folder's `format` types the header (`item.value`, `snippet.<folder>.<id>.value`) and
+  nothing else, and the body is `markdown_block`, as 30's standards bodies are. A
+  `markdown_block` deliverable writes it as it is, never escaped, and a `plaintext` one refuses
+  it ([Part 06 § 6.4](06-checks-deliverables-profile.md#64-strict-formats)).
+- **A body passed out of its loop is its raw text, and must be plain** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)). Read as
+  `item.content` in its loop, a folder item's body is rendered there; a call's `with` or a
+  computed node's `expression` that reads the folder item carries the body on unrendered, so
+  each body it carries holds no tag and no raw block, or it is refused. This holds at every
+  depth: the item and its `.content`, `snippet.<folder>.<id>`, a folder loop's `.items`, and,
+  in a loop over such `.items` however many loops down, its `item` and every read along the
+  chain to the folder item (`item.item` one loop down, `item.item.value.item` two, and so on).
+  A condition only decides, so it may read a body that holds tags.
 - **Folder items carry no `if`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)): a folder item's header is data, so a
   folder's size is its number of files, and conditional inclusion of a folder item is an `if`
   branch in the loop body, as `example-conditional-sections` does with `applies`. Dynamic folder

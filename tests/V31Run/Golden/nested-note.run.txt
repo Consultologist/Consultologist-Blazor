@@ -29,7 +29,7 @@ node.refine.draft_summary#2 | completed | - | sha256:5fc27c15141cc4668dbbdc53e78
 node.refine.judge#2 | completed | - | sha256:456328b7e806a6cde21e75c1e60d84f587bff881ef2a64fb781f1b92976c453c
 node.refine#2 | completed | - | sha256:5fc27c15141cc4668dbbdc53e78903df15d2d2e01b874ebf104693d65fa4b885
 node.refine | completed | - | sha256:5fc27c15141cc4668dbbdc53e78903df15d2d2e01b874ebf104693d65fa4b885
-deliverable.note | composed | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
+deliverable.note | released | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
 
 # decisions
 node.sections.paragraphs.draft_paragraph:1/1 | self | not blank(item.parent.value.title) | true
@@ -44,7 +44,7 @@ sentence | -
 failed | -
 agentCalls | 9
 peakInFlight | 4
-value | deliverable.note | sha256:e93d2b0c68cd11c6095ca032a4743b508c36ac940bdfa5b221f799e0533d0744
+value | deliverable.note | sha256:8ff3c8033f067260cf06557c8dc98eea5f35eb39fdce2debc648f10a5c1baa97
 value | node.plan | sha256:145b8a68b700b590052bc2ae4770c58e4d2b6d9e46abeb19ca09026ceadb240c
 value | node.refine | sha256:56436b4848d94a75afb907d95dd2e2422efd39d3b8fba593306eab2f35263392
 value | node.section_count | sha256:7b4025c17edaa16d6024737d284568d64136cd35b011993bae320e7f6317185e

@@ -215,16 +215,16 @@ internal static partial class RefusalPackages
     {
         yield return new RefusalCase("S05-024",
             "An output that reads a run fact reads nothing else (chapter 5 § 5.4). The note writes the run's id. Invalid: it pipes "
-            + "the draft into string.upcase with run.id. Valid: run.id alone.",
+            + "the plan into string.upcase with run.id. Valid: run.id alone.",
             RunId(),
-            RunId().Edit(Note, "{{ run.id }}", "{{ input.consult_draft.content | string.upcase run.id }}"));
+            RunId().Edit(Note, "{{ run.id }}", "{{ node.plan.content | string.upcase run.id }}"));
 
         yield return new RefusalCase("S05-025",
             "An output that reads a run-dependent value reads nothing else (chapter 5 § 5.4). The note writes today, a computed "
-            + "node reading run.date. Invalid: it pipes the draft into string.upcase with node.today.value. Valid: "
+            + "node reading run.date. Invalid: it pipes the plan into string.upcase with node.today.value. Valid: "
             + "node.today.value alone.",
             Today(),
-            Today().Edit(Note, "{{ node.today.value }}", "{{ input.consult_draft.content | string.upcase node.today.value }}"));
+            Today().Edit(Note, "{{ node.today.value }}", "{{ node.plan.content | string.upcase node.today.value }}"));
     }
 
     // ---- Chapter 5 § 5.5: renderers -------------------------------------------------------------------------

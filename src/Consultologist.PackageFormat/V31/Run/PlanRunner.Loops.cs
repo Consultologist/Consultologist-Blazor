@@ -379,10 +379,10 @@ public sealed partial class PlanRunner
 
                 if (loop.Parallel || entry.Until is not { } until || loop.StopAt != null)
                     continue;
-                var decision = until.Decide(scope.Data(entry, frame, entry.Reads));
+                var decision = await DecideRuleAsync(instance, until, "until", scope.Data(entry, frame, entry.Reads));
                 if (decision.Failure is { } failed)
                 {
-                    await FailAsync(instance, ExpressionSentences.RunTime(Subject(instance), "until", failed));
+                    await FailAsync(instance, RuleFailed(Subject(instance), "until", failed));
                     return true;
                 }
 
@@ -608,16 +608,19 @@ public sealed partial class PlanRunner
             detail["itemName"] = item?.Name;
             detail["positionName"] = item?.PositionName ?? false;
         }
-
-        /// <summary>A row state as a reader reads it (part 04 § 2.6).</summary>
-        private static string StateWord(RowState state) => state switch
-        {
-            RowState.Completed => "completed",
-            RowState.Skipped => "skipped",
-            RowState.NotRun => RunScope.NotRun,
-            RowState.Failed => "failed",
-            RowState.Cancelled => "cancelled",
-            _ => "composed",
-        };
     }
+
+    /// <summary>A row state as a reader reads it (part 04 § 2.6); one arm per state, so a state added later is never read as another.</summary>
+    internal static string StateWord(RowState state) => state switch
+    {
+        RowState.Completed => "completed",
+        RowState.Skipped => "skipped",
+        RowState.NotRun => RunScope.NotRun,
+        RowState.Failed => "failed",
+        RowState.Cancelled => "cancelled",
+        RowState.Released => "released",
+        RowState.Held => "held",
+        RowState.Blocked => "blocked",
+        _ => state.ToString(),
+    };
 }

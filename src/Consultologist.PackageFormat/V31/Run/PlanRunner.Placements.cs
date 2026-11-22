@@ -33,10 +33,10 @@ public sealed partial class PlanRunner
                 }
 
                 data ??= scope.Data(entry, instance.Frame, entry.Reads);
-                var decision = rule.Decide(data);
+                var decision = await DecideRuleAsync(instance, rule, placement.Site, data);
                 if (decision.Failure is { } failed)
                 {
-                    await FailAsync(instance, ExpressionSentences.RunTime(UnitSubject(instance, placement.Site), "if", failed));
+                    await FailAsync(instance, RuleFailed(UnitSubject(instance, placement.Site), "if", failed));
                     return false;
                 }
 

@@ -134,6 +134,51 @@ public class ScopeTreeTests
     }
 
     [Fact]
+    public void ADeliverable_ResolvesInChecksOnly()
+    {
+        // #1505 (area 08; D1, D2): under checks/ a deliverable's .content, .value and .state resolve, by the longest key
+        // that names one (deliverable.emr.consult is two segments of id); outside checks/ the root names nothing.
+        var (package, _, tree) = ResolveFixture.Tree(ResolveFixture.Proofread());
+        var check = ResolveFixture.Node(package, "check.proofread");
+        Resolved At(ScopeFrame frame, string path) =>
+            tree.Resolve(ReferenceString.Parse(path)!, frame, "Computed node 'proofread'", check.Path, true, check);
+
+        var content = At(tree.FrameOf(check), "deliverable.emr.consult.content");
+        Assert.Equal((ScopeHeadKind.Value, "deliverable.emr.consult", 4, true), (content.Kind, content.Key, content.Length, content.Nullable));
+        Assert.Equal("\"string\"", content.Format!.ToJsonString());
+
+        var value = At(tree.FrameOf(check), "deliverable.emr.consult.value");
+        Assert.Equal((ScopeHeadKind.Value, "deliverable.emr.consult", 4, true), (value.Kind, value.Key, value.Length, value.Nullable));
+        Assert.Equal("\"string\"", value.Format!.ToJsonString());
+
+        var state = At(tree.FrameOf(check), "deliverable.emr.consult.state");
+        Assert.Equal((ScopeHeadKind.Value, "deliverable.emr.consult", 4, false), (state.Kind, state.Key, state.Length, state.Nullable));
+        Assert.Equal("""{"type":"string","enum":["released","held","skipped","blocked"]}""", state.Format!.ToJsonString());
+
+        // In a check loop's body too.
+        var coverage = ResolveFixture.Node(package, "check.section_coverage.coverage");
+        Assert.Equal(ScopeHeadKind.Value, At(tree.FrameOf(coverage), "deliverable.emr.consult.content").Kind);
+
+        Assert.Equal(ScopeHeadKind.Unknown, At(tree.FrameOf(check), "deliverable.emr.consult.items").Kind);
+        Assert.Equal(ScopeHeadKind.Unknown, At(tree.FrameOf(check), "deliverable.emr.consult").Kind);
+        Assert.Equal(ScopeHeadKind.Unknown, At(tree.FrameOf(check), "deliverable.emr.content").Kind);
+        Assert.Equal(ScopeHeadKind.Unknown, At(tree.PackageRoot, "deliverable.emr.consult.content").Kind);
+    }
+
+    [Fact]
+    public void AnObjectDeliverablesValue_IsItsFormat()
+    {
+        var files = ResolveFixture.Proofread()
+            .WithJson("deliverables/emr/consult.md", h => h["format"] = "check_result");
+        var (package, _, tree) = ResolveFixture.Tree(files);
+        var check = ResolveFixture.Node(package, "check.proofread");
+
+        var value = tree.Resolve(ReferenceString.Parse("deliverable.emr.consult.value")!, tree.FrameOf(check), "", "", true, check);
+        Assert.Equal((ScopeHeadKind.Value, true), (value.Kind, value.Nullable));
+        Assert.Equal("\"check_result\"", value.Format!.ToJsonString());
+    }
+
+    [Fact]
     public void Build_TakesNoNull()
     {
         var (package, types, _) = ResolveFixture.Tree(Minimal());

@@ -114,6 +114,8 @@ public class ConsultGenerationStartStatusTests
     [InlineData(ConsultGenerationJobStatuses.Scheduled, null)]
     [InlineData(ConsultGenerationJobStatuses.Running, "already started")]
     [InlineData(ConsultGenerationJobStatuses.Queued, "already started")]
+    // #1505 (D12): a 31 job sending its deliverables has started too
+    [InlineData(ConsultGenerationJobStatuses.Delivering, "already started")]
     [InlineData(ConsultGenerationJobStatuses.Completed, "already completed")]
     [InlineData(ConsultGenerationJobStatuses.Failed, "already failed")]
     [InlineData(ConsultGenerationJobStatuses.Cancelled, "already cancelled")]

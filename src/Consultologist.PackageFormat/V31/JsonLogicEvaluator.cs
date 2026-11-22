@@ -30,6 +30,13 @@ public interface IJsonLogicRule
 
     /// <summary>The rule as a condition (part 03 § 6.4, § 9; D22): <c>true</c>, <c>false</c>, <c>null</c> and a list decide; any other value is <see cref="JsonLogicFailureKind.NotABoolean"/>.</summary>
     JsonLogicDecision Decide(JsonNode? data);
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; R6): whether the rule holds <c>matches</c> or <c>has_word</c> at any depth. Each
+    /// evaluation of either has a time limit (#1503 R2), so the rule's value can differ between two runs on the same data:
+    /// the engine evaluates such a rule in an activity, whose outcome a replay reads.
+    /// </summary>
+    bool ReadsPattern { get; }
 }
 
 /// <summary>
@@ -148,7 +155,7 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
         {
             var plains = 0;
             var element = Element(Rewrite(rule, plainConverts, ref plains)?.ToJsonString(Writing) ?? "null");
-            return new Rule(this, new JsonLogicRule(in element), null);
+            return new Rule(this, new JsonLogicRule(in element), null, HoldsPattern(rule));
         }
         catch (Exception)
         {
@@ -202,9 +209,40 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
         }
     }
 
-    private sealed class Rule(CorvusJsonLogicEvaluator owner, JsonLogicRule? rule, JsonLogicFailure? declined) : IJsonLogicRule
+    /// <summary>
+    /// #1505 (R6): whether <paramref name="node"/>, a rule of the format (its written form checked), holds <c>matches</c> or
+    /// <c>has_word</c>: an operation's operands are walked, a <c>var</c>'s and a <c>missing</c>'s (paths) are not, and
+    /// <c>object</c>'s field names are names, not operations.
+    /// </summary>
+    private static bool HoldsPattern(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonArray array:
+                return array.Any(HoldsPattern);
+            case JsonObject obj when obj.Count == 1:
+            {
+                var (name, operands) = obj.First();
+                return name switch
+                {
+                    "matches" or "has_word" => true,
+                    "var" or "missing" => false,
+                    "object" when operands is JsonObject fields => fields.Any(f => HoldsPattern(f.Value)),
+                    _ => HoldsPattern(operands),
+                };
+            }
+            case JsonObject obj:
+                return obj.Any(f => HoldsPattern(f.Value));
+            default:
+                return false;
+        }
+    }
+
+    private sealed class Rule(CorvusJsonLogicEvaluator owner, JsonLogicRule? rule, JsonLogicFailure? declined, bool readsPattern = false) : IJsonLogicRule
     {
         public JsonLogicFailure? Declined { get; } = declined;
+
+        public bool ReadsPattern { get; } = readsPattern;
 
         public JsonLogicValue Evaluate(JsonNode? data)
         {

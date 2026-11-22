@@ -52,13 +52,17 @@ public static partial class BodyComposer
         /// <summary>
         /// Writes the run spot <paramref name="spot"/> (its statement evaluated by <paramref name="evaluate"/>) to
         /// <paramref name="context"/>'s output and records where it stands, its output, what stands for it in the
-        /// run-neutral text, and the hash of the value it read.
+        /// run-neutral text, and the hash of the value it read. #1505 (area 08, D7): with <paramref name="escape"/> its
+        /// output is escaped, as written and as recorded, and so is a <c>text</c> spot's run-neutral output, its markers
+        /// kept (<see cref="EscapedNeutral"/>); a <c>marker</c> spot's marker is not escaped.
         /// </summary>
-        public void WriteSpot(ComposeContext context, PlannedSpot spot, Func<object?> evaluate)
+        public void WriteSpot(ComposeContext context, PlannedSpot spot, Func<object?> evaluate, bool escape)
         {
             var output = TemplateValues.Written(evaluate()) ?? throw context.Stopped(null);
+            if (escape)
+                output = MarkdownEscape.Escape(output);
             var neutral = spot.Text
-                ? NeutralOutput(context, spot, evaluate) ?? output
+                ? (NeutralOutput(context, spot, evaluate) is { } other ? (escape ? EscapedNeutral(other) : other) : output)
                 : string.Create(CultureInfo.InvariantCulture, $"{{{{run:{spot.Site}}}}}");
             var start = context.Written.Length;
             if (output.Length > 0)
@@ -134,8 +138,71 @@ public static partial class BodyComposer
             Spot.Reads.StartsWith("run.", StringComparison.Ordinal) ? Output : null, ValueHash);
     }
 
-    /// <summary>A placed unit's rendered text and the run spots written in it (at places in that text), as its placement writes it.</summary>
-    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots);
+    /// <summary>
+    /// A placed unit's rendered text and the run spots written in it (at places in that text), as its placement writes it,
+    /// and the index of its <see cref="ComposedUnit"/> among the composition's (<c>-1</c> for a macro's instruction).
+    /// </summary>
+    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots, int Unit = -1);
+
+    /// <summary>
+    /// #1505 (area 08, D7): <paramref name="placed"/> escaped whole as plain text in Markdown, each run spot in it with its
+    /// output (and a <c>text</c> spot's run-neutral output) escaped and its place moved to where it now stands. R9: the
+    /// text is escaped piece by piece as one text, so a piece (a spot's output, or the text between spots) is a line start
+    /// only where it starts a line of <paramref name="placed"/>; one that continues a line keeps its leading space or tab.
+    /// </summary>
+    internal static PlacedText Escaped(PlacedText placed)
+    {
+        var text = placed.Text;
+        var escaped = new StringBuilder(text.Length);
+        var spots = new List<FilledSpot>(placed.Spots.Count);
+        var at = 0;
+        foreach (var spot in placed.Spots)
+        {
+            escaped.Append(MarkdownEscape.Escape(text[at..spot.Start], MarkdownEscape.StartsLine(text, at)));
+            var startsLine = MarkdownEscape.StartsLine(text, spot.Start);
+            var output = MarkdownEscape.Escape(spot.Output, startsLine);
+            spots.Add(spot with
+            {
+                Start = escaped.Length, Length = output.Length, Output = output,
+                Neutral = spot.Spot.Text ? EscapedNeutral(spot.Neutral, startsLine) : spot.Neutral,
+            });
+            escaped.Append(output);
+            at = spot.Start + spot.Length;
+        }
+
+        return new PlacedText(escaped.Append(MarkdownEscape.Escape(text[at..], MarkdownEscape.StartsLine(text, at))).ToString(), spots, placed.Unit);
+    }
+
+    /// <summary>
+    /// #1505 (area 08, D7): a run-neutral output <paramref name="neutral"/> escaped as its sent output is, each run marker
+    /// in it (<c>{{run:&lt;n&gt;}}</c>, standing for a run-dependent value) kept as it is, so the two texts still differ
+    /// only at the markers. A read value that itself holds the literal text <c>{{run:&lt;n&gt;}}</c> cannot be told from a
+    /// marker here: it is kept unescaped in the run-neutral text (its sent text is escaped), so that one text's neutral hash
+    /// differs from a byte-exact escape. The run-neutral text is never sent, and the read node's own neutral text is just as
+    /// ambiguous, so nothing better can be known from it. R9: <paramref name="startsLine"/> says whether the output starts a
+    /// line where it is written, as its sent output was escaped; a piece after a marker continues the marker's line.
+    /// </summary>
+    internal static string EscapedNeutral(string neutral, bool startsLine = true)
+    {
+        const string open = "{{run:";
+        var escaped = new StringBuilder(neutral.Length);
+        var at = 0;
+        for (var found = neutral.IndexOf(open, StringComparison.Ordinal); found >= 0; found = neutral.IndexOf(open, found + 1, StringComparison.Ordinal))
+        {
+            var digits = found + open.Length;
+            var close = digits;
+            while (close < neutral.Length && char.IsAsciiDigit(neutral[close]))
+                close++;
+            if (close == digits || string.CompareOrdinal(neutral, close, "}}", 0, 2) != 0)
+                continue;
+            escaped.Append(MarkdownEscape.Escape(neutral[at..found], at == 0 ? startsLine : MarkdownEscape.StartsLine(neutral, at)))
+                .Append(neutral, found, close + 2 - found);
+            at = close + 2;
+            found = close + 1;
+        }
+
+        return escaped.Append(MarkdownEscape.Escape(neutral[at..], at == 0 ? startsLine : MarkdownEscape.StartsLine(neutral, at))).ToString();
+    }
 
     /// <summary>
     /// The run-neutral text of <paramref name="text"/>: each of <paramref name="spots"/> (in the order of the text, none

@@ -399,4 +399,24 @@ public class MacroRunTests
             Assert.Equal(offered, ruledHost.Prompt("node.draft").Composition.Macros.Select(m => m.Site));
         }
     }
+
+    [Theory]
+    [InlineData("  {{ \"\" }}\n")]
+    [InlineData("\t{{ \"\" }}\n\n")]
+    public async Task AMarkdownReply_OfOnlyAPlainMacroRenderingBlank_FailsIfEmpty(string body)
+    {
+        // Task 15's review: the plain-text macro's blank body ("  " or "\t\n") is escaped into the Markdown node (R9 writes
+        // its leading space or tab as an entity), and the node still fails with failIfEmpty, as it did before R9.
+        const string sentence = "The draft came back empty for Margaret Okafor.";
+        var plan = RunFixture.Plan(Package()
+            .WithMacroOf("m", body, ["Place the closing line alone:", "{{~ macro.m.content }}"])
+            .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{~ macro.m }}\n", "\"markdown_block\"")
+            .WithJson("nodes/draft.md", h => h["failIfEmpty"] = sentence));
+
+        var (result, _, recorder) = await RunAsync(plan, Replies(text: (_, _) => "{{~ macro.m.content }}"));
+
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal(sentence, result.Sentence);
+        Assert.Equal(sentence, recorder.Row("node.draft").Reason);
+    }
 }

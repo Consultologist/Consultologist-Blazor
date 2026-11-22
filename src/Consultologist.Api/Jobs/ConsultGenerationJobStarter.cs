@@ -341,6 +341,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return started31;
         }
 
+        // #1505 (specVersion 31, area 08; D15): the signature block a request names is read at 31 only; a 5–30 start
+        // ignores it, so its durable payload is the one it always was.
+        request = request with { SignatureBlockId = null };
+
         WorkflowPackage package;
         try
         {

@@ -202,7 +202,7 @@ public class RunAgentNodeV31ActivityTests
     {
         var job = V31Job.Of(golden);
         var agent = new FakeAttempts();
-        var activity = new RunAgentNodeV31Activity(job.Store, agent, V31AgentsCatalogue.Load(),
+        var activity = new RunAgentNodeV31Activity(job.Store, agent, new Lazy<V31AgentsCatalogue>(() => V31AgentsCatalogue.Load()),
             NullLogger<RunAgentNodeV31Activity>.Instance, random);
         return (activity, agent, job);
     }

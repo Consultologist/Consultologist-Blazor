@@ -245,14 +245,31 @@ public class AdminDrainTests
 /// </summary>
 internal static class FakeHttp
 {
-    public static HttpRequestData Request(string method, CancellationToken cancellationToken = default)
+    public static HttpRequestData Request(string method, CancellationToken cancellationToken = default) => Request(method, null, cancellationToken);
+
+    /// <summary>As <see cref="Request(string, CancellationToken)"/>, with <paramref name="body"/> (UTF-8) as the request's body.</summary>
+    public static HttpRequestData Request(string method, string? body, CancellationToken cancellationToken = default)
     {
         var services = new ServiceCollection();
         services.Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer());
         var context = Substitute.For<FunctionContext>();
         context.InstanceServices.Returns(services.BuildServiceProvider());
         context.CancellationToken.Returns(cancellationToken);
-        return new FakeRequest(context, method);
+        var request = new FakeRequest(context, method);
+        if (body != null)
+        {
+            request.Body.Write(System.Text.Encoding.UTF8.GetBytes(body));
+            request.Body.Position = 0;
+        }
+
+        return request;
+    }
+
+    /// <summary>The response's body as written, as text.</summary>
+    public static string TextOf(HttpResponseData response)
+    {
+        response.Body.Position = 0;
+        return new StreamReader(response.Body).ReadToEnd();
     }
 
     /// <summary>The response's body as written.</summary>

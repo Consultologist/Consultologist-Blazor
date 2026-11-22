@@ -111,6 +111,20 @@ internal static class V31Contract
         ["A07-016"] = "Input '<id>' is given one value in Inputs and another in MacroChoices; send it once.",
     };
 
+    /// <summary>
+    /// #1505: area 08's own sentences (<c>A08-NNN</c>), as plan area-08-checks-deliverables-profile lists them, each as a
+    /// task adds it (A08-001, Task 3; A08-002, Task 4; A08-003, Task 5; A08-004, Task 13; A08-005, Task 8; A08-006, Task 16).
+    /// </summary>
+    private static readonly Dictionary<string, string> ChecksAreaSentences = new()
+    {
+        ["A08-001"] = "Deliverable '<id>' is checked by <reference>; a deliverable's check names a check.*.",
+        ["A08-002"] = "Deliverables folder '<path>' has bundle <value>; write \"zip\" or null.",
+        ["A08-003"] = "Check '<id>' reads deliverable.<deliverable>.state, and deliverable '<deliverable>' waits for check '<id>' through its check '<gate>': read its .content, or read the state in a check it doesn't wait for.",
+        ["A08-004"] = "The signature chosen for this job isn't in your profile. Choose one in Profile.",
+        ["A08-005"] = "Deliverable '<id>' was empty, and the workflow fails an empty <label>.",
+        ["A08-006"] = "<Subject> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -239,6 +253,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A07-", StringComparison.Ordinal))
         {
             Assert.True(TemplateAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A08-", StringComparison.Ordinal))
+        {
+            Assert.True(ChecksAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

@@ -41,7 +41,7 @@ public static partial class BodyComposer
     /// Composes the body of <paramref name="request"/>'s entry (<c>plan.Functions[function].Entries[key]</c> inside a
     /// function, else <c>plan.Entries[key]</c>). An entry the plan lacks, one with no body, or a text a placement or a
     /// renderer reaches that is not a dialect template (it does not parse, or breaks a statement rule) is not what publish
-    /// wrote: S07-006. A <c>for</c> past <see cref="IterationLimit"/> is S05-012 at its line in the text that holds it;
+    /// wrote: S07-006, unless the engine failed reading a text (A08-006, <see cref="Composition.EngineFault"/>): A06-008. A <c>for</c> past <see cref="IterationLimit"/> is S05-012 at its line in the text that holds it;
     /// output past <see cref="OutputLimit"/> S05-014; <c>array.join</c> over a <c>null</c> element A07-006; the steps
     /// (each iteration of any <c>for</c>, in the body, its units and its renderers) past <see cref="ComposeRequest.StepLimit"/>
     /// <see cref="Composition.TooManySteps"/>; any other failure A06-008, never Scriban's message. Never throws on the
@@ -73,8 +73,15 @@ public static partial class BodyComposer
         var composing = new Composing(plan, entry, function, request, notPublished);
         try
         {
+            // A body the engine failed to read (A08-006, which the activity logs) is the engine's fault, so it fails with
+            // A06-008, never S07-006, which would say the compiled document is not what was published (#1505 R14).
             if (composing.Plan(body, null, 0) is not { } top)
-                return Failed(notPublished);
+            {
+                return composing.EngineFault is { } fault
+                    ? Failed(RunSentences.CouldNotRender(composing.Subject)) with { EngineFault = fault }
+                    : Failed(notPublished);
+            }
+
             var text = composing.Render(top, composing.Globals(), out var spots);
             if (Encoding.UTF8.GetByteCount(text) > OutputLimit)
                 return Failed(RunSentences.OutputPassedLimit(composing.Subject));
@@ -88,7 +95,7 @@ public static partial class BodyComposer
             var stop = composing.Stop ?? Stopped(exception);
             if (stop is { TooManySteps: true })
                 return new Composition(null, null, null, true, [], [], [], []);
-            return Failed(stop?.Sentence ?? RunSentences.CouldNotRender(composing.Subject));
+            return Failed(stop?.Sentence ?? RunSentences.CouldNotRender(composing.Subject)) with { EngineFault = composing.EngineFault };
         }
     }
 
@@ -115,6 +122,17 @@ public static partial class BodyComposer
     {
         private readonly Dictionary<string, (Template Template, TemplateSyntax Syntax)?> parsed = new(StringComparer.Ordinal);
         private readonly List<ComposedUnit?> units = [];
+        private readonly List<string?> unitTexts = [];
+
+        /// <summary>
+        /// By unit, where it was spliced: the unit whose text it stands in (<c>-1</c> for the body or any other text) and its
+        /// offset there; <c>(-1, -1)</c> until spliced. R9: a unit escaped as part of the unit around it starts a line only
+        /// where it starts a line of that text.
+        /// </summary>
+        private readonly List<(int Owner, int Start)> unitSplices = [];
+
+        /// <summary>The unit each text being rendered is the text of, innermost last (<c>-1</c> for a text that is not a unit's).</summary>
+        private readonly Stack<int> rendering = new();
         private readonly ScriptObject builtins = TemplateValues.BuiltIns();
         private int planned;
         private ScriptObject? data;
@@ -127,6 +145,9 @@ public static partial class BodyComposer
 
         /// <summary>The entry's subject in sentences (<c>Node 'x'</c>, <c>… in function 'f'</c>).</summary>
         public string Subject { get; } = RunSentences.Subject(entry, request.Function);
+
+        /// <summary>#1505 ruling 6 (R14): the exception type of the first A08-006 met reading a text, or null.</summary>
+        public string? EngineFault { get; private set; }
 
         /// <summary>S07-006 for the plan's package: what a text publish did not write is said with.</summary>
         public string NotPublished { get; } = notPublished;
@@ -231,6 +252,7 @@ public static partial class BodyComposer
                 return known;
             (Template, TemplateSyntax)? read = null;
             var syntax = TemplateSyntax.Parse(text);
+            EngineFault ??= syntax.Faults.FirstOrDefault(f => f.Id == "A08-006")?.Fill.FirstOrDefault();
             if (syntax.Faults.Count == 0)
             {
                 var template = Template.Parse(text);
@@ -249,12 +271,25 @@ public static partial class BodyComposer
         /// Renders <paramref name="text"/> as <see cref="Render(TextPlan, ScriptObject)"/> does, giving the run spots written
         /// in it, at their places in the text it gives (<paramref name="spots"/>, in the order of the text).
         /// </summary>
-        public string Render(TextPlan text, ScriptObject globals, out IReadOnlyList<FilledSpot> spots)
+        public string Render(TextPlan text, ScriptObject globals, out IReadOnlyList<FilledSpot> spots) =>
+            Render(text, globals, -1, out spots);
+
+        /// <summary>Renders <paramref name="text"/>, the text of the unit at <paramref name="unit"/> (<c>-1</c> for none).</summary>
+        private string Render(TextPlan text, ScriptObject globals, int unit, out IReadOnlyList<FilledSpot> spots)
         {
             var output = new LimitedOutput(this);
             var context = new ComposeContext(this, text, builtins, output);
             context.PushGlobal(globals);
-            text.Template.Render(context);
+            rendering.Push(unit);
+            try
+            {
+                text.Template.Render(context);
+            }
+            finally
+            {
+                rendering.Pop();
+            }
+
             spots = context.Spots;
             return output.ToString();
         }
@@ -272,9 +307,58 @@ public static partial class BodyComposer
                 return null;
             var index = units.Count;
             units.Add(null);
-            var rendered = Render(placement.Text, Globals(), out var spots);
+            unitTexts.Add(null);
+            unitSplices.Add((-1, -1));
+            var rendered = Render(placement.Text, Globals(), index, out var spots);
             units[index] = new ComposedUnit(placement.Site, CanonicalJson.HashText(rendered));
-            return new PlacedText(rendered, spots);
+            unitTexts[index] = rendered;
+            return new PlacedText(rendered, spots, index);
+        }
+
+        /// <summary>Records that the unit at <paramref name="unit"/> was spliced at <paramref name="start"/> of the text being rendered.</summary>
+        public void Spliced(int unit, int start)
+        {
+            if (unit >= 0 && unit < unitSplices.Count)
+                unitSplices[unit] = (rendering.Count > 0 ? rendering.Peek() : -1, start);
+        }
+
+        /// <summary>
+        /// #1505 (area 08; part 06 § 9; D7): the unit at <paramref name="index"/>, escaped whole where it is spliced, and the
+        /// units placed inside it (recorded after it, as it rendered) are recorded by the hash of their text as spliced: escaped.
+        /// R9: a unit inside it is escaped as a line start only where it starts a line of the unit's text (Task 15's review).
+        /// </summary>
+        public void EscapedUnits(int index)
+        {
+            if (index < 0 || unitTexts[index] is not { } outer)
+                return;
+            for (var i = index; i < units.Count; i++)
+            {
+                if (units[i] is { } unit && unitTexts[i] is { } text)
+                {
+                    var startsLine = i == index || OffsetIn(index, i) is not { } at || MarkdownEscape.StartsLine(outer, at);
+                    units[i] = unit with { TextHash = CanonicalJson.HashText(MarkdownEscape.Escape(text, startsLine)) };
+                }
+            }
+        }
+
+        /// <summary>
+        /// Where the unit at <paramref name="inner"/> stands in the text of the unit at <paramref name="outer"/>, through the
+        /// units between; <c>null</c> when it was not spliced into a unit's text along the way (a folder item's body
+        /// between, say), so it is taken as starting a line, as a whole value is.
+        /// </summary>
+        private int? OffsetIn(int outer, int inner)
+        {
+            var at = 0;
+            for (var i = inner; i != outer; )
+            {
+                var (owner, start) = unitSplices[i];
+                if (owner < outer || start < 0)
+                    return null;
+                at += start;
+                i = owner;
+            }
+
+            return at;
         }
     }
 
@@ -302,6 +386,12 @@ public static partial class BodyComposer
 
         /// <summary>In a macro's instruction, the output statement holding the macro's own marker, by its offset, with what it writes (D17).</summary>
         public Dictionary<int, string> Markers { get; } = [];
+
+        /// <summary>
+        /// #1505 (area 08; part 06 § 6.4; D7): each output statement whose value is escaped where it is written (one of the
+        /// entry's <c>escapes</c>), by the statement's offset: a placement among them is its unit's text escaped whole.
+        /// </summary>
+        public HashSet<int> Escapes { get; } = [];
     }
 
     /// <summary>A unit placed at one tag: its <paramref name="Site"/>, its kind (<c>snippet</c>, <c>part</c>, <c>macro</c>), and its text planned at that place (a macro's instruction).</summary>
@@ -352,41 +442,71 @@ internal sealed class ComposeContext : TemplateContext
 
     /// <summary>
     /// A run spot's output statement writes itself, recording where its output stands (part 05 § 4); a macro's own marker in
-    /// its instruction writes the marker as the model is to copy it, never evaluated (D17); any other node evaluates as
-    /// Scriban's.
+    /// its instruction writes the marker as the model is to copy it, never evaluated (D17); #1505 (area 08, D7): an output
+    /// the entry's <c>escapes</c> lists writes its value escaped (a run spot's recorded output too); any other node
+    /// evaluates as Scriban's.
     /// </summary>
     public override object? Evaluate(ScriptNode? scriptNode, bool aliasReturnedFunction)
     {
-        if (scriptNode is ScriptExpressionStatement marker && Text.Markers.TryGetValue(BodyComposer.Offset(marker), out var literal))
+        if (scriptNode is not ScriptExpressionStatement statement)
+            return base.Evaluate(scriptNode, aliasReturnedFunction);
+        var offset = BodyComposer.Offset(statement);
+        if (Text.Markers.TryGetValue(offset, out var literal))
         {
             Write(literal);
             return null;
         }
 
-        if (scriptNode is not ScriptExpressionStatement statement || !Text.Spots.TryGetValue(BodyComposer.Offset(statement), out var spot))
+        var escaped = Text.Escapes.Contains(offset);
+        if (Text.Spots.TryGetValue(offset, out var spot))
+        {
+            Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction), escaped);
+            return null;
+        }
+
+        if (!escaped)
             return base.Evaluate(scriptNode, aliasReturnedFunction);
-        Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction));
+        WriteValue(base.Evaluate(statement, aliasReturnedFunction), escape: true);
         return null;
     }
 
     /// <summary>D13's writing of a value; a placed unit's text is spliced, its run spots moved to where it stands.</summary>
     public override TemplateContext Write(SourceSpan span, object? textAsObject)
     {
-        if (textAsObject is BodyComposer.PlacedText placed)
+        WriteValue(textAsObject, escape: false);
+        return this;
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> written by D13 (<c>null</c> writes nothing), a placed unit's text spliced with its run spots
+    /// moved to where it stands; with <paramref name="escape"/>, as plain text in Markdown (<see cref="MarkdownEscape"/>,
+    /// a placed unit's text whole, its spots' outputs with it).
+    /// </summary>
+    private void WriteValue(object? value, bool escape)
+    {
+        if (value is BodyComposer.PlacedText placed)
         {
+            if (escape)
+            {
+                if (placed.Unit >= 0)
+                    Composing.EscapedUnits(placed.Unit);
+                placed = BodyComposer.Escaped(placed);
+            }
             var start = Written.Length;
+            Composing.Spliced(placed.Unit, start);
             if (placed.Text.Length > 0)
                 Write(placed.Text);
             Spots.AddRange(placed.Spots.Select(s => s with { Start = s.Start + start }));
-            return this;
+            return;
         }
 
-        if (textAsObject is null)
-            return this;
-        var text = TemplateValues.Written(textAsObject) ?? throw Stopped(null);
+        if (value is null)
+            return;
+        var text = TemplateValues.Written(value) ?? throw Stopped(null);
+        if (escape)
+            text = MarkdownEscape.Escape(text);
         if (text.Length > 0)
             Write(text);
-        return this;
     }
 
     public override bool ToBool(SourceSpan span, object? value) =>

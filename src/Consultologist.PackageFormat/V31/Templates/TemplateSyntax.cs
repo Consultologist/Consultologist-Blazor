@@ -69,15 +69,29 @@ public sealed record TemplateSyntax(
     /// fault at the first error's line and nothing else. Scriban's parser bounds its own depth, so a body nested a few
     /// hundred statements or parentheses deep is A07-005 rather than S05-013, and so is any body whose syntax tree is
     /// deeper than <see cref="TreeDepthLimit"/> (a member or indexer chain thousands of segments long).
+    /// #1505 ruling 6 (R14): an exception no text explains, a fault of the engine and not of the package, is one A08-006
+    /// fault instead, its <see cref="DialectFault.Fill"/> the exception's type alone (this library has no logger: the
+    /// caller logs it), never its message or the body.
     /// </summary>
-    public static TemplateSyntax Parse(string text)
+    public static TemplateSyntax Parse(string text) => Parse(text, TestParser.Value ?? ScribanParse);
+
+    /// <summary>
+    /// The seam through which a test makes every <see cref="Parse(string)"/> of its own flow use another parser (one that
+    /// throws); <c>null</c>, Scriban's, everywhere else.
+    /// </summary>
+    internal static readonly AsyncLocal<Func<string, Template>?> TestParser = new();
+
+    private static readonly Func<string, Template> ScribanParse = static body => Template.Parse(body);
+
+    /// <summary><see cref="Parse(string)"/> with <paramref name="parse"/> in Scriban's place: the seam through which a test makes the parser fail.</summary>
+    internal static TemplateSyntax Parse(string text, Func<string, Template> parse)
     {
         ArgumentNullException.ThrowIfNull(text);
 
         try
         {
             var scan = TemplateTags.Scan(text);
-            var template = Template.Parse(text);
+            var template = parse(text);
 
             if (scan.UnclosedLine is { } unclosed)
             {
@@ -101,10 +115,16 @@ public sealed record TemplateSyntax(
             reader.Read(template.Page);
             return reader.ToSyntax();
         }
+        catch (Exception exception) when (exception is ScriptRuntimeException or InsufficientExecutionStackException)
+        {
+            // Scriban reports a parse error as a message; what it throws for text it cannot read, or a stack too shallow
+            // for the text, is still the text's.
+            return Unreadable(text, 1);
+        }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            // Scriban's parser reports errors as messages; this guards the one promise, never to throw on package text.
-            return Unreadable(text, 1);
+            // Anything else is the engine's: said as such, so that an engine bug never reads as the author's fault.
+            return new(text, [], [], [], [], [new DialectFault("A08-006", 1, [exception.GetType().FullName ?? exception.GetType().Name])]);
         }
     }
 

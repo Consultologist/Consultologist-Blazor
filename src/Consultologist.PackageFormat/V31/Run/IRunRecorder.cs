@@ -20,8 +20,14 @@ public enum RowState
     /// <summary>It was still running when the job's time ran out.</summary>
     Cancelled,
 
-    /// <summary>A deliverable rendered: area 08 takes it from there.</summary>
-    Composed,
+    /// <summary>#1505 (area 08; part 06 § 7): a deliverable composed and released (its check passed, was skipped, or it has none).</summary>
+    Released,
+
+    /// <summary>#1505 (area 08; part 06 § 6.6): a deliverable composed empty under <c>whenEmpty: hold</c>.</summary>
+    Held,
+
+    /// <summary>#1505 (area 08; part 06 § 7; R2): a deliverable composed and withheld: its gate did not pass, or could not run.</summary>
+    Blocked,
 }
 
 /// <summary>
@@ -41,6 +47,16 @@ public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState
 public sealed record RunDecision(string Site, string Member, string Printed, bool? Result, string? Branch, DateTime DecidedAtUtc);
 
 /// <summary>
+/// #1505 (specVersion 31, area 08; part 09 § 3.9; D14): something the operator is told of while the job runs.
+/// <paramref name="Kind"/> is <c>capacity-wait</c> (the job's 429 waits passed <see cref="PlanRunner.CapacityAlertMinutes"/>
+/// in all; <paramref name="Key"/> is the row whose wait passed it, <paramref name="Minutes"/> the waits in all, in whole
+/// minutes) or <c>job-slow</c> (the job reached <see cref="PlanRunner.SlowJobPercent"/> of its <c>jobMinutes</c>;
+/// <paramref name="Key"/> null, <paramref name="Minutes"/> the minutes run). Each is raised at most once per run. Never a
+/// value from an input or a model.
+/// </summary>
+public sealed record RunNotice(string Kind, string? Key, int Minutes);
+
+/// <summary>
 /// #1503 (specVersion 31, area 06): where the run's rows and decisions go (area 09 stores them). The runner awaits each task
 /// inline, in the orchestration, so an implementation's tasks must complete synchronously (a Durable entity signal,
 /// telemetry) or be durable, replay-safe tasks the orchestration's context gave; never other I/O.
@@ -52,4 +68,13 @@ public interface IRunRecorder
 
     /// <summary>Records a decision.</summary>
     Task DecisionAsync(RunDecision decision);
+
+    /// <summary>#1505 (area 08; part 08 § 10): records a destination's delivery row, once its result is final (<see cref="DeliveryRunner"/>).</summary>
+    Task DeliveryAsync(DeliveryRow row);
+
+    /// <summary>
+    /// #1505 (area 08; part 09 § 3.9; D14): records a notice for the operator (<see cref="RunNotice"/>). An implementation
+    /// that alerts the operator never fails the run for an alert that could not be sent.
+    /// </summary>
+    Task NoticeAsync(RunNotice notice);
 }

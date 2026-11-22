@@ -177,6 +177,23 @@ public class PlanRunnerAgentsTests
         Assert.Equal(RunState.Completed, again.State);
     }
 
+    [Theory]
+    [InlineData("\"markdown_block\"", "&#32; \n&#9;", RunState.Failed)]
+    [InlineData("\"markdown_inline\"", "&#9;", RunState.Failed)]
+    [InlineData("\"plaintext\"", "&#32; \n&#9;", RunState.Completed)]
+    public async Task TheEscapesReferences_AreBlank_OnlyInMarkdown(string format, string reply, RunState state)
+    {
+        // Task 15's review: in Markdown, &#32; and &#9; are what the escape writes for a line's leading space or tab, so a
+        // value of only those and white space is empty; in plain text they are the characters written.
+        const string sentence = "The plan came back empty for this consult draft.";
+        var plan = RunFixture.Plan(Planned(format: format, failIfEmpty: $"\"{sentence}\""), StubTemplates.Empty());
+
+        var result = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true).Reply("node.plan", reply), new ListRecorder())
+            .RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        Assert.True(result.State == state, result.Sentence);
+    }
+
     // ---- retries --------------------------------------------------------------------------------
 
     [Fact]
@@ -308,7 +325,7 @@ public class PlanRunnerAgentsTests
         V31Contract.AssertSentence(new SourceRefusal(id, result.Sentence!, ""));
         // no retry: the one attempt, the row failed with the sentence
         Assert.Single(host.Calls);
-        Assert.Equal(1, host.DelaysMade); // the job's timer only
+        Assert.Equal(2, host.DelaysMade); // the job's timer and (#1505, D14) the slow-job timer only
         var row = recorder.Row("node.plan");
         Assert.Equal(RowState.Failed, row.State);
         Assert.Equal(result.Sentence, row.Reason);
@@ -472,7 +489,7 @@ public class PlanRunnerAgentsTests
             var run = runner.RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
             if (ending != "fails")
             {
-                Assert.Equal(2, host.OutstandingDelays); // the job's timer and node.n1's wait
+                Assert.Equal(3, host.OutstandingDelays); // the job's timer, (#1505, D14) the slow-job timer and node.n1's wait
                 host.Advance(TimeSpan.FromSeconds(ending == "completes" ? 1 : 60));
             }
 

@@ -1,0 +1,18 @@
+{
+  "node": {
+    "plan": {
+      "value": {
+        "sections": [
+          {
+            "title": "History of present illness",
+            "kind": "narrative"
+          },
+          {
+            "kind": "table",
+            "title": "Examination"
+          }
+        ]
+      }
+    }
+  }
+}

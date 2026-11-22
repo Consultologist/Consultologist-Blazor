@@ -30,7 +30,15 @@ public sealed record Composition(
     IReadOnlyList<ComposedSpot> Spots,
     IReadOnlyList<ComposedRender> Renders,
     IReadOnlyList<OfferedMacro> Macros,
-    IReadOnlyList<ComposedUnit> Units);
+    IReadOnlyList<ComposedUnit> Units)
+{
+    /// <summary>
+    /// #1505 ruling 6 (R14): the type of the exception the engine met reading one of the texts composed (A08-006), which
+    /// failed the composition; never its message or the text. For the caller to log; not serialised.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? EngineFault { get; init; }
+}
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 5.5; part 08 § 4.2): one renderer pipe step run, a sub-row of the row that

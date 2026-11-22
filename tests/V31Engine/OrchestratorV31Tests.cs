@@ -20,6 +20,13 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// </summary>
 public class OrchestratorV31Tests
 {
+    [Theory]
+    [InlineData(RowState.Released, "released")]
+    [InlineData(RowState.Held, "held")]
+    [InlineData(RowState.Blocked, "blocked")]
+    public void ADeliverablesRowState_IsNamedForTheEntity(RowState state, string name) =>
+        Assert.Equal(name, EntityRunRecorder.StateName(state));
+
     [Fact]
     public async Task AJob_RunsToCompleted()
     {
@@ -297,6 +304,51 @@ public class OrchestratorV31Tests
     }
 
     [Fact]
+    public async Task AReplay_ReadsTheStoredDecision()
+    {
+        // #1505 (R6): the note's if holds a pattern, so it is decided in evaluate-rule-v31. The first run's outcome is in the
+        // history; the replay reads it, though the activity would now answer differently (the pattern timed out, say), and
+        // dispatches what the first run did.
+        var golden = new CompiledGoldenTests.GoldenCase("pattern-note",
+            () => CompiledGoldenTests.Cases().Single(c => c.Name == "nested-note").Source()
+                .WithJson("deliverables/note.md", h => h["if"] = JsonNode.Parse("{ \"matches\": [{ \"var\": \"input.consult_draft.content\" }, \"Okafor\"] }")),
+            "nested-note, its note's if a pattern on the draft");
+        var history = new Queue<RuleOutcome>();
+        var evaluations = 0;
+
+        var first = V31Job.Of(golden);
+        var firstContext = first.Context();
+        var activity = new EvaluateRuleV31Activity(first.Store, Microsoft.Extensions.Logging.Abstractions.NullLogger<EvaluateRuleV31Activity>.Instance);
+        firstContext.On(ConsultGenerationActivityNames.EvaluateRuleV31, payload =>
+        {
+            evaluations++;
+            var outcome = activity.RunAsync((EvaluateRuleV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult();
+            history.Enqueue(outcome);
+            return outcome;
+        });
+        await V31Job.RunAsync(firstContext);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, first.State.Status);
+        Assert.Equal(1, evaluations);
+        Assert.Equal(true, (bool?)history.Single().Value);
+        Assert.Contains(firstContext.Calls, c => c.Name == ConsultGenerationActivityNames.RenderNodeV31 && c.InputJson.Contains("\"deliverable.note\"", StringComparison.Ordinal));
+
+        var replay = V31Job.Of(golden);
+        var replayContext = replay.Context().On(ConsultGenerationActivityNames.EvaluateRuleV31, _ =>
+        {
+            if (history.TryDequeue(out var stored))
+                return stored;
+            evaluations++;
+            return new RuleOutcome(null, "MatchTooSlow", 2, "matches");
+        });
+        await V31Job.RunAsync(replayContext);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, replay.State.Status);
+        Assert.Equal(1, evaluations);
+        Assert.Equal(firstContext.Calls, replayContext.Calls);
+    }
+
+    [Fact]
     public void ThePlanCache_KeepsTheMostRecent_ByHashAndRegexLimit()
     {
         var job = V31Job.Of("nested-note");
@@ -330,6 +382,274 @@ public class OrchestratorV31Tests
         foreach (var member in new[] { "ResolveHash", "LockHash", "Limits", "V31Progress" })
             Assert.DoesNotContain($"\"{member}\"", below, StringComparison.Ordinal);
     }
+
+    // ---- #1505 (area 08; part 06 § 8; part 09 § 3.8): delivery at the end --------------------------------------------
+
+    [Fact]
+    public async Task ACompletedJob_Delivers_ThenCompletes()
+    {
+        // checked-note on the default stubs: the patient letter is released (email and PDF), the note blocked
+        var job = V31Job.Of("checked-note");
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        var delivering = context.Calls.FindIndex(c => c.Kind == "entity" && c.Name == nameof(ConsultGenerationJobEntity.MarkDelivering));
+        var finalize = context.Calls.FindLastIndex(c => c.Kind == "entity" && c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob));
+        var sends = Sends(context);
+        Assert.True(delivering >= 0);
+        Assert.All(sends, s => Assert.InRange(s.At, delivering + 1, finalize - 1));
+        Assert.Equal(context.Calls.FindLastIndex(c => c.Kind == "activity"), sends[^1].At);
+        Assert.Equal([("email", 1), ("pdf", 1)], sends.Select(s => (s.Input.Send.Kind, s.Input.Send.Attempt)));
+        Assert.All(sends, s =>
+        {
+            Assert.Equal((V31Job.JobId, "user-1", "patient"), (s.Input.JobId, s.Input.AppUserId, s.Input.Send.Folder));
+            var document = Assert.Single(s.Input.Send.Documents);
+            Assert.Equal(("deliverable.patient.patient_letter", "Letter to the patient", "plaintext"), (document.Deliverable, document.Label, document.Format));
+            Assert.StartsWith("Dear Margaret Okafor,", document.Text, StringComparison.Ordinal);
+        });
+
+        // the status: delivering in between, then Completed
+        Assert.Equal(
+            [ConsultGenerationJobStatuses.Running, ConsultGenerationJobStatuses.Delivering, ConsultGenerationJobStatuses.Completed],
+            Statuses(context));
+
+        // each destination's row on the entity; the window's timer cancelled when delivery ended
+        Assert.Equal(2, job.State.V31Progress!.States["delivery:sent"]);
+        Assert.Equal("delivery:deliverable.patient.patient_letter/pdf", job.State.V31Progress.CurrentKey);
+        Assert.Contains(context.Calls, c => c.Kind == "timer" && c.InputJson == JsonSerializer.Serialize(V31Job.Now.AddMinutes(15)));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Theory]
+    [InlineData("nested-note")]
+    [InlineData("checked-note, the letter delivered nowhere")]
+    public async Task AJobWithNothingToDeliver_NeverEntersDelivering(string package)
+    {
+        // nested-note delivers to []; R3: with the letter delivered nowhere, checked-note's only other deliverable is blocked
+        var job = package == "nested-note"
+            ? V31Job.Of("nested-note")
+            : V31Job.Of(CheckedNote(package, files => files.WithJson("deliverables/patient/index.json", h => h["delivery"] = new JsonArray())));
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.DoesNotContain(context.Calls, c => c.Name == nameof(ConsultGenerationJobEntity.MarkDelivering));
+        Assert.Empty(Sends(context));
+        Assert.Equal([ConsultGenerationJobStatuses.Running, ConsultGenerationJobStatuses.Completed], Statuses(context));
+        Assert.DoesNotContain(job.State.V31Progress!.States.Keys, state => state.StartsWith("delivery:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AFailedDelivery_LeavesTheJobCompleted()
+    {
+        // Review Focus 4: the letter's email fails at every attempt (the activity fails, which the host makes a failed send);
+        // its PDF is still in flight when the window closes. Both are failed, the job is Completed, and no timer is left.
+        var job = V31Job.Of("checked-note");
+        job.Deliver = input => input.Send.Kind == "email"
+            ? throw new InvalidOperationException("Graph mail request failed with status 503.")
+            : new DeliverySendOutcome(DeliverySendResult.Sent, null);
+        var context = job.Context().WrapActivityFailures();
+
+        await Task.Run(() =>
+        {
+            var run = V31Job.RunAsync(context.HoldActivities());
+            while (context.ReleaseOldest((name, json) =>
+                !(name == ConsultGenerationActivityNames.DeliverV31 && json.Contains("\"Kind\":\"pdf\"", StringComparison.Ordinal))))
+            {
+            }
+
+            Assert.False(run.IsCompleted, "The PDF's send is in flight: delivery waits for it, or for the window.");
+            context.EndHeldTimers();
+            while (context.HeldActivities > 0)
+                context.ReleaseOldest();
+            Assert.True(run.IsCompleted, "The orchestration has not ended: something it waits on was never released.");
+            return run;
+        });
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Null(job.State.FailureError);
+        Assert.Equal([("email", 1), ("pdf", 1), ("email", 2), ("email", 3)], Sends(context).Select(s => (s.Input.Send.Kind, s.Input.Send.Attempt)));
+        Assert.Equal(2, job.State.V31Progress!.States["delivery:failed"]);
+        Assert.Equal(
+            [ConsultGenerationJobStatuses.Running, ConsultGenerationJobStatuses.Delivering, ConsultGenerationJobStatuses.Completed],
+            Statuses(context));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Fact]
+    public async Task AFailedJob_DeliversNothing_AndRecordsNotSent()
+    {
+        // the letter reads nothing, so it is released before the plan's agent fails the job: it is recorded not sent
+        var job = V31Job.Of(CheckedNote("checked-note, the letter fixed text", files => files.With(
+            "deliverables/patient/patient_letter.md",
+            SourceFixture.Text(files, "deliverables/patient/patient_letter.md").Replace("{{ node.sections.content }}\n\n", "", StringComparison.Ordinal))));
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        V31Contract.AssertSentence(new SourceRefusal("S09-011", job.State.FailureError!, ""));
+        Assert.DoesNotContain(context.Calls, c => c.Name == nameof(ConsultGenerationJobEntity.MarkDelivering));
+        Assert.Empty(Sends(context));
+        Assert.DoesNotContain(ConsultGenerationJobStatuses.Delivering, Statuses(context));
+        Assert.Equal(2, job.State.V31Progress!.States["delivery:not sent"]);
+        Assert.Equal("delivery:deliverable.patient.patient_letter/pdf", job.State.V31Progress.CurrentKey);
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Fact]
+    public async Task ABlockedDeliverable_IsNeverSent()
+    {
+        // R2: checked-note's note is blocked by proofread on the default stubs; its EMR destination is never sent to
+        var job = V31Job.Of("checked-note");
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal(1, job.State.V31Progress!.States["blocked"]);
+        var sends = Sends(context);
+        Assert.NotEmpty(sends);
+        Assert.DoesNotContain(sends, s => s.Input.Send.Kind == "emr");
+        Assert.DoesNotContain(sends, s => s.Input.Send.Documents.Any(d => d.Deliverable == "deliverable.note"));
+    }
+
+    // ---- #1505 (area 08; part 09 § 3.9; D14): alerts for the operator -------------------------------------------------
+
+    [Theory]
+    [InlineData("a failed node")]
+    [InlineData("a failed node, the alert failing too")]
+    [InlineData("a timed-out run")]
+    [InlineData("an engine fault")]
+    public async Task AFailedJob_AlertsTheOperator(string how)
+    {
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        var context = job.Context().WrapActivityFailures();
+        switch (how)
+        {
+            case "a timed-out run":
+                // every call held; the job's timer (and the slow-job timer) end, as their time coming would
+                await Task.Run(() =>
+                {
+                    var run = V31Job.RunAsync(context.HoldActivities());
+                    while (context.ReleaseOldest((name, _) => name != ConsultGenerationActivityNames.RunAgentNodeV31))
+                    {
+                    }
+
+                    Assert.False(run.IsCompleted, "The run waits on its agent calls.");
+                    Assert.Equal(2, context.PendingTimers); // the job's and the slow-job timer
+                    context.EndHeldTimers();
+                    while (context.HeldActivities > 0)
+                        context.ReleaseOldest();
+                    Assert.True(run.IsCompleted, "The orchestration has not ended: something it waits on was never released.");
+                    return run;
+                });
+                break;
+            case "an engine fault":
+                job.Agent = _ => throw new InvalidOperationException("Unauthorized: Margaret Okafor's prompt (fictional)");
+                await Assert.ThrowsAsync<Microsoft.DurableTask.TaskFailedException>(() => V31Job.RunAsync(context));
+                break;
+            default:
+                job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
+                if (how.EndsWith("too", StringComparison.Ordinal))
+                    job.Alert = _ => throw new InvalidOperationException("The mailbox is down.");
+                await V31Job.RunAsync(context);
+                break;
+        }
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.Equal(
+            how switch
+            {
+                "a timed-out run" => "The job didn't finish within 30 minutes. Run the workflow again later.",
+                "an engine fault" => ConsultGenerationOrchestratorV31.EngineFault,
+                _ => "The model service returned an error 5 times in a row. Run the workflow again later.",
+            },
+            job.State.FailureError);
+        var alert = Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+        Assert.Equal(new OperatorAlert(OperatorAlertKinds.JobFailed, V31Job.JobId, how.StartsWith("a failed node", StringComparison.Ordinal) ? "node.plan" : null, null),
+            JsonSerializer.Deserialize<OperatorAlert>(alert.InputJson));
+        Assert.DoesNotContain("Margaret", alert.InputJson, StringComparison.Ordinal);
+        // raised once the job is final, and after nothing else
+        Assert.True(context.Calls.IndexOf(alert) > context.Calls.FindLastIndex(c => c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob)));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Fact]
+    public async Task AFailedDelivery_AlertsTheOperator()
+    {
+        // the letter's email fails at each of its 3 attempts; its PDF is sent: one alert, naming the failed row and the count
+        var job = V31Job.Of("checked-note");
+        job.Deliver = input => new DeliverySendOutcome(input.Send.Kind == "email" ? DeliverySendResult.Failed : DeliverySendResult.Sent, input.Send.Kind == "email" ? "error" : null);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal(1, job.State.V31Progress!.States["delivery:failed"]);
+        Assert.Equal([new OperatorAlert(OperatorAlertKinds.DeliveryFailed, V31Job.JobId, "delivery:deliverable.patient.patient_letter/email", 1)], job.Alerts);
+        var alert = context.Calls.FindIndex(c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+        Assert.True(alert > Sends(context)[^1].At);
+        Assert.True(alert < context.Calls.FindLastIndex(c => c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob)));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Fact]
+    public async Task ALongCapacityWait_AlertsTheOperatorOnce_ThroughTheActivity()
+    {
+        // the run's notice (EntityRunRecorder.NoticeAsync) is the activity: node.plan waits 3 minutes twice, 6 in all
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal([new OperatorAlert(OperatorAlertKinds.CapacityWait, V31Job.JobId, "node.plan", 6)], job.Alerts);
+    }
+
+    [Theory]
+    [InlineData("nested-note")]
+    [InlineData("checked-note")]
+    public async Task ACompletedJob_AlertsNoOne(string package)
+    {
+        var job = V31Job.Of(package);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Empty(job.Alerts);
+        Assert.DoesNotContain(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+        // the slow-job timer was made at 80% of the job's 30 minutes, and cancelled with the job's when the run ended
+        Assert.Contains(context.Calls, c => c.Kind == "timer" && c.InputJson == JsonSerializer.Serialize(V31Job.Now.AddMinutes(24)));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    /// <summary>Each <c>deliver-v31</c> call: where it is in the calls, and its input.</summary>
+    private static List<(int At, DeliverV31Input Input)> Sends(Engine.FakeOrchestrationContext context) =>
+        context.Calls
+            .Select((call, at) => (call, at))
+            .Where(c => c.call.Kind == "activity" && c.call.Name == ConsultGenerationActivityNames.DeliverV31)
+            .Select(c => (c.at, JsonSerializer.Deserialize<DeliverV31Input>(c.call.InputJson)!))
+            .ToList();
+
+    /// <summary>The custom statuses the orchestration published, in order, from running on (the drain's wait publishes Queued before).</summary>
+    private static List<string> Statuses(Engine.FakeOrchestrationContext context) =>
+        context.CustomStatuses.Select(s => (string)JsonNode.Parse(s)!["status"]!)
+            .SkipWhile(status => status != ConsultGenerationJobStatuses.Running)
+            .ToList();
+
+    /// <summary>checked-note, changed by <paramref name="change"/>, as a package of the test's own.</summary>
+    private static CompiledGoldenTests.GoldenCase CheckedNote(string name, Func<Dictionary<string, byte[]>, Dictionary<string, byte[]>> change) =>
+        new(name, () => change(CompiledGoldenTests.Cases().Single(c => c.Name == "checked-note").Source()), name);
 
     [Fact]
     public async Task AFunctionsJob_RunsItsCallsInline()

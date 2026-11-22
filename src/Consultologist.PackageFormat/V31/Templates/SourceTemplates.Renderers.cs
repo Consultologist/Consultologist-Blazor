@@ -35,14 +35,16 @@ public static partial class SourceTemplates
         /// <summary>
         /// The pipe steps of <paramref name="output"/>, whose piped head was typed as <paramref name="head"/> (<c>null</c>
         /// when it is not one path or was not typed): in a renderer's body any renderer is S05-033; elsewhere a renderer
-        /// given arguments is S05-030, and every other renderer step is typed and recorded.
+        /// given arguments is S05-030, and every other renderer step is typed and recorded. Gives what the tag writes
+        /// (#1505, part 06 § 6.4): the chain's final value as written and its format, which is <c>null</c> when it cannot
+        /// be said (an untyped head, a step refused here, a renderer's own body).
         /// </summary>
-        private void Pipes(TemplateOutput output, TypedRead? head)
+        private WrittenOutput Pipes(TemplateOutput output, TypedRead? head)
         {
             if (host.Site == TemplateSite.Renderer)
             {
                 RendererPipes(output.Pipes);
-                return;
+                return new WrittenOutput(output, output.Path ?? output.Head, null, false);
             }
 
             // The head as read: its path, else its literal or test as written (typed by its built-in type), else a
@@ -67,13 +69,13 @@ public static partial class SourceTemplates
                 if (pipe.Arguments.Count > 0)
                 {
                     Refusals.Add(DialectSentences.CallsRenderer(host.Subject, id, source, pipe.Line, host.Path));
-                    return;
+                    return new WrittenOutput(output, written, null, true);
                 }
 
                 if (Find(id) is not { } header)
                 {
                     Refusals.Add(DialectSentences.PipesUndefinedRenderer(host.Subject, id, host.Path));
-                    return;
+                    return new WrittenOutput(output, written, null, true);
                 }
 
                 var n = renders.Count + 1;
@@ -83,7 +85,7 @@ public static partial class SourceTemplates
                 if (unknown)
                 {
                     Refusals.Add(DialectSentences.PipesWrongFormat(host.Subject, written, "?", id, TypeStrings.Print(input, formats), host.Path));
-                    return;
+                    return new WrittenOutput(output, written, null, true);
                 }
 
                 if (current != null && FormatTypes.Shape(input, formats) != FormatShape.Unknown && !FormatTypes.Same(current, input, formats))
@@ -105,6 +107,7 @@ public static partial class SourceTemplates
             // text (a built-in step after it keeps it) and the tag shares its line, it warns, naming that renderer.
             if (final is { } placed && current != null && FormatSet.NameOf(current) == "markdown_block" && (output.Tag.TextBefore || output.Tag.TextAfter))
                 Warnings.Add(DialectSentences.BlockRendererInsideALine(host.Subject, placed.Id, placed.Line, host.Path));
+            return new WrittenOutput(output, written, current, final is not null);
         }
 
         /// <summary>S05-033 for each renderer among <paramref name="pipes"/>, in a renderer's body (part 05 § 5.1, R-N7).</summary>

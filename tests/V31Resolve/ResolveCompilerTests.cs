@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
+using Corvus.Text.Json.Validator;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
 namespace Consultologist.Api.Tests.V31Resolve;
@@ -128,6 +129,51 @@ public class ResolveCompilerTests
                 Assert.True(entry.ContainsKey(member), $"{key} has no {member}");
             Assert.Equal(key.Split('.')[^1], (string?)entry["id"]);
         }
+    }
+
+    /// <summary>R4 (#1505): part 07 § 2.5 names <c>delivery</c> and <c>bundle</c>, and the pinned schema's deliverable entry requires them.</summary>
+    [Theory]
+    [MemberData(nameof(Packages))]
+    public void ADeliverableEntry_FitsThePublishedSchema_WithItsDeliveryAndBundle(string name)
+    {
+        var deliverable = DeliverableSchema();
+        var document = Compile(Package(name)).Document!;
+        var entries = document["deliverables"]!.AsObject();
+        Assert.NotEmpty(entries);
+        foreach (var (key, entry) in entries)
+        {
+            Assert.True(deliverable.Validate(entry!.ToJsonString(), null), $"{key} does not fit the deliverable definition.");
+            var delivery = entry!["delivery"]!.AsArray();
+            Assert.All(delivery, kind => Assert.Contains((string?)kind, new[] { "email", "pdf", "emr", "zip" }));
+            Assert.True(entry["bundle"] is null || (string?)entry["bundle"] == "zip");
+
+            foreach (var member in new[] { "delivery", "bundle" })
+            {
+                var without = entry.DeepClone().AsObject();
+                without.Remove(member);
+                Assert.False(deliverable.Validate(without.ToJsonString(), null), $"{key} without {member} still fits the deliverable definition.");
+            }
+        }
+    }
+
+    /// <summary>The pinned <c>resolve.schema.json</c>'s <c>deliverable</c> definition, with the schemas it refers to.</summary>
+    private static JsonSchema DeliverableSchema()
+    {
+        List<AdditionalSchemaFile> files =
+        [
+            new("urn:consultologist:spec:31:schema:common", V31Contract.Path("schemas", "common.schema.json")),
+            new("urn:consultologist:spec:31:dialect", V31Contract.Path("dialect.schema.json")),
+            new("urn:consultologist:spec:31:schema:resolve", V31Contract.Path("schemas", "resolve.schema.json")),
+        ];
+        var options = new JsonSchema.Options(
+            additionalSchemaFiles: files,
+            allowFileSystemAndHttpResolution: false,
+            defaultDialect: Corvus.Text.Json.RuntimeEvaluator.JsonSchemaDialect.Draft202012,
+            alwaysAssertFormat: false,
+            additionalDocumentResolver: null);
+        return JsonSchema.FromText(
+            "{ \"$ref\": \"urn:consultologist:spec:31:schema:resolve#/$defs/deliverable\" }",
+            "urn:consultologist:spec:31:schema:deliverable-entry", options, false);
     }
 
     [Fact]
@@ -475,6 +521,38 @@ public class ResolveCompilerTests
         var silent = Compile(Minimal()).Document!["deliverables"]!["deliverable.note"]!;
         Assert.Equal("[]", Canonical(silent["delivery"]));
         PresentAndNull(silent, "bundle");
+    }
+
+    [Fact]
+    public void ACheck_ReadsADeliverablesContent()
+    {
+        // #1505 (area 08; D1, D3): a check reads a deliverable: a reads edge from the deliverable beside the gates edge
+        // back, and graph.order composes the deliverable before the checks that read it, after what it reads.
+        var document = Compile(ResolveFixture.Proofread()).Document!;
+        var proofread = document["checks"]!["check.proofread"]!;
+        Assert.Contains("deliverable.emr.consult.content", Strings(proofread["reads"]));
+        Assert.True((bool)proofread["modelDerived"]!);
+
+        var edges = Edges(document);
+        Assert.Contains(("deliverable.emr.consult", "check.proofread", "reads"), edges);
+        Assert.Contains(("deliverable.emr.consult", "check.consult_words", "reads"), edges);
+        Assert.Contains(("check.proofread", "deliverable.emr.consult", "gates"), edges);
+
+        var order = Strings(document["graph"]!["order"]).ToList();
+        Assert.True(order.IndexOf("node.standards") < order.IndexOf("deliverable.emr.consult"), string.Join(", ", order));
+        Assert.True(order.IndexOf("deliverable.emr.consult") < order.IndexOf("check.consult_words"), string.Join(", ", order));
+        Assert.True(order.IndexOf("check.consult_words") < order.IndexOf("check.proofread"), string.Join(", ", order));
+    }
+
+    [Fact]
+    public void ACheck_ReadingADeliverableInItsIf_IsAnIfEdge()
+    {
+        var files = ResolveFixture.Proofread()
+            .WithJson("checks/index.json", index => index["items"]!.AsArray().Add("delivered"))
+            .With("checks/delivered.md", ResolveFixture.ObjectCheck("The note went out", "true", modelDerived: false))
+            .WithJson("checks/delivered.md", h => h["if"] = JsonNode.Parse("{ \"===\": [{ \"var\": \"deliverable.emr.consult.state\" }, \"released\"] }"));
+        var edges = Edges(Compile(files).Document!);
+        Assert.Contains(("deliverable.emr.consult", "check.delivered", "if"), edges);
     }
 
     // ---- requires ------------------------------------------------------------------------------

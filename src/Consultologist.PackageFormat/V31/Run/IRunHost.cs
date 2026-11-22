@@ -63,7 +63,32 @@ public sealed record RenderCall(string Key, string EntryKey, string? Function, J
 /// null when no run spot was filled, and <paramref name="Detail"/> the row's detail in part 08's names
 /// (<see cref="RenderTurn"/>).
 /// </summary>
-public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null);
+public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null)
+{
+    /// <summary>#1505 ruling 6 (R14): <see cref="Templates.Composition.EngineFault"/> of the failed render, for the activity to log; not serialised.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? EngineFault { get; init; }
+}
+
+/// <summary>
+/// #1505 (specVersion 31, area 08; R6): one evaluation of a rule that holds <c>matches</c> or <c>has_word</c>
+/// (<see cref="IJsonLogicRule.ReadsPattern"/>). <paramref name="Key"/>, <paramref name="EntryKey"/> and
+/// <paramref name="Function"/> are as <see cref="AgentCall"/>'s; <paramref name="Member"/> names the entry's rule:
+/// <c>"if"</c>, <c>"expression"</c>, <c>"while"</c>, <c>"until"</c>, or a placement's site (<c>"macro.&lt;id&gt;"</c>,
+/// <c>"part.&lt;id&gt;"</c>, …) for that placement's <c>if</c>; <paramref name="Scope"/> the data the rule is evaluated
+/// over: what the runner would evaluate it over inline (<see cref="RunScope.Data"/> of the entry's reads).
+/// </summary>
+public sealed record RuleCall(string Key, string EntryKey, string? Function, string Member, JsonObject Scope);
+
+/// <summary>
+/// #1505 (specVersion 31, area 08; R6): what an evaluation gave (<see cref="RuleTurn.Evaluate"/>). <paramref name="Value"/>
+/// is the rule's value; a condition's (every member but <c>"expression"</c>) is its boolean. With a failure,
+/// <paramref name="FailureKind"/> is its <see cref="JsonLogicFailureKind"/>'s name and <paramref name="FailureLimitSeconds"/>
+/// and <paramref name="FailureDetail"/> its <see cref="JsonLogicFailure.Limit"/> and <see cref="JsonLogicFailure.Detail"/>
+/// (which never holds a value from the data); or <paramref name="FailureKind"/> is <see cref="RuleTurn.PlanFailure"/>:
+/// the plan is not the job's, or lacks the entry or its rule.
+/// </summary>
+public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? FailureLimitSeconds, string? FailureDetail = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): everything outside the run that <see cref="PlanRunner"/> talks to: agent calls, renders,
@@ -80,6 +105,12 @@ public interface IRunHost
 
     /// <summary>Renders a rendered node's or a deliverable's body.</summary>
     Task<RenderOutcome> RenderAsync(RenderCall call);
+
+    /// <summary>
+    /// #1505 (area 08; R6): evaluates a rule that holds <c>matches</c> or <c>has_word</c>, so its outcome is stored and a
+    /// replay reads it rather than timing the pattern again. The runner awaits it where the rule is decided; it takes no slot.
+    /// </summary>
+    Task<RuleOutcome> EvaluateAsync(RuleCall call);
 
     /// <summary>
     /// Waits <paramref name="wait"/> on the host's timer. When <paramref name="cancel"/> is cancelled first, the timer is
