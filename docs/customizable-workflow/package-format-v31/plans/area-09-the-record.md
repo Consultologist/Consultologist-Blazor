@@ -96,10 +96,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 **Interfaces:**
 - Produces: `ReplySentences.NotAMacro()` (no parameter) returning `The reply has a marker that names no macro.`; `V31Contract.RecordAreaSentences` with A09-001.
 
-- [ ] **Step 1: Write the failing test** `AMarkerNamingNoMacro_IsSaidWithoutItsId`: a reply holding `{{ macro.smith_john.content }}` gives one fault S05-056 whose sentence is exactly `The reply has a marker that names no macro.` and does not contain `smith_john`.
-- [ ] **Step 2: Run** it. Expected: FAIL (the sentence carries the id).
-- [ ] **Step 3: Implement** R12 in `ReplySentences` and `MacroReply`; change S05-056 in `refusal-sentences.md`, V-4 in part 05, and the content repo's `sentences.json`.
-- [ ] **Step 4: Edit part 08**, one concern per commit:
+- [x] **Step 1: Write the failing test** `AMarkerNamingNoMacro_IsSaidWithoutItsId`: a reply holding `{{ macro.smith_john.content }}` gives one fault S05-056 whose sentence is exactly `The reply has a marker that names no macro.` and does not contain `smith_john`.
+- [x] **Step 2: Run** it. Expected: FAIL (the sentence carries the id).
+- [x] **Step 3: Implement** R12 in `ReplySentences` and `MacroReply`; change S05-056 in `refusal-sentences.md`, V-4 in part 05, and the content repo's `sentences.json`.
+- [x] **Step 4: Edit part 08**, one concern per commit:
   - § 2.1: R3's key grammar (`#<n>` for a pass; `#` in the reserved characters; 1-based item ids, array inputs included), the examples corrected.
   - § 2.3 and § 4.2: R11's numbering with gaps; D5's `pass` on renderer sub-rows and run spots.
   - § 3: `versionsRan` in R4's shape (the member list and § 14's example); `limits` with `jobInstances` (and § 14's example made whole: ten members).
@@ -109,10 +109,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - § 8.2: R7 (macro bodies leave the list of bodies carrying spots; their rows carry their own), R10 (a run spot gains `start` and `length`, in runes of the sent text; `outputLength` in runes), D2's `output`.
   - § 10: R1 (a `blocked` deliverable is kept, marked and never delivered), D6's `start` and `size`.
   - § 1.1 and § 11: D2 (retained text is beside the record, never in a row), D10's stores in one sentence each.
-- [ ] **Step 5: Edit the other parts:** part 02 § 3.5 step 6 (R8); part 05 § 8.6 (R13) and W-1 (R7); part 09 § 3.4 (the tenth limit, its setting and A09-001, also in § 9's list and `refusal-sentences.md`).
-- [ ] **Step 6: Mirror** each edit in `package-format-v31.md` and `provenance-record.md` § 6; strike the conformance README's `versionsRan` item (R4 settles it); run both repos' `check-v31.py`; push both; move the two pins.
-- [ ] **Step 7: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 8: Commit** `Docs (#1506): part 08 takes the owner's rulings` (and the per-concern commits), `PackageFormat (#1506): S05-056 quotes nothing from the reply`; push.
+- [x] **Step 5: Edit the other parts:** part 02 § 3.5 step 6 (R8); part 05 § 8.6 (R13) and W-1 (R7); part 09 § 3.4 (the tenth limit, its setting and A09-001, also in § 9's list and `refusal-sentences.md`).
+- [x] **Step 6: Mirror** each edit in `package-format-v31.md` and `provenance-record.md` § 6; strike the conformance README's `versionsRan` item (R4 settles it); run both repos' `check-v31.py`; push both; move the two pins.
+- [x] **Step 7: Run** the V31 filter. Expected: PASS.
+- [x] **Step 8: Commit** `Docs (#1506): part 08 takes the owner's rulings` (and the per-concern commits), `PackageFormat (#1506): S05-056 quotes nothing from the reply`; push.
 
 ### Task 2: 1-based item ids and the instances limit
 

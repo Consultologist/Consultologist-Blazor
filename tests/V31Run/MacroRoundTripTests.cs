@@ -131,7 +131,7 @@ public class MacroRoundTripTests
         var outcome = AgentTurn.Finish(prepared, "Margaret Okafor reports two weeks of fatigue.\n{{~ macro.hpi.content }}\n");
 
         Assert.Equal(["S05-056", "S05-053"], outcome.Invalid!.Select(f => f.Id));
-        Assert.Equal("The reply has a marker for 'hpi', which isn't a macro.", outcome.Invalid![0].Sentence);
+        Assert.Equal("The reply has a marker that names no macro.", outcome.Invalid![0].Sentence);
         Assert.Equal("The reply has no marker for macro 'section_notes.hpi'.", outcome.Invalid![1].Sentence);
         Assert.False((bool)outcome.Detail!["macros"]![0]!["placed"]!);
     }

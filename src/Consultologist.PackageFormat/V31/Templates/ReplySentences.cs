@@ -19,8 +19,9 @@ public static class ReplySentences
     /// <summary>S05-055 (V-3): the reply holds the marker of a macro of the package that was not offered.</summary>
     public static string NotOffered(string macro) => $"The reply has a marker for macro '{macro}', which wasn't offered.";
 
-    /// <summary>S05-056 (V-4): the reply holds a marker whose id is no macro of the package.</summary>
-    public static string NotAMacro(string id) => $"The reply has a marker for '{id}', which isn't a macro.";
+    /// <summary>S05-056 (V-4): the reply holds a marker whose id is no macro of the package. Fixed text: it quotes nothing
+    /// from the reply, since the sentence is kept in the record outside text retention (#1506, ruled by the owner).</summary>
+    public static string NotAMacro() => "The reply has a marker that names no macro.";
 
     /// <summary>
     /// S05-057 (V-5): the marker is written in the other form than the instruction asked: for a block

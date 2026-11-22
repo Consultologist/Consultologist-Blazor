@@ -64,7 +64,7 @@ public static class MacroReply
                 continue;
             faults.Add(packageMacros.Contains(occurrence.Macro)
                 ? Fault("S05-055", occurrence.Macro, ReplySentences.NotOffered(occurrence.Macro), "not offered")
-                : Fault("S05-056", occurrence.Macro, ReplySentences.NotAMacro(occurrence.Macro), "unknown"));
+                : Fault("S05-056", occurrence.Macro, ReplySentences.NotAMacro(), "unknown"));
         }
 
         foreach (var macro in offered)
