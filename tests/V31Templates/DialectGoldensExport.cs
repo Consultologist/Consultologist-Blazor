@@ -20,6 +20,7 @@ namespace Consultologist.Api.Tests.V31Templates;
 /// leaving every other byte of that file as it was. A no-op without the variable, as <see cref="RefusalPackagesExport"/>
 /// is: it is a generator, not a check. <see cref="DialectGoldenTests"/> holds the in-repo goldens and the pin to it.
 /// </summary>
+[Collection("V31 conformance export")] // #1505: the exporters each rewrite v31/conformance/index.json, so they run one at a time.
 public class DialectGoldensExport
 {
     public const string DialectGoldens = "dialect-goldens";

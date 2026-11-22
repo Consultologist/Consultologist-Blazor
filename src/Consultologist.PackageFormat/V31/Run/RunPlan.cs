@@ -695,9 +695,14 @@ public sealed class RunPlan
                         continue;
                     }
 
-                    // #1505 (D1): only a check reads a deliverable (S03-019 at publish elsewhere, S05-020 in a template).
-                    if (map[named].Kind == PlanKind.Deliverable && !draft.Key.StartsWith("check.", StringComparison.Ordinal))
+                    // #1505 (D1, D2): only a check reads a deliverable (S03-019 at publish elsewhere, S05-020 in a template),
+                    // and only through .content, .value or .state.
+                    if (map[named].Kind == PlanKind.Deliverable
+                        && (!draft.Key.StartsWith("check.", StringComparison.Ordinal) || !DeliverableMember(path[named.Length..])))
+                    {
                         return null;
+                    }
+
                     if (named != draft.Key)
                         depends.Add(named);
                 }
@@ -707,13 +712,15 @@ public sealed class RunPlan
                 dependsOf[draft.Key] = depends;
             }
 
-            if (!Acyclic(edges) || Gating(map, dependsOf) is not { } gating)
+            // D3: the wait of a reader outside a deliverable's gate set, for the gate, is among the edges a circle is sought in.
+            if (Gating(map, dependsOf, edges) is not { } gating || !Acyclic(edges))
                 return null;
 
+            var gatedBy = map.Values.Where(d => d.Check != null).ToLookup(d => d.Check!, StringComparer.Ordinal);
             var entries = new Dictionary<string, PlanEntry>(StringComparer.Ordinal);
             foreach (var draft in map.Values)
             {
-                var gates = map.Values.Where(d => d.Check == draft.Key).Select(d => d.Key).OrderBy(order).ToList();
+                var gates = gatedBy[draft.Key].Select(d => d.Key).OrderBy(order).ToList();
                 entries.Add(draft.Key, new PlanEntry(
                     draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order(draft.Key), draft.Json, draft.Rules,
                     draft.Body, draft.Branches, draft.Ret, draft.Reads, dependsOf[draft.Key].ToList(), draft.Placements, draft.NeutralReads,
@@ -727,9 +734,11 @@ public sealed class RunPlan
         /// D3: for each entry, the deliverables it reads composed: those it reads (depends on) whose gate set holds it. A
         /// deliverable's gate set is its <c>check</c> and every check that check depends on, transitively, over the checks
         /// entries (each flow node with its children). Null when a check in a gate set reads that deliverable's
-        /// <c>.state</c> (A08-003 at publish).
+        /// <c>.state</c> (A08-003 at publish). Each check outside a gate set that reads the deliverable waits for its
+        /// outcome, so for its gate: that wait is added to <paramref name="edges"/> (A05-003 at publish when it closes a circle).
         /// </summary>
-        private static Dictionary<string, HashSet<string>>? Gating(Dictionary<string, Draft> map, Dictionary<string, SortedSet<string>> dependsOf)
+        private static Dictionary<string, HashSet<string>>? Gating(
+            Dictionary<string, Draft> map, Dictionary<string, SortedSet<string>> dependsOf, Dictionary<string, IEnumerable<string>> edges)
         {
             var composed = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             foreach (var deliverable in map.Values.Where(d => d.Kind == PlanKind.Deliverable && d.Check != null).OrderBy(d => d.Key, StringComparer.Ordinal))
@@ -748,6 +757,9 @@ public sealed class RunPlan
                     }
                 }
 
+                foreach (var reader in dependsOf.Where(p => p.Value.Contains(deliverable.Key) && !set.Contains(p.Key)).Select(p => p.Key))
+                    edges[reader] = edges[reader].Append(deliverable.Check!).ToList();
+
                 foreach (var key in set.Where(k => map.ContainsKey(k) && dependsOf[k].Contains(deliverable.Key)))
                 {
                     if (map[key].Reads.Any(path => Named(path, map) == deliverable.Key && path[deliverable.Key.Length..] is var rest
@@ -761,6 +773,10 @@ public sealed class RunPlan
 
             return composed;
         }
+
+        /// <summary>D2: whether <paramref name="rest"/>, a read's path after a deliverable's key, is <c>.content</c>, <c>.value</c> or <c>.state</c> (or a path under one).</summary>
+        private static bool DeliverableMember(string rest) =>
+            new[] { ".content", ".value", ".state" }.Any(m => rest == m || rest.StartsWith(m + ".", StringComparison.Ordinal));
 
         /// <summary>Whether the directed graph <paramref name="edges"/> (each key to the keys it needs) has no circle; iterative (Kahn's).</summary>
         private static bool Acyclic(Dictionary<string, IEnumerable<string>> edges)

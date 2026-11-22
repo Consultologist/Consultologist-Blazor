@@ -149,8 +149,9 @@ public static partial class ResolveCompiler
 
         public Ordering(Context context, List<Edge> edges)
         {
-            // #1505 (area 08; part 06 §§ 6.7, 7): a deliverable is composed before its gate runs, so a gates edge orders
-            // nothing: a gate that reads its deliverable comes after it, by the reads edge.
+            // #1505 (area 08, D19; part 06 §§ 6.7, 7): the order is topological over every edge but gates. A gate decides a
+            // deliverable's release, not its composition, so a gate that reads its deliverable comes after it, by the
+            // reads edge, and a gate that reads only nodes keeps its place.
             this.edges = edges.Where(e => e.Kind != "gates").ToList();
             var package = context.Package;
             foreach (var input in package.Manifest.Inputs)

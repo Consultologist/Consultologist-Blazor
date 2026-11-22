@@ -131,6 +131,30 @@ public class CompiledGoldenTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(Names))]
+    public void GraphOrder_IsTopological_OverEveryEdgeButGates(string name)
+    {
+        // #1505 (area 08, D19): every edge but gates goes forward in graph.order, but where one end encloses the other
+        // (a flow node comes before its body, and its ret edge comes back from it).
+        var document = JsonNode.Parse(Published(Cases().Single(c => c.Name == name)).Resolve)!;
+        var order = document["graph"]!["order"]!.AsArray().Select(k => (string)k!).ToList();
+        foreach (var edge in document["graph"]!["edges"]!.AsArray())
+        {
+            var (from, to, kind) = ((string)edge!["from"]!, (string)edge["to"]!, (string)edge["kind"]!);
+            if (kind == "gates" || from.StartsWith(to + ".", StringComparison.Ordinal) || to.StartsWith(from + ".", StringComparison.Ordinal)
+                || !order.Contains(from) || !order.Contains(to))
+            {
+                continue;
+            }
+
+            Assert.True(order.IndexOf(from) < order.IndexOf(to), $"{name}: {from} -{kind}-> {to} goes back in {string.Join(", ", order)}");
+        }
+
+        if (name == "checked-note")
+            Assert.True(order.IndexOf("deliverable.note") < order.IndexOf("check.proofread"));
+    }
+
     [Fact]
     public void EveryGolden_VerifiesAgainstItsOwnHashes()
     {

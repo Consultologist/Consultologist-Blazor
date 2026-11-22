@@ -15,6 +15,7 @@ namespace Consultologist.Api.Tests.V31Resolve;
 /// the variable, as <see cref="RefusalPackagesExport"/> is: it is a generator, not a check.
 /// <see cref="CompiledGoldenTests.ThePinnedFamily_IsWhatPublishGives"/> holds the pin to it.
 /// </summary>
+[Collection("V31 conformance export")] // #1505: the exporters each rewrite v31/conformance/index.json, so they run one at a time.
 public class CompiledDocumentsExport
 {
     private static readonly UTF8Encoding Utf8NoBom = new(false);

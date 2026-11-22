@@ -761,22 +761,6 @@ public class SourceDerivedTests
     private static Dictionary<string, byte[]> WithCheck(Dictionary<string, byte[]> files, string id, string file) =>
         files.WithJson("checks/index.json", index => index["items"]!.AsArray().Add(id)).With($"checks/{id}.md", file);
 
-    /// <summary>
-    /// <see cref="ResolveFixture.Functions"/> with a second note, <c>deliverable.emr.summary</c>, and two gates: the consult
-    /// note's <c>gate_a</c> reads <paramref name="aReads"/>, the summary's <c>gate_b</c> reads <paramref name="bReads"/>
-    /// (each a deliverable's <c>.content</c> it must not find blank).
-    /// </summary>
-    private static Dictionary<string, byte[]> TwoGates(string aReads, string bReads)
-    {
-        var files = ResolveFixture.Functions()
-            .WithJson("deliverables/emr/index.json", index => index["items"]!.AsArray().Add("summary"))
-            .With("deliverables/emr/summary.md", Md(
-                Deliverable("Summary note", "\"markdown_block\"", "\"check.gate_b\"", "hold"), "## Summary\n\n{{ node.standards.content }}\n"))
-            .WithJson(Consult, h => h["check"] = "check.gate_a");
-        files = WithCheck(files, "gate_a", ResolveFixture.ObjectCheck("Gating the consult note", ResolveFixture.NotBlank(aReads)));
-        return WithCheck(files, "gate_b", ResolveFixture.ObjectCheck("Gating the summary", ResolveFixture.NotBlank(bReads)));
-    }
-
     [Fact]
     public void ACheck_ReadingADeliverable_TakesItsFlags()
     {
@@ -796,6 +780,47 @@ public class SourceDerivedTests
         AssertDialectRefusal(ResolveFixture.Proofread().WithJson("checks/consult_words.md", h => h["modelDerived"] = false),
             "S03-036", "Node 'consult_words' declares modelDerived false, but its reads make it true: deliverable.emr.consult.content.",
             "checks/consult_words.md");
+
+    public static TheoryData<string, string, string> CarriedFlags() => new()
+    {
+        { "runDependent", "{{ run.date }}", "Node 'consult_words' declares runDependent false, but its reads make it true: deliverable.emr.consult.content." },
+        { "profileCarrying", "{{ profile.signature }}", "Node 'consult_words' declares profileCarrying false, but its reads make it true: deliverable.emr.consult.content." },
+    };
+
+    [Theory]
+    [MemberData(nameof(CarriedFlags))]
+    public void ACheck_OfADeliverable_TakesItsOtherFlags(string flag, string read, string sentence) =>
+        // The note reads a run fact (or a profile field), so the gate proofread, declared so, and consult_words are too.
+        AssertDialectRefusal(ResolveFixture.Proofread()
+                .With(Consult, Md(Deliverable("Consult note", "\"markdown_block\"", "\"check.proofread\"", "hold"),
+                    "## Sections\n\n{{ node.standards.content }}\n\n" + read + "\n"))
+                .WithJson("checks/proofread.md", h => h[flag] = true),
+            "S03-036", sentence, "checks/consult_words.md");
+
+    [Fact]
+    public void AGate_ReadingItsOwnDeliverablesState_IsRefused() =>
+        AssertDialectRefusal(ResolveFixture.Proofread().WithJson("checks/proofread.md", h => h["expression"]!["object"]!["pass"] =
+                JsonNode.Parse("{ \"===\": [{ \"var\": \"deliverable.emr.consult.state\" }, \"released\"] }")),
+            "A08-003", "Check 'proofread' reads deliverable.emr.consult.state, and deliverable 'emr.consult' waits for check "
+            + "'proofread' through its check 'proofread': read its .content, or read the state in a check it doesn't wait for.",
+            "checks/proofread.md");
+
+    [Fact]
+    public void ACheckTheGateReachesThroughANode_IsOutsideTheGateSet_AndACircle() =>
+        // D3 (decision 2): the gate set follows checks only. consult_words, read by the node noted that the gate reads,
+        // waits for the note's outcome, which waits for the gate.
+        AssertDialectRefusal(ResolveFixture.GateThroughANode(),
+            "A05-003", "Node 'consult_words' reads node 'emr.consult', which reads node 'proofread', which reads node 'noted', "
+            + "which reads node 'consult_words': nodes can't read each other in a circle. Break the circle.",
+            "checks/consult_words.md");
+
+    [Fact]
+    public void AnIfAndACase_InChecks_MayReadADeliverable()
+    {
+        var derived = DialectAccepted(ResolveFixture.FlowReadingState());
+        Assert.Contains(derived.Entries["check.when_released"].ConditionReads, r => r.Key == "deliverable.emr.consult");
+        Assert.Contains(derived.Entries["check.by_state"].ConditionReads, r => r.Key == "deliverable.emr.consult");
+    }
 
     [Fact]
     public void AComputedNode_ReadingADeliverable_IsStillRefused() =>
@@ -843,14 +868,15 @@ public class SourceDerivedTests
 
     [Fact]
     public void TwoGates_ReadingEachOthersDeliverable_AreACircle() =>
-        AssertDialectRefusal(TwoGates("deliverable.emr.summary.content", "deliverable.emr.consult.content"),
-            "A05-003", "Node 'gate_a' reads node 'gate_b', which reads node 'gate_a': nodes can't read each other in a circle. Break the circle.",
+        AssertDialectRefusal(ResolveFixture.TwoGates("deliverable.emr.summary.content", "deliverable.emr.consult.content"),
+            "A05-003", "Node 'gate_a' reads node 'emr.summary', which reads node 'gate_b', which reads node 'emr.consult', which reads "
+            + "node 'gate_a': nodes can't read each other in a circle. Break the circle.",
             "checks/gate_a.md");
 
     [Fact]
     public void AGate_ReadingAnotherDeliverable_Publishes()
     {
-        var derived = DialectAccepted(TwoGates("deliverable.emr.summary.content", "deliverable.emr.summary.content"));
+        var derived = DialectAccepted(ResolveFixture.TwoGates("deliverable.emr.summary.content", "deliverable.emr.summary.content"));
         Assert.Contains("deliverable.emr.summary.content", derived.Entries["check.gate_a"].Reads);
     }
 

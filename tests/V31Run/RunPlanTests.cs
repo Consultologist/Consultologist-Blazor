@@ -176,18 +176,41 @@ public class RunPlanTests
         Assert.Empty(plan.Entries["check.delivered"].ReadsComposed);
     }
 
+    [Fact]
+    public void AnIfAndACase_InChecks_ReadingADeliverable_Build()
+    {
+        // What publish accepts builds: an if's rule and a case's subject under checks/ read the note's outcome.
+        var plan = RunFixture.Plan(ResolveFixture.FlowReadingState());
+        Assert.Equal(["deliverable.emr.consult"], plan.Entries["check.when_released"].Depends);
+        Assert.Equal(["deliverable.emr.consult"], plan.Entries["check.by_state"].Depends);
+        Assert.Empty(plan.Entries["check.by_state"].ReadsComposed);
+        AssertConsistent(plan);
+    }
+
     public static TheoryData<string> DeliverableCorruptions() => new(
         "a node reading a deliverable",
         "a deliverable reading a deliverable",
         "a gate reading its deliverable's state",
-        "a check its gate depends on reading the state");
+        "a check its gate depends on reading the state",
+        "a check reading a member a deliverable lacks",
+        "a check reading a deliverable bare",
+        "two gates reading each other's deliverable",
+        "a check the gate reaches through a node reading the deliverable");
 
     [Theory]
     [MemberData(nameof(DeliverableCorruptions))]
     public void ADeliverableReadNotAsPublishWritesIt_IsRefused(string corruption)
     {
-        var (_, compiled) = CompiledPackage.Publish(ResolveFixture.Proofread(), ResolveFixture.Published(), CompiledGoldenTests.Fixed);
-        var document = JsonNode.Parse(compiled!.Resolve)!.AsObject();
+        // Each starts from a document publish accepts, which builds; the change is one publish would refuse.
+        var source = corruption switch
+        {
+            "two gates reading each other's deliverable" => ResolveFixture.TwoGates("deliverable.emr.summary.content", "deliverable.emr.summary.content"),
+            _ => ResolveFixture.Proofread(),
+        };
+        var (_, compiled) = CompiledPackage.Publish(source, ResolveFixture.Published(), CompiledGoldenTests.Fixed);
+        Assert.Null(RunPlan.Build(compiled!.Resolve, "sha256:x", "sha256:y", null).Refusal);
+        var document = JsonNode.Parse(compiled.Resolve)!.AsObject();
+        var checks = document["checks"]!.AsObject();
         switch (corruption)
         {
             case "a node reading a deliverable":
@@ -199,8 +222,26 @@ public class RunPlanTests
             case "a gate reading its deliverable's state":
                 document["checks"]!["check.proofread"]!["reads"]!.AsArray().Add("deliverable.emr.consult.state");
                 break;
+            case "a check its gate depends on reading the state":
+                checks["check.consult_words"]!["reads"]!.AsArray().Add("deliverable.emr.consult.state");
+                break;
+            case "a check reading a member a deliverable lacks":
+                checks["check.consult_words"]!["reads"]!.AsArray().Add("deliverable.emr.consult.items");
+                break;
+            case "a check reading a deliverable bare":
+                checks["check.consult_words"]!["reads"]!.AsArray().Add("deliverable.emr.consult");
+                break;
+            case "two gates reading each other's deliverable":
+                // gate_b also reads the consult note, whose gate gate_a reads the summary gate_b decides: each waits for the other.
+                checks["check.gate_b"]!["reads"]!.AsArray().Add("deliverable.emr.consult.content");
+                break;
             default:
-                document["checks"]!["check.consult_words"]!["reads"]!.AsArray().Add("deliverable.emr.consult.state");
+                // proofread reads the production node extract_note_terms in place of consult_words, which that node reads:
+                // consult_words is outside the note's gate set, and waits for proofread, which waits for it.
+                var proofread = checks["check.proofread"]!;
+                proofread["reads"] = new JsonArray("deliverable.emr.consult.content", "node.extract_note_terms.value");
+                proofread["expression"] = JsonNode.Parse("""{"var":"node.extract_note_terms.value"}""");
+                document["nodes"]!["node.extract_note_terms"]!["reads"]!.AsArray().Add("check.consult_words.value");
                 break;
         }
 

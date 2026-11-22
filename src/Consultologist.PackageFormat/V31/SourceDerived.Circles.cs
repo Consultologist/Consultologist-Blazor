@@ -12,7 +12,8 @@ public static partial class SourceDerived
     /// reads at its place (<see cref="Vertex.Placed"/>), as <c>RunPlan</c> counts them among its dependencies. #1505 (area
     /// 08; D3): the deliverables are vertices too, each reading what its body and its <c>if</c> read, and a check reading
     /// a deliverable reads it; a check outside the deliverable's gate set (<see cref="GateSets"/>) waits for its outcome,
-    /// so it also reads the deliverable's gate. Each set of vertices that reach each other is said once, from its
+    /// which reads the deliverable and its gate, so the circle names the deliverable it waits through (<c>Node 'gate_a'
+    /// reads node 'emr.summary', which reads node 'gate_b', …</c>). Each set of vertices that reach each other is said once, from its
     /// ordinal-first node, as the shortest circle back to it (the vertices read taken in ordinal order), at that node's
     /// file, each named by its bare id (a deliverable by its key without its root: the row's words name nodes, 05-D34).
     /// Before the circles, A08-003 for a check in a deliverable's gate set reading its <c>.state</c>, which it decides.
@@ -32,9 +33,15 @@ public static partial class SourceDerived
             .ToList(), StringComparer.Ordinal);
 
         // D3: a reader in the gate set reads the composed deliverable (an ordinary edge, and not its .state, A08-003);
-        // every other reader waits for the outcome, and so for the gate.
+        // every other reader waits for the outcome, and so for the gate: it reads the outcome, a vertex of its own
+        // (outcome:<key>) that reads the deliverable and its gate, so a circle through it names the deliverable.
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (deliverable, gate, set) in GateSets(graph, edges).ToList())
         {
+            var outcome = $"outcome:{deliverable.Key}";
+            edges[outcome] = [deliverable.Key, gate.Id];
+            ids.Add(outcome);
+            names[outcome] = Bare(deliverable);
             foreach (var reader in vertices.Where(v => v.Declaration is SourceNode))
             {
                 var reads = reader.Content.Concat(reader.Conditions).Where(r => !r.Earlier && r.Id == deliverable.Key).ToList();
@@ -42,7 +49,8 @@ public static partial class SourceDerived
                     continue;
                 if (!set.Contains(reader.Id))
                 {
-                    edges[reader.Id].Add(gate.Id);
+                    edges[reader.Id].Remove(deliverable.Key);
+                    edges[reader.Id].Add(outcome);
                     continue;
                 }
 
@@ -57,7 +65,7 @@ public static partial class SourceDerived
         foreach (var key in edges.Keys)
             edges[key] = edges[key].Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
-        var reach = vertices.ToDictionary(v => v.Id, v => Reachable(v.Id, edges), StringComparer.Ordinal);
+        var reach = edges.Keys.ToDictionary(id => id, id => Reachable(id, edges), StringComparer.Ordinal);
         var said = new HashSet<string>(StringComparer.Ordinal);
         foreach (var start in vertices.Where(v => v.Declaration is SourceNode).Select(v => v.Id).Order(StringComparer.Ordinal))
         {
@@ -66,7 +74,7 @@ public static partial class SourceDerived
             var ring = ids.Where(id => id == start || (reach[start].Contains(id) && reach[id].Contains(start))).ToHashSet(StringComparer.Ordinal);
             said.UnionWith(ring);
             var chain = Shortest(start, ring, edges)
-                .Select(id => graph.ById[id].Declaration switch
+                .Select(id => names.TryGetValue(id, out var name) ? name : graph.ById[id].Declaration switch
                 {
                     SourceNode node => node.Id,
                     SourceDeliverable deliverable => Bare(deliverable),
