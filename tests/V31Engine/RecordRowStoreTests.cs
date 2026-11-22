@@ -157,6 +157,21 @@ public sealed class TableRecordRowStoreTests : RecordRowStoreContract
     }
 
     [Fact]
+    public async Task DeleteJob_GoesInBatchesOfAtMost100_AndEveryRowGoes()
+    {
+        var table = new InMemoryRecordTable();
+        var store = new TableRecordRowStore(table, NullLogger.Instance);
+        await store.WriteAsync("job-1", Enumerable.Range(0, 250).Select(i => new RecordRow("node", $"node.n{i:D3}", "{}")).ToList(), CancellationToken.None);
+        await store.WriteAsync("job-2", [new RecordRow("node", "node.other", "{}")], CancellationToken.None);
+
+        await store.DeleteJobAsync("job-1", CancellationToken.None);
+
+        Assert.Equal([100, 100, 50], table.DeleteBatches);
+        Assert.Empty(await store.ListAsync("job-1", CancellationToken.None));
+        Assert.Single(await store.ListAsync("job-2", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task TheStoredEntity_HasTheNamedProperties_AndAHashOfTheRowsJson()
     {
         var table = new InMemoryRecordTable();

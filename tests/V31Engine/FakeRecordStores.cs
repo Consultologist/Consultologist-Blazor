@@ -73,13 +73,29 @@ internal sealed class InMemoryRecordTable : IRecordTable
         }
     }
 
-    public Task DeleteAllAsync(string partitionKey, CancellationToken ct)
+    /// <summary>The size of each batch given to <see cref="DeleteBatchAsync"/>, in order.</summary>
+    public List<int> DeleteBatches { get; } = [];
+
+    public Task<IReadOnlyList<string>> ListRowKeysAsync(string partitionKey, CancellationToken ct)
     {
         lock (_gate)
         {
             Calls++;
-            foreach (var key in _entities.Keys.Where(k => k.Partition == partitionKey).ToList())
-                _entities.Remove(key);
+            return Task.FromResult<IReadOnlyList<string>>(_entities.Keys.Where(k => k.Partition == partitionKey).Select(k => k.Row).ToList());
+        }
+    }
+
+    public Task DeleteBatchAsync(string partitionKey, IReadOnlyList<string> rowKeys, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            Calls++;
+            DeleteBatches.Add(rowKeys.Count);
+            if (rowKeys.Count > 100)
+                throw new InvalidOperationException("A table transaction holds at most 100 actions.");
+
+            foreach (var rowKey in rowKeys)
+                _entities.Remove((partitionKey, rowKey)); // a row already gone is fine
         }
 
         return Task.CompletedTask;

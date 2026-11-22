@@ -3,6 +3,7 @@ using System.Text;
 using Azure;
 using Azure.Core;
 using Azure.Data.Tables;
+using Azure.Data.Tables.Models;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 using Microsoft.Extensions.Configuration;
@@ -26,7 +27,7 @@ public enum RecordWrite
 /// <summary>#1506 (D10): a 31 job's record rows, each written once, in a table.</summary>
 public interface IRecordRowStore
 {
-    /// <summary>Inserts each row alone; one result per row, in the order given.</summary>
+    /// <summary>Inserts each row alone; one result per row, in the order given. The partition key is <paramref name="jobId"/> as given (ids are GUIDs; nothing is escaped).</summary>
     /// <exception cref="InvalidOperationException">A row is too large to store (an engine fault); nothing is written.</exception>
     Task<IReadOnlyList<(string Key, RecordWrite Result)>> WriteAsync(string jobId, IReadOnlyList<RecordRow> rows, CancellationToken ct);
 
@@ -52,7 +53,11 @@ internal interface IRecordTable
     /// <summary>Empty when the table is not there.</summary>
     Task<IReadOnlyList<TableEntity>> ListAsync(string partitionKey, CancellationToken ct);
 
-    Task DeleteAllAsync(string partitionKey, CancellationToken ct);
+    /// <summary>The row keys of the partition, ordinally; empty when the table is not there.</summary>
+    Task<IReadOnlyList<string>> ListRowKeysAsync(string partitionKey, CancellationToken ct);
+
+    /// <summary>Deletes these rows (at most <see cref="TableRecordRowStore.MaxBatch"/>); a row already gone is fine.</summary>
+    Task DeleteBatchAsync(string partitionKey, IReadOnlyList<string> rowKeys, CancellationToken ct);
 }
 
 internal sealed class AzureRecordTable(TableClient client) : IRecordTable
@@ -74,15 +79,9 @@ internal sealed class AzureRecordTable(TableClient client) : IRecordTable
 
     public async Task<TableEntity?> GetAsync(string partitionKey, string rowKey, CancellationToken ct)
     {
-        try
-        {
-            var response = await client.GetEntityIfExistsAsync<TableEntity>(partitionKey, rowKey, cancellationToken: ct);
-            return response.HasValue ? response.Value : null;
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            return null;
-        }
+        // GetEntityIfExists answers "no value" for a 404, a missing table included
+        var response = await client.GetEntityIfExistsAsync<TableEntity>(partitionKey, rowKey, cancellationToken: ct);
+        return response.HasValue ? response.Value : null;
     }
 
     public async Task<IReadOnlyList<TableEntity>> ListAsync(string partitionKey, CancellationToken ct)
@@ -94,34 +93,45 @@ internal sealed class AzureRecordTable(TableClient client) : IRecordTable
             await foreach (var entity in client.QueryAsync<TableEntity>(filter, cancellationToken: ct))
                 entities.Add(entity);
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
+        catch (RequestFailedException ex) when (ex.ErrorCode == TableErrorCode.TableNotFound)
         {
         }
 
         return entities;
     }
 
-    public async Task DeleteAllAsync(string partitionKey, CancellationToken ct)
+    public async Task<IReadOnlyList<string>> ListRowKeysAsync(string partitionKey, CancellationToken ct)
     {
+        var keys = new List<string>();
         try
         {
             var filter = TableClient.CreateQueryFilter($"PartitionKey eq {partitionKey}");
-            var batch = new List<TableTransactionAction>();
-            await foreach (var entity in client.QueryAsync<TableEntity>(filter, select: ["PartitionKey", "RowKey"], cancellationToken: ct))
-            {
-                batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, ETag.All));
-                if (batch.Count == 100)
-                {
-                    await client.SubmitTransactionAsync(batch, ct);
-                    batch.Clear();
-                }
-            }
+            await foreach (var entity in client.QueryAsync<TableEntity>(filter, select: ["RowKey"], cancellationToken: ct))
+                keys.Add(entity.RowKey);
+        }
+        catch (RequestFailedException ex) when (ex.ErrorCode == TableErrorCode.TableNotFound)
+        {
+        }
 
-            if (batch.Count > 0)
-                await client.SubmitTransactionAsync(batch, ct);
+        return keys;
+    }
+
+    public async Task DeleteBatchAsync(string partitionKey, IReadOnlyList<string> rowKeys, CancellationToken ct)
+    {
+        if (rowKeys.Count == 0)
+            return;
+
+        try
+        {
+            await client.SubmitTransactionAsync(
+                rowKeys.Select(rowKey => new TableTransactionAction(TableTransactionActionType.Delete, new TableEntity(partitionKey, rowKey), ETag.All)), ct);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
+            // a row of the batch is already gone (a retried or concurrent delete) and the transaction aborted whole:
+            // delete one by one; a 404 on a single delete is a row already gone
+            foreach (var rowKey in rowKeys)
+                await client.DeleteEntityAsync(partitionKey, rowKey, ETag.All, ct); // DeleteEntity answers 404 as a no-op response
         }
     }
 }
@@ -139,6 +149,9 @@ public sealed class TableRecordRowStore : IRecordRowStore
     internal const int ChunkLength = 30_000;
 
     /// <summary>An entity is at most 1 MiB; what the store counts is the properties' names and values, as Azure does, in UTF-16.</summary>
+    /// <summary>A table transaction holds at most 100 actions.</summary>
+    internal const int MaxBatch = 100;
+
     internal const int MaxEntityBytes = 1024 * 1024;
 
     private const int EntityOverheadBytes = 4096;
@@ -194,10 +207,12 @@ public sealed class TableRecordRowStore : IRecordRowStore
             .ToList();
     }
 
-    public Task DeleteJobAsync(string jobId, CancellationToken ct)
+    public async Task DeleteJobAsync(string jobId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(jobId);
-        return _table.DeleteAllAsync(jobId, ct);
+        var keys = await _table.ListRowKeysAsync(jobId, ct);
+        for (var start = 0; start < keys.Count; start += MaxBatch)
+            await _table.DeleteBatchAsync(jobId, keys.Skip(start).Take(MaxBatch).ToList(), ct);
     }
 
     private async Task<RecordWrite> WriteOneAsync(string jobId, RecordRow row, TableEntity entity, CancellationToken ct)
