@@ -551,7 +551,17 @@ public sealed record ConsultInputOrigin(
     string? SourceResultId = null,
     // #540: mirrors the Api's SourceFormId / SourceResponseId — a form-response element's source.
     string? SourceFormId = null,
-    string? SourceResponseId = null);
+    string? SourceResponseId = null,
+    // #1506 (part 08 § 3.1): mirrors the Api's Converter / Parser / Ocr — what a 31 job's extraction used; absent on 5–30 records.
+    ConsultExtractionStep? Converter = null,
+    ConsultExtractionStep? Parser = null,
+    ConsultOcrStep? Ocr = null);
+
+/// <summary>#1506: mirrors Consultologist.Api.Models.ConsultExtractionStep.</summary>
+public sealed record ConsultExtractionStep(string Name, string Version);
+
+/// <summary>#1506: mirrors Consultologist.Api.Models.ConsultOcrStep.</summary>
+public sealed record ConsultOcrStep(string Service, string Model);
 public record ConsultGenerationJobStartResponse(string JobId, string StatusUrl);
 
 /// <summary>#390: the new job a reschedule created, and the one it replaced.</summary>
@@ -703,7 +713,23 @@ public record ConsultGenerationJobResponse(
     IReadOnlyList<ConsultHeldDocumentResponse>? HeldDocuments = null,
     // v30 (#1341, record storage 11): one row per instance of a loop inside a loop or a
     // while — its outer path, count, reason, and (#1342) passes and why it stopped. Trailing.
-    IReadOnlyList<ConsultLoopInstanceRow>? LoopInstances = null);
+    IReadOnlyList<ConsultLoopInstanceRow>? LoopInstances = null,
+    // #1506 (specVersion 31, record storage 12): mirrors the Api's 31 header and progress — the
+    // resolve and lock hashes, the versions that ran, run facts, the ten limits, the signature
+    // block by id and how it was chosen, recordHash once sealed, and the rows stored so far by
+    // state, the decisions made and the last row's key. Each absent below storage 12. Trailing.
+    string? ResolveHash = null,
+    string? LockHash = null,
+    System.Text.Json.Nodes.JsonObject? VersionsRan = null,
+    System.Text.Json.Nodes.JsonObject? RunFacts = null,
+    IReadOnlyDictionary<string, int>? Limits = null,
+    string? SignatureBlockId = null,
+    string? SignatureChosen = null,
+    string? RecordHash = null,
+    int? Rows = null,
+    IReadOnlyDictionary<string, int>? RowStates = null,
+    int? Decisions = null,
+    string? CurrentKey = null);
 
 /// <summary>
 /// Mirrors Consultologist.Api.Jobs.ConsultLoopInstanceRow (v30 #1341/#1342, record storage 11):

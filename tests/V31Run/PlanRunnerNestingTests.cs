@@ -42,7 +42,7 @@ public class PlanRunnerNestingTests
         // each loop instance within its cap: at most 3 outer items with a call in flight, and within each outer item at
         // most 2 middle items; the inner loop has no cap of its own
         Assert.InRange(first.Host.PeakGroupsOf(k => Items(k)[0]), 1, 3);
-        for (var outer = 0; outer < Ten; outer++)
+        for (var outer = 1; outer <= Ten; outer++)
         {
             var mine = Id(outer);
             Assert.InRange(first.Host.PeakGroupsOf(k => Items(k)[0] == mine ? Items(k)[1] : null), 1, 2);
@@ -55,7 +55,7 @@ public class PlanRunnerNestingTests
         // come in, within one process: an iteration over an unordered collection that is stable within a process would pass
         // it. What catches a dispatch out of the fixed order is DispatchOracle above: making the runner take the waiting
         // calls in reverse order fails it here; taking them in ordinal key order (stable, not the fixed order) fails it in
-        // RunGoldenTests, though not here, where item ids 0 to 9 sort the same both ways.
+        // RunGoldenTests, though not here, where item ids 1 to 9 sort the same both ways.
         Assert.Equal(first.Host.Dispatched, second.Host.Dispatched);
         Assert.Equal(RunTrace.Of(first.Host, first.Recorder, first.Result), RunTrace.Of(second.Host, second.Recorder, second.Result));
         Assert.Equal(Ten * Ten * Ten, first.Host.Dispatched.Distinct(StringComparer.Ordinal).Count());
@@ -78,11 +78,11 @@ public class PlanRunnerNestingTests
         Assert.Equal(3 * 2 * Ten, run.Host.InFlightPeak);
         Assert.Equal(3 * 2 * Ten, run.Result.PeakInFlight);
         Assert.Equal(3, run.Host.PeakGroupsOf(k => Items(k)[0]));
-        for (var outer = 0; outer < Ten; outer++)
+        for (var outer = 1; outer <= Ten; outer++)
         {
             var mine = Id(outer);
             Assert.Equal(2, run.Host.PeakGroupsOf(k => Items(k)[0] == mine ? Items(k)[1] : null));
-            for (var middle = 0; middle < Ten; middle++)
+            for (var middle = 1; middle <= Ten; middle++)
             {
                 var prefix = $"node.outer.middle.inner.note.write:{mine}/{Id(middle)}/";
                 Assert.Equal(Ten, run.Host.PeakOf(k => k.StartsWith(prefix, StringComparison.Ordinal)));

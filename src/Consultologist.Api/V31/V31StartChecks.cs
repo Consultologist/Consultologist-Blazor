@@ -255,6 +255,36 @@ public static class V31StartChecks
         return facts;
     }
 
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 § 8.1): the header's <c>runFacts</c>: of <paramref name="facts"/> (the run's,
+    /// by name with <c>run.</c> dropped), exactly those <paramref name="plan"/> reads, in its order; <c>date</c> recorded as
+    /// <c>{ value, timeZone }</c>, the zone's IANA name the date was taken in (<c>UTC</c> when the job had none this machine
+    /// knows, as <see cref="DateIn"/> takes it). <c>{}</c> when it reads none.
+    /// </summary>
+    public static JsonObject RecordedRunFacts(RunPlan plan, JsonObject facts, string? timeZone)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(facts);
+        var recorded = new JsonObject();
+        foreach (var fact in plan.RunFacts)
+        {
+            var name = fact.StartsWith("run.", StringComparison.Ordinal) ? fact["run.".Length..] : fact;
+            if (recorded.ContainsKey(name) || !facts.TryGetPropertyValue(name, out var value))
+                continue;
+            recorded[name] = name == "date"
+                ? new JsonObject { ["value"] = value?.DeepClone(), ["timeZone"] = ZoneOf(timeZone) }
+                : value?.DeepClone();
+        }
+
+        return recorded;
+    }
+
+    /// <summary>The IANA name of the zone <see cref="DateIn"/> takes a date in: <paramref name="timeZone"/>'s, or <c>UTC</c>.</summary>
+    private static string ZoneOf(string? timeZone) =>
+        timeZone is { Length: > 0 } && TimeZoneInfo.TryFindSystemTimeZoneById(timeZone, out var zone)
+            ? (zone.HasIanaId ? zone.Id : TimeZoneInfo.TryConvertWindowsIdToIanaId(zone.Id, out var iana) ? iana : zone.Id)
+            : "UTC";
+
     /// <summary>The ISO date (<c>yyyy-MM-dd</c>) of <paramref name="at"/> in <paramref name="timeZone"/>, or in UTC.</summary>
     public static string DateIn(DateTimeOffset at, string? timeZone)
     {

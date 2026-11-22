@@ -188,8 +188,12 @@ public class PlanRunnerCallsTests
         var arguments = detail["arguments"]!.AsArray();
         Assert.Equal("draft", (string?)arguments[1]!["param"]);
         Assert.Equal(CanonicalJson.Hash(bound), (string?)arguments[1]!["hash"]);
+        // (the row's clocks are the host's, which shares the run date's day here: they are left out of the search)
+        var searched = (JsonObject)detail.DeepClone();
+        foreach (var clock in new[] { "startedAtUtc", "completedAtUtc" })
+            searched.Remove(clock);
         if (value != "null")
-            Assert.DoesNotContain(JsonNode.Parse(content)!.GetValue<string>().Trim(), detail.ToJsonString());
+            Assert.DoesNotContain(JsonNode.Parse(content)!.GetValue<string>().Trim(), searched.ToJsonString());
     }
 
     [Fact]
@@ -355,7 +359,7 @@ public class PlanRunnerCallsTests
         Assert.StartsWith("skipped: ", row.Reason);
         Assert.Equal("draft_section", (string?)row.Detail["function"]);
         Assert.Equal("[]", row.Detail["arguments"]!.ToJsonString());
-        Assert.Contains(recorder.Decisions, d => d.Site == "node.standards.section:hpi" && d.Member == "self" && d.Result == false);
+        Assert.Contains(recorder.Decisions, d => d.Owner == "node.standards.section:hpi" && d.Site == "self" && d.Result == false);
         Assert.Equal(RowState.Skipped, recorder.Row("node.standards:hpi").State);
         Assert.Single(result.Values["node.standards"]!["value"]!.AsArray());
     }
@@ -624,7 +628,7 @@ public class PlanRunnerCallsTests
     /// <c>example-minimal</c> with the top-level call <c>hpi_section</c> of <c>section_fn</c> (its agent <c>draft_text</c>
     /// and its call <c>refine_call</c> of <c>refine</c>, which returns its agent <c>judge</c>).
     /// </summary>
-    private static Dictionary<string, byte[]> Nested()
+    internal static Dictionary<string, byte[]> Nested()
     {
         var files = Minimal()
             .With("nodes/index.json", Index(["plan", "hpi_section"]))
@@ -656,7 +660,7 @@ public class PlanRunnerCallsTests
         return files;
     }
 
-    private static StubTemplates NestedReads() => new(new Dictionary<string, string[]>
+    internal static StubTemplates NestedReads() => new(new Dictionary<string, string[]>
     {
         ["node.plan"] = ["input.consult_draft.content"],
         ["section_fn/node.draft_text"] = ["param.draft.content"],

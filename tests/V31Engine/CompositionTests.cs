@@ -43,6 +43,33 @@ public class CompositionTests
     }
 
     [Fact]
+    public void TheHostsRegistrations_GiveTheRecordsStores_AsSingletons_WithoutTouchingStorage()
+    {
+        // #1506 (Task 9): the record's rows (a table) and its text and document (blobs); built over a local connection
+        // string and never called, so nothing is created
+        using var provider = HostServices();
+        using var scope = provider.CreateScope();
+
+        Assert.IsType<TableRecordRowStore>(scope.ServiceProvider.GetRequiredService<IRecordRowStore>());
+        Assert.IsType<BlobRecordStore>(scope.ServiceProvider.GetRequiredService<IRecordBlobStore>());
+        Assert.Same(provider.GetRequiredService<IRecordRowStore>(), scope.ServiceProvider.GetRequiredService<IRecordRowStore>());
+        Assert.Same(provider.GetRequiredService<IRecordBlobStore>(), scope.ServiceProvider.GetRequiredService<IRecordBlobStore>());
+    }
+
+    [Fact]
+    public void TheHostsRegistrations_GiveTheSealer_ToItsActivityAndTheCancelRoute()
+    {
+        // #1506 (Task 11): the job routes take the sealers through an optional parameter, so a registration gone missing
+        // would silently leave a cancelled 31 job unsealed until a read or the sweep
+        using var provider = HostServices();
+        using var scope = provider.CreateScope();
+        var sealers = scope.ServiceProvider.GetRequiredService<RecordSealers>();
+
+        Assert.Same(sealers, FieldOf<RecordSealers>(ActivatorUtilities.CreateInstance<ConsultGenerationJobs>(scope.ServiceProvider)));
+        Assert.Same(sealers, FieldOf<RecordSealers>(ActivatorUtilities.CreateInstance<SealRecordV31Activity>(scope.ServiceProvider)));
+    }
+
+    [Fact]
     public void TheHostsStartup_LoadsThe31AgentsCatalogue_SoADefectStopsTheHost()
     {
         // #1504 (D9): what Program.cs resolves before the host runs (ApiServices.ResolveAtStartup) includes the 31 agents

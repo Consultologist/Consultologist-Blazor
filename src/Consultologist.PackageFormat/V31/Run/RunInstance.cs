@@ -76,6 +76,12 @@ internal sealed class RunInstance
     public bool IsSettled => Phase == InstancePhase.Settled;
 
     /// <summary>
+    /// #1506 (area 09; part 08 § 4; final review F3): the host's clock when it started (an agent or a render dispatched, a
+    /// computed node evaluated, a flow node first stepped); null while it has not, and for one that never did.
+    /// </summary>
+    public DateTime? StartedAtUtc { get; set; }
+
+    /// <summary>
     /// #1504 (area 07; D3): for an agent, a rendered node or a deliverable whose gate held, each placement of its entry the
     /// run decided, to its result (a placement with no rule, true); null before.
     /// </summary>
@@ -83,6 +89,12 @@ internal sealed class RunInstance
 
     /// <summary>#1504 (area 07; part 08 §§ 4, 10): the row detail its last call's outcome gave (part 08's names), or null.</summary>
     public JsonObject? CallDetail { get; set; }
+
+    /// <summary>
+    /// #1506 (area 09; D2): the text its last call produced (<see cref="AgentOutcome.Produced"/>,
+    /// <see cref="RenderOutcome.Produced"/>), or null; the runner reads only the sent text from it, for its run spots' outputs.
+    /// </summary>
+    public JsonObject? CallProduced { get; set; }
 
     /// <summary>
     /// #1505 (area 08; D3): a deliverable's composed read form, <c>{ value, content, state: "composed" }</c>, once its render
@@ -95,6 +107,12 @@ internal sealed class RunInstance
 
     /// <summary>#1505 (area 08): the hash of <see cref="ComposedText"/>, or null.</summary>
     public string? ComposedHash { get; set; }
+
+    /// <summary>
+    /// #1506 (area 09; D9): for a computed node or check whose <c>expression</c> was evaluated, the data it was evaluated
+    /// over (<see cref="RunScope.Data"/>), for its row's <c>inputHash</c> and <c>reads</c>; null before, and for every other kind.
+    /// </summary>
+    public JsonObject? EvaluatedOver { get; set; }
 
     /// <summary>#1504 (D4): a deliverable's run-neutral text, kept from its render for its released or held read form; or null.</summary>
     public string? Neutral { get; set; }
@@ -208,6 +226,9 @@ internal sealed class RankComparer : IComparer<IReadOnlyList<int>>
 /// </summary>
 internal sealed class RunFrame
 {
+    /// <summary>#1506 (area 09; part 08 § 4.4; final review F3): the host's clock when a loop item's or a pass's frame was opened; null for the others.</summary>
+    public DateTime? OpenedAtUtc { get; set; }
+
     private readonly Dictionary<string, RunInstance> instances = new(StringComparer.Ordinal);
     private readonly List<RunInstance> inOrder = [];
 

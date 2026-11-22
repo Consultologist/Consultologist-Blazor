@@ -248,14 +248,18 @@ internal static class FakeHttp
     public static HttpRequestData Request(string method, CancellationToken cancellationToken = default) => Request(method, null, cancellationToken);
 
     /// <summary>As <see cref="Request(string, CancellationToken)"/>, with <paramref name="body"/> (UTF-8) as the request's body.</summary>
-    public static HttpRequestData Request(string method, string? body, CancellationToken cancellationToken = default)
+    public static HttpRequestData Request(string method, string? body, CancellationToken cancellationToken = default) =>
+        Request(method, body, null, cancellationToken);
+
+    /// <summary>#1506 (Task 12): as <see cref="Request(string, string?, CancellationToken)"/>, at <paramref name="url"/> (its query read as a function reads it).</summary>
+    public static HttpRequestData Request(string method, string? body, Uri? url, CancellationToken cancellationToken = default)
     {
         var services = new ServiceCollection();
         services.Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer());
         var context = Substitute.For<FunctionContext>();
         context.InstanceServices.Returns(services.BuildServiceProvider());
         context.CancellationToken.Returns(cancellationToken);
-        var request = new FakeRequest(context, method);
+        var request = new FakeRequest(context, method, url ?? new Uri("https://api.example.test/api/Admin/Drain"));
         if (body != null)
         {
             request.Body.Write(System.Text.Encoding.UTF8.GetBytes(body));
@@ -279,7 +283,7 @@ internal static class FakeHttp
         return JsonNode.Parse(response.Body)!.ToJsonString();
     }
 
-    private sealed class FakeRequest(FunctionContext context, string method) : HttpRequestData(context)
+    private sealed class FakeRequest(FunctionContext context, string method, Uri url) : HttpRequestData(context)
     {
         public override Stream Body { get; } = new MemoryStream();
 
@@ -287,7 +291,7 @@ internal static class FakeHttp
 
         public override IReadOnlyCollection<IHttpCookie> Cookies { get; } = Array.Empty<IHttpCookie>();
 
-        public override Uri Url { get; } = new("https://api.example.test/api/Admin/Drain");
+        public override Uri Url { get; } = url;
 
         public override IEnumerable<ClaimsIdentity> Identities { get; } = Array.Empty<ClaimsIdentity>();
 

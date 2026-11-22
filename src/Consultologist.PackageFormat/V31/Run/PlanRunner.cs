@@ -111,7 +111,7 @@ public sealed partial class PlanRunner
         private readonly RunPlan plan = runner.plan;
         private readonly RunLimits limits = runner.limits;
         private readonly IRunHost host = runner.host;
-        private readonly IRunRecorder recorder = runner.recorder;
+        private readonly FlushingRecorder recorder = new(runner.recorder);
         private readonly RunScope scope = new(inputs);
         private readonly RunFrame top = RunFrame.Top(runner.plan);
 
@@ -123,6 +123,12 @@ public sealed partial class PlanRunner
 
         /// <summary>How many instances the run has made.</summary>
         private int made;
+
+        /// <summary>How many instances the run has opened, against <see cref="RunLimits.JobInstances"/>.</summary>
+        private int opened;
+
+        /// <summary>The instance most recently opened (it takes a top-level overflow of the instances limit).</summary>
+        private RunInstance? lastOpened;
 
         /// <summary>The calls in flight, in the order dispatched.</summary>
         private readonly List<Flight> flights = [];
@@ -154,7 +160,7 @@ public sealed partial class PlanRunner
         public async Task<RunResult> RunAsync()
         {
             foreach (var key in plan.TopLevel)
-                Add(top, plan.Entries[key]);
+                await Add(top, plan.Entries[key]);
 
             try
             {
@@ -169,6 +175,7 @@ public sealed partial class PlanRunner
                     await DispatchAsync();
                     if (failure != null)
                         break;
+                    await recorder.FlushRoundAsync();
 
                     if (flights.Count == 0)
                     {
@@ -193,13 +200,31 @@ public sealed partial class PlanRunner
                     if (ReferenceEquals(finished, slowTimer))
                     {
                         await SlowAsync();
+                        await recorder.FlushRoundAsync();
                         continue;
                     }
 
                     var flight = flights.First(f => ReferenceEquals(f.Task, finished));
                     flights.Remove(flight);
                     await LandAsync(flight);
+                    await recorder.FlushRoundAsync();
                 }
+            }
+            catch (Exception) when (heldGates.Count > 0)
+            {
+                // #1506 (final review F2): an engine fault (the host's own exception) ends the run too; each gate's row still
+                // held is recorded first, effect null, so the caller's last flush stores it. The fault propagates as it was:
+                // a recording that throws here never replaces it.
+                try
+                {
+                    await RecordHeldGatesAsync();
+                }
+                catch (Exception)
+                {
+                    // the original fault wins
+                }
+
+                throw;
             }
             finally
             {
@@ -214,6 +239,9 @@ public sealed partial class PlanRunner
                     Observe(slowTimer);
                 timers.Dispose();
             }
+
+            await RecordHeldGatesAsync();
+            await recorder.FlushRoundAsync();
 
             var values = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
             foreach (var instance in top.Instances)
@@ -235,12 +263,40 @@ public sealed partial class PlanRunner
         // ---- the round ----------------------------------------------------------------------
 
         /// <summary>The instance of <paramref name="entry"/> in <paramref name="frame"/>, added to the run.</summary>
-        private RunInstance Add(RunFrame frame, PlanEntry entry)
+        private async Task Add(RunFrame frame, PlanEntry entry)
         {
+            if (!await OpensAsync(frame.Owner))
+                return;
             var instance = frame.Add(entry);
             instance.Sequence = made++;
+            lastOpened = instance;
             pending.Add(instance);
-            return instance;
+        }
+
+        /// <summary>
+        /// #1506 (R2, D1): whether the run may open one more instance (a node, check or deliverable instance, a loop item, a
+        /// pass, a call's body). Past <see cref="RunLimits.JobInstances"/> the instance is not opened and the job fails with
+        /// A09-001 through <see cref="FailAsync"/>, which settles <paramref name="owner"/> (the loop, while, branch or call
+        /// whose step it was) as failed and records its row, so the result's key names that row. A top-level overflow has no
+        /// owner: the most recently opened instance still unsettled takes the failure, so the key is never null.
+        /// </summary>
+        private async Task<bool> OpensAsync(RunInstance? owner)
+        {
+            if (failure != null)
+                return false;
+            if (opened >= limits.JobInstances)
+            {
+                var target = owner is { IsSettled: false } ? owner : lastOpened is { IsSettled: false } ? lastOpened : owner ?? lastOpened;
+                var sentence = RunSentences.JobInstances(limits.JobInstances);
+                if (target != null && !target.IsSettled)
+                    await FailAsync(target, sentence);
+                else
+                    failure = (sentence, target?.Key);
+                return false;
+            }
+
+            opened++;
+            return true;
         }
 
         /// <summary>The instances not settled, in the fixed order.</summary>
@@ -288,15 +344,23 @@ public sealed partial class PlanRunner
                     return true;
                 case PlanKind.Computed:
                     if (await GateAsync(instance))
+                    {
+                        instance.StartedAtUtc ??= host.UtcNow;
                         await ComputeAsync(instance);
+                    }
+
                     return true;
                 case PlanKind.For:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await LoopAsync(instance);
                 case PlanKind.While:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await WhileAsync(instance);
                 case PlanKind.If or PlanKind.Case:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await BranchAsync(instance);
                 case PlanKind.Call:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await CallAsync(instance);
                 default:
                     return false;
@@ -313,14 +377,15 @@ public sealed partial class PlanRunner
             if (entry.If is not { } rule)
                 return true;
 
-            var decision = await DecideRuleAsync(instance, rule, "if", scope.Data(entry, instance.Frame, entry.Reads));
+            var data = scope.Data(entry, instance.Frame, entry.Reads);
+            var decision = await DecideRuleAsync(instance, rule, "if", data);
             if (decision.Failure is { } failed)
             {
                 await FailLeafAsync(instance, RuleFailed(Subject(instance), "if", failed));
                 return false;
             }
 
-            await recorder.DecisionAsync(new RunDecision(instance.Key, "self", entry.Printed("if"), decision.Result, null, host.UtcNow));
+            await RecordDecisionAsync(instance, instance.Frame, "self", entry.Rules.GetValueOrDefault("if"), entry.Printed("if"), data, decision.Result, null);
             if (decision.Result)
                 return true;
 
@@ -341,7 +406,9 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            var value = await EvaluateRuleAsync(instance, expression, "expression", scope.Data(entry, instance.Frame, entry.Reads));
+            var data = scope.Data(entry, instance.Frame, entry.Reads);
+            instance.EvaluatedOver = data;
+            var value = await EvaluateRuleAsync(instance, expression, "expression", data);
             if (value.Failure is { } failed)
             {
                 await FailLeafAsync(instance, RuleFailed(ComputedSubject(instance), "expression", failed));
@@ -377,6 +444,30 @@ public sealed partial class PlanRunner
             new(instance.Key, instance.Entry.Key, instance.Frame.Function, member, data);
 
         /// <summary>
+        /// #1506 (area 09; part 08 § 5; R6, D4): records a decision of <paramref name="instance"/> (its owner) at
+        /// <paramref name="site"/>: <paramref name="rule"/>'s reads, each with the hash of its value in <paramref name="data"/>
+        /// (the data the rule was decided over, inline or sent to the host), and the flags of what they read
+        /// (<see cref="RunScope.Lineage"/>, read in <paramref name="frame"/>, where the rule was decided). A rule the plan does
+        /// not hold (never, for a plan <see cref="RunPlan.Build"/> made) records no reads and both flags.
+        /// </summary>
+        private Task RecordDecisionAsync(
+            RunInstance instance, RunFrame frame, string site, PlanRule? rule, string condition, JsonObject data, bool? result, string? branch)
+        {
+            var reads = new List<RunRead>();
+            var (runDependent, modelDerived) = rule == null ? (true, true) : (false, false);
+            foreach (var path in rule?.Reads ?? [])
+            {
+                reads.Add(new RunRead(path, CanonicalJson.Hash(RunScope.At(data, path))));
+                var (run, model) = RunScope.Lineage(instance.Entry, frame, path);
+                runDependent |= run;
+                modelDerived |= model;
+            }
+
+            return recorder.DecisionAsync(new RunDecision(instance.Key, site, condition, rule?.ExpressionHash ?? CanonicalJson.Hash(null),
+                result, branch, reads, runDependent, modelDerived, host.UtcNow));
+        }
+
+        /// <summary>
         /// Part 03 § 11.3's sentence for a rule that failed at run time; a host that answered from a plan not the job's
         /// (<see cref="RuleTurn.PlanFailure"/>) is S07-006, as an agent call's is.
         /// </summary>
@@ -395,6 +486,7 @@ public sealed partial class PlanRunner
                 {
                     // A render takes no slot.
                     instance.Phase = InstancePhase.Running;
+                    instance.StartedAtUtc ??= host.UtcNow;
                     var render = new RenderCall(instance.Key, entry.Key, instance.Frame.Function,
                         scope.Data(entry, instance.Frame, CallReads(entry)), limits.RenderSteps, instance.Placed);
                     flights.Add(new Flight(instance, host.RenderAsync(render), FlightKind.Render));
@@ -413,6 +505,7 @@ public sealed partial class PlanRunner
                 agentsInFlight++;
                 peakInFlight = Math.Max(peakInFlight, agentsInFlight);
                 instance.Phase = InstancePhase.Running;
+                instance.StartedAtUtc ??= host.UtcNow;
                 var call = new AgentCall(instance.Key, entry.Key, instance.Frame.Function, 1, false,
                     scope.Data(entry, instance.Frame, CallReads(entry)), instance.Placed);
                 StartAgent(instance, call);
@@ -459,6 +552,7 @@ public sealed partial class PlanRunner
         private async Task RenderedAsync(RunInstance instance, RenderOutcome outcome)
         {
             instance.CallDetail = outcome.Detail;
+            instance.CallProduced = outcome.Produced;
             if (outcome.TooManySteps)
             {
                 await FailAsync(instance, RunSentences.StoppedRendering(Subject(instance), limits.RenderSteps));
@@ -511,26 +605,308 @@ public sealed partial class PlanRunner
             return SettleAsync(instance, RowState.Failed, sentence, RunScope.Absent("failed"), instance.ComposedHash);
         }
 
-        /// <summary>Settles <paramref name="instance"/> and records its row.</summary>
-        private Task SettleAsync(RunInstance instance, RowState state, string? reason, JsonObject read, string? valueHash)
+        /// <summary>
+        /// Settles <paramref name="instance"/> and records its row: #1506 (area 09; part 08 § 4; D2) its detail the entry's
+        /// facts (<see cref="EntryDetail"/>), its item's name (<see cref="ItemNameDetail"/>) and its kind's members, and its
+        /// settled text beside it (<see cref="SettledText"/>), never in the detail. A computed row has its two hashes
+        /// (<see cref="ComputedHashes"/>, D9) and a check's row part 08 § 6's members (<see cref="CheckDetail"/>). #1506 (D7): a
+        /// gate check's row is held until the last deliverable it gates has settled (<see cref="ReleaseGateAsync"/>), so its
+        /// <c>effect</c> is written on its one row; a deliverable's row, once recorded, may release its gate's.
+        /// </summary>
+        private async Task SettleAsync(RunInstance instance, RowState state, string? reason, JsonObject read, string? valueHash)
         {
             instance.Settle(state, read, reason);
             pending.Remove(instance);
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
-            ItemNameDetail(instance.Frame, detail);
+            EntryDetail(instance.Entry, detail);
+            ClockDetail(detail, state, instance.StartedAtUtc);
+            var itemName = ItemNameDetail(instance.Frame, detail);
+            string? spotsIn = null;
             if (instance.Entry.Kind == PlanKind.Agent)
+            {
                 AgentDetail(instance, detail);
+                spotsIn = SourceLayout.Text(instance.CallProduced?["sent"]);
+            }
             else if (instance.Entry.Kind == PlanKind.Rendered)
+            {
                 Merge(instance.CallDetail, detail);
+                spotsIn = SourceLayout.Text(read["content"]);
+            }
             else if (instance.Entry.Kind == PlanKind.Deliverable)
+            {
                 DeliverableSettled(instance, state, reason, detail);
+                spotsIn = instance.ComposedText;
+            }
             else if (instance.Entry.Kind == PlanKind.For)
+            {
                 LoopDetail(instance, detail);
+            }
             else if (instance.Entry.Kind == PlanKind.While)
+            {
                 WhileDetail(instance, detail);
+            }
             else if (instance.Entry.Kind == PlanKind.Call)
+            {
                 CallDetail(instance, detail);
-            return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail));
+            }
+            else if (instance.Entry.Kind == PlanKind.Computed)
+            {
+                ComputedHashes(instance, detail);
+            }
+
+            var text = SettledText(read, itemName, RecordRows.SpotTexts(detail["runSpots"], spotsIn));
+            if (instance.Entry.Kind == PlanKind.Deliverable && instance.ComposedText is { } composed)
+            {
+                // #1506 (R1): a deliverable that composed keeps its composed text, released, held, blocked or failed empty
+                text ??= [];
+                text["content"] = composed;
+            }
+
+            if (IsCheck(instance.Key))
+                text = WithLists(text, CheckDetail(instance, read, detail));
+            var row = new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail, text);
+            if (instance.Entry.Gates.Count > 0)
+            {
+                heldGates.Add((instance, row));
+                await ReleaseGateAsync(instance);
+                return;
+            }
+
+            await recorder.RowAsync(row);
+            if (instance.Entry.Kind == PlanKind.Deliverable && instance.Entry.Check is { } check && instance.Frame.Find(check) is { } gate)
+                await ReleaseGateAsync(gate);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; final review F3): a row's clock members, storage 11's: <c>startedAtUtc</c> (the host's
+        /// clock when it started, <paramref name="startedAtUtc"/>), <c>completedAtUtc</c> (the host's clock now, as it settles)
+        /// and <c>durationMs</c> (their difference in whole milliseconds), as round-trip UTC text. All three <c>null</c> for a
+        /// row that never started: skipped, not run, or failed before it started (a limit refused it).
+        /// </summary>
+        private void ClockDetail(JsonObject detail, RowState state, DateTime? startedAtUtc)
+        {
+            if (state is RowState.Skipped or RowState.NotRun || startedAtUtc is not { } started)
+            {
+                detail["startedAtUtc"] = null;
+                detail["completedAtUtc"] = null;
+                detail["durationMs"] = null;
+                return;
+            }
+
+            var completed = host.UtcNow;
+            detail["startedAtUtc"] = RecordRows.Clock(started);
+            detail["completedAtUtc"] = RecordRows.Clock(completed);
+            detail["durationMs"] = RecordRows.DurationMs(started, completed);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; D9): a computed row's <c>inputHash</c>, over its <c>expression</c> and the values it
+        /// read (its rule's reads, each hashed from the data it was evaluated over), and when the row is run-dependent its
+        /// <c>runNeutralHash</c>, the same with the run-dependent reads' hashes left out (<see cref="RunScope.Lineage"/>, read
+        /// in its frame). Neither when the expression was never evaluated (skipped by its <c>if</c>, never reached).
+        /// </summary>
+        private static void ComputedHashes(RunInstance instance, JsonObject detail)
+        {
+            if (instance.EvaluatedOver is not { } data || !instance.Entry.Rules.TryGetValue("expression", out var rule))
+                return;
+            var reads = rule.Reads.Select(path => new RunRead(path, CanonicalJson.Hash(RunScope.At(data, path)))).ToList();
+            detail["inputHash"] = RecordRows.ComputedInputHash(rule.Json, reads);
+            if (IsTrue(detail["runDependent"]))
+            {
+                var dependent = reads.Where(r => RunScope.Lineage(instance.Entry, instance.Frame, r.Path).RunDependent).Select(r => r.Path);
+                detail["runNeutralHash"] = RecordRows.ComputedNeutralHash(rule.Json, reads, dependent);
+            }
+        }
+
+        /// <summary>#1506 (area 09; part 08 § 2.2): whether a row key is in the record's checks section (its root is <c>check.</c>).</summary>
+        private static bool IsCheck(string key) => key.StartsWith("check.", StringComparison.Ordinal);
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7, D8): a check's row members from what only the runner knows: <c>alignedWith</c>
+        /// (<see cref="AlignedWith(RunFrame)"/>), <c>checked</c> and <c>reads</c> (<see cref="CheckReads"/>, over the data its
+        /// expression was evaluated over, else its reads now), its <c>check_result</c>'s members (<see cref="RecordRows.CheckResult"/>)
+        /// and its <c>effect</c>: for a check that gates nothing, <c>read by &lt;its first reader&gt;</c> or <c>null</c>
+        /// (<see cref="ReadBy"/>); a gate's is written when its row is released. Gives back the result's lists for the
+        /// settled text.
+        /// </summary>
+        private JsonObject? CheckDetail(RunInstance instance, JsonObject read, JsonObject detail)
+        {
+            var entry = instance.Entry;
+            detail["alignedWith"] = AlignedWith(instance.Frame);
+            var (target, reads) = CheckReads(instance, instance.EvaluatedOver ?? scope.Data(entry, instance.Frame, entry.Reads));
+            detail["checked"] = target;
+            detail["reads"] = reads;
+            var lists = RecordRows.CheckResult(read["value"], detail);
+            detail["effect"] = entry.Gates.Count > 0 ? null : ReadBy(entry, instance.Frame.Map);
+            return lists;
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D8): what a check ran on and its other reads. <c>checked</c> is the one deliverable its
+        /// reads name, with its composed hash; with none, the one node they name, with the hash of its <c>.content</c>; else
+        /// <c>null</c>. <c>reads</c> is every other path it reads (<see cref="CompiledReads"/>, in path order), each with the
+        /// canonical hash of the value in <paramref name="data"/>.
+        /// </summary>
+        private static (JsonObject? Checked, JsonArray Reads) CheckReads(RunInstance instance, JsonObject data)
+        {
+            var map = instance.Frame.Map;
+            var named = CompiledReads(instance.Entry).Select(path => (Path: path, Key: NamedKey(map, path))).ToList();
+            var deliverables = named.Select(n => n.Key).OfType<string>().Where(k => k.StartsWith("deliverable.", StringComparison.Ordinal)).Distinct(StringComparer.Ordinal).ToList();
+            var nodes = named.Select(n => n.Key).OfType<string>().Where(k => k.StartsWith("node.", StringComparison.Ordinal)).Distinct(StringComparer.Ordinal).ToList();
+            var target = deliverables.Count == 1 ? deliverables[0] : deliverables.Count == 0 && nodes.Count == 1 ? nodes[0] : null;
+
+            JsonObject? found = null;
+            if (target != null)
+            {
+                var standing = instance.Frame.Find(target);
+                var hash = standing == null ? null
+                    : standing.Entry.Kind == PlanKind.Deliverable ? standing.ComposedHash
+                    : SourceLayout.Text(standing.Read?["content"]) is { } content ? CanonicalJson.HashText(content)
+                    : null;
+                found = new JsonObject { ["ref"] = standing?.Key ?? target, ["hash"] = hash };
+            }
+
+            var reads = new JsonArray();
+            foreach (var (path, key) in named)
+            {
+                if (target != null && key == target)
+                    continue;
+                reads.Add(new JsonObject { ["path"] = path, ["hash"] = CanonicalJson.Hash(RunScope.At(data, path)) });
+            }
+
+            return (found, reads);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; D7, D8): an entry's compiled reads, its <c>reads</c> as publish wrote them (in order, each path once,
+        /// none under another); <see cref="PlanEntry.Reads"/> when it has none.
+        /// </summary>
+        private static IReadOnlyList<string> CompiledReads(PlanEntry entry) =>
+            entry.Json["reads"] is JsonArray reads
+                ? reads.Select(r => SourceLayout.Text(r)).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList()
+                : entry.Reads;
+
+        /// <summary>The key of <paramref name="map"/> a read of <paramref name="path"/> names: the longest key that is the path or a prefix of it at a dot; null for none.</summary>
+        private static string? NamedKey(IReadOnlyDictionary<string, PlanEntry> map, string path)
+        {
+            var segments = path.Split('.');
+            for (var length = segments.Length; length >= 2; length--)
+            {
+                var key = string.Join('.', segments, 0, length);
+                if (map.ContainsKey(key))
+                    return key;
+            }
+
+            return null;
+        }
+
+        /// <summary>#1506 (D7): each check entry's <c>read by</c> effect once worked out, by entry (reference equality: only looked up).</summary>
+        private readonly Dictionary<PlanEntry, string?> readers = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7): <c>read by &lt;key&gt;</c>, the first in key order of the entries of
+        /// <paramref name="map"/> whose compiled reads (<see cref="CompiledReads"/>) name <paramref name="check"/>; <c>null</c>
+        /// when none does.
+        /// </summary>
+        private string? ReadBy(PlanEntry check, IReadOnlyDictionary<string, PlanEntry> map)
+        {
+            if (readers.TryGetValue(check, out var known))
+                return known;
+            string? first = null;
+            foreach (var (key, entry) in map)
+            {
+                if (ReferenceEquals(entry, check) || (first != null && string.CompareOrdinal(key, first) >= 0))
+                    continue;
+                if (CompiledReads(entry).Any(path => NamedKey(map, path) == check.Key))
+                    first = key;
+            }
+
+            var effect = first == null ? null : $"read by {first}";
+            readers[check] = effect;
+            return effect;
+        }
+
+        /// <summary>#1506 (area 09; part 08 §§ 6, 11): <paramref name="text"/> with a check result's lists (<paramref name="lists"/>) added.</summary>
+        private static JsonObject? WithLists(JsonObject? text, JsonObject? lists)
+        {
+            if (lists == null)
+                return text;
+            text ??= [];
+            foreach (var (name, list) in lists)
+                text[name] = list?.DeepClone();
+            return text;
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 §§ 4, 4.1): the entry's facts on its row, as <c>resolve.json</c> writes them: <c>label</c>,
+        /// <c>producer</c>, the three flags (an agent row always <c>modelDerived</c>), <c>formatHash</c> and <c>typeHash</c>
+        /// (<c>null</c> for a flow kind), and on an agent row its <c>agent</c>: the binding's attested agent and the binding.
+        /// </summary>
+        private void EntryDetail(PlanEntry entry, JsonObject detail)
+        {
+            var json = entry.Json;
+            var flow = entry.Kind is PlanKind.For or PlanKind.While or PlanKind.If or PlanKind.Case or PlanKind.Call;
+            detail["label"] = SourceLayout.Text(json["label"]) ?? entry.Id;
+            detail["producer"] = SourceLayout.Text(json["producer"]) ?? (entry.Kind == PlanKind.Agent ? "generated" : "computed");
+            detail["runDependent"] = IsTrue(json["runDependent"]);
+            detail["modelDerived"] = entry.Kind == PlanKind.Agent || IsTrue(json["modelDerived"]);
+            detail["profileCarrying"] = IsTrue(json["profileCarrying"]);
+            detail["formatHash"] = flow ? null : SourceLayout.Text(json["formatHash"]);
+            detail["typeHash"] = flow ? null : SourceLayout.Text(json["typeHash"]);
+            if (entry.Kind == PlanKind.Agent)
+                detail["agent"] = AgentOf(entry);
+        }
+
+        /// <summary>
+        /// Part 08 § 4.1's <c>agent</c> of an agent entry: <c>{ name, version, binding { format, producer, via } }</c> from the
+        /// plan's <c>bindings.&lt;format key&gt;.&lt;producer&gt;</c>; <c>null</c> when the plan names none (the call then failed).
+        /// </summary>
+        private JsonObject? AgentOf(PlanEntry entry)
+        {
+            const string defs = "#/$defs/";
+            if (entry.Format is not JsonObject format || SourceLayout.Text(format["$ref"]) is not { } reference
+                || !reference.StartsWith(defs, StringComparison.Ordinal) || SourceLayout.Text(entry.Json["producer"]) is not { } producer
+                || ((plan.Document["bindings"] as JsonObject)?[reference[defs.Length..]] as JsonObject)?[producer] is not JsonObject binding
+                || SourceLayout.Text(binding["agentName"]) is not { } name)
+            {
+                return null;
+            }
+
+            JsonNode? version = binding["agentVersion"] switch
+            {
+                JsonValue number when number.GetValueKind() == JsonValueKind.Number && number.TryGetValue<int>(out var n) => n,
+                JsonValue text when text.GetValueKind() == JsonValueKind.String
+                    && int.TryParse(text.GetValue<string>(), NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) => parsed,
+                _ => null,
+            };
+            return new JsonObject
+            {
+                ["name"] = name,
+                ["version"] = version,
+                ["binding"] = new JsonObject { ["format"] = reference[defs.Length..], ["producer"] = producer, ["via"] = SourceLayout.Text(binding["via"]) },
+            };
+        }
+
+        private static bool IsTrue(JsonNode? node) => node is JsonValue value && value.GetValueKind() == JsonValueKind.True;
+
+        /// <summary>
+        /// #1506 (area 09; D2): a row's settled text, for the retained text and never the row: <c>content</c> (the read form's
+        /// <c>.content</c>), <c>value</c> (its <c>.value</c>'s canonical JSON when that is not text), <c>itemName</c> (a name not
+        /// drawn from package text, <paramref name="itemName"/>) and <c>spots</c> (<paramref name="spots"/>); <c>null</c> when
+        /// there is none.
+        /// </summary>
+        private static JsonObject? SettledText(JsonObject read, string? itemName, JsonObject? spots)
+        {
+            var text = new JsonObject();
+            if (SourceLayout.Text(read["content"]) is { } content)
+                text["content"] = content;
+            if (read["value"] is { } value && !(value is JsonValue v && v.GetValueKind() == JsonValueKind.String))
+                text["value"] = CanonicalJson.Write(value);
+            if (itemName != null)
+                text["itemName"] = itemName;
+            if (spots != null)
+                text["spots"] = spots;
+            return text.Count == 0 ? null : text;
         }
 
         // ---- words --------------------------------------------------------------------------

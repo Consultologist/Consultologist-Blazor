@@ -167,6 +167,12 @@ events partition, stamp `textDroppedAtUtc` (and `inputsDroppedAtUtc` when
 the input clock is the one that fired), append the `retention` history
 event, upsert the index row — the order unchanged: record first.
 
+A specVersion 31 job (record storage 12, #1506) writes more than the one output blob: the retained text goes to
+per-row text blobs under `{appUserId}/{jobId}/text/` in the same outputs container, so `DropText`'s blob step
+deletes that prefix too, and the canonical record document is `{appUserId}/{jobId}/record.json` beside them, which
+the drop leaves. The rows themselves are a records-account table (`ConsultGenerationRecordRows`) that holds no text, so
+the drop rewrites none of them. Part 08 § 1.1 is the design; `docs/STORAGE.md` has what deletes what.
+
 ### 2.3 History / record
 
 Nothing new is stored; two things are added to what is: the blob pointers

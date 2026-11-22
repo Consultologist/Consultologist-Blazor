@@ -125,6 +125,18 @@ internal static class V31Contract
         ["A08-006"] = "<Subject> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it.",
     };
 
+    /// <summary>
+    /// #1506: area 09's own sentences (<c>A09-NNN</c>), as plan area-09-the-record lists them (A09-001: the tenth limit, the
+    /// instances one job may open, part 09 § 3.4; <c>&lt;n&gt;</c> is written as the other limits are, <c>10,000</c>; A09-002:
+    /// a record row larger than the row store holds, part 09 § 9).
+    /// </summary>
+    private static readonly Dictionary<string, string> RecordAreaSentences = new()
+    {
+        ["A09-001"] = "The job reached <n> steps, the most this engine runs for one job.",
+        // #1506 (final review F7): a record row larger than the row store holds; <row key> is package ids and item ids
+        ["A09-002"] = "The job's record of '<row key>' is larger than this engine stores. Tell the operator.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -258,6 +270,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A08-", StringComparison.Ordinal))
         {
             Assert.True(ChecksAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A09-", StringComparison.Ordinal))
+        {
+            Assert.True(RecordAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

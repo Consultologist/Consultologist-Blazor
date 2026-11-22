@@ -44,9 +44,12 @@ public static partial class BodyComposer
 
             var globals = new ScriptObject();
             globals.SetValue("value", value, false);
+            var pass = Pass();
             var output = Render(plan, globals);
             if (InNeutralPass)
                 return output; // a text spot's pipeline over the run-neutral text: no sub-row of the record
+            var input = value is string piped ? piped : CanonicalJson.Write(TemplateValues.ToJson(value));
+            RenderTexts.Add(new RenderedText(input, output));
             Renders.Add(new ComposedRender(
                 step.N,
                 key,
@@ -56,7 +59,8 @@ public static partial class BodyComposer
                 InputSize(value, renderer["input"]),
                 CanonicalJson.HashText(output),
                 output.EnumerateRunes().Count(),
-                step.RunDependent));
+                step.RunDependent,
+                pass));
             return output;
         }
 

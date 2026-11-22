@@ -63,9 +63,9 @@ public class PlacementDecisionsTests
         return (result, host, recorder);
     }
 
-    /// <summary>The decisions recorded for the placements of <paramref name="site"/>'s row: <c>(member, printed, result)</c>.</summary>
-    internal static List<(string Member, string Printed, bool Result)> Placements(ListRecorder recorder, string site) =>
-        recorder.Decisions.Where(d => d.Site == site && d.Member != "self").Select(d => (d.Member, d.Printed, d.Result == true)).ToList();
+    /// <summary>The decisions recorded for the placements of <paramref name="site"/>'s row: <c>(site, condition, result)</c>.</summary>
+    internal static List<(string Site, string Condition, bool Result)> Placements(ListRecorder recorder, string site) =>
+        recorder.Decisions.Where(d => d.Owner == site && d.Site != "self").Select(d => (d.Site, d.Condition, d.Result == true)).ToList();
 
     private static string Printed(string rule) => JsonLogicPrinter.Print(JsonNode.Parse(rule));
 
@@ -86,7 +86,7 @@ public class PlacementDecisionsTests
                 ("snippet.s", Printed(SnippetIf), true),
             ],
             Placements(recorder, "node.draft"));
-        Assert.All(recorder.Decisions.Where(d => d.Site == "node.draft"), d => Assert.Equal(FakeRunHost.Start, d.DecidedAtUtc));
+        Assert.All(recorder.Decisions.Where(d => d.Owner == "node.draft"), d => Assert.Equal(FakeRunHost.Start, d.DecidedAtUtc));
         Assert.Equal(
             new Dictionary<string, bool> { ["part.p"] = true, ["macro-folder.f"] = true, ["macro.f.m"] = true, ["snippet.s"] = true },
             PlacedOf(host, "node.draft"));
@@ -117,7 +117,7 @@ public class PlacementDecisionsTests
 
         // The macro does not hold: its body's snippet is not decided.
         var (_, macroHost, macroRecorder) = await RunAsync(plan, Host(plan, _ => """{"answer":false,"reason":"The plan says so."}"""));
-        Assert.Equal(["part.p", "macro-folder.f", "macro.f.m"], Placements(macroRecorder, "node.draft").Select(d => d.Member));
+        Assert.Equal(["part.p", "macro-folder.f", "macro.f.m"], Placements(macroRecorder, "node.draft").Select(d => d.Site));
         Assert.False(PlacedOf(macroHost, "node.draft")["macro.f.m"]);
         Assert.False(PlacedOf(macroHost, "node.draft").ContainsKey("snippet.s"));
     }

@@ -110,8 +110,8 @@ public class DeliverableComposeTests
         Composed(outcome);
         Assert.Equal(
             CanonicalJson.Write(new JsonArray(
-                new JsonObject { ["site"] = "snippet.closing", ["hash"] = CanonicalJson.HashText("**Next steps:** see \\*you\\* soon") },
-                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Dr A\\. Sample\\, see \\*you\\* soon") })),
+                new JsonObject { ["site"] = "snippet.closing", ["hash"] = CanonicalJson.HashText("**Next steps:** see \\*you\\* soon"), ["sent"] = true },
+                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Dr A\\. Sample\\, see \\*you\\* soon"), ["sent"] = true })),
             CanonicalJson.Write(outcome.Detail!["units"]));
     }
 
@@ -131,9 +131,9 @@ public class DeliverableComposeTests
         Assert.Equal("## Plan\nSeen by Dr A\\. Sample\n&#32;Sample Oncology Clinic\n", Composed(outcome));
         Assert.Equal(
             CanonicalJson.Write(new JsonArray(
-                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Seen by Dr A\\. Sample\n&#32;Sample Oncology Clinic") },
-                new JsonObject { ["site"] = "snippet.doctor", ["hash"] = CanonicalJson.HashText(" Dr A\\. Sample") },
-                new JsonObject { ["site"] = "snippet.clinic", ["hash"] = CanonicalJson.HashText("&#32;Sample Oncology Clinic") })),
+                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Seen by Dr A\\. Sample\n&#32;Sample Oncology Clinic"), ["sent"] = true },
+                new JsonObject { ["site"] = "snippet.doctor", ["hash"] = CanonicalJson.HashText(" Dr A\\. Sample"), ["sent"] = true },
+                new JsonObject { ["site"] = "snippet.clinic", ["hash"] = CanonicalJson.HashText("&#32;Sample Oncology Clinic"), ["sent"] = true })),
             CanonicalJson.Write(outcome.Detail!["units"]));
     }
 
@@ -503,7 +503,8 @@ public class DeliverableComposeTests
     public async Task TheMacrosDeliverable_IsItsDraftEscaped()
     {
         // macros.run.txt's markdown_block deliverable reads the plain-text draft, so it composes the draft escaped (its
-        // ';' and '.' are ASCII punctuation), and its pinned inputHash is the hash of that escaped text.
+        // ';' and '.' are ASCII punctuation), and its pinned composedHash (#1506: part 08 § 10's row, which has no inputHash)
+        // is the hash of that escaped text.
         var plan = RunFixture.Plan(RunGoldenTests.Macros());
         Assert.Equal("[{\"at\":\"1:1\",\"unit\":null}]", CanonicalJson.Write(plan.Entries[Note].Json["escapes"]));
         var golden = File.ReadAllLines(Path.Combine(RunGoldenTests.GoldenFolder(), "macros.run.txt"));
@@ -516,7 +517,7 @@ public class DeliverableComposeTests
         Assert.Contains("Dr A\\. Sample\\.", content, StringComparison.Ordinal);
         Assert.Equal(MarkdownEscape.Escape(draft!) + "\n", content);
         Assert.Equal(CanonicalJson.HashText(content!), (string?)recorder.Row(Note).Detail["inputHash"]);
-        Assert.Equal((string?)pinned["inputHash"], (string?)recorder.Row(Note).Detail["inputHash"]);
+        Assert.Equal((string?)pinned["composedHash"], (string?)recorder.Row(Note).Detail["inputHash"]);
     }
 
     /// <summary>The macros run (<see cref="RunGoldenTests.Macros"/>'s hosts and inputs) of <paramref name="plan"/>, asserted completed.</summary>

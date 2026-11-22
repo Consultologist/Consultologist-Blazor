@@ -58,17 +58,32 @@ public sealed record LoadRunInputsV31Input(
     string? TimeZone,
     JsonObject RunFactsBase);
 
-/// <summary>#1503: the job's inputs document and its run facts, or the sentence the job fails with.</summary>
-public sealed record LoadRunInputsV31Result(JsonObject? Document, JsonObject? RunFacts, string? Refusal);
+/// <summary>
+/// #1503: the job's inputs document and its run facts, or the sentence the job fails with. #1506 (area 09; part 08 §§ 3,
+/// 8.1; R4): with them, what the header records: <paramref name="VersionsRan"/>, the versions this process runs the job
+/// with, and <paramref name="RecordedRunFacts"/>, the raw value of each run fact the package reads (<c>date</c> as
+/// <c>{ value, timeZone }</c>). Trailing and optional: a history written before reads as it did.
+/// </summary>
+public sealed record LoadRunInputsV31Result(
+    JsonObject? Document,
+    JsonObject? RunFacts,
+    string? Refusal,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    JsonObject? VersionsRan = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    JsonObject? RecordedRunFacts = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 03 § 4.3; D6): reads a 31 job's inputs document for its orchestration and works out
 /// its run facts there, so they are in the history and the orchestration never reads the time zone database: the start's
 /// (<see cref="LoadRunInputsV31Input.RunFactsBase"/>), then <see cref="V31StartChecks.RunFacts"/>'s over the job's plan (from the
 /// store's cache, held to its <c>resolveHash</c>). A document that is gone (the retention drop deleted it) is A06-009; a plan
-/// that is not the job's is the load's sentence.
+/// that is not the job's is the load's sentence. #1506 (area 09; R4): and what the header records, worked out here for the
+/// reason the run facts are: <c>versionsRan</c>, from the version's verified <c>lock.json</c> and this process's
+/// <paramref name="toolchain"/> (assembly versions can differ between workers), and the run facts the package reads.
 /// </summary>
-public sealed class LoadRunInputsV31Activity(IRunInputsStore inputs, ICompiledPackageStore store, ILogger<LoadRunInputsV31Activity>? logger = null)
+public sealed class LoadRunInputsV31Activity(
+    IRunInputsStore inputs, ICompiledPackageStore store, EngineToolchain toolchain, ILogger<LoadRunInputsV31Activity>? logger = null)
 {
     [Function(ConsultGenerationActivityNames.LoadRunInputsV31)]
     public async Task<LoadRunInputsV31Result> RunAsync([ActivityTrigger] LoadRunInputsV31Input input, CancellationToken cancellationToken)
@@ -77,7 +92,7 @@ public sealed class LoadRunInputsV31Activity(IRunInputsStore inputs, ICompiledPa
         if (await inputs.ReadAsync(input.InputsBlob, cancellationToken) is not { } document)
             return new LoadRunInputsV31Result(null, null, NoLongerHeld);
 
-        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash,
+        var (plan, lockDocument, refusal) = await V31Plans.LoadWithLockAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash,
             (ILogger?)logger ?? NullLogger.Instance, cancellationToken);
         if (plan == null)
             return new LoadRunInputsV31Result(null, null, refusal);
@@ -85,7 +100,10 @@ public sealed class LoadRunInputsV31Activity(IRunInputsStore inputs, ICompiledPa
         var facts = (JsonObject)input.RunFactsBase.DeepClone();
         foreach (var (name, value) in V31StartChecks.RunFacts(plan, input.StartedAtUtc, input.TimeZone))
             facts[name] = value?.DeepClone();
-        return new LoadRunInputsV31Result(document, facts, null);
+        return new LoadRunInputsV31Result(
+            document, facts, null,
+            lockDocument == null ? null : toolchain.VersionsRanFor(lockDocument),
+            V31StartChecks.RecordedRunFacts(plan, facts, input.TimeZone));
     }
 
     /// <summary>A06-009: the job's held inputs are gone.</summary>

@@ -154,6 +154,7 @@ public sealed class DeliveryRunner
                         destination.Attempts.ToList());
                     rows.Add(row);
                     await recorder.DeliveryAsync(row);
+                    await recorder.FlushAsync();
                 }
             }
 

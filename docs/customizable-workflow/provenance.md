@@ -86,6 +86,18 @@ and `decisionFailureKind` (`could-not-decide` or `nothing-applied`) alongside
 `startFailure` when the run ended in the deciding stage. The node hash is
 unchanged: the decision is over recorded activity outputs, not a new input.
 
+## Where a specVersion 31 job's record lives
+
+At storage 12 (specVersion 31, #1506) the record leaves the job's Durable entity: each row is stored once, when it
+finishes, in a table keyed by job and escaped row key with the true key kept; the text the retention rules delete
+lives in blobs beside it, so no row is ever rewritten; and at every terminal state one canonical document is sealed
+from the header and the rows, and `recordHash`, the SHA-256 over its bytes, is written on the header. The record
+holds hashes, ids, counts, reasons and package text, so `recordHash` holds for the record's whole life, after the
+7-day text drop as before it. The design is [part 08 of the package format](package-format-v31/08-record.md); the
+contract is `provenance-record.md` § 6 and `hash-definitions.md` § 7 in `consultologist-provenance`; how the engine
+writes it is the [engine guide](engine-v31.md#the-record-area-09-1506). The "three kinds of field" above still
+describe records of storage 2–11, which read exactly as before.
+
 ## Declared, not recorded
 
 The chain names legs the record does not yet carry. They are design intent, and

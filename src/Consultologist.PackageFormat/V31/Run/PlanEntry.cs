@@ -46,10 +46,40 @@ public sealed record PlanBranch(IReadOnlyList<string> Nodes, string? Ret, IReadO
 /// lists it: its <paramref name="Site"/> (<c>part.&lt;id&gt;</c>, <c>snippet.&lt;id&gt;</c>, <c>macro.&lt;id&gt;</c>,
 /// <c>macro-folder.&lt;id&gt;</c>), the site that places it (<paramref name="Within"/>, null for the body itself), its
 /// header <c>if</c> rooted for the entry's place and compiled with its <c>plainConverts</c> (<paramref name="If"/>, null
-/// when it has none), that rule as the printer writes it (<paramref name="Printed"/>), and a macro's marker form
+/// when it has none), #1506 (area 09; D4) that rule's JSON, reads and hash (<paramref name="Rule"/>, null with
+/// <paramref name="If"/>), that rule as the printer writes it (<paramref name="Printed"/>), and a macro's marker form
 /// (<paramref name="Form"/>: <c>block</c> or <c>inline</c>; null for other kinds).
 /// </summary>
-public sealed record PlanPlacement(string Site, string? Within, IJsonLogicRule? If, string? Printed, string? Form);
+public sealed record PlanPlacement(string Site, string? Within, IJsonLogicRule? If, PlanRule? Rule, string? Printed, string? Form);
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; part 08 § 5.1; D4): a rule of the plan as a decision records it: its JSON as
+/// <c>resolve.json</c> writes it (already rooted for its place), its canonical text, the <c>var</c> paths it reads (in order
+/// of first appearance, no repeats) and its <c>expressionHash</c> (<see cref="CanonicalJson.Hash"/> of its JSON). A
+/// <c>case</c>'s is <c>{ "var": &lt;subject&gt; }</c>, its one read the subject.
+/// </summary>
+public sealed class PlanRule
+{
+    internal PlanRule(JsonNode? json)
+    {
+        Json = json;
+        Canonical = CanonicalJson.Write(json);
+        Reads = RunPlan.VarPaths(json).Distinct(StringComparer.Ordinal).ToList();
+        ExpressionHash = CanonicalJson.HashText(Canonical);
+    }
+
+    /// <summary>The rule as <c>resolve.json</c> holds it. Read-only: clone before placing it in another tree.</summary>
+    public JsonNode? Json { get; }
+
+    /// <summary>The rule's canonical JSON text (<see cref="CanonicalJson.Write"/>).</summary>
+    public string Canonical { get; }
+
+    /// <summary>Every <c>var</c> path the rule reads, in order of first appearance, without repeats.</summary>
+    public IReadOnlyList<string> Reads { get; }
+
+    /// <summary>The hash of the rule's canonical JSON.</summary>
+    public string ExpressionHash { get; }
+}
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 § 1.2 step 5): one entry of the plan: a node, check or deliverable of the package,
@@ -67,6 +97,7 @@ public sealed class PlanEntry
         int order,
         JsonObject json,
         IReadOnlyDictionary<string, IJsonLogicRule> rules,
+        IReadOnlyDictionary<string, PlanRule> recorded,
         IReadOnlyList<string> body,
         IReadOnlyList<PlanBranch> branches,
         string? ret,
@@ -89,6 +120,7 @@ public sealed class PlanEntry
         Expression = rules.GetValueOrDefault("expression");
         While = rules.GetValueOrDefault("while");
         Until = rules.GetValueOrDefault("until");
+        Rules = recorded;
         Body = body;
         Branches = branches;
         Ret = ret;
@@ -139,6 +171,12 @@ public sealed class PlanEntry
 
     /// <summary>The compiled <c>until</c> of a loop, or null.</summary>
     public IJsonLogicRule? Until { get; }
+
+    /// <summary>
+    /// #1506 (area 09; D4): each rule of the entry by member (<c>if</c>, <c>expression</c>, <c>while</c>, <c>until</c>; a
+    /// <c>case</c>'s subject under <c>case</c>), as a decision records it.
+    /// </summary>
+    public IReadOnlyDictionary<string, PlanRule> Rules { get; }
 
     /// <summary>The children's keys of a <c>for</c> or a <c>while</c>, in order; empty for every other kind.</summary>
     public IReadOnlyList<string> Body { get; }

@@ -25,7 +25,8 @@ public class OrchestratorV31Tests
     [InlineData(RowState.Held, "held")]
     [InlineData(RowState.Blocked, "blocked")]
     public void ADeliverablesRowState_IsNamedForTheEntity(RowState state, string name) =>
-        Assert.Equal(name, EntityRunRecorder.StateName(state));
+        // #1506 (final review M6): the recorder counts by the runner's own word (PlanRunner.StateWord), not a copy of it
+        Assert.Equal(name, PlanRunner.StateWord(state));
 
     [Fact]
     public async Task AJob_RunsToCompleted()
@@ -52,7 +53,7 @@ public class OrchestratorV31Tests
         // on the entity, write-once
         Assert.Equal(job.Pair.ResolveHash, job.State.ResolveHash);
         Assert.Equal(job.Pair.LockHash, job.State.LockHash);
-        Assert.Equal(9, job.State.Limits!.Count);
+        Assert.Equal(10, job.State.Limits!.Count);
         Assert.Equal(new DateTimeOffset(V31Job.Now, TimeSpan.Zero), job.State.StartedAtUtc);
 
         // the agent calls in RunGoldenTests' dispatch order: the runner's, unchanged by Durable
@@ -277,7 +278,7 @@ public class OrchestratorV31Tests
         var inputs = new V31Job.FakeInputs();
         var pointer = await inputs.WriteAsync(null, "user-1", "job-1", new JsonObject { ["inputs"] = new JsonObject() }, CancellationToken.None);
 
-        var held = await new LoadRunInputsV31Activity(inputs, store).RunAsync(
+        var held = await new LoadRunInputsV31Activity(inputs, store, V31Job.Toolchain.Value).RunAsync(
             new LoadRunInputsV31Input(pointer, packageRef.Name, packageRef.Version, resolveHash,
                 new DateTimeOffset(2026, 11, 17, 3, 30, 0, TimeSpan.Zero), "America/Toronto", new JsonObject { ["id"] = "job-1" }),
             CancellationToken.None);
@@ -367,6 +368,71 @@ public class OrchestratorV31Tests
     }
 
     [Fact]
+    public async Task TheHeader_RecordsWhatRan()
+    {
+        // #1506 (area 09; part 08 §§ 3, 8.1; R4): the versions that ran and the run facts, recorded once, before any node runs
+        var job = V31Job.Of("nested-note", resolve => resolve["run"] = new JsonArray("run.date", "run.id"));
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        var headers = context.Calls.Select((call, at) => (call, at))
+            .Where(c => c.call.Kind == "entity" && c.call.Name == nameof(ConsultGenerationJobEntity.RecordV31Header))
+            .Select(c => c.at).ToList();
+        Assert.Equal(2, headers.Count);
+        Assert.Equal(nameof(ConsultGenerationJobEntity.MarkRunning), context.Calls[headers[0] + 1].Name);
+        Assert.True(headers[1] > context.Calls.FindIndex(c => c.Name == ConsultGenerationActivityNames.LoadRunInputsV31));
+        var firstNode = context.Calls.FindIndex(c => c.Name is ConsultGenerationActivityNames.RunAgentNodeV31 or ConsultGenerationActivityNames.RenderNodeV31);
+        Assert.True(firstNode > headers[1]);
+        var second = JsonNode.Parse(context.Calls[headers[1]].InputJson)!;
+        Assert.Equal(job.Pair.ResolveHash, (string?)second["ResolveHash"]);
+        Assert.Equal(new DateTimeOffset(V31Job.Now, TimeSpan.Zero), second["StartedAtUtc"]!.GetValue<DateTimeOffset>());
+        // the first call is written as it was: no versionsRan or run facts in it
+        var first = JsonNode.Parse(context.Calls[headers[0]].InputJson)!.AsObject();
+        Assert.False(first.ContainsKey("VersionsRan") || first.ContainsKey("RunFacts"));
+
+        // versionsRan: lock.json's nested shape without documentVersion, package and resolve (R4)
+        var ran = job.State.VersionsRan!;
+        Assert.Equal(["resolver", "libraries", "evaluator", "operations", "builtins", "culture", "runtime", "catalogues"], ran.Select(m => m.Key));
+        var lockDocument = JsonNode.Parse(job.Pair.Lock)!.AsObject();
+        Assert.Equal(lockDocument["operations"]!.AsObject().Select(m => m.Key), ran["operations"]!.AsObject().Select(m => m.Key));
+        Assert.Equal(lockDocument["builtins"]!.AsObject().Select(m => m.Key), ran["builtins"]!.AsObject().Select(m => m.Key));
+        Assert.Equal(["Corvus.JsonSchema", "Corvus.Text.Json.JsonLogic", "Markdig", "Scriban"], ran["libraries"]!.AsObject().Select(m => m.Key));
+        Assert.Equal("invariant", (string?)ran["culture"]);
+        Assert.Equal(["dotnet", "unicode"], ran["runtime"]!.AsObject().Select(m => m.Key));
+        Assert.Equal(["packageFormat", "dialect"], ran["resolver"]!.AsObject().Select(m => m.Key));
+        Assert.StartsWith("agents@", (string?)ran["catalogues"]!["agents"], StringComparison.Ordinal);
+        Assert.StartsWith("formats@", (string?)ran["catalogues"]!["formats"], StringComparison.Ordinal);
+        Assert.Null(lockDocument["catalogues"]!["outputContracts"]);
+        Assert.Null(ran["catalogues"]!["outputContracts"]);
+
+        // the run facts: exactly the ones the package reads, the date beside its zone (part 08 § 8.1)
+        Assert.Equal(
+            """{"date":{"timeZone":"America/Toronto","value":"2026-11-16"},"id":"job-31-0001"}""",
+            CanonicalJson.Write(job.State.RunFacts));
+        Assert.Equal(10, job.State.Limits!.Count);
+
+        // a second header call changes nothing
+        var before = JsonSerializer.Serialize(job.State);
+        job.Entity.RecordV31Header(new ConsultGenerationV31Header(
+            "sha256:other", "sha256:other", new Dictionary<string, int> { ["maxAgentCalls"] = 1 }, new DateTimeOffset(V31Job.Now.AddHours(1), TimeSpan.Zero),
+            new JsonObject { ["culture"] = "other" }, new JsonObject { ["id"] = "other" }));
+        Assert.Equal(before, JsonSerializer.Serialize(job.State));
+    }
+
+    [Fact]
+    public async Task APackageReadingNoRunFacts_RecordsNone()
+    {
+        var job = V31Job.Of("nested-note");
+
+        await V31Job.RunAsync(job.Context());
+
+        Assert.Equal("{}", job.State.RunFacts!.ToJsonString());
+        Assert.NotNull(job.State.VersionsRan);
+    }
+
+    [Fact]
     public void TheHeader_IsWriteOnce_AndAbsentBelow31()
     {
         var job = V31Job.Of("nested-note");
@@ -379,7 +445,7 @@ public class OrchestratorV31Tests
 
         // a 5–30 job's state is written as it was: none of the 31 members
         var below = JsonSerializer.Serialize(ConsultGenerationJobState.Create("job-30", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>()));
-        foreach (var member in new[] { "ResolveHash", "LockHash", "Limits", "V31Progress" })
+        foreach (var member in new[] { "ResolveHash", "LockHash", "Limits", "V31Progress", "VersionsRan", "RunFacts", "RecordHash", "RecordBytes", "InputHashes" })
             Assert.DoesNotContain($"\"{member}\"", below, StringComparison.Ordinal);
     }
 
@@ -400,7 +466,10 @@ public class OrchestratorV31Tests
         var sends = Sends(context);
         Assert.True(delivering >= 0);
         Assert.All(sends, s => Assert.InRange(s.At, delivering + 1, finalize - 1));
-        Assert.Equal(context.Calls.FindLastIndex(c => c.Kind == "activity"), sends[^1].At);
+        // #1506 (D12, D13): the last send is the last activity but the delivery row's write and the seal after FinalizeJob
+        Assert.Equal(context.Calls.FindLastIndex(c => c.Kind == "activity"
+            && c.Name is not (ConsultGenerationActivityNames.WriteRecordRowsV31 or ConsultGenerationActivityNames.SealRecordV31)), sends[^1].At);
+        Assert.Contains(context.Calls.Skip(sends[^1].At + 1), c => c.Name == ConsultGenerationActivityNames.WriteRecordRowsV31);
         Assert.Equal([("email", 1), ("pdf", 1)], sends.Select(s => (s.Input.Send.Kind, s.Input.Send.Attempt)));
         Assert.All(sends, s =>
         {
@@ -603,7 +672,7 @@ public class OrchestratorV31Tests
     [Fact]
     public async Task ALongCapacityWait_AlertsTheOperatorOnce_ThroughTheActivity()
     {
-        // the run's notice (EntityRunRecorder.NoticeAsync) is the activity: node.plan waits 3 minutes twice, 6 in all
+        // the run's notice (StoredRunRecorder.NoticeAsync) is the activity: node.plan waits 3 minutes twice, 6 in all
         var job = V31Job.Of("nested-note");
         var stub = job.Agent;
         job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
@@ -650,6 +719,41 @@ public class OrchestratorV31Tests
     /// <summary>checked-note, changed by <paramref name="change"/>, as a package of the test's own.</summary>
     private static CompiledGoldenTests.GoldenCase CheckedNote(string name, Func<Dictionary<string, byte[]>, Dictionary<string, byte[]>> change) =>
         new(name, () => change(CompiledGoldenTests.Cases().Single(c => c.Name == "checked-note").Source()), name);
+
+    // ---- #1506 (area 09; D13): the record sealed at the end ---------------------------------------------------------------
+
+    [Theory]
+    [InlineData("completed")]
+    [InlineData("a failed node")]
+    [InlineData("a plan whose hash is not the job's")]
+    [InlineData("inputs the retention drop deleted")]
+    public async Task EveryEnd_SealsTheRecord_OnceAfterFinalizeJob(string how)
+    {
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        switch (how)
+        {
+            case "a failed node":
+                job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
+                break;
+            case "a plan whose hash is not the job's":
+                job.ResolveHash = "sha256:" + new string('0', 64);
+                break;
+            case "inputs the retention drop deleted":
+                job.Inputs.Documents.Clear();
+                break;
+        }
+
+        var context = job.Context();
+        await V31Job.RunAsync(context);
+
+        var seal = Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.SealRecordV31);
+        Assert.Equal(V31Job.JobId, JsonSerializer.Deserialize<SealRecordV31Input>(seal.InputJson)!.JobId);
+        Assert.True(context.Calls.IndexOf(seal) > context.Calls.FindLastIndex(c => c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob)));
+        Assert.Equal(how == "completed" ? ConsultGenerationJobStatuses.Completed : ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.NotNull(job.State.RecordHash);
+        Assert.NotNull(await job.Blobs.ReadRecordAsync(V31Job.AccountKind, "user-1", V31Job.JobId, CancellationToken.None));
+    }
 
     [Fact]
     public async Task AFunctionsJob_RunsItsCallsInline()

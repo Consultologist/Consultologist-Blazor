@@ -42,18 +42,56 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// moment and reason, the held documents.
     internal static void Stamp(ConsultGenerationJobState state, int at25) =>
         // v30 (#1341, design § 7): a 30 job is record storage 11 — paths, loop-instance rows.
-        state.SchemaVersion = state.PackageSpecVersion >= 30 ? 11 : state.PackageSpecVersion >= 29 ? 10 : state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
+        // #1506 (part 08 § 1): a 31 job is record storage 12 — rooted keys, the record beside the entity.
+        state.SchemaVersion = state.PackageSpecVersion >= 31 ? 12 : state.PackageSpecVersion >= 30 ? 11 : state.PackageSpecVersion >= 29 ? 10 : state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
 
-    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore)
+    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore, ILogger<ConsultGenerationJobEntity>? logger = null)
     {
         _indexStore = indexStore;
         _outputsStore = outputsStore;
         _inputsStore = inputsStore;
         _usageStore = usageStore;
+        _logger = logger;
+    }
+
+    /// <summary>#1506 (D13): the seal's refusal is logged here; optional, so the tests' entities need none.</summary>
+    private readonly ILogger<ConsultGenerationJobEntity>? _logger;
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 §§ 1.1, 3; D13): a 31 job's record sealed: its <c>recordHash</c> and the
+    /// document's length in bytes, write-once. A job below record storage 12, or not terminal, takes none; a second seal
+    /// with the same hash changes nothing, and one with another hash changes nothing and is logged with both hashes.
+    /// Not written to the index (it holds no record member).
+    /// </summary>
+    public void RecordV31Seal(ConsultGenerationV31Seal input)
+    {
+        var state = EnsureState();
+        if (state.SchemaVersion < 12 || !IsTerminal(state.Status))
+            return;
+
+        if (state.RecordHash is { } sealedHash)
+        {
+            if (!string.Equals(sealedHash, input.RecordHash, StringComparison.Ordinal))
+            {
+                _logger?.LogWarning(
+                    "V31 record seal refused: the job is sealed already. JobId={JobId}, RecordHash={RecordHash}, Offered={Offered}",
+                    state.JobId, sealedHash, input.RecordHash);
+            }
+
+            return;
+        }
+
+        state.RecordHash = input.RecordHash;
+        state.RecordBytes = input.Bytes;
+        State = state;
     }
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
     {
+        // #1506 (final review F1): a sealed-shape job is frozen; a late seed changes nothing.
+        if (Frozen(State))
+            return;
+
         Seed(input);
 
         await _indexStore.UpsertAsync(State.ToIndexEntry(), CancellationToken.None);
@@ -227,6 +265,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// </summary>
     public async Task RecordStartFailure(ConsultGenerationJobStartFailure input)
     {
+        // #1506 (final review F1): a terminal job at storage 12 is frozen.
+        if (Frozen(State))
+            return;
+
         Seed(input.Initialize);
 
         var state = State;
@@ -305,7 +347,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // creation — never 2, 6 or 7 — so a reader trusts the 26 rows at once.
         if (State.PackageSpecVersion >= 26)
         {
-            State.SchemaVersion = State.PackageSpecVersion >= 30 ? 11 : State.PackageSpecVersion >= 29 ? 10 : State.PackageSpecVersion >= 27 ? 9 : 8;
+            State.SchemaVersion = State.PackageSpecVersion >= 31 ? 12 : State.PackageSpecVersion >= 30 ? 11 : State.PackageSpecVersion >= 29 ? 10 : State.PackageSpecVersion >= 27 ? 9 : 8;
         }
         State.PackageTitle ??= input.PackageTitle;
         State.PackageTags ??= input.PackageTags?.ToList();
@@ -333,6 +375,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.LockHash ??= input.LockHash;
         State.Limits ??= input.Limits?.ToDictionary(member => member.Key, member => member.Value!.GetValue<int>(), StringComparer.Ordinal);
         State.StartedAtUtc ??= input.StartedAtUtc;
+        // #1506 (part 08 § 3.1): each input's hash, for the header's inputs; written once.
+        State.InputHashes ??= input.InputHashes?.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         // #1505 (D15): the signature block by id and how it was chosen, written once, together.
         if (State.SignatureBlockId == null && State.SignatureChosen == null)
         {
@@ -409,13 +453,24 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// limits (the orchestration input carries what the start read); each member is written once, by whichever comes
     /// first, so a second call (a replay's, say) changes nothing.
     /// </summary>
+    /// <remarks>
+    /// #1506 (area 09; part 08 §§ 3, 8.1; R4): the orchestration calls it a second time once the run's inputs are loaded,
+    /// before any node runs, with <c>versionsRan</c> (worked out in the activity) and the run facts the package reads;
+    /// each is written once too.
+    /// </remarks>
     public void RecordV31Header(ConsultGenerationV31Header input)
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen.
+        if (Frozen(state))
+            return;
         state.ResolveHash ??= input.ResolveHash;
         state.LockHash ??= input.LockHash;
-        state.Limits ??= new Dictionary<string, int>(input.Limits, StringComparer.Ordinal);
+        if (input.Limits != null)
+            state.Limits ??= new Dictionary<string, int>(input.Limits, StringComparer.Ordinal);
         state.StartedAtUtc ??= input.StartedAtUtc;
+        state.VersionsRan ??= (System.Text.Json.Nodes.JsonObject?)input.VersionsRan?.DeepClone();
+        state.RunFacts ??= (System.Text.Json.Nodes.JsonObject?)input.RunFacts?.DeepClone();
         State = state;
     }
 
@@ -423,10 +478,42 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// #1503 (specVersion 31, area 06; D12): a 31 job's progress: one finished row (its key and state) or, with no state, one
     /// decision. Counts and the current key only; the rows themselves are area 09's.
     /// </summary>
+    /// <remarks>
+    /// #1506 (area 09; D12): the stored recorder counts a round's rows at once (<see cref="RecordV31Rows"/>); this operation
+    /// stays for the histories in flight that signal it.
+    /// </remarks>
     public void RecordV31Progress(ConsultGenerationV31Progress input)
     {
         var state = EnsureState();
+        Count(state.V31Progress ??= new ConsultV31ProgressState(), input);
+        State = state;
+    }
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; D12; R14): a round of a 31 job's rows, once they are stored: each counted as
+    /// <see cref="RecordV31Progress"/> counts one, in order, and the round's tokens added to the job's
+    /// (<see cref="ConsultV31ProgressState.Tokens"/>), from which <see cref="FinalizeJob"/> writes the usage row. Keys,
+    /// states and counts only.
+    /// </summary>
+    public void RecordV31Rows(ConsultGenerationV31Rows input)
+    {
+        var state = EnsureState();
         var progress = state.V31Progress ??= new ConsultV31ProgressState();
+        foreach (var row in input.Rows ?? [])
+            Count(progress, row);
+        // #1506 (final review F1, M2): the header's tokens are frozen with the job; counts are not header members.
+        if (input.Tokens is { } tokens && !Frozen(state))
+        {
+            progress.Tokens = progress.Tokens is { } sum
+                ? new ConsultGenerationV31Tokens(sum.Input + tokens.Input, sum.Output + tokens.Output, sum.Total + tokens.Total)
+                : tokens;
+        }
+
+        State = state;
+    }
+
+    private static void Count(ConsultV31ProgressState progress, ConsultGenerationV31Progress input)
+    {
         if (input.State is { } rowState)
         {
             progress.Rows++;
@@ -437,8 +524,6 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         {
             progress.Decisions++;
         }
-
-        State = state;
     }
 
     public async Task CompleteBlock(BlockGenerationResult result)
@@ -926,6 +1011,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task MarkNodeFailed(ConsultGenerationNodeFailure input)
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen (a 5–30 job is as it was).
+        if (Frozen(state))
+            return;
+
         Stamp(state, 6);
 
         var node = state.GetOrAddNodeOutput(input.NodeId, input.Label);
@@ -1011,6 +1100,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task Cancel()
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen (a 5–30 job is as it was).
+        if (Frozen(state))
+            return;
+
         state.Status = ConsultGenerationJobStatuses.Cancelled;
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.History.Add(new JobHistoryEvent(
@@ -1143,6 +1236,17 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; final review F1): a job whose record header may no longer change: terminal at record
+    /// storage 12 or above. <see cref="ConsultGenerationJobState.ToRecordHeader"/> is the sealed document's header, and a
+    /// missing <c>record.json</c> is rebuilt from it, so from the terminal state on no operation writes a header member
+    /// (the seal itself is a signal sent after the document is written, so it cannot be the guard). A 5–30 job is never
+    /// frozen.
+    /// </summary>
+    internal static bool Frozen(ConsultGenerationJobState? state) =>
+        state is { } job && !string.IsNullOrWhiteSpace(job.JobId)
+            && job.SchemaVersion >= V31.RecordSealer.SealedFrom && IsTerminal(job.Status);
+
     /// <summary>The states nothing may move a job out of.</summary>
     internal static bool IsTerminal(string status) =>
         status is ConsultGenerationJobStatuses.Completed
@@ -1234,6 +1338,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task FinalizeJob(ConsultGenerationJobFinalize input)
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen: a second finalize (the orchestration's catch
+        // after its own finalize) changes nothing. A 5–30 job re-finalizes as it always did.
+        if (Frozen(state))
+            return;
+
         state.Status = input.Status;
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.FailureStack ??= input.FailureStack;
@@ -1339,7 +1448,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // recorded usage (roll-ups and aggregates carry none, so no double
         // count), on Completed and Failed alike: a failed run spent tokens
         // too. Nothing recorded stamps nothing, never zero.
-        state.Tokens ??= TokensOf(state.NodeOutputs);
+        // #1506 (area 09; R14): a 31 job has no node outputs; its rows' tokens were summed as they were stored.
+        state.Tokens ??= state.V31Progress?.Tokens is { } v31Tokens
+            ? new ConsultTokenUsage(v31Tokens.Input, v31Tokens.Output)
+            : TokensOf(state.NodeOutputs);
 
         // #552: the derived usage row — the account's day takes this job's
         // numbers exactly once (FinalizeJob can run twice: a reply-leg
@@ -1627,7 +1739,7 @@ public sealed record ConsultGenerationJobInitialize(
     IReadOnlyList<string>? UnresolvedLoops = null,
     // #1503 (specVersion 31, part 09 § 1.2 step 6): a 31 job's header as its start
     // read it — the resolveHash and lockHash it runs and the limits in force
-    // (RunLimits.ToJson's nine members) — and when its orchestration started, null
+    // (RunLimits.ToJson's ten members) — and when its orchestration started, null
     // at the start (the orchestration's RecordV31Header writes it). All null below
     // 31, so every stored payload reads as before; not written when null, so every
     // 5–30 payload writes the bytes it always wrote. Appended last, same rule.
@@ -1647,7 +1759,12 @@ public sealed record ConsultGenerationJobInitialize(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     string? SignatureBlockId = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? SignatureChosen = null);
+    string? SignatureChosen = null,
+    // #1506 (specVersion 31, area 09; part 08 § 3.1): each supplied input's hash
+    // (the canonical hash of its read form's value), by id, for the header's
+    // inputs. Null below 31; not written when null. Appended last, same rule.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, string>? InputHashes = null);
 
 /// <summary>
 /// v29 (#1303, design § 1.2): a loop over a node's value, settled — the loop,
@@ -1817,12 +1934,34 @@ public sealed record ConsultGenerationNodeFailure(
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 08 § 3): a 31 job's header as its orchestration records it: the hashes it runs, the
-/// nine limits in force (<c>RunLimits.ToJson</c>'s members), and when the orchestration started.
+/// ten limits in force (<c>RunLimits.ToJson</c>'s members), and when the orchestration started. #1506 (area 09; R4; part 08
+/// § 8.1): the second call's <paramref name="VersionsRan"/> (lock.json's nested shape minus <c>documentVersion</c>,
+/// <c>package</c> and <c>resolve</c>, as this process ran) and <paramref name="RunFacts"/> (the raw value of each run fact the
+/// package reads, <c>date</c> as <c>{ value, timeZone }</c>); trailing, optional and not written when null, so a history
+/// written before reads as it did and the first call's payload is the bytes it was.
 /// </summary>
-public sealed record ConsultGenerationV31Header(string ResolveHash, string LockHash, IReadOnlyDictionary<string, int> Limits, DateTimeOffset StartedAtUtc);
+public sealed record ConsultGenerationV31Header(
+    string ResolveHash,
+    string LockHash,
+    IReadOnlyDictionary<string, int> Limits,
+    DateTimeOffset StartedAtUtc,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    System.Text.Json.Nodes.JsonObject? VersionsRan = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    System.Text.Json.Nodes.JsonObject? RunFacts = null);
 
 /// <summary>#1503 (specVersion 31, area 06; D12): a finished row (its key and part 08's state), or a decision (its site's key, no state).</summary>
 public sealed record ConsultGenerationV31Progress(string Key, string? State);
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; D12): a round of stored rows for <see cref="ConsultGenerationJobEntity.RecordV31Rows"/>: each
+/// row's key and state as <see cref="ConsultGenerationV31Progress"/> (a decision's state null, a delivery's
+/// <c>delivery:&lt;result&gt;</c>), in the order recorded, and the round's token sums (R14), null when no row had any.
+/// </summary>
+public sealed record ConsultGenerationV31Rows(IReadOnlyList<ConsultGenerationV31Progress> Rows, ConsultGenerationV31Tokens? Tokens);
+
+/// <summary>#1506 (specVersion 31, area 09; part 08 § 4; R14): token sums, as an agent row's <c>tokens { input, output, total }</c>.</summary>
+public sealed record ConsultGenerationV31Tokens(int Input, int Output, int Total);
 
 /// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress: rows settled, by state, decisions made, and the last row's key.</summary>
 public sealed class ConsultV31ProgressState
@@ -1831,7 +1970,17 @@ public sealed class ConsultV31ProgressState
     public Dictionary<string, int> States { get; set; } = new(StringComparer.Ordinal);
     public int Decisions { get; set; }
     public string? CurrentKey { get; set; }
+
+    /// <summary>#1506 (area 09; R14): the tokens of the rows stored so far; null, and not written, until a row has some.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ConsultGenerationV31Tokens? Tokens { get; set; }
 }
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; D13): a 31 job's seal for <see cref="ConsultGenerationJobEntity.RecordV31Seal"/>: the hash of
+/// its canonical record document and the document's length in UTF-8 bytes.
+/// </summary>
+public sealed record ConsultGenerationV31Seal(string RecordHash, long Bytes);
 
 public sealed record ConsultGenerationJobFinalize(
     string Status,
@@ -2034,7 +2183,7 @@ public sealed class ConsultGenerationJobState
     /// fact in provenance-versions.json (#400), pinned against this list by
     /// test. A new storage shape is added here and there in the same change.
     /// </summary>
-    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8, 9, 10, 11 };
+    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8, 9, 10, 11, 12 };
 
     /// <summary>#373: the specVersion of the package this job ran.</summary>
     public int? PackageSpecVersion { get; set; }
@@ -2183,7 +2332,7 @@ public sealed class ConsultGenerationJobState
 
     /// <summary>
     /// #1503 (specVersion 31, area 06; part 08 § 3): the SHA-256 of the canonical <c>resolve.json</c> and <c>lock.json</c> a
-    /// 31 job ran, and the limits in force (exactly <c>RunLimits.ToJson</c>'s nine members), recorded once before any node
+    /// 31 job ran, and the limits in force (exactly <c>RunLimits.ToJson</c>'s ten members), recorded once before any node
     /// runs. Null, and not written, below 31.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
@@ -2209,6 +2358,38 @@ public sealed class ConsultGenerationJobState
     /// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress, counts and the current key only. Null, and not written, below 31.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public ConsultV31ProgressState? V31Progress { get; set; }
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 § 3; R4): the exact versions that ran, <c>lock.json</c>'s nested shape minus
+    /// <c>documentVersion</c>, <c>package</c> and <c>resolve</c>; written once, before any node runs. Null, and not written, below 31.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public System.Text.Json.Nodes.JsonObject? VersionsRan { get; set; }
+
+    /// <summary>
+    /// #1506 (part 08 § 8.1): the raw value of each run fact the package reads (<c>date</c> as <c>{ value, timeZone }</c>,
+    /// <c>id</c>, <c>package</c>, <c>engine</c>), <c>{}</c> when it reads none; written once, before any node runs. Null, and
+    /// not written, below 31.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public System.Text.Json.Nodes.JsonObject? RunFacts { get; set; }
+
+    /// <summary>
+    /// #1506 (part 08 § 1.1; D13): the hash of the canonical record document and its length in bytes, written once when the
+    /// record is sealed; null until then. Null, and not written, below 31.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? RecordHash { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public long? RecordBytes { get; set; }
+
+    /// <summary>
+    /// #1506 (part 08 § 3.1): each supplied input's hash, by id: the canonical hash of its read form's value. Written once at
+    /// the start. Null, and not written, below 31.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? InputHashes { get; set; }
 
     public Dictionary<string, ConsultNodeOutputState>? NodeOutputs { get; set; }
 
@@ -2334,7 +2515,9 @@ public sealed class ConsultGenerationJobState
             Deciding: Deciding == true && DecidedAtUtc == null && StartFailure == null,
             DecisionFailureKind: DecisionFailureKind,
             InputsHeld: InputsBlob != null,
-            InputsDroppedAtUtc: InputsDroppedAtUtc);
+            InputsDroppedAtUtc: InputsDroppedAtUtc,
+            // #1506 (final review F5): written only for a job at record storage 12 or later; a 5–30 row has none
+            RecordStorage: SchemaVersion >= V31.RecordSealer.SealedFrom ? SchemaVersion : null);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)
@@ -2456,6 +2639,133 @@ public sealed class ConsultGenerationJobState
         NodeOutputs?.Where(n => n.Value.Concepts is { Count: > 0 })
             .ToDictionary(n => n.Key, n => (IReadOnlyList<ClinicalConcept>)n.Value.Concepts!, StringComparer.Ordinal));
 
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 §§ 1.1, 3, 3.1; D13): the job header of the canonical record document, in its
+    /// JSON names: the package and the builds it ran under, the job's id, state and clocks (round-trip UTC text), the
+    /// hashes and versions that ran, the run facts and limits, the signature block by id, the effective-input hash, each
+    /// input by id in id order (<c>{ id, origin, hash }</c>, with a document's extraction members), the job's tokens, and
+    /// storage 11's terminology snapshot (null at 31).
+    /// A member with no value is <c>null</c>, never absent. It holds no input value and no text, and nothing that changes
+    /// after the end (<c>recordHash</c>, <c>textDroppedAtUtc</c>, the History event log).
+    /// </summary>
+    public System.Text.Json.Nodes.JsonObject ToRecordHeader() => new()
+    {
+        ["schemaVersion"] = SchemaVersion,
+        ["packageSpecVersion"] = PackageSpecVersion,
+        ["workflowPackage"] = WorkflowPackage,
+        ["packageFormatRef"] = PackageFormatRef,
+        ["provenanceRef"] = ProvenanceRef,
+        ["formatsRef"] = FormatsRef,
+        ["catalogRef"] = CatalogRef,
+        ["engineCommit"] = EngineCommit,
+        ["engineRelease"] = EngineRelease,
+        ["apiHost"] = ApiHost,
+        // #1506 (final review M3): storage 11's terminology snapshot, still recorded at 12; a 31 job's start reads no
+        // terminology server (its packages hold no terminology step), so it is null, never absent.
+        ["terminology"] = null,
+        ["jobId"] = JobId,
+        ["status"] = Status,
+        ["error"] = FailureError ?? StartFailure,
+        ["createdAtUtc"] = RoundTrip(CreatedAtUtc),
+        ["startedAtUtc"] = StartedAtUtc is { } started ? RoundTrip(started) : null,
+        ["completedAtUtc"] = CompletedAtUtc is { } completed ? RoundTrip(completed) : null,
+        ["resolveHash"] = ResolveHash,
+        ["lockHash"] = LockHash,
+        ["versionsRan"] = VersionsRan?.DeepClone(),
+        ["runFacts"] = RunFacts?.DeepClone(),
+        ["limits"] = Limits == null ? null : new System.Text.Json.Nodes.JsonObject(
+            Limits.Select(limit => KeyValuePair.Create(limit.Key, (System.Text.Json.Nodes.JsonNode?)limit.Value))),
+        ["signatureBlockId"] = SignatureBlockId,
+        ["signatureChosen"] = SignatureChosen,
+        ["effectiveInputHash"] = EffectiveInputHash,
+        ["effectiveInputHashVersion"] = EffectiveInputHashVersion,
+        ["inputs"] = RecordInputs(),
+        // #1506 (R14; final review M2): the job's token sums over its stored rows (RecordV31Rows), { input, output, total };
+        // null when no row had any (no model call). Frozen with the job once it is terminal (Frozen), so the sealed
+        // header's sums never change.
+        ["tokens"] = V31Progress?.Tokens is { } tokens
+            ? new System.Text.Json.Nodes.JsonObject { ["input"] = tokens.Input, ["output"] = tokens.Output, ["total"] = tokens.Total }
+            : null,
+    };
+
+    /// <summary>A clock as the record writes it: round-trip text, in UTC.</summary>
+    private static string RoundTrip(DateTimeOffset at) => at.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// #1506 (part 08 § 3.1; D15): each input, by id in ordinal order: its <c>origin</c> (<c>typed</c>, <c>document</c> or
+    /// <c>transcript</c>; <c>previous-run</c> waits for area 12), its <c>hash</c>, and for an input one document filled the
+    /// document's members (<c>kind</c>, <c>extractor</c>, <c>pageCount</c>, <c>fileSha256</c>, <c>textSha256</c>, <c>converter</c>,
+    /// <c>parser</c>, <c>ocr</c>); an input of several elements lists them, positionally, as <c>elements</c>.
+    /// </summary>
+    private System.Text.Json.Nodes.JsonArray RecordInputs()
+    {
+        var ids = (InputHashes?.Keys ?? Enumerable.Empty<string>())
+            .Concat(InputDocumentOrigins?.Keys ?? Enumerable.Empty<string>())
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+        var inputs = new System.Text.Json.Nodes.JsonArray();
+        foreach (var id in ids)
+        {
+            var origins = InputDocumentOrigins?.GetValueOrDefault(id);
+            var input = new System.Text.Json.Nodes.JsonObject
+            {
+                ["id"] = id,
+                ["origin"] = origins is { Count: > 0 } ? OriginOf(origins) : ConsultInputOriginKinds.Typed,
+                ["hash"] = InputHashes?.GetValueOrDefault(id),
+            };
+            if (origins is [var single])
+            {
+                foreach (var (name, value) in DocumentMembers(single))
+                    input[name] = value;
+            }
+            else if (origins is { Count: > 1 })
+            {
+                input["elements"] = new System.Text.Json.Nodes.JsonArray(origins.Select(element =>
+                {
+                    var members = new System.Text.Json.Nodes.JsonObject { ["origin"] = OriginOf([element]) };
+                    foreach (var (name, value) in DocumentMembers(element))
+                        members[name] = value;
+                    return (System.Text.Json.Nodes.JsonNode?)members;
+                }).ToArray());
+            }
+
+            inputs.Add(input);
+        }
+
+        return inputs;
+    }
+
+    /// <summary>Part 08 § 3.1's origin of what <paramref name="origins"/> filled an input with: one kind for all, else <c>document</c>.</summary>
+    private static string OriginOf(IReadOnlyList<ConsultInputOrigin> origins)
+    {
+        static string Of(string kind) => kind switch
+        {
+            ConsultInputOriginKinds.Typed => ConsultInputOriginKinds.Typed,
+            ConsultInputOriginKinds.Transcript => ConsultInputOriginKinds.Transcript,
+            ConsultInputOriginKinds.PreviousRun => ConsultInputOriginKinds.PreviousRun,
+            _ => ConsultInputOriginKinds.Document,
+        };
+
+        var kinds = origins.Select(origin => Of(origin.Kind)).Distinct(StringComparer.Ordinal).ToList();
+        return kinds.Count == 1 ? kinds[0] : ConsultInputOriginKinds.Document;
+    }
+
+    /// <summary>A document origin's members, as the record names them; none for a typed element.</summary>
+    private static IEnumerable<(string Name, System.Text.Json.Nodes.JsonNode? Value)> DocumentMembers(ConsultInputOrigin origin)
+    {
+        if (string.Equals(origin.Kind, ConsultInputOriginKinds.Typed, StringComparison.Ordinal))
+            yield break;
+        yield return ("kind", origin.Kind);
+        // #1506 (final review F4): part 08 § 3.1's extractor, kept for older records' readers
+        yield return ("extractor", origin.Extractor);
+        yield return ("pageCount", origin.PageCount);
+        yield return ("fileSha256", origin.FileSha256);
+        yield return ("textSha256", origin.TextSha256);
+        yield return ("converter", origin.Converter is { } converter ? new System.Text.Json.Nodes.JsonObject { ["name"] = converter.Name, ["version"] = converter.Version } : null);
+        yield return ("parser", origin.Parser is { } parser ? new System.Text.Json.Nodes.JsonObject { ["name"] = parser.Name, ["version"] = parser.Version } : null);
+        yield return ("ocr", origin.Ocr is { } ocr ? new System.Text.Json.Nodes.JsonObject { ["service"] = ocr.Service, ["model"] = ocr.Model } : null);
+    }
+
     public ConsultGenerationJobResponse ToResponse()
     {
         // #368: once the text is deleted the sections are gone too — an empty
@@ -2489,6 +2799,9 @@ public sealed class ConsultGenerationJobState
                     pair.Value.Step,
                     pair.Value.CompletedStepCount,
                     pair.Value.TotalStepCount));
+
+        // #1506: record storage 12, the first with a 31 header (the sealer's own floor)
+        var v31 = SchemaVersion >= V31.RecordSealer.SealedFrom;
 
         return new ConsultGenerationJobResponse(
             JobId,
@@ -2633,7 +2946,21 @@ public sealed class ConsultGenerationJobState
             SkippedBlocks: skippedSections.Count > 0 ? skippedSections : null,
             UnresolvedLoops: UnresolvedLoops is { Count: > 0 } ? UnresolvedLoops : null,
             HeldDocuments: HeldDocuments is { Count: > 0 } ? HeldDocuments : null,
-            LoopInstances: LoopInstances is { Count: > 0 } ? LoopInstances : null);
+            LoopInstances: LoopInstances is { Count: > 0 } ? LoopInstances : null,
+            // #1506 (specVersion 31, area 09; part 08 § 3; part 09 § 6.2): the 31 header and progress, from storage 12 only,
+            // so a 5–30 response carries none of them (each is omitted when null).
+            ResolveHash: v31 ? ResolveHash : null,
+            LockHash: v31 ? LockHash : null,
+            VersionsRan: v31 ? (System.Text.Json.Nodes.JsonObject?)VersionsRan?.DeepClone() : null,
+            RunFacts: v31 ? (System.Text.Json.Nodes.JsonObject?)RunFacts?.DeepClone() : null,
+            Limits: v31 && Limits != null ? new Dictionary<string, int>(Limits, StringComparer.Ordinal) : null,
+            SignatureBlockId: v31 ? SignatureBlockId : null,
+            SignatureChosen: v31 ? SignatureChosen : null,
+            RecordHash: v31 ? RecordHash : null,
+            Rows: v31 ? V31Progress?.Rows : null,
+            RowStates: v31 && V31Progress != null ? new Dictionary<string, int>(V31Progress.States, StringComparer.Ordinal) : null,
+            Decisions: v31 ? V31Progress?.Decisions : null,
+            CurrentKey: v31 ? V31Progress?.CurrentKey : null);
     }
 }
 
@@ -2842,6 +3169,18 @@ public static class ConsultGenerationActivityNames
 
     /// <summary>#1503 (part 09 § 3.6; D9): whether the engine is draining, read by a drain-aware orchestration after its schedule wait.</summary>
     public const string CheckDrain = "check-drain";
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 § 1.1; D10, D11, D12): a round of a 31 job's record rows: each row's settled
+    /// text, then the rows, each written once. A row that differs from the one stored is named in the result, never thrown.
+    /// </summary>
+    public const string WriteRecordRowsV31 = "write-record-rows-v31";
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 § 1.1; D13): a 31 job's record sealed once it is terminal, after
+    /// <c>FinalizeJob</c> on every path. Best-effort: its failure is logged and never fails the job. No Durable retry policy.
+    /// </summary>
+    public const string SealRecordV31 = "seal-record-v31";
 }
 
 public static class ConsultGenerationItemSteps

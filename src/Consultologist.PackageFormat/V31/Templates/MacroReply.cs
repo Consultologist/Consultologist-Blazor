@@ -7,7 +7,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <paramref name="Id"/> is the sentence's row (S05-053 to S05-059), <paramref name="Macro"/> the macro id it is about (for
 /// S05-059 the one written too early), <paramref name="Sentence"/> the sentence, and <paramref name="Reason"/> part 08's
 /// short form for the row's <c>invalid.reason</c> (<c>macro &lt;id&gt;: missing</c>, <c>repeated</c>, <c>altered</c>,
-/// <c>not offered</c>, <c>unknown</c>, <c>out of order</c>).
+/// <c>not offered</c>, <c>out of order</c>; #1506: for a marker naming no macro, <c>macro: unknown</c>, with no id, since the
+/// id is the model's writing and a reason is kept outside text retention).
 /// </summary>
 public sealed record ReplyFault(string Id, string Macro, string Sentence, string Reason);
 
@@ -64,7 +65,7 @@ public static class MacroReply
                 continue;
             faults.Add(packageMacros.Contains(occurrence.Macro)
                 ? Fault("S05-055", occurrence.Macro, ReplySentences.NotOffered(occurrence.Macro), "not offered")
-                : Fault("S05-056", occurrence.Macro, ReplySentences.NotAMacro(occurrence.Macro), "unknown"));
+                : new ReplyFault("S05-056", occurrence.Macro, ReplySentences.NotAMacro(), "macro: unknown")); // #1506: the reason never names a model-written id
         }
 
         foreach (var macro in offered)

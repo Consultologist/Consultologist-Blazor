@@ -89,4 +89,22 @@ public class FunctionRegistrationTests
         Assert.Equal("RunAsync", method.Name);
         Assert.Contains(method.GetParameters(), p => p.GetCustomAttribute<ActivityTriggerAttribute>() != null);
     }
+
+    [Theory]
+    [InlineData("GetConsultGenerationJobRows", "ConsultGenerationJobs/{jobId}/Rows")]
+    [InlineData("GetConsultGenerationJobRecord", "ConsultGenerationJobs/{jobId}/Record")]
+    public void ARecordRoute_IsAGet_WithPreflight_AsTheJobRoutesAre(string name, string route)
+    {
+        // #1506 (specVersion 31, area 09; D16): a 31 job's rows and record, beside the Links route: the same trigger,
+        // GET and OPTIONS (FunctionCors answers the preflight), the account checked in the function.
+        var method = FunctionMethods().Single(m => m.GetCustomAttribute<FunctionAttribute>()!.Name == name);
+        var trigger = Assert.Single(method.GetParameters().Select(p => p.GetCustomAttribute<HttpTriggerAttribute>()), a => a != null)!;
+        var links = FunctionMethods().Single(m => m.GetCustomAttribute<FunctionAttribute>()!.Name == "GetConsultGenerationJobLinks")
+            .GetParameters().Select(p => p.GetCustomAttribute<HttpTriggerAttribute>()).Single(a => a != null)!;
+
+        Assert.Equal(route, trigger.Route);
+        Assert.Equal(new[] { "get", "options" }, trigger.Methods);
+        Assert.Equal(links.AuthLevel, trigger.AuthLevel);
+        Assert.Contains(method.GetParameters(), p => p.GetCustomAttributes().Any(a => a.GetType().Name == "DurableClientAttribute"));
+    }
 }

@@ -34,17 +34,92 @@ public enum RowState
 /// #1503 (specVersion 31, area 06): one finished row, as area 09 turns it into a storage row: the instance's key
 /// (<see cref="RunKeys.Of"/>), its entry's key and kind, its state, the reason for a state other than completed, the hash of
 /// its <c>.content</c>, and <paramref name="Detail"/> (counts, <c>stopped</c>, retries, <c>itemLabel</c>, <c>function</c>,
-/// <c>depth</c>). Never a value from an input or a model.
+/// <c>depth</c>; #1506: the entry's facts and what only the runner knows, in part 08's names). Never a value from an input
+/// or a model. #1506 (area 09; D2): <paramref name="Text"/> is the row's settled text, which never enters the row itself
+/// and goes to the retained text: <c>content</c> (the value's <c>.content</c>), <c>value</c> (the value's canonical JSON when
+/// it is not text), <c>itemName</c> (an item's name not drawn from package text) and <c>spots</c> (<c>{ "&lt;spot id&gt;":
+/// output }</c> for each run spot whose row <c>output</c> is <c>null</c>), and on a check's row <c>uncovered</c> and
+/// <c>untested</c> (its <c>check_result</c>'s lists, which come from inputs; the row holds their hashes and sizes);
+/// <c>null</c> when there is none.
 /// </summary>
-public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail);
+public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail, JsonObject? Text = null)
+{
+    /// <summary>#1506 (area 09; part 08 § 2.2): the record's section the row is in, from its key's root: <c>node</c>, <c>check</c> or <c>deliverable</c>.</summary>
+    public string Section => Key.StartsWith("check.", StringComparison.Ordinal) ? "check"
+        : Key.StartsWith("deliverable.", StringComparison.Ordinal) ? "deliverable"
+        : "node";
+
+    /// <summary>
+    /// #1506 (area 09; part 08 §§ 4, 6, 7, 10): the row in part 08's shape for its <see cref="Section"/>, every member written
+    /// (<see cref="RecordRows"/>): a check's is part 08 § 6's (<see cref="RecordRows.Check"/>); a deliverable's part 08 § 10's
+    /// (<see cref="RecordRows.Deliverable"/>).
+    /// </summary>
+    public JsonObject ToJson() => Section switch
+    {
+        "check" => RecordRows.Check(this),
+        "deliverable" => RecordRows.Deliverable(this),
+        _ => RecordRows.Node(this),
+    };
+}
+
+/// <summary>#1506 (specVersion 31, area 09; part 08 § 5.1; D4): one value a decision's rule read: its path as <c>resolve.json</c> writes it, and the canonical hash of the value (<c>null</c> hashes as <c>null</c>). Never the value.</summary>
+public sealed record RunRead(string Path, string Hash);
 
 /// <summary>
-/// #1503 (specVersion 31, area 06; part 08 § 5): one condition decided. <paramref name="Site"/> is the owner's row key,
-/// <paramref name="Member"/> the decision's site in part 08 § 5.2's words (<c>self</c> for a header <c>if</c>),
-/// <paramref name="Printed"/> the condition as the printer writes it, <paramref name="Result"/> its result (null for a
-/// <c>case</c>), <paramref name="Branch"/> a <c>case</c>'s branch taken, and the time from the host's clock.
+/// #1503 (specVersion 31, area 06; part 08 § 5); #1506 (area 09; R6, D3, D4): one condition decided, with part 08 § 5.1's
+/// members. <paramref name="Owner"/> is the row key (check row key, deliverable key) it concerns, <paramref name="Site"/>
+/// what was decided in part 08 § 5.2's words (<c>self</c>, <c>case</c>, <c>pass.&lt;n&gt;</c>, <c>until.&lt;i&gt;</c>,
+/// <c>macro.&lt;id&gt;</c>, …), <paramref name="Condition"/> the condition as the printer writes it (a <c>case</c>'s
+/// subject), <paramref name="ExpressionHash"/> the hash of its canonical JSON Logic, <paramref name="Result"/> its result
+/// (null for a <c>case</c>), <paramref name="Branch"/> a <c>case</c>'s arm taken (its 1-based position as text, or
+/// <c>else</c>), <paramref name="Reads"/> the paths its own rule reads with the hash of each value read, its two flags, and
+/// the time from the host's clock.
 /// </summary>
-public sealed record RunDecision(string Site, string Member, string Printed, bool? Result, string? Branch, DateTime DecidedAtUtc);
+public sealed record RunDecision(
+    string Owner,
+    string Site,
+    string Condition,
+    string ExpressionHash,
+    bool? Result,
+    string? Branch,
+    IReadOnlyList<RunRead> Reads,
+    bool RunDependent,
+    bool ModelDerived,
+    DateTime DecidedAtUtc)
+{
+    /// <summary>The decision's id: <c>&lt;owner&gt;/if:&lt;site&gt;</c> (part 08 § 5.1).</summary>
+    public string Id => $"{Owner}/if:{Site}";
+
+    /// <summary>
+    /// The decision as part 08 § 5.1 writes it, its ten members in that order: <c>result</c> the boolean, or a <c>case</c>'s
+    /// arm as text (D3); <c>reads</c> <c>[{ path, hash }]</c>; <c>decidedAtUtc</c> the round-trip UTC text.
+    /// </summary>
+    public JsonObject ToJson()
+    {
+        var reads = new JsonArray();
+        foreach (var read in Reads)
+            reads.Add(new JsonObject { ["path"] = read.Path, ["hash"] = read.Hash });
+        var at = DecidedAtUtc.Kind switch
+        {
+            DateTimeKind.Utc => DecidedAtUtc,
+            DateTimeKind.Local => DecidedAtUtc.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(DecidedAtUtc, DateTimeKind.Utc),
+        };
+        return new JsonObject
+        {
+            ["id"] = Id,
+            ["owner"] = Owner,
+            ["site"] = Site,
+            ["condition"] = Condition,
+            ["expressionHash"] = ExpressionHash,
+            ["result"] = Result is { } result ? JsonValue.Create(result) : JsonValue.Create(Branch),
+            ["reads"] = reads,
+            ["runDependent"] = RunDependent,
+            ["modelDerived"] = ModelDerived,
+            ["decidedAtUtc"] = at.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+        };
+    }
+}
 
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 09 § 3.9; D14): something the operator is told of while the job runs.
@@ -77,4 +152,51 @@ public interface IRunRecorder
     /// that alerts the operator never fails the run for an alert that could not be sent.
     /// </summary>
     Task NoticeAsync(RunNotice notice);
+
+    /// <summary>
+    /// #1506 (area 09; D12): everything recorded so far is to be written. The runner awaits it once at the end of each round
+    /// that recorded a row or a decision and once before it returns; the delivery runner after each delivery row.
+    /// A run that throws (an engine fault) records its held gates' rows (<c>effect</c> <c>null</c>) before the exception
+    /// leaves it, but does not flush: its caller flushes what was recorded since the last flush, best-effort, before it
+    /// fails the job (#1506, final review F2). An implementation clears what it flushes before writing it, so a flush that
+    /// failed or met a conflict leaves nothing to write twice.
+    /// </summary>
+    Task FlushAsync();
+}
+
+/// <summary>
+/// #1506 (area 09; D12): the recorder the runner talks to: it passes everything to the real one and counts the rows and
+/// decisions recorded since the last flush, so <see cref="FlushRoundAsync"/> flushes once per round that recorded, and never
+/// when nothing is new.
+/// </summary>
+internal sealed class FlushingRecorder(IRunRecorder inner) : IRunRecorder
+{
+    private int unflushed;
+
+    public Task RowAsync(RunRow row)
+    {
+        unflushed++;
+        return inner.RowAsync(row);
+    }
+
+    public Task DecisionAsync(RunDecision decision)
+    {
+        unflushed++;
+        return inner.DecisionAsync(decision);
+    }
+
+    public Task DeliveryAsync(DeliveryRow row) => inner.DeliveryAsync(row);
+
+    public Task NoticeAsync(RunNotice notice) => inner.NoticeAsync(notice);
+
+    public Task FlushAsync() => FlushRoundAsync();
+
+    /// <summary>Flushes the inner recorder when a row or decision was recorded since the last flush.</summary>
+    public Task FlushRoundAsync()
+    {
+        if (unflushed == 0)
+            return Task.CompletedTask;
+        unflushed = 0;
+        return inner.FlushAsync();
+    }
 }

@@ -50,6 +50,19 @@ public static partial class BodyComposer
         }
 
         /// <summary>
+        /// #1506 (area 09; R7; part 08 §§ 4.3, 8.2): in a macro's body (<paramref name="plan"/>'s site <c>macro.….content</c>),
+        /// whose <c>run.*</c> is filled directly, the output <paramref name="statement"/> as one of the body's own run spots
+        /// when it reads a run fact: numbered in the body's order, a <c>marker</c> spot; <c>null</c> otherwise.
+        /// </summary>
+        private static PlannedSpot? MacroSpotOf(TextPlan plan, ScriptExpressionStatement statement)
+        {
+            var offset = Offset(statement);
+            var output = plan.Syntax.Outputs.FirstOrDefault(o => o.Tag.Start <= offset && offset < o.Tag.End);
+            var fact = output?.Paths.FirstOrDefault(p => p.Split('.') is ["run", var name, ..] && JsonLogicOperations.RunFacts.Contains(name));
+            return fact == null ? null : new PlannedSpot(plan.Spots.Count + 1, fact, false);
+        }
+
+        /// <summary>
         /// Writes the run spot <paramref name="spot"/> (its statement evaluated by <paramref name="evaluate"/>) to
         /// <paramref name="context"/>'s output and records where it stands, its output, what stands for it in the
         /// run-neutral text, and the hash of the value it read. #1505 (area 08, D7): with <paramref name="escape"/> its
@@ -58,6 +71,7 @@ public static partial class BodyComposer
         /// </summary>
         public void WriteSpot(ComposeContext context, PlannedSpot spot, Func<object?> evaluate, bool escape)
         {
+            var pass = Pass();
             var output = TemplateValues.Written(evaluate()) ?? throw context.Stopped(null);
             if (escape)
                 output = MarkdownEscape.Escape(output);
@@ -67,7 +81,7 @@ public static partial class BodyComposer
             var start = context.Written.Length;
             if (output.Length > 0)
                 context.Write(output);
-            context.Spots.Add(new FilledSpot(spot, start, output.Length, output, neutral, CanonicalJson.Hash(ValueAt(spot.Reads))));
+            context.Spots.Add(new FilledSpot(spot, start, output.Length, output, neutral, CanonicalJson.Hash(ValueAt(spot.Reads)), pass));
         }
 
         /// <summary>
@@ -126,31 +140,69 @@ public static partial class BodyComposer
     /// <summary>The run spot <paramref name="Site"/> of the entry as planned at its tag: what it reads, and whether the node's run-neutral text stands for it (<c>neutral: "text"</c>) rather than its marker.</summary>
     internal sealed record PlannedSpot(int Site, string Reads, bool Text);
 
-    /// <summary>A run spot written: where its output stands in the text it was written to, the output, what stands for it in the run-neutral text, and the hash of the value read.</summary>
-    internal sealed record FilledSpot(PlannedSpot Spot, int Start, int Length, string Output, string Neutral, string ValueHash)
+    /// <summary>
+    /// A run spot written: where its output stands in the text it was written to (in UTF-16 code units, as the text is
+    /// written), the output, what stands for it in the run-neutral text, the hash of the value read, and (#1506, D5) its
+    /// pass: one number per template <c>for</c> around it.
+    /// </summary>
+    internal sealed record FilledSpot(PlannedSpot Spot, int Start, int Length, string Output, string Neutral, string ValueHash, IReadOnlyList<int>? Pass = null)
     {
         /// <summary>
-        /// Part 08 § 8.2's run spot: the output kept only when the spot reads a raw run fact; a run-dependent value's follows
-        /// 7-day retention.
+        /// Part 08 § 8.2's run spot, at <paramref name="start"/> for <paramref name="length"/> runes (R10): the output kept
+        /// only when the spot reads a raw run fact; a run-dependent value's follows 7-day retention.
         /// </summary>
-        public ComposedSpot Composed() => new(
-            Spot.Site, Spot.Reads, Start, Length, CanonicalJson.HashText(Output),
-            Spot.Reads.StartsWith("run.", StringComparison.Ordinal) ? Output : null, ValueHash);
+        public ComposedSpot Composed(int start, int length) => new(
+            Spot.Site, Spot.Reads, start, length, CanonicalJson.HashText(Output),
+            Spot.Reads.StartsWith("run.", StringComparison.Ordinal) ? Output : null, ValueHash, Pass);
+    }
+
+    /// <summary>
+    /// #1506 (area 09; R10): <paramref name="spots"/> (in the order of <paramref name="text"/>, none overlapping) as part 08
+    /// § 8.2's run spots, each placed in runes: its start the runes of the text before it, its length its output's runes.
+    /// </summary>
+    internal static IReadOnlyList<ComposedSpot> InRunes(string text, IReadOnlyList<FilledSpot> spots)
+    {
+        var composed = new List<ComposedSpot>(spots.Count);
+        int at = 0, runes = 0;
+        foreach (var spot in spots)
+        {
+            if (spot.Start < at)
+                (at, runes) = (0, 0); // never, for spots in the order of the text: counted again from the start
+            var start = Math.Clamp(spot.Start, at, text.Length);
+            runes += Runes(text, at, start - at);
+            var length = Runes(text, start, Math.Clamp(spot.Length, 0, text.Length - start));
+            composed.Add(spot.Composed(runes, length));
+            runes += length;
+            at = start + Math.Clamp(spot.Length, 0, text.Length - start);
+        }
+
+        return composed;
+    }
+
+    /// <summary>The runes of <paramref name="count"/> UTF-16 units of <paramref name="text"/> from <paramref name="start"/> (an unpaired surrogate is one).</summary>
+    internal static int Runes(string text, int start, int count)
+    {
+        var runes = 0;
+        foreach (var _ in text.AsSpan(start, count).EnumerateRunes())
+            runes++;
+        return runes;
     }
 
     /// <summary>
     /// A placed unit's rendered text and the run spots written in it (at places in that text), as its placement writes it,
-    /// and the index of its <see cref="ComposedUnit"/> among the composition's (<c>-1</c> for a macro's instruction).
+    /// and the index of its <see cref="ComposedUnit"/> among the composition's (<c>-1</c> for a macro's instruction); #1506
+    /// (D6) with the substitutions written in it, at places in that text.
     /// </summary>
-    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots, int Unit = -1);
+    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots, int Unit = -1, IReadOnlyList<WrittenSubstitution>? Substitutions = null);
 
     /// <summary>
     /// #1505 (area 08, D7): <paramref name="placed"/> escaped whole as plain text in Markdown, each run spot in it with its
     /// output (and a <c>text</c> spot's run-neutral output) escaped and its place moved to where it now stands. R9: the
     /// text is escaped piece by piece as one text, so a piece (a spot's output, or the text between spots) is a line start
     /// only where it starts a line of <paramref name="placed"/>; one that continues a line keeps its leading space or tab.
+    /// #1506 (D6): its substitutions are moved with it (<see cref="EscapedSubstitutions"/>).
     /// </summary>
-    internal static PlacedText Escaped(PlacedText placed)
+    internal static PlacedText Escaped(PlacedText placed, string? site = null, IReadOnlyList<int>? pass = null)
     {
         var text = placed.Text;
         var escaped = new StringBuilder(text.Length);
@@ -170,7 +222,53 @@ public static partial class BodyComposer
             at = spot.Start + spot.Length;
         }
 
-        return new PlacedText(escaped.Append(MarkdownEscape.Escape(text[at..], MarkdownEscape.StartsLine(text, at))).ToString(), spots, placed.Unit);
+        var whole = escaped.Append(MarkdownEscape.Escape(text[at..], MarkdownEscape.StartsLine(text, at))).ToString();
+        return new PlacedText(whole, spots, placed.Unit, EscapedSubstitutions(placed, whole, site, pass));
+    }
+
+    /// <summary>
+    /// #1506 (area 09; part 06 § 9; D6): the substitutions of <paramref name="placed"/> where they stand in its text escaped
+    /// whole (<paramref name="escaped"/>). The text is escaped again piece by piece, cut at every substitution's and spot's
+    /// bounds, each piece a line start only where it starts a line; when that gives the same text, each substitution is moved
+    /// to where its bounds now stand. When it does not (an escape that reads across a cut), the unit's text is recorded as one
+    /// substitution of the unit <paramref name="site"/> at <paramref name="pass"/>, so the positions are never wrong.
+    /// </summary>
+    private static IReadOnlyList<WrittenSubstitution>? EscapedSubstitutions(PlacedText placed, string escaped, string? site, IReadOnlyList<int>? pass)
+    {
+        if (placed.Substitutions is not { Count: > 0 } substitutions)
+            return placed.Substitutions;
+        var text = placed.Text;
+        var cuts = new SortedSet<int> { 0, text.Length };
+        foreach (var s in substitutions)
+        {
+            cuts.Add(Math.Clamp(s.Start, 0, text.Length));
+            cuts.Add(Math.Clamp(s.Start + s.Length, 0, text.Length));
+        }
+
+        foreach (var spot in placed.Spots)
+        {
+            cuts.Add(Math.Clamp(spot.Start, 0, text.Length));
+            cuts.Add(Math.Clamp(spot.Start + spot.Length, 0, text.Length));
+        }
+
+        var moved = new Dictionary<int, int>();
+        var again = new StringBuilder(escaped.Length);
+        int? before = null;
+        foreach (var cut in cuts)
+        {
+            if (before is { } from)
+                again.Append(MarkdownEscape.Escape(text[from..cut], MarkdownEscape.StartsLine(text, from)));
+            moved[cut] = again.Length;
+            before = cut;
+        }
+
+        if (!string.Equals(again.ToString(), escaped, StringComparison.Ordinal))
+            return site == null ? [] : [new WrittenSubstitution(0, pass, site, 0, escaped.Length, null)];
+        return [.. substitutions.Select(s =>
+        {
+            var start = moved[Math.Clamp(s.Start, 0, text.Length)];
+            return s with { Start = start, Length = moved[Math.Clamp(s.Start + s.Length, 0, text.Length)] - start };
+        })];
     }
 
     /// <summary>

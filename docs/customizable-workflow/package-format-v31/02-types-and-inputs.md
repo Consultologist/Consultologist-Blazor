@@ -344,12 +344,15 @@ prepares a copy;
 5. `title`, `$id` and **the keywords strict mode rejects** (such as `format: "date"`) are removed.
    **The list of rejected keywords comes from the attested agent definition,** not from the
    format, so a provider that accepts more is a new agent version, not a format change;
-6. the result is sent inside the engine's envelope, which supplies the top-level object strict
-   mode requires, so a text or list format can be sent too
-   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)).
+6. a format whose root is an object is sent **as it is**; any other root (a text, a list, a
+   number) is sent inside the engine's envelope, `{ "value": … }`, which supplies the top-level
+   object strict mode requires, so a text or list format can be sent too
+   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810);
+   [an object root is sent unwrapped](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 3). The envelope is identified by the engine
+   version, not by a hash of its own.
 
 **The sent format is recorded:** the row holds `formatHash` (the full format), `sentFormatHash`
-(what the model received) and the removed keywords as JSON pointers
+(the hash of the stripped format of steps 1 to 5, **taken before the envelope wraps it**) and the removed keywords as JSON pointers
 ([part 08](08-record.md)). History shows them as *"Not sent to the model: …"*. The reply is still
 validated against the full format (§ 3.4).
 

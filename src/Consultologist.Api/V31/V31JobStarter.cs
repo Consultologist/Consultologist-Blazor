@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Auth;
+using Consultologist.Api.Documents;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
@@ -117,10 +118,25 @@ public sealed class V31JobStarter(
         var refusals = accountRefusals.Concat(choiceRefusals).Concat(inputRefusals).ToList();
         var header = Header(jobId, appUserId, $"{plan.Package}@{plan.Version}", origin, request, plan) with
         {
-            InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins ? origins : null,
+            // #1506 (part 08 § 3.1; D15): each document's origin with what its extraction used.
+            InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins
+                ? origins.ToDictionary(
+                    pair => pair.Key,
+                    pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.Select(ExtractionSteps.Of).ToList(),
+                    StringComparer.Ordinal)
+                : null,
             SignatureBlockId = signature.BlockId,
             SignatureChosen = signature.Chosen,
         };
+        // #1506 (hash-definitions.md § 7.2): the inputs' hash, and each input's, once they are read.
+        if (runInputs != null)
+        {
+            header = header with
+            {
+                EffectiveInputHash = EffectiveInputHash(runInputs.Inputs),
+                InputHashes = runInputs.Inputs.ToDictionary(pair => pair.Key, pair => CanonicalJson.Hash(ValueOf(pair.Value)), StringComparer.Ordinal),
+            };
+        }
         if (refusals.Count > 0)
         {
             logger.LogWarning(
@@ -277,6 +293,21 @@ public sealed class V31JobStarter(
         return (profile, signature);
     }
 
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; hash-definitions.md § 7.2, effective-input definition 7): the hash of the supplied
+    /// inputs as one canonical (RFC 8785) JSON object keyed by input id, each the <c>value</c> of the input's read form
+    /// (<paramref name="readForms"/>: a document's text as its extraction gave it, a boolean choice as its value), absent
+    /// optional inputs omitted, written <c>sha256:&lt;hex&gt;</c>.
+    /// </summary>
+    internal static string EffectiveInputHash(IReadOnlyDictionary<string, JsonNode?> readForms)
+    {
+        ArgumentNullException.ThrowIfNull(readForms);
+        return CanonicalJson.Hash(new JsonObject(readForms.Select(pair => KeyValuePair.Create(pair.Key, ValueOf(pair.Value)?.DeepClone()))));
+    }
+
+    /// <summary>The <c>value</c> of a read form (<c>{ value, content, title }</c>).</summary>
+    private static JsonNode? ValueOf(JsonNode? readForm) => readForm is JsonObject form ? form["value"] : readForm;
+
     /// <summary>The job's Initialize as far as the start knows it before its inputs are held.</summary>
     private ConsultGenerationJobInitialize Header(
         string jobId, string appUserId, string workflowPackage, ConsultGenerationJobOrigin origin, ConsultGenerationRequest request, RunPlan? plan) =>
@@ -288,6 +319,8 @@ public sealed class V31JobStarter(
             Source: origin.Source,
             ScheduledAtUtc: request.ScheduledAtUtc,
             PackageSpecVersion: PublishedStamp.SpecVersion,
+            // #1506 (hash-definitions.md § 7.2): the definition a 31 job's inputs are hashed by.
+            EffectiveInputHashVersion: ConsultGenerationProvenance.EffectiveInputHashVersionAt31,
             PackageTitle: plan == null ? null : SourceLayout.Text(plan.Document["title"]),
             PackageTags: plan?.Document["tags"] is JsonArray tags ? tags.Select(SourceLayout.Text).OfType<string>().ToList() : null,
             PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, engine.PackageFormat),

@@ -321,8 +321,15 @@ real values, so a template reading it is run-specific through that read.
 **A body with no run spot** has one hash. The record's `runNeutralHash` is written only when the
 body has a run spot, and is `null` otherwise ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523), [Part 08](08-record.md)).
 
+**A macro body's `run.*` is filled in directly,** with no spot in the placing body
+([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 2): the body is written into the reply after the model has
+answered, so it is never part of a sent text, and the macro's row carries its own `runNeutralHash` and `runSpots`
+(part 08 §§ 4.3, 8.2), so macro rows compare across runs.
+
 **The advance warning.** The Editor and publish say when a package reads `run.*` or a
-run-dependent value, naming each spot. The warning text is W-1 (§ Refusals). The record side
+run-dependent value, naming each spot. The warning text is W-1 (§ Refusals); for a macro body the
+subject is the macro, and "its main hash" is its row's `contentHash`, compared on the macro row's
+run-neutral hash. The record side
 (each spot's output and hash, the run facts kept once per run) is in [Part 08](08-record.md).
 
 ## 5. Renderers
@@ -725,6 +732,11 @@ naming the macro):
 Trailing spaces after a block marker are removed, never a failure: in Markdown two spaces make a
 hard line break, and in plain text they'd still be in the hashed bytes.
 
+**A macro body drops exactly one final line ending** ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 8): the one
+that ends the file, taken off the source before it renders, so a line ending a value writes at the
+end stays and the marker's line does not break mid-sentence. The macro row's `contentHash` is taken
+of the body after that (part 08 § 4.3).
+
 **4. The body** is rendered by the engine, in the placing scope, **before** substitution
 (§ 3.2). It's the package's own text, checked at publish. **A body that reads `profile.*`
 makes the node's value profile-carrying** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 03 § 4.6): a prompt, a part or a
@@ -866,13 +878,13 @@ rest are this part's wording.
 - V-1: *"The reply has no marker for macro '<id>'."*
 - V-2: *"The reply has the marker for macro '<id>' <n> times."*
 - V-3: *"The reply has a marker for macro '<id>', which wasn't offered."*
-- V-4: *"The reply has a marker for '<id>', which isn't a macro."*
+- V-4: *"The reply has a marker that names no macro."* (fixed text: it quotes nothing from the reply, since a recorded sentence is kept outside text retention and an id the model wrote, like `smith_john`, passes the id pattern; [ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 7)
 - V-5: *"The reply writes the marker for macro '<id>' <inside a sentence | alone on a line>, but it was asked for <alone on a line | inside a sentence>."*
 - V-6: *"The reply has text after the marker for macro '<id>' on its line."*
 - V-7: *"The reply has the markers out of order: '<id>' before '<other>'."*
 
 **Warnings** (publish and the Editor; not refusals)
-- W-1: *"<Subject> reads <run.fact or run-dependent value> at line <n>. Its main hash differs between runs; runs are compared on the run-neutral hash."*
+- W-1: *"<Subject> reads <run.fact or run-dependent value> at line <n>. Its main hash differs between runs; runs are compared on the run-neutral hash."* (For a macro body the subject is the macro; its row's `runNeutralHash` is the one runs are compared on.)
 - W-2: *"<Subject> pipes renderer.<id>, a markdown_block, inside a line at line <n>."*
 
 ## Proposed in this part

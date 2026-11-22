@@ -35,6 +35,16 @@ public sealed partial class PlanRunner
         /// <summary>Whether <see cref="Name"/> is the position name (<c>&lt;loop label&gt; &lt;n&gt;</c>).</summary>
         public bool PositionName { get; set; }
 
+        /// <summary>#1506 (area 09; D2): whether it is a snippet folder's item, whose name comes from its header: package text.</summary>
+        public bool FromFolder { get; init; }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; D2): whether <see cref="Name"/> is package text (a position name, of the loop's label,
+        /// or a snippet folder item's header), so the row keeps it; else it is drawn from an input or a model and the row
+        /// keeps its hash.
+        /// </summary>
+        public bool NameFromPackage => PositionName || FromFolder;
+
         public RunFrame? Frame { get; set; }
 
         public RowState? State { get; set; }
@@ -218,9 +228,8 @@ public sealed partial class PlanRunner
                 if (value is not JsonArray list)
                     return (loop, NotAList(entry, reference));
 
-                // Ids keep v30's forms: an array input's 0-based, a node's (or any other) list's 1-based (§ 2.2).
-                var first = reference.StartsWith("input.", StringComparison.Ordinal) ? 0 : 1;
-                given = list.Select((element, i) => ((i + first).ToString(CultureInfo.InvariantCulture), element, (string?)null, false)).ToList();
+                // #1506 (R3): item ids are 1-based everywhere, an array input's included.
+                given = list.Select((element, i) => ((i + 1).ToString(CultureInfo.InvariantCulture), element, (string?)null, false)).ToList();
             }
 
             loop.Count = given.Count;
@@ -229,7 +238,7 @@ public sealed partial class PlanRunner
             for (var i = 0; i < given.Count; i++)
             {
                 var (id, element, content, hasContent) = given[i];
-                var item = new LoopItem(i, id) { Available = true, Value = element, Content = content, HasContent = hasContent };
+                var item = new LoopItem(i, id) { Available = true, Value = element, Content = content, HasContent = hasContent, FromFolder = hasContent };
                 Name(loop, item, element);
                 loop.Items.Add(item);
             }
@@ -379,7 +388,8 @@ public sealed partial class PlanRunner
 
                 if (loop.Parallel || entry.Until is not { } until || loop.StopAt != null)
                     continue;
-                var decision = await DecideRuleAsync(instance, until, "until", scope.Data(entry, frame, entry.Reads));
+                var data = scope.Data(entry, frame, entry.Reads);
+                var decision = await DecideRuleAsync(instance, until, "until", data);
                 if (decision.Failure is { } failed)
                 {
                     await FailAsync(instance, RuleFailed(Subject(instance), "until", failed));
@@ -387,8 +397,8 @@ public sealed partial class PlanRunner
                 }
 
                 var position = item.Position + 1;
-                await recorder.DecisionAsync(new RunDecision(instance.Key, $"until.{position.ToString(CultureInfo.InvariantCulture)}",
-                    entry.Printed("until"), decision.Result, null, host.UtcNow));
+                await RecordDecisionAsync(instance, frame, $"until.{position.ToString(CultureInfo.InvariantCulture)}",
+                    entry.Rules.GetValueOrDefault("until"), entry.Printed("until"), data, decision.Result, null);
                 if (decision.Result)
                     loop.StopAt = position;
             }
@@ -431,7 +441,9 @@ public sealed partial class PlanRunner
                     continue;
                 }
 
-                Open(instance, loop, item);
+                if (!await OpensAsync(instance))
+                    return moved;
+                await Open(instance, loop, item);
                 moved = true;
             }
 
@@ -481,7 +493,7 @@ public sealed partial class PlanRunner
         /// <c>{ id, value[, content], parent }</c>, or for a loop over <c>.items</c> the production item's element with its
         /// <c>id</c> and <c>parent</c>; <c>parent</c> is the enclosing loop's item (part 04 § 2.6).
         /// </summary>
-        private void Open(RunInstance instance, LoopState loop, LoopItem item)
+        private async Task Open(RunInstance instance, LoopState loop, LoopItem item)
         {
             var frame = instance.Frame;
             var binding = ItemOf(loop, item);
@@ -490,12 +502,13 @@ public sealed partial class PlanRunner
 
             item.Frame = frame.Open(instance, frame.Map, frame.Function, [.. frame.ItemPath, item.Id], [.. frame.ItemPositions, item.Position],
                 frame.Passes, binding, null, null);
+            item.Frame.OpenedAtUtc = host.UtcNow;
             loop.Open.Add(item);
             itemFrames[item.Frame] = item;
             foreach (var key in instance.Entry.Body)
             {
                 if (frame.Map.TryGetValue(key, out var body))
-                    Add(item.Frame, body);
+                    await Add(item.Frame, body);
             }
         }
 
@@ -520,16 +533,58 @@ public sealed partial class PlanRunner
                 ["nodes"] = Nodes(instance, item),
             };
 
-            var detail = new JsonObject
-            {
-                ["function"] = instance.Frame.Function,
-                ["depth"] = instance.Frame.Depth,
-                ["itemName"] = item.Name,
-                ["positionName"] = item.PositionName,
-            };
+            var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
+            EntryDetail(instance.Entry, detail);
+            ClockDetail(detail, state, item.Frame?.OpenedAtUtc);
+            var name = NameDetail(item, detail);
+            var settled = new JsonObject { ["value"] = completed ? ret?["value"]?.DeepClone() : null, ["content"] = content };
             var key = RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), [.. instance.Frame.ItemPath, item.Id], instance.Frame.Passes);
+            var text = SettledText(settled, name, null);
+            if (IsCheck(key))
+            {
+                // #1506 (area 09; part 08 § 6): a check loop's item row is a check row: aligned with its production item, its
+                // check_result's members, and the loop's effect; what it checked and read are on the check rows inside it
+                detail["alignedWith"] = AlignedWith(instance, item);
+                text = WithLists(text, RecordRows.CheckResult(settled["value"], detail));
+                detail["effect"] = ReadBy(instance.Entry, instance.Frame.Map);
+            }
+
             return recorder.RowAsync(new RunRow(key, instance.Entry.Key, PlanKind.For, state, reason,
-                content == null ? null : CanonicalJson.HashText(content), detail));
+                content == null ? null : CanonicalJson.HashText(content), detail, text));
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; part 06 § 3.1): the <c>alignedWith</c> of a row written in <paramref name="frame"/>: for
+        /// a row inside an item of a loop over a production loop's <c>.items</c> (the innermost item it runs in), the row key
+        /// of the production item with the same id (<see cref="AlignedWith(RunInstance, LoopItem)"/>); else <c>null</c>.
+        /// </summary>
+        private string? AlignedWith(RunFrame frame)
+        {
+            for (var at = frame; at != null; at = at.Parent)
+            {
+                if (itemFrames.TryGetValue(at, out var item))
+                    return at.Owner is { } loop ? AlignedWith(loop, item) : null;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 06 § 3.1): the row key of the production item <paramref name="item"/> of the loop
+        /// <paramref name="instance"/> lines up with (<c>node.sections:2</c> for item 2 of a loop over
+        /// <c>node.sections.items</c>): the production loop's instance key with the item's id, as <see cref="RunKeys.Of"/>
+        /// writes it; <c>null</c> when the loop does not iterate a production loop's <c>.items</c>.
+        /// </summary>
+        private string? AlignedWith(RunInstance instance, LoopItem item)
+        {
+            if (!loops.TryGetValue(instance, out var loop) || loop.Production == null
+                || ItemsSource(instance) is not { } source || instance.Frame.Find(source) is not { } production)
+            {
+                return null;
+            }
+
+            var frame = production.Frame;
+            return RunKeys.Of(frame.Rooted(production.Entry.Key), [.. frame.ItemPath, item.Id], frame.Passes);
         }
 
         /// <summary>Each body node of an item by bare id: its <c>value</c>, <c>content</c> and <c>state</c> (<c>not_run</c> when the item never ran).</summary>
@@ -598,15 +653,29 @@ public sealed partial class PlanRunner
         /// <summary>
         /// Part 08 § 4's <c>itemName</c> on a row written in <paramref name="frame"/>: the name of the innermost loop item it
         /// runs in (through any frame between, a while's or a call's), with whether it is the position name; <c>null</c> and
-        /// <c>false</c> outside every loop.
+        /// <c>false</c> outside every loop. #1506 (D2): <see cref="NameDetail"/>'s, the name given back when the row keeps only
+        /// its hash.
         /// </summary>
-        private void ItemNameDetail(RunFrame frame, JsonObject detail)
+        private string? ItemNameDetail(RunFrame frame, JsonObject detail)
         {
             LoopItem? item = null;
             for (var at = frame; at != null && item == null; at = at.Parent)
                 item = itemFrames.GetValueOrDefault(at);
-            detail["itemName"] = item?.Name;
+            return NameDetail(item, detail);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; D2): <paramref name="item"/>'s name on a row: <c>itemName</c> the name when it is package
+        /// text (<see cref="LoopItem.NameFromPackage"/>), else <c>null</c> with <c>itemNameHash</c> the name's hash, the name
+        /// then given back for the settled text; <c>positionName</c>; all <c>null</c> (and <c>false</c>) for no item.
+        /// </summary>
+        private static string? NameDetail(LoopItem? item, JsonObject detail)
+        {
+            var kept = item is { NameFromPackage: true };
+            detail["itemName"] = kept ? item!.Name : null;
+            detail["itemNameHash"] = item == null || kept ? null : CanonicalJson.HashText(item.Name);
             detail["positionName"] = item?.PositionName ?? false;
+            return item == null || kept ? null : item.Name;
         }
     }
 

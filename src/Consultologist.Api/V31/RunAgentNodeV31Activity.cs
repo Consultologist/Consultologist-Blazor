@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
@@ -16,9 +17,14 @@ namespace Consultologist.Api.V31;
 /// <summary>
 /// #1503 (specVersion 31, area 06): an activity's input: the job's package version, its <c>resolveHash</c>, the step budget
 /// of its body (the job's recorded <c>renderSteps</c>, never the live setting), and the call (#1504: with the runner's
-/// placement decisions, <see cref="AgentCall.Placed"/>, and a retry's <see cref="AgentCall.Faults"/>).
+/// placement decisions, <see cref="AgentCall.Placed"/>, and a retry's <see cref="AgentCall.Faults"/>). #1506 (area 09; D10):
+/// <paramref name="JobId"/>, <paramref name="AppUserId"/> and <paramref name="AccountKind"/> say where the text the attempt
+/// produced is written (trailing and optional, so a history written before reads as it did); without a job the text stays
+/// in the outcome, as in a run in process.
 /// </summary>
-public sealed record RunAgentNodeV31Input(string PackageName, string PackageVersion, string ResolveHash, int RenderSteps, AgentCall Call);
+public sealed record RunAgentNodeV31Input(
+    string PackageName, string PackageVersion, string ResolveHash, int RenderSteps, AgentCall Call,
+    string? JobId = null, string? AppUserId = null, string? AccountKind = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 §§ 3.1, 3.4; D7): one attempt of a 31 agent call. The plan comes from the store's
@@ -34,12 +40,17 @@ public sealed record RunAgentNodeV31Input(string PackageName, string PackageVers
 /// retries. A call that cannot be made answers <see cref="AgentOutcomeKind.Failed"/> and is never sent, so the runner fails
 /// the node with a row and a sentence: <c>plan</c> (a plan that is not the job's, an entry, a binding or a catalogue agent
 /// it lacks), <c>steps</c> (the body passed the job's step budget), <c>compose</c> (it could not be composed). Telemetry:
-/// the key, the attempt, lengths and hashes, never text.
+/// the key, the attempt, lengths and hashes, never text. #1506 (area 09; D2, D10, D17): the text the attempt produced
+/// (<see cref="AgentOutcome.Produced"/>: the prompt as sent, each renderer step's input and output, each macro's body), with
+/// the texts of the prompt's run spots whose row <c>output</c> is <c>null</c> (<c>spots</c>), is written to the row key's
+/// <c>produced</c> text, overwriting an earlier attempt's, and left out of the outcome, so it never enters the history. A
+/// write that fails fails the activity (and the job, A06-010).
 /// </summary>
 public sealed class RunAgentNodeV31Activity(
     ICompiledPackageStore store,
     IAgentAttempts agent,
     Lazy<V31AgentsCatalogue> catalogue,
+    IRecordBlobStore blobs,
     ILogger<RunAgentNodeV31Activity> logger,
     Random? random = null)
 {
@@ -71,6 +82,12 @@ public sealed class RunAgentNodeV31Activity(
         var outcome = attempt.Kind == AgentOutcomeKind.Completed
             ? AgentTurn.Finish(prepared, attempt.Text ?? "")
             : new AgentOutcome(attempt.Kind, null, attempt.RetryAfterMilliseconds ?? AgentBackoff.Wait(call.Attempt, _random.NextDouble()), attempt.ErrorKind);
+        outcome = WithTokens(outcome, attempt.Tokens);
+        if (await V31ProducedText.WriteAsync(blobs, input.JobId, input.AppUserId, input.AccountKind, call.Key, outcome.Produced,
+                outcome.Detail?["runSpots"], SourceLayout.Text(outcome.Produced?["sent"]), cancellationToken))
+        {
+            outcome = outcome with { Produced = null };
+        }
 
         logger.LogInformation(
             "V31 agent attempt. Key={Key}, Attempt={Attempt}, Repair={Repair}, Faults={Faults}, AgentName={AgentName}, AgentVersion={AgentVersion}, Outcome={Outcome}, ErrorKind={ErrorKind}, WaitMs={WaitMs}, PromptLength={PromptLength}, PromptHash={PromptHash}, RunNeutralHash={RunNeutralHash}, ReplyLength={ReplyLength}, ReplyHash={ReplyHash}, Invalid={Invalid}, ValueLength={ValueLength}, ValueHash={ValueHash}, InputTokens={InputTokens}, OutputTokens={OutputTokens}, ElapsedMs={ElapsedMs}",
@@ -95,6 +112,19 @@ public sealed class RunAgentNodeV31Activity(
             attempt.Tokens?.Output,
             stopwatch.ElapsedMilliseconds);
         return outcome;
+    }
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 4; R14): <paramref name="outcome"/> with the attempt's <c>tokens { input, output, total }</c>
+    /// in its detail, which the runner sums over the call's attempts; as it is when the service said none.
+    /// </summary>
+    internal static AgentOutcome WithTokens(AgentOutcome outcome, ConsultTokenUsage? tokens)
+    {
+        if (tokens == null)
+            return outcome;
+        var detail = outcome.Detail?.DeepClone().AsObject() ?? [];
+        detail["tokens"] = new JsonObject { ["input"] = tokens.Input, ["output"] = tokens.Output, ["total"] = tokens.Input + tokens.Output };
+        return outcome with { Detail = detail };
     }
 
     /// <summary>A call that could not be made, of <paramref name="kind"/>; logged by key and kind only.</summary>

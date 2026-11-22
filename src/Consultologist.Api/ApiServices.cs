@@ -136,6 +136,8 @@ public static class ApiServices
         services.AddSingleton<IAccountStore, AccountStore>();
         services.AddSingleton<IAccountSettingsStore, AccountSettingsStore>();
         services.AddSingleton<IConsultGenerationJobEventStore, TableConsultGenerationJobEventStore>();
+        // #1506 (D10): a 31 job's record rows; the table is created on a first write.
+        services.AddSingleton<Consultologist.Api.V31.IRecordRowStore, Consultologist.Api.V31.TableRecordRowStore>();
         services.AddSingleton<IConsultGenerationJobIndexStore, TableConsultGenerationJobIndexStore>();
         // #546: the links index — the lineage graph, ids only, records account.
         services.AddSingleton<IConsultGenerationLinkStore, TableConsultGenerationLinkStore>();
@@ -191,6 +193,9 @@ public static class ApiServices
         // inputs held by reference as the job's held inputs (JobInputsBlobStore's containers and names).
         services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
         services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
+        // #1506 (area 09; R4): the toolchain a 31 job runs with, for its versionsRan (load-run-inputs-v31's); the 31 agents
+        // catalogue is read only when a 31 job asks.
+        services.AddSingleton<Consultologist.Api.V31.EngineToolchain>();
         services.AddSingleton<Consultologist.Api.V31.V31JobStarter>();
         // #1505 (part 06 § 8; D10): a 31 job's delivery channels, email and pdf, over the mailbox and the account's
         // delivery settings, as the 5–30 reply reads them (deliver-v31's).
@@ -222,11 +227,18 @@ public static class ApiServices
         // #557: the text account's outputs blobs — written at completion, read on
         // GET, deleted by the retention drop.
         services.AddSingleton<IJobOutputsBlobStore, JobOutputsBlobStore>();
+        // #1506 (D10): a 31 job's retained text and canonical record, beside the outputs.
+        services.AddSingleton<Consultologist.Api.V31.IRecordBlobStore, Consultologist.Api.V31.BlobRecordStore>();
+        // #1506 (D13): the record's sealer over a function's Durable client (seal-record-v31, the cancel route).
+        services.AddSingleton<Consultologist.Api.V31.RecordSealers>();
+        // #1506 (D16): a 31 job's rows and record over HTTP (GET ConsultGenerationJobs/{jobId}/Rows and /Record).
+        services.AddScoped<Consultologist.Api.V31.RecordRoutes>();
         // #547: the held inputs — written by the starter, read by History and the
         // rerun, deleted by the retention drop.
         services.AddSingleton<JobInputsBlobStore>();
         services.AddSingleton<IJobInputsBlobStore>(sp => sp.GetRequiredService<JobInputsBlobStore>());
         // #368: the retention sweep — the text is deleted N days after completion.
+        services.AddSingleton<Consultologist.Api.V31.IRecordTextDrop, Consultologist.Api.V31.RecordTextDrop>();
         services.AddSingleton<IJobTextPurger, JobTextPurger>();
         // #557: the events-move transition's old-table delete; removed by #558.
         services.AddSingleton<ILegacyJobEventDelete, LegacyJobEventDelete>();

@@ -362,7 +362,7 @@ public class TextRetentionTests
         client.Entities.Returns(entities);
         var now = DateTimeOffset.UtcNow;
 
-        await new JobTextPurger(events, legacyEvents).PurgeAsync(client, "0123456789abcdef0123456789abcdef", now, CancellationToken.None);
+        await new JobTextPurger(events, legacyEvents, Substitute.For<Consultologist.Api.V31.IRecordTextDrop>()).PurgeAsync(client, "0123456789abcdef0123456789abcdef", now, CancellationToken.None);
 
         Received.InOrder(() =>
         {

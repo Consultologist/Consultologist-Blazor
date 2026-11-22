@@ -74,7 +74,7 @@ public class PatternRulesTests
 
         Assert.Equal(RunState.Completed, result.State);
         Assert.Equal(RowState.Skipped, recorder.Row("node.plan").State);
-        Assert.Equal([false], recorder.Decisions.Where(d => d.Site == "node.plan").Select(d => d.Result));
+        Assert.Equal([false], recorder.Decisions.Where(d => d.Owner == "node.plan").Select(d => d.Result));
         Assert.Empty(host.Calls);
 
         // a time-out the host met fails the node with A06-001, its operation and limit as the host gave them

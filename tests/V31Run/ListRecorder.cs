@@ -9,6 +9,20 @@ namespace Consultologist.Api.Tests.V31Run;
 /// </summary>
 internal sealed class ListRecorder(Func<int>? stamp = null) : IRunRecorder
 {
+    /// <summary>#1506 (area 09; D12): the flushes awaited.</summary>
+    public int Flushes { get; private set; }
+
+    /// <summary>#1506: everything recorded, in order, as <c>row</c>, <c>decision</c>, <c>delivery</c> or <c>flush</c> with its key.</summary>
+    public List<string> Events { get; } = [];
+
+    /// <inheritdoc/>
+    public Task FlushAsync()
+    {
+        Flushes++;
+        Events.Add("flush");
+        return Task.CompletedTask;
+    }
+
     /// <summary>The rows recorded, in order.</summary>
     public List<RunRow> Rows { get; } = [];
 
@@ -25,6 +39,7 @@ internal sealed class ListRecorder(Func<int>? stamp = null) : IRunRecorder
     public Task RowAsync(RunRow row)
     {
         Rows.Add(row);
+        Events.Add("row " + row.Key);
         Stamps.Add(stamp?.Invoke() ?? 0);
         return Task.CompletedTask;
     }
@@ -33,6 +48,7 @@ internal sealed class ListRecorder(Func<int>? stamp = null) : IRunRecorder
     public Task DecisionAsync(RunDecision decision)
     {
         Decisions.Add(decision);
+        Events.Add("decision " + decision.Id);
         return Task.CompletedTask;
     }
 
@@ -43,6 +59,7 @@ internal sealed class ListRecorder(Func<int>? stamp = null) : IRunRecorder
     public Task DeliveryAsync(DeliveryRow row)
     {
         Deliveries.Add(row);
+        Events.Add("delivery " + row.Key);
         return Task.CompletedTask;
     }
 

@@ -2,6 +2,7 @@ using Consultologist.PackageFormat;
 using Azure;
 using Azure.Core;
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Consultologist.Api.Auth;
 using Consultologist.Api.Models;
 using Microsoft.Extensions.Configuration;
@@ -105,6 +106,51 @@ internal sealed class TextBlobClientFactory
         }
 
         await client.GetBlobClient(name).UploadAsync(BinaryData.FromObjectAsJson(payload), overwrite: true, cancellationToken);
+    }
+
+    /// <summary>
+    /// #1506: text exactly as given (UTF-8, no BOM). With <paramref name="onlyIfAbsent"/> the upload carries
+    /// <c>If-None-Match: *</c> and answers false when the blob is there already.
+    /// </summary>
+    public async Task<bool> WriteTextAsync(string container, string name, string text, bool onlyIfAbsent, CancellationToken cancellationToken)
+    {
+        var client = _containerFor(container);
+
+        if (_createContainers)
+        {
+            await client.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        }
+
+        var content = BinaryData.FromBytes(new System.Text.UTF8Encoding(false).GetBytes(text));
+        var options = new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "application/json" } };
+        if (onlyIfAbsent)
+        {
+            options.Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All };
+        }
+
+        try
+        {
+            await client.GetBlobClient(name).UploadAsync(content, options, cancellationToken);
+            return true;
+        }
+        catch (RequestFailedException ex) when (onlyIfAbsent && (ex.Status == 409 || ex.Status == 412))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>#1506: the blob's text, or null when it is not there.</summary>
+    public async Task<string?> ReadTextAsync(string container, string name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var content = await _containerFor(container).GetBlobClient(name).DownloadContentAsync(cancellationToken);
+            return new System.Text.UTF8Encoding(false).GetString(content.Value.Content.ToArray());
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
     }
 
     public async Task<T?> ReadJsonAsync<T>(string container, string name, CancellationToken cancellationToken)

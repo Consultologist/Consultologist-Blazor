@@ -234,6 +234,38 @@ else. Since #546 every start also inverts its origins into the
 job, ids only, never deleted while the account exists) — the "used by"
 side of History's lineage; account closure (#559) is its one deleter.
 
+### The record of a specVersion 31 job (#1506, record storage 12)
+
+A 31 job's record is not in the entity (design: [part 08](customizable-workflow/package-format-v31/08-record.md) § 1.1).
+It is in two places, and nothing in it holds a value from an input, a model or a profile except the retained text,
+which is only ever in blobs:
+
+- **The table `ConsultGenerationRecordRows`**, on the records account (the `ConsultGenerationRecordStorage` section if
+  set, else `AccountStorage`, as the other job tables; created on a 31 job's first write). One row per record row:
+  partition key the job id, row key the record key escaped for Azure Tables (an escaped key past 512 UTF-16 characters is `~`
+  and its SHA-256 hex), and the properties `key` (the true key), `section` (`node`, `check`, `deliverable`, `delivery` or
+  `decision`), `row` (the row's canonical JSON, continued in `row1`, `row2`… past 30,000 characters) and `hash`. A row is
+  written once (insert-if-absent) and never rewritten. Holds hashes, ids, counts, reasons and package text only. A row
+  larger than a table row holds (1 MiB, in UTF-16) is not written, and its job fails with A09-002 naming its key. The
+  job index row of a storage-12 job carries `RecordStorage` (12), which the sweep and closure read instead of the
+  job's entity; a 5–30 job's index row has no such property.
+- **The blobs**, in `<kind>-job-outputs` beside the job's output blob, under `{appUserId}/{jobId}/`:
+  - `text/{sha256 hex of the row key}.produced.json` and `….settled.json`: the retained text (replies, prompts as sent,
+    renderer inputs and outputs, composed deliverables, item names from inputs or models, a `check_result`'s lists,
+    run-spot and substitution text);
+  - `record.json`: the canonical record document, sealed at the job's end with `recordHash` stamped on the entity.
+
+**What deletes what.** The 7-day text sweep seals the job if it is not yet sealed, then deletes the `text/` blobs
+(`DropText` follows), and rewrites no row, so `recordHash` holds after the drop; a job it cannot seal keeps its text for
+the next pass. It never deletes `record.json` or a row. The 30-day lifecycle policy above is a blunt ceiling over every
+blob of the container, `record.json` included, so it removes the sealed document at 30 days. The document is a
+materialisation (decided in the build, #1506): the next read (`GET …/Record`) assembles it again from the rows and the
+header, checks it against the stamped `recordHash`, and writes it back only if it matches (a mismatch is an engine
+fault, logged with both hashes, and nothing is written). What must outlive the policy is the table's rows and the
+entity's stamp, and both do: neither is in the text account. Account closure (#559)
+deletes every row of every job of the account (`DeleteJobAsync`, after the job's events) and, with the account's
+`{appUserId}/` prefix, every blob. A 5–30 job has none of this.
+
 ## After Setup
 
 In the storage account, Durable Functions will create runtime artifacts such as

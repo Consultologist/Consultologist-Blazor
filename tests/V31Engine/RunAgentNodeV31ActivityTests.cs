@@ -4,6 +4,7 @@ using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31.Run;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Consultologist.Api.Tests.V31Engine;
 
@@ -189,6 +190,49 @@ public class RunAgentNodeV31ActivityTests
         Assert.Empty(agent.Sent);
     }
 
+    [Fact]
+    public async Task ACallThatCouldNotBeComposed_WritesNoText()
+    {
+        // #1506 (Task 10): nothing was produced (Produced is null), so nothing is written
+        var (activity, _, job) = Activity("nested-note");
+
+        var outcome = await activity.RunAsync(Stored(Input(job, Plan(1) with { Scope = new JsonObject() })), CancellationToken.None);
+
+        Assert.Equal("compose", outcome.ErrorKind);
+        Assert.Empty(job.Blobs.Blobs.Names());
+    }
+
+    [Fact]
+    public async Task ACallsText_IsWrittenForItsKey_AndOverwrittenByALaterAttempt()
+    {
+        var (activity, _, job) = Activity("nested-note");
+
+        var first = await activity.RunAsync(Stored(Input(job, Plan(1))), CancellationToken.None);
+        var second = await activity.RunAsync(Stored(Input(job, Plan(2) with { Repair = true, Faults = ["The reply was not valid."] })), CancellationToken.None);
+
+        Assert.Null(first.Produced);
+        Assert.Null(second.Produced);
+        var name = Assert.Single(job.Blobs.Blobs.Names());
+        Assert.EndsWith(".produced.json", name.Name, StringComparison.Ordinal);
+        var produced = (await job.Blobs.ReadTextAsync(V31Job.AccountKind, "user-1", V31Job.JobId, "node.plan", CancellationToken.None))!;
+        Assert.Equal(Consultologist.PackageFormat.V31.CanonicalJson.HashText((string)produced["sent"]!), (string?)second.Detail!["inputHash"]);
+    }
+
+    [Fact]
+    public async Task ATextThatCannotBeWritten_FailsTheActivity()
+    {
+        // a row whose text was never stored would be a silent hole: the activity fails, and with it the job (A06-010)
+        var blobs = Substitute.For<IRecordBlobStore>();
+        blobs.WriteTextAsync(default, default!, default!, default!, default!, default!, default)
+            .ReturnsForAnyArgs(Task.FromException(new InvalidOperationException("The blob service is down.")));
+        var (activity, _, job) = Activity("nested-note", blobs: blobs);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => activity.RunAsync(Stored(Input(job, Plan(1))), CancellationToken.None));
+    }
+
+    private static RunAgentNodeV31Input Stored(RunAgentNodeV31Input input) =>
+        input with { JobId = V31Job.JobId, AppUserId = "user-1", AccountKind = V31Job.AccountKind };
+
     private static AgentCall Plan(int attempt) => new("node.plan", "node.plan", null, attempt, false, DraftScope);
 
     private static RunAgentNodeV31Input Input(V31Job job, AgentCall call) =>
@@ -198,12 +242,12 @@ public class RunAgentNodeV31ActivityTests
     private static (AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind) Of(AgentOutcome outcome) =>
         (outcome.Kind, outcome.Reply, outcome.WaitMilliseconds, outcome.ErrorKind);
 
-    private static (RunAgentNodeV31Activity Activity, FakeAttempts Agent, V31Job Job) Activity(string golden, Random? random = null)
+    private static (RunAgentNodeV31Activity Activity, FakeAttempts Agent, V31Job Job) Activity(string golden, Random? random = null, IRecordBlobStore? blobs = null)
     {
         var job = V31Job.Of(golden);
         var agent = new FakeAttempts();
         var activity = new RunAgentNodeV31Activity(job.Store, agent, new Lazy<V31AgentsCatalogue>(() => V31AgentsCatalogue.Load()),
-            NullLogger<RunAgentNodeV31Activity>.Instance, random);
+            blobs ?? job.Blobs, NullLogger<RunAgentNodeV31Activity>.Instance, random);
         return (activity, agent, job);
     }
 

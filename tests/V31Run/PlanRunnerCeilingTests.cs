@@ -61,10 +61,10 @@ public class PlanRunnerCeilingTests
     }
 
     [Fact]
-    public void TheLimits_AreTheHeadersNine()
+    public void TheLimits_AreTheHeadersTen()
     {
         Assert.Equal(
-            """{"maxAgentCalls":16,"capacityWaitMinutes":10,"serviceAttempts":5,"jobMinutes":30,"deliveryMinutes":15,"deliveryAttempts":3,"loopItems":200,"jobAgentCalls":500,"renderSteps":100000}""",
+            """{"maxAgentCalls":16,"capacityWaitMinutes":10,"serviceAttempts":5,"jobMinutes":30,"deliveryMinutes":15,"deliveryAttempts":3,"loopItems":200,"jobAgentCalls":500,"renderSteps":100000,"jobInstances":10000}""",
             new RunLimits().ToJson().ToJsonString());
     }
 
@@ -76,6 +76,7 @@ public class PlanRunnerCeilingTests
     [InlineData("LoopItems")]
     [InlineData("JobAgentCalls")]
     [InlineData("RenderSteps")]
+    [InlineData("JobInstances")]
     public void ALimitBelowOne_IsRefused(string member)
     {
         Func<RunLimits> make = member switch
@@ -86,6 +87,7 @@ public class PlanRunnerCeilingTests
             "JobMinutes" => () => new RunLimits(JobMinutes: 0),
             "LoopItems" => () => new RunLimits(LoopItems: 0),
             "JobAgentCalls" => () => new RunLimits(JobAgentCalls: 0),
+            "JobInstances" => () => new RunLimits(JobInstances: 0),
             _ => () => new RunLimits(RenderSteps: 0),
         };
         Assert.Equal(member, Assert.Throws<ArgumentOutOfRangeException>(make).ParamName);
@@ -94,6 +96,7 @@ public class PlanRunnerCeilingTests
         {
             "MaxAgentCalls" => () => new RunLimits() with { MaxAgentCalls = 0 },
             "RenderSteps" => () => new RunLimits() with { RenderSteps = 0 },
+            "JobInstances" => () => new RunLimits() with { JobInstances = 0 },
             _ => () => new RunLimits() with { JobAgentCalls = 0 },
         };
         Assert.Throws<ArgumentOutOfRangeException>(with);

@@ -52,8 +52,10 @@ public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory contai
 /// <paramref name="Unreadable"/>: the registry could not be read (the version's pointer, or a file of the folder), so
 /// nothing is known of the version; a start then takes today's path, which meets the same registry and answers as it does
 /// with 31 off. <paramref name="OperatorDetail"/> says what failed (the package, the version, the failure's type and status).
+/// #1506 (area 09; R4): with a plan, <paramref name="Lock"/> is the text of the version's verified <c>lock.json</c>, which a
+/// job's <c>versionsRan</c> is compared with member by member.
 /// </summary>
-public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false);
+public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false, string? Lock = null);
 
 /// <summary>#1503 (specVersion 31, area 06; part 09 § 1.2 steps 1 to 5): loads a 31 version from its stamped pair.</summary>
 public interface ICompiledPackageStore
@@ -95,7 +97,7 @@ public sealed class CompiledPackageStore(
 
     private static readonly UTF8Encoding Utf8 = new(false, true);
 
-    private readonly ConcurrentDictionary<string, RunPlan> _plans = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (RunPlan Plan, string Lock)> _plans = new(StringComparer.Ordinal);
 
     public async Task<CompiledLoad?> TryLoadAsync(WorkflowPackageRef packageRef, CancellationToken ct)
     {
@@ -111,7 +113,7 @@ public sealed class CompiledPackageStore(
         {
             version = await versions.ResolveVersionAsync(packageRef, ct);
             if (_plans.TryGetValue($"{name}@{version}", out var cached))
-                return new CompiledLoad(cached, null, null, null);
+                return Loaded(cached);
 
             var folder = $"{name}/{version}/";
             stamp = PublishedStamp.TryRead(Text(await files.TryReadAsync(name, folder + PublishedStamp.FileName, ct)));
@@ -164,8 +166,11 @@ public sealed class CompiledPackageStore(
         if (plan == null)
             return Shown(refusal ?? ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
 
-        return new CompiledLoad(_plans.GetOrAdd(key, plan), null, null, null);
+        return Loaded(_plans.GetOrAdd(key, (plan, Utf8.GetString(lockBytes))));
     }
+
+    /// <summary>A plan as a load answers it, with its lock's text.</summary>
+    private static CompiledLoad Loaded((RunPlan Plan, string Lock) loaded) => new(loaded.Plan, null, null, null, Lock: loaded.Lock);
 
     private static CompiledLoad Refused(string id, string sentence, string? operatorDetail) => new(null, sentence, id, operatorDetail);
 

@@ -21,6 +21,10 @@ public static class RunSentences
         return function == null ? $"{word} '{entry.Id}'" : $"{word} '{entry.Id}' in function '{function}'";
     }
 
+    /// <summary>#1506 (area 09; R2, D1) A09-001: the job opened more instances than the engine allows one job.</summary>
+    public static string JobInstances(int limit) =>
+        $"The job reached {limit.ToString("N0", CultureInfo.InvariantCulture)} steps, the most this engine runs for one job.";
+
     /// <summary>S05-062: a body passed its step budget.</summary>
     public static string StoppedRendering(string subject, int limit) =>
         $"{subject} stopped rendering: it took more than {limit.ToString("N0", CultureInfo.InvariantCulture)} steps.";

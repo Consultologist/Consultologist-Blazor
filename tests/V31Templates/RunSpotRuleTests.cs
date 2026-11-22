@@ -87,6 +87,23 @@ public class RunSpotRuleTests
         Assert.Equal("Node 'draft' reads input.consult_draft.content and run.id in one output at line 1; an output that reads a run fact reads nothing else.", refusal.Sentence);
     }
 
+    [Theory]
+    [InlineData("{{ run.id | string.upcase input.consult_draft.content }}", "input.consult_draft.content", "run.id")]
+    [InlineData("{{ run.date | array.join node.plan.content }}", "node.plan.content", "run.date")]
+    public void ARunSpotWhosePipeArgumentReadsAnInputOrANode_IsRefused(string output, string other, string fact)
+    {
+        // #1506 (final review M7; part 05 § 4): "an output expression that reads run.* reads nothing else", the pipe's
+        // arguments included, so a run spot's recorded output (kept when the spot reads raw run.* only) never holds a value
+        var files = Package().WithAgent("draft", output + "\n");
+
+        var refusal = Single(Check(files));
+
+        Assert.Equal("S05-024", refusal.Id);
+        Assert.Equal(
+            $"Node 'draft' reads {other} and {fact} in one output at line 1; an output that reads a run fact reads nothing else.",
+            refusal.Sentence);
+    }
+
     [Fact]
     public void ARunDependentValueWithAnotherRead_IsRefused()
     {

@@ -24,7 +24,8 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// the real <see cref="ConsultGenerationOrchestratorV31"/> runs on a <see cref="FakeOrchestrationContext"/> whose
 /// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c>, <c>render-node-v31</c> and (#1505) <c>evaluate-rule-v31</c> are the real activities (the inputs from a
 /// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/> at the job's held-inputs pointer), and whose <c>run-agent-node-v31</c> is
-/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key), (#1505) <c>deliver-v31</c> by <see cref="Deliver"/> and <c>alert-operator-v31</c> by <see cref="Alert"/>. Timers longer than five minutes (the job's)
+/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key), (#1505) <c>deliver-v31</c> by <see cref="Deliver"/> and <c>alert-operator-v31</c> by <see cref="Alert"/>;
+/// (#1506) <c>write-record-rows-v31</c> is the real activity over <see cref="Rows"/> and <see cref="Blobs"/>. Timers longer than five minutes (the job's)
 /// wait, as durable timers do, until cancelled; shorter ones (a retry's) end at once.
 /// </summary>
 internal sealed class V31Job
@@ -44,19 +45,44 @@ internal sealed class V31Job
 
     public const string JobId = "job-31-0001";
 
-    private V31Job(CompiledGoldenTests.GoldenCase golden)
+    /// <summary>#1506: this engine's toolchain over the bundled catalogues, as the host builds it (<c>load-run-inputs-v31</c>'s).</summary>
+    public static readonly Lazy<EngineToolchain> Toolchain = new(() => new EngineToolchain(
+        EngineAttestation.Current(OutputContractCatalog.Load()), OutputContractCatalog.Load(), FormatCatalogLoader.Load(),
+        new Lazy<V31AgentsCatalogue>(() => V31AgentsCatalogue.Load())));
+
+    private V31Job(CompiledGoldenTests.GoldenCase golden, Action<JsonObject>? resolve = null)
     {
         Registry = new FakeRegistry();
-        (Ref, Pair) = Registry.Put(golden);
+        if (resolve == null)
+        {
+            (Ref, Pair) = Registry.Put(golden);
+        }
+        else
+        {
+            // #1506: the golden with its resolve.json changed, the pair made to agree
+            Ref = Registry.PutChanged(golden, resolve);
+            var resolveText = System.Text.Encoding.UTF8.GetString(Registry.Blobs[FakeRegistry.PathOf(Ref, CompiledPackage.ResolveFile)]);
+            var lockText = System.Text.Encoding.UTF8.GetString(Registry.Blobs[FakeRegistry.PathOf(Ref, ResolveCompiler.LockFile)]);
+            Pair = CompiledGoldenTests.Published(golden) with
+            {
+                Resolve = resolveText,
+                ResolveHash = CanonicalJson.HashText(resolveText),
+                Lock = lockText,
+                LockHash = CanonicalJson.HashText(lockText),
+            };
+        }
+
         Store = StoreOver(Registry);
         Plan = Store.TryLoadAsync(Ref, CancellationToken.None).GetAwaiter().GetResult()!.Plan!;
         Agent = call => new AgentOutcome(AgentOutcomeKind.Completed, RunFixture.StubReply(Plan, call), 0, null);
         Alert = Alerts.Add;
         Entity = new ConsultGenerationJobEntity(
             Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
-            HeldInputs, Substitute.For<IAccountUsageStore>());
+            HeldInputs, Usage);
         var state = ConsultGenerationJobState.Create(JobId, "user-1", Array.Empty<IReadOnlyDictionary<string, string>>());
         state.PackageSpecVersion = 31;
+        // #1506 (Task 11): record storage 12, as the start's Initialize stamps a 31 job (the sealer seals from 12 only)
+        state.SchemaVersion = 12;
         // as Task 13's start leaves it: the run-inputs document is the job's held inputs
         state.InputsBlob = Inputs.WriteAsync(AccountKind, "user-1", JobId, Document(RunFixture.GoldenInputs()), CancellationToken.None).GetAwaiter().GetResult();
         StateProperty.SetValue(Entity, state);
@@ -75,6 +101,32 @@ internal sealed class V31Job
     public ConsultGenerationJobEntity Entity { get; }
 
     public FakeInputs Inputs { get; } = new();
+
+    /// <summary>#1506: the account usage store the entity writes the job's usage row to.</summary>
+    public IAccountUsageStore Usage { get; } = Substitute.For<IAccountUsageStore>();
+
+    /// <summary>#1506 (Task 10): the record's rows, as <c>write-record-rows-v31</c> stores them (shared by two jobs to replay one).</summary>
+    public FakeRecordRowStore Rows { get; set; } = new();
+
+    /// <summary>#1506 (Task 10): the record's text, as the activities write it.</summary>
+    public FakeRecordBlobStore Blobs { get; set; } = new();
+
+    /// <summary>#1506 (Task 10): what <c>write-record-rows-v31</c> logged.</summary>
+    public CapturingLogger<WriteRecordRowsV31Activity> RecordLog { get; } = new();
+
+    /// <summary>#1506 (Task 11): the sealer's view of the job: the entity, read and stamped as the Durable client would.</summary>
+    public EntityRecordJobs RecordJobs => _recordJobs ??= new EntityRecordJobs(Entity, AccountKind);
+
+    private EntityRecordJobs? _recordJobs;
+
+    /// <summary>#1506 (Task 11): what the sealer logged.</summary>
+    public CapturingLogger<RecordSealer> SealLog { get; } = new();
+
+    /// <summary>#1506 (Task 11): the real sealer over <see cref="RecordJobs"/>, <see cref="Rows"/> and <see cref="Blobs"/>.</summary>
+    public RecordSealer Sealer => new(RecordJobs, Rows, Blobs, SealLog);
+
+    /// <summary>#1506 (Task 11): answers each <c>seal-record-v31</c> call (by default, the real activity over <see cref="Sealer"/>).</summary>
+    public Func<SealRecordV31Input, SealedRecord?>? Seal { get; set; }
 
     /// <summary>The job inputs' store the entity drops the held inputs through.</summary>
     public IJobInputsBlobStore HeldInputs { get; } = Substitute.For<IJobInputsBlobStore>();
@@ -107,6 +159,9 @@ internal sealed class V31Job
 
     public static V31Job Of(string golden) => new(CompiledGoldenTests.Cases().Single(c => c.Name == golden));
 
+    /// <summary>#1506: a job of <paramref name="golden"/> with <paramref name="resolve"/> applied to its <c>resolve.json</c>.</summary>
+    public static V31Job Of(string golden, Action<JsonObject> resolve) => new(CompiledGoldenTests.Cases().Single(c => c.Name == golden), resolve);
+
     /// <summary>#1505: a job of <paramref name="golden"/>, a package of the test's own.</summary>
     public static V31Job Of(CompiledGoldenTests.GoldenCase golden) => new(golden);
 
@@ -127,7 +182,7 @@ internal sealed class V31Job
             .On(ConsultGenerationActivityNames.LoadPlanV31, payload =>
                 new LoadPlanV31Activity(Store).RunAsync((LoadPlanV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.LoadRunInputsV31, payload =>
-                new LoadRunInputsV31Activity(Inputs, Store).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+                new LoadRunInputsV31Activity(Inputs, Store, Toolchain.Value).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.RunAgentNodeV31, payload => Agent(((RunAgentNodeV31Input)payload!).Call))
             .On(ConsultGenerationActivityNames.EvaluateRuleV31, payload =>
                 new EvaluateRuleV31Activity(Store, NullLogger<EvaluateRuleV31Activity>.Instance)
@@ -139,8 +194,16 @@ internal sealed class V31Job
                 return null;
             })
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
-                new RenderNodeV31Activity(Store, NullLogger<RenderNodeV31Activity>.Instance)
+                new RenderNodeV31Activity(Store, Blobs, NullLogger<RenderNodeV31Activity>.Instance)
                     .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            // #1506 (Task 10): the round's rows, stored by the real activity over the fake stores
+            .On(ConsultGenerationActivityNames.WriteRecordRowsV31, payload =>
+                new WriteRecordRowsV31Activity(Rows, Blobs, RecordLog)
+                    .RunAsync((WriteRecordRowsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            // #1506 (Task 11): the record sealed by the real activity over the fake stores and the entity
+            .On(ConsultGenerationActivityNames.SealRecordV31, payload => Seal is { } seal
+                ? seal((SealRecordV31Input)payload!)
+                : SealRecordV31Activity.RunAsync((SealRecordV31Input)payload!, Sealer, CancellationToken.None).GetAwaiter().GetResult())
             // #1503 (D9): the input is DrainAware; the drain is off here and check-drain is left out of the calls the
             // tests read (the drain's own tests answer it recorded: DrainDoorsTests).
             .Unrecorded(ConsultGenerationActivityNames.CheckDrain, _ => false);

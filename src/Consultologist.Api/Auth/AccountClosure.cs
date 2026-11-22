@@ -32,6 +32,7 @@ public sealed class AccountClosure
     private readonly IConsultGenerationJobIndexStore _index;
     private readonly IConsultGenerationJobEventStore _events;
     private readonly ILegacyJobEventDelete _legacyEvents;
+    private readonly V31.IRecordRowStore _recordRows;
     private readonly IConsultGenerationLinkStore _links;
     private readonly IFormResponseStore _formResponses;
     private readonly IJobOutputsBlobStore _outputsBlobs;
@@ -48,6 +49,7 @@ public sealed class AccountClosure
         IConsultGenerationJobIndexStore index,
         IConsultGenerationJobEventStore events,
         ILegacyJobEventDelete legacyEvents,
+        V31.IRecordRowStore recordRows,
         IConsultGenerationLinkStore links,
         IFormResponseStore formResponses,
         IJobOutputsBlobStore outputsBlobs,
@@ -63,6 +65,7 @@ public sealed class AccountClosure
         _index = index;
         _events = events;
         _legacyEvents = legacyEvents;
+        _recordRows = recordRows;
         _links = links;
         _formResponses = formResponses;
         _outputsBlobs = outputsBlobs;
@@ -107,6 +110,11 @@ public sealed class AccountClosure
         // whole prefix in every text container, kind-blind.
         foreach (var job in jobs)
         {
+            // #1506 (final review F5): record rows exist only for a storage-12 job, which its index row says
+            // (RecordStorage); a job without it never reaches the record table, which a host with 31 off has never
+            // created, and no job's entity is read for it.
+            var holdsRecordRows = job.RecordStorage >= V31.RecordSealer.SealedFrom;
+
             if (!ConsultGenerationJobEntity.IsTerminal(job.Status))
             {
                 var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), job.JobId);
@@ -124,6 +132,13 @@ public sealed class AccountClosure
 
             await _events.DeleteJobAsync(job.JobId, cancellationToken);
             await _legacyEvents.DeleteJobAsync(job.JobId, cancellationToken);
+            // #1506: a storage-12 job's record rows (one partition per job). A failure stops the closure as the events'
+            // does; the closure row is the claim, so a re-run resumes. The record's blobs (text/ and record.json) are
+            // under {appUserId}/ and go with the prefix delete below.
+            if (holdsRecordRows)
+            {
+                await _recordRows.DeleteJobAsync(job.JobId, cancellationToken);
+            }
         }
 
         var blobs = await _outputsBlobs.DeleteAccountAsync(appUserId, cancellationToken)

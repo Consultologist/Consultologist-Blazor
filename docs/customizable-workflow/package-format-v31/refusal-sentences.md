@@ -315,7 +315,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S05-053 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has no marker for macro '\<id\>'."* | author | |
 | S05-054 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has the marker for macro '\<id\>' \<n\> times."* | author | |
 | S05-055 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has a marker for macro '\<id\>', which wasn't offered."* | author | |
-| S05-056 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has a marker for '\<id\>', which isn't a macro."* | author | |
+| S05-056 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has a marker that names no macro."* | author | |
 | S05-057 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply writes the marker for macro '\<id\>' \<inside a sentence \| alone on a line\>, but it was asked for \<alone on a line \| inside a sentence\>."* | author | |
 | S05-058 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has text after the marker for macro '\<id\>' on its line."* | author | |
 | S05-059 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has the markers out of order: '\<id\>' before '\<other\>'."* | author | |
@@ -432,6 +432,23 @@ Said in a refusal's place when the engine fails reading a template in a way no t
 | S09-017 | [3.8 Delivery at the end](09-engine-and-pages.md#38-delivery-at-the-end) | *"Couldn't send to \<destination\>. Copy the note instead."* | clinician | |
 | S09-018 | [3.6 Every deploy is preceded by a drain](09-engine-and-pages.md#36-every-deploy-is-preceded-by-a-drain) | *"Waiting for an update to finish"* | clinician | |
 | S09-019 | [3.8 Delivery at the end](09-engine-and-pages.md#38-delivery-at-the-end) | *"Delivering…"* | clinician | |
+
+### The instances limit
+
+Said at run time when the job would open more instances than `jobInstances` allows ([part 09 § 3.4](09-engine-and-pages.md#34-retries-and-limits)); the tenth limit, ruled by the owner on [#1506](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456). It is the build's area sentence, not a row of `sentences.json`, and is not counted above.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A09-001 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job reached \<n\> steps, the most this engine runs for one job."* | clinician | |
+
+### A record row too large to store
+
+Said at run time when one of a job's record rows is larger than the record's row store holds (1 MiB, [part 08 § 1.1](08-record.md#11-where-the-record-is-stored)): the row is not written, the other rows of its round are, and the job fails naming the row by its key (package ids and item ids, never a value). Decided in the build ([#1506](https://github.com/Consultologist/Consultologist-Blazor/issues/1506)); the build's area sentence, not a row of `sentences.json`, and not counted above.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A09-002 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job's record of '\<row key\>' is larger than this engine stores. Tell the operator."* | clinician | |
+
 ## 10 Migration and tools
 
 | Id | Section | Sentence | Audience | Review |

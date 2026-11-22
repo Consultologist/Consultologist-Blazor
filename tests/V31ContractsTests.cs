@@ -69,7 +69,7 @@ public class V31ContractsTests
     private static int[] Ints(JsonNode? array) => array!.AsArray().Select(v => (int)v!).ToArray();
 
     [Fact]
-    public void TheEngineAt30_StillSeesItsOwnSets()
+    public void The31Sets_HaveJoinedTheLadders()
     {
         var specVersions = Json(PackageFormat("spec-versions.json"));
         Assert.DoesNotContain(31, Ints(specVersions["supported"]));
@@ -79,14 +79,19 @@ public class V31ContractsTests
         Assert.Equal("package-format-v31.md", document);
         Assert.Contains("specVersion 31", File.ReadAllText(Existing(PackageFormat(document))));
 
+        // #1506 (part 08 § 13; D14): the engine writes them, so storage 12 and definitions 7, 7 and 4 are in the ladders
+        // and the preview holds none of them; the package format's 31 stays a preview (31 is off in production).
         var provenance = Json(Provenance("provenance-versions.json"));
-        Assert.DoesNotContain(12, Ints(provenance["recordStorageVersions"]));
+        Assert.Equal(12, Ints(provenance["recordStorageVersions"])[^1]);
+        Assert.Equal(7, Ints(provenance["nodeHashVersions"])[^1]);
+        Assert.Equal(7, Ints(provenance["effectiveInputHashVersions"])[^1]);
+        Assert.Equal(4, Ints(provenance["workflowOutputHashVersions"])[^1]);
 
-        var preview = provenance["preview"]!;
-        Assert.Equal([12], Ints(preview["recordStorageVersions"]));
-        Assert.Equal([7], Ints(preview["nodeHashVersions"]));
-        Assert.Equal([7], Ints(preview["effectiveInputHashVersions"]));
-        Assert.Equal([4], Ints(preview["workflowOutputHashVersions"]));
+        if (provenance["preview"] is JsonObject preview)
+        {
+            foreach (var (_, numbers) in preview)
+                Assert.Empty(Ints(numbers));
+        }
 
         Assert.DoesNotContain(31, WorkflowPackageStore.SupportedSpecVersions);
         Assert.DoesNotContain(31, WorkflowPackageValidator.AcceptedSpecVersions);
@@ -272,5 +277,77 @@ public class V31ContractsTests
         Assert.Equal(
             ["classification", "concept_list", "prose", "rendered", "terms_subset"],
             formats.Select(f => f.Key).Order(StringComparer.Ordinal).ToArray());
+    }
+    // #1506 (part 08; Task 14): the contract names what the engine writes. Every member name the record's goldens and a 31
+    // job's header hold is written in backticks in provenance-record.md § 6. The keys that are data (a row's key, a
+    // library's or operation's name) are not member names and are skipped.
+    private static readonly string[] KeyedByData = ["nodeOutputs", "checks", "libraries", "operations", "builtins"];
+
+    private static void CollectMembers(JsonNode? node, ISet<string> names, bool keysAreData = false)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var (name, value) in obj)
+                {
+                    if (!keysAreData)
+                        names.Add(name);
+                    CollectMembers(value, names, KeyedByData.Contains(name, StringComparer.Ordinal));
+                }
+
+                break;
+            case JsonArray array:
+                foreach (var element in array)
+                    CollectMembers(element, names);
+                break;
+        }
+    }
+
+    [Fact]
+    public void TheRecordContract_NamesEveryMemberTheEngineWrites()
+    {
+        var names = new SortedSet<string>(StringComparer.Ordinal);
+        var goldens = Directory.GetFiles(Path.Combine(RepoRoot(), "tests", "V31Run", "Golden"), "*.record.json");
+        Assert.NotEmpty(goldens);
+        foreach (var golden in goldens)
+            CollectMembers(JsonNode.Parse(File.ReadAllText(golden)), names);
+
+        var step = new Consultologist.Api.Models.ConsultExtractionStep("Markitdown", "1.0.0");
+        var state = new Consultologist.Api.Jobs.ConsultGenerationJobState
+        {
+            PackageSpecVersion = 31,
+            SchemaVersion = 12,
+            JobId = "job-1",
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            StartedAtUtc = DateTimeOffset.UnixEpoch,
+            CompletedAtUtc = DateTimeOffset.UnixEpoch,
+            EffectiveInputHashVersion = 7,
+            V31Progress = new Consultologist.Api.Jobs.ConsultV31ProgressState { Tokens = new(120, 30, 150) },
+            InputHashes = new Dictionary<string, string>(StringComparer.Ordinal) { ["referral"] = "sha256:0", ["history"] = "sha256:1" },
+            InputDocumentOrigins = new Dictionary<string, List<Consultologist.Api.Models.ConsultInputOrigin>>(StringComparer.Ordinal)
+            {
+                ["referral"] = [new("document", Extractor: "pdfpig/0.1.15", PageCount: 2, FileSha256: "sha256:2", TextSha256: "sha256:3", Converter: step, Parser: step, Ocr: new("ocr-service", "model-1"))],
+                ["history"] = [new("document", FileSha256: "sha256:2", TextSha256: "sha256:3"), new("typed")],
+            },
+            Limits = new Consultologist.PackageFormat.V31.Run.RunLimits().ToJson().ToDictionary(m => m.Key, m => (int)m.Value!, StringComparer.Ordinal),
+            VersionsRan = JsonNode.Parse("""
+                { "resolver": { "packageFormat": "p", "dialect": "d" }, "libraries": { "Scriban": "1" }, "evaluator": "1",
+                  "operations": { "o": "1" }, "builtins": { "b": "1" }, "culture": "invariant",
+                  "runtime": { "dotnet": "10", "unicode": "16" },
+                  "catalogues": { "agents": "a", "formats": "f", "outputContracts": null } }
+                """)!.AsObject(),
+            RunFacts = JsonNode.Parse("""
+                { "date": { "value": "2026-11-16", "timeZone": "America/Toronto" }, "id": "j", "package": "p@1", "engine": "1" }
+                """)!.AsObject(),
+        };
+        CollectMembers(state.ToRecordHeader(), names);
+
+        var contract = File.ReadAllText(Existing(Provenance("provenance-record.md")));
+        var start = contract.IndexOf("## 6. Storage 12", StringComparison.Ordinal);
+        Assert.True(start >= 0, "provenance-record.md has no section 6.");
+        var section = contract[start..];
+
+        var missing = names.Where(name => !section.Contains($"`{name}`", StringComparison.Ordinal)).ToArray();
+        Assert.True(missing.Length == 0, "Section 6 does not name: " + string.Join(", ", missing));
     }
 }

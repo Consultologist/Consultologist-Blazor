@@ -153,8 +153,9 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`) is written where the
    job's held inputs live: `org-job-inputs` or `personal-job-inputs`, `{appUserId}/{jobId}.json`. The retention
    drop and account closure therefore delete it as they delete a 5–30 job's.
-6. **The record.** The job's entity is initialised at `PackageSpecVersion` 31, with `ResolveHash`, `LockHash` and
-   `Limits`.
+6. **The record.** The job's entity is initialised at `PackageSpecVersion` 31 and stamped `SchemaVersion` 12 (record
+   storage 12), with `ResolveHash`, `LockHash` and `Limits`. The rows come later, from the orchestration (below, "The
+   record").
 7. **The schedule.** Unless the engine is draining, `ConsultGenerationOrchestratorV31` is scheduled with
    `InstanceId` = the job id.
 
@@ -191,7 +192,7 @@ has changed since. The orchestration runs these steps in order:
 3. It takes `startedAtUtc` from the replay-safe clock. The job limit is timed from here, so time spent queued or
    waiting behind a drain does not count.
 4. It records the header on the job's entity in one call, before any node runs: `RecordV31Header` with the two
-   hashes, the nine limits and `startedAtUtc`. Then it calls `MarkRunning`.
+   hashes, the ten limits and `startedAtUtc`. Then it calls `MarkRunning`.
 5. **`load-plan-v31`** loads and verifies the version again through the store. The plan's `resolveHash` must be
    the job's, else S09-009; its `lockHash` must be too, else S09-014. A version no longer stamped 31 is A06-004.
    When the store refuses the version here, or in any other activity that loads the plan (`load-run-inputs-v31`,
@@ -210,13 +211,21 @@ has changed since. The orchestration runs these steps in order:
 7. It runs `PlanRunner` with:
    - `DurableRunHost`: an agent call is `run-agent-node-v31`, a render is `render-node-v31`, a rule that holds
      `matches` or `has_word` is `evaluate-rule-v31` (below), and a wait is a durable timer;
-   - `EntityRunRecorder`: progress counts on the entity through `RecordV31Progress`, and each row to telemetry
-     as its key, state and value hash.
+   - `StoredRunRecorder` (#1506): a round's rows, decisions and delivery rows are buffered and, at each flush, written
+     in one `write-record-rows-v31` call (each row's settled text to its `settled` blob, then the rows to
+     `ConsultGenerationRecordRows`, insert-if-absent; a row that differs from the stored one fails the job with
+     A06-010), then counted on the entity in one `RecordV31Rows` with the round's token sums (`RecordV31Progress`
+     stays for histories in flight). `FinalizeJob` writes a 31 job's usage row from those sums. Each row goes to
+     telemetry as its key, state and hashes.
 8. **Delivery** (#1505), when the run completed and some released deliverable has a destination: the job enters
    `delivering`, and the released deliverables are sent (below).
 9. It finalises the job: `Completed`, or `Failed` with the run's sentence. A timed-out run is a failed job with
    S09-012. A failed job delivers nothing: each destination of each released deliverable is recorded *not sent: the
    job failed* (S06-038), and the operator is alerted (below).
+10. **It seals the record** (#1506): after `FinalizeJob`, and before the alert, it calls `seal-record-v31`, which
+    assembles the canonical record document and stamps `recordHash` (below, "The record"). The call is best effort:
+    a fault is logged with its type and never changes the job's state or error, and a job whose seal failed is
+    sealed by the first read, or the sweep.
 
 A fault the run cannot say as a node's sentence fails the job with **A06-010**: *"The engine couldn't finish this
 job. Tell the operator."* The exception's message is never used, since it can carry a service's response; the log
@@ -227,7 +236,14 @@ gets the fault's type only.
 
 - `load-run-inputs-v31`'s result, the inputs document, clinical text included;
 - each agent activity's input, the call's scope;
-- each agent activity's result, the reply.
+- each agent activity's result, the reply;
+- each `write-record-rows-v31` call's input, which holds the round's rows and their settled text (#1506, D17).
+
+**A reply travels the history twice** (#1506, D17): once as the agent activity's result, and once as the settled text
+the row write carries (a deliverable's composed text, a node's content, a `check_result`'s lists). The prompt as sent
+and a renderer's input and output do not: the activity that made them writes them to the text blobs itself and strips
+them from what it answers. This is flagged for the go/no-go gate's history measurement (index § 5), which should be
+taken on a completed job of the largest example package with the record writes in it.
 
 The dev dry run measures the history's size and replay time on the largest example package.
 
@@ -300,12 +316,14 @@ retry rows, and its waits are not in the history. **Leave it at 0 on any app tha
 
 Telemetry from the activity carries the key, the attempt, lengths, hashes and token counts, never text: the
 prompt's, the run-neutral text's, the model's reply's and the finished value's (they differ once markers are
-replaced), and the counts of marker faults. The tokens are not recorded on the job yet (area 09).
+replaced), and the counts of marker faults. A node's tokens are on its row (`tokens`, summed over its attempts), and a round's sums are counted on the entity by `RecordV31Rows`.
 
 `render-node-v31` (`RenderNodeV31Activity`) returns `RenderTurn.Render(plan, call)`: the text, the run-neutral text
 and the row's detail, with the runner's decisions (`RenderCall.Placed`). Its log line carries the key and the lengths
-and hashes of the two texts. `EntityRunRecorder` passes only a row's `inputHash` and `runNeutralHash` to telemetry;
-the whole detail is stored by area 09.
+and hashes of the two texts. #1506: both activities write the text only they hold (`AgentOutcome.Produced`,
+`RenderOutcome.Produced`, with `spots`, the texts of the run spots whose row `output` is null) to the row key's
+`produced` blob and strip it from what they answer, so the prompt as sent never enters the history.
+`StoredRunRecorder` passes only a row's `inputHash` and `runNeutralHash` to telemetry; the whole detail is stored.
 
 ## Delivery
 
@@ -363,12 +381,118 @@ released sends nothing.
 **The rows (#1505 D13).** A delivery row's key is `delivery:<deliverable key>/<kind>`. Its `reason` is S08-006's
 sentence for a kind not set up, `not sent: the job failed` for a failed job, `failed: <kind>` after the attempts or
 the window, and `null` when sent. A row records each attempt with its start time and `sent` or
-`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `EntityRunRecorder`
+`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `StoredRunRecorder`
 counts the rows on the entity as `delivery:sent`, `delivery:not sent` and `delivery:failed`, apart from the run's row
-states, so a failed delivery is never counted as a failed run row. Storing them is area 09's.
+states, so a failed delivery is never counted as a failed run row, and stores them with the record's rows.
 
 **What the email carries.** Boilerplate, the labels of the documents (package text) and the History link, as today.
 No document's text and no value from an input, a model or a profile is in a body, a log line or a row.
+
+## The record (area 09, #1506)
+
+*Part 08 is the design and `provenance-record.md` § 6 the contract; this section is how the engine writes it. Everything
+here is 31 only: a 5–30 job, and a 31 job below storage 12, touches none of it.*
+
+**The recorder.** `StoredRunRecorder` (it replaces `EntityRunRecorder`) holds every row, decision and delivery row the
+runner settles in a buffer. `FlushAsync` is awaited by the runner once per round that recorded anything and at its end,
+and by the delivery runner after each delivery row. A flush is one `write-record-rows-v31` activity for the round,
+then one `RecordV31Rows` entity operation counting what was stored, so an event never names a row that is not there.
+A row is written once, insert-if-absent. A Durable replay writes the same rows in another batch split and finds each
+already stored: that is a no-op. A row that differs by a byte from the stored one is refused, logged as
+`V31 record conflict. JobId, Key` (hashes only), leaves the stored row alone and fails the job with A06-010; the job's
+record is then sealed with the first row. A row larger than a table row holds (1 MiB, counted as Azure does, in UTF-16)
+is not written: the store answers `RecordWrite.TooLarge`, the round's other rows are written and counted,
+`write-record-rows-v31` returns the keys (`TooLarge`, a trailing optional member of its result), and the recorder
+throws `RecordRowTooLargeException`; the orchestration fails the job with **A09-002**, *"The job's record of '<row key>'
+is larger than this engine stores. Tell the operator."*, and logs `V31 record row too large. JobId, Key, Chars` (no row
+content). There is no spill: the table is the only permanent store.
+
+**An engine fault keeps its last round.** When a run throws (an activity's fault, a conflict, a row too large), the
+runner first records each gate check's row it still holds, `effect: null`, and the exception leaves it unchanged (a
+recording that throws then never replaces it). The orchestration's catch flushes the recorder, best-effort (its failure
+is logged with the exception's type only), before it finalizes the job, so the sealed record holds every row recorded.
+A flush clears its buffer before it writes, so a flush that failed or met a conflict writes nothing twice.
+
+**A terminal job is frozen.** From the moment a storage-12 job is `Completed`, `Failed` or `Cancelled`, no entity
+operation writes a member its record header reads: `Cancel`, `FinalizeJob`, `RecordV31Header`, `Initialize`,
+`RecordStartFailure`, `MarkNodeFailed` return at once, and `RecordV31Rows` counts rows but adds no tokens. The stamp
+(`RecordV31Seal`) is a signal sent after `record.json` is written, so it cannot be the guard; the state is. So a
+document restored from the rows (below) always hashes to the stamp. A 5–30 job is not frozen: it re-finalizes as before.
+
+**The row table.** `ConsultGenerationRecordRows`, created on a 31 job's first write. Partition key the job id, row key
+the row's key escaped for Azure Tables (`RecordKeys.Escape`: the characters a row key refuses, and `!`, `%` and `~`,
+become `!` and two hex digits; an escaped key past 512 characters is `~` and the SHA-256 hex of the true key, so two
+keys never share one), and the properties `key` (the true key), `section` (`node`, `check`, `deliverable`, `delivery`
+or `decision`), `row` (the row's canonical JSON, continued in `row1`, `row2`… past 30,000 characters) and `hash`. The
+account is `ConsultGenerationRecordStorage`'s, else `AccountStorage`'s (see Settings).
+
+**The text blobs.** Retained text is never in a row. In the account kind's outputs container, under the job:
+`{appUserId}/{jobId}/text/{sha256 hex of the key}.produced.json` is written by the activity that made the text (the
+prompt as sent, a renderer's input and output, the texts of run spots and substitutions), and
+`{appUserId}/{jobId}/text/{…}.settled.json` is written by `write-record-rows-v31` just before its rows (a node's
+content and value, an item name, a `check_result`'s lists, a deliverable's composed text, a blocked deliverable's
+included). The rows hold hashes, so the 7-day drop deletes blobs and never rewrites a row.
+
+**Sealing.** `RecordSealer.EnsureSealedAsync` assembles `{appUserId}/{jobId}/record.json` from the header
+(`ConsultGenerationJobState.ToRecordHeader()`) and the rows (`RecordDocument.Assemble`), writes it if absent, and has
+the entity stamp `recordHash` once (`RecordV31Seal`, write-once). It does nothing for a job that does not exist, is
+below storage 12 or is not terminal (`delivering` is not terminal), and sealing twice gives the same hash. It is
+reached four ways:
+
+- the orchestration's end, `seal-record-v31` (above);
+- the cancel route, after it signals `Cancel`. Only a `Scheduled` job can be cancelled, and the signal is processed
+  after the route reads, so in practice this seals nothing and the next two do;
+- the retention sweep, before it drops the text: a job it cannot seal keeps its text, is not counted as dropped, and
+  is tried again at the next pass (`RecordNotSealedException`, logged with the job id and the exception's type);
+- the first read of a terminal job that has no `recordHash`: `GET ConsultGenerationJobs/{jobId}/Record`.
+
+**Restoring.** `record.json` sits in the text account, whose 30-day lifecycle policy deletes it. The document is a
+materialisation of the rows under the header (decided in the build, #1506), so `RecordSealer.ReadSealedAsync`, which
+the `Record` route reads through, seals the job if need be, reads the blob and, when a stamped job's blob is gone,
+assembles the document again and writes it back only if it hashes to the stamped `recordHash`. It logs
+`V31 record restored. JobId, Bytes, RecordHash`; a document that does not hash to the stamp is an engine fault, logged
+`V31 record could not be restored. JobId, Expected, Got` (hashes only), with nothing written and the route answering
+500. The rows and the entity's stamp are what must outlive the policy.
+
+**The size of a record.** Sealing logs one line, `V31 record sealed. JobId, Rows, Bytes, RecordHash`: the rows
+assembled and the document's UTF-8 byte count. It is the number for the go/no-go gate's record-size estimate (index § 5);
+the dev dry run's largest-package job gives the figure to compare with the gate. The line holds ids, counts and a hash
+only. A seal that fails logs `V31 record could not be sealed. JobId, ExceptionType`.
+
+**The routes** (all `GET` and `OPTIONS`, `Anonymous` with the account checked as the Links route checks it; 404 for a
+job that is not the caller's or is below storage 12):
+
+- `ConsultGenerationJobs/{jobId}/Rows?key=<row key>`: `{ key, section, row, text, textDeleted }`. `text` holds the
+  settled and produced text that still hashes to what the row says it should (a row's `content` against its
+  `outputHash` or `composedHash`, and so on), and is `null` once the job's text is dropped (`textDeleted` true). With no
+  `key` it lists `{ rows: [ { key, section, row } … ] }` in key order, with no text.
+- `ConsultGenerationJobs/{jobId}/Record`: `record.json`'s exact bytes, with `Content-Disposition: attachment` and
+  `X-Record-Hash`; 409 while the job has not finished, 500 *"The record isn't available yet. Try again."* when it
+  cannot be sealed or read.
+- **The event `row-finished`** (D16): one per stored row except decisions, key `row:<key>`, payload exactly
+  `{ "key", "section", "status" }`, materialised from the row table and placed before `done` (see
+  `docs/CONSULT_GENERATION_EVENTS.md`). A browser fetches the row from `Rows?key=`. An SSE connection lists the row
+  table only when the job's row count (`rows` on the response) has moved since its last listing, and always for the
+  terminal response. A poll (`GET` of the job) holds no state, so it lists the table on every poll once the job has a
+  stored row (none before); each listing appends the row events, which the event store keeps once by key. That remaining
+  cost, one table listing and one event-store call per poll of a running 31 job, is bounded by the poll rate.
+- A rows route whose store faults, or meets a stored row that is not JSON, answers 500 *"The record isn't available yet.
+  Try again."* with CORS, and logs `V31 rows not available. JobId, ExceptionType`.
+
+**Retention and closure.** The 7-day sweep calls `IRecordTextDrop` first: it seals the job if need be, deletes the
+job's `text/` blobs, and only then signals `DropText`. The sweep never deletes `record.json` (the lifecycle policy
+does, at 30 days, and the next read restores it, above), and `recordHash` still holds afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
+closure, which a rerun resumes. The blobs go with the account's prefix. Both know a storage-12 job from its index row
+(`ConsultGenerationJobIndex`'s `RecordStorage`, written only for a job at storage 12 or later), so for a 5–30 job they
+make the calls they made before 31: no entity read and no record store. A 5–30 row is written through the entity type
+it always was, so its stored properties are unchanged. A 31 job indexed before this column existed has none and is
+treated as 5–30; such jobs exist only on dev preview, so nothing is migrated.
+
+**Deploying: drain 31 orchestrations first.** A 31 history now holds `write-record-rows-v31` and `seal-record-v31`
+calls, and the entity gains the operations `RecordV31Rows` and `RecordV31Seal`. An orchestration in flight across this
+build would fail its replay. **Run the drain (above) before deploying this build.** Only dev admits 31; a 5–30
+orchestration is unchanged. `seal-record-v31` is the first activity to bind `[DurableClient]`; the seal is best effort,
+so a binding failure shows only as the log line, and should be looked for on the first dev run.
 
 ## Alerts and the weekly summary
 
@@ -394,7 +518,8 @@ text retention timer is. It reads nothing unless the engine runs 31 (`WorkflowPa
 admits it), even with the schedule set. It lists every account's jobs from the job index that ended in the 7 days
 before the run, at every version, and mails `Jobs`, `Failures`, the p50 and p90 of the durations (nearest rank) and
 two lines areas 09 and 10 fill: `Largest record` and `Outstanding migration hand edits` read *not measured in this
-build*. With no alert address it is only logged, as counts.
+build* (the record's size per job is logged when it is sealed, below, for the gate to read; the summary does not
+read it yet). With no alert address it is only logged, as counts.
 
 ## The engine-fault log (A08-006)
 
@@ -430,6 +555,8 @@ re-read for that job.
 | `ConsultGeneration__LoopItems` | 200 | The items one loop instance may be given (S04-078 past it) |
 | `ConsultGeneration__JobAgentCalls` | 500 | The agent calls one job may make; a retry or repair is part of its call (S09-015 past it) |
 | `ConsultGeneration__RenderSteps` | 100000 | The steps one render may take (S05-062 past it) |
+| `ConsultGeneration__JobInstances` | 10000 | The instances one job may open: a node, check or deliverable instance, a loop item, a pass or a call (A09-001 past it; recorded in `limits` as `jobInstances`) |
+| `ConsultGenerationRecordStorage__TableServiceUri` (or `…__ConnectionStringName`) | unset | Where the table `ConsultGenerationRecordRows` lives. Unset, the table is on the account `AccountStorage` names, as the other job tables are; the text and record blobs are in the job outputs container, never here |
 | `ConsultGeneration__RegexMilliseconds` | 2000 | R2: the time one evaluation of `matches` or `has_word` may take (A06-001 past it). It is at most 2147483646, and it is not in the record (D8) |
 | `AzureAI__MaxRetries` | 0 | Keep 0 on any app that runs 31 jobs (above) |
 | `Operators__AppUserIds` | nobody | Who may call the drain's endpoints, as for `Operator/*` |
@@ -536,7 +663,10 @@ If the release is abandoned at step 2, the drain stays on and new jobs keep park
   something to send calls `deliver-v31` and its timers and `alert-operator-v31`. So an orchestration that was
   mid-flight on the build before area 08 would fail its replay. Run the drain (above) before the deploy that
   carries it, and for any later deploy that changes what a 31 orchestration calls. Only dev admits 31, so the cost
-  is the few preview jobs running then; a 5–30 orchestration is unchanged.
+  is the few preview jobs running then; a 5–30 orchestration is unchanged. **Area 09's build changes the shape again:**
+  every 31 history gains `write-record-rows-v31` (once per round that recorded anything and at the end) and
+  `seal-record-v31` (after `FinalizeJob`), and the entity `RecordV31Rows` and `RecordV31Seal`. **Drain 31
+  orchestrations before deploying this build**, as above; only dev admits 31.
 
 ## Sizing the deployment-wide limits (D10)
 

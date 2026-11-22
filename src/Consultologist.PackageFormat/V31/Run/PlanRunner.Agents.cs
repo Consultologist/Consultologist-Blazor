@@ -33,6 +33,9 @@ public sealed partial class PlanRunner
         public IReadOnlyList<string>? Faults { get; set; }
 
         public JsonArray Retries { get; } = [];
+
+        /// <summary>#1506 (area 09; R14): the tokens its attempts spent, summed (<c>{ input, output, total }</c>); null while none said.</summary>
+        public JsonObject? Tokens { get; set; }
     }
 
     private sealed partial class Run
@@ -73,12 +76,14 @@ public sealed partial class PlanRunner
         private async Task AgentAsync(RunInstance instance, AgentOutcome outcome)
         {
             var state = agentStates[instance];
+            AddTokens(state, outcome.Detail?["tokens"]);
             // A wait of 0 or less would call again at once: the back-off's start is applied instead, and counted.
             var wait = outcome.WaitMilliseconds > 0 ? outcome.WaitMilliseconds : LeastWaitMilliseconds;
             switch (outcome.Kind)
             {
                 case AgentOutcomeKind.Completed:
                     instance.CallDetail = outcome.Detail;
+                    instance.CallProduced = outcome.Produced;
                     if (outcome.Invalid is { Count: > 0 } faults)
                         await InvalidAsync(instance, state, faults);
                     else
@@ -229,10 +234,26 @@ public sealed partial class PlanRunner
         {
             Merge(instance.CallDetail, detail);
             var state = agentStates.GetValueOrDefault(instance);
+            detail["tokens"] = state?.Tokens?.DeepClone(); // #1506 (R14): summed over the attempts; null when none called the model
             detail["invalid"] = state?.Invalid is { } invalid
                 ? new JsonObject { ["reason"] = invalid.Reason, ["action"] = invalid.Action, ["attempts"] = state.Replies }
                 : null;
             detail["retries"] = state?.Retries.DeepClone() ?? new JsonArray();
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; R14): adds an attempt's <c>tokens</c> (<c>{ input, output, total }</c>, from its
+        /// outcome's detail) to the call's sum; an attempt that says none, or not as whole numbers, adds nothing.
+        /// </summary>
+        private static void AddTokens(AgentState state, JsonNode? tokens)
+        {
+            if (tokens is not JsonObject spent || Whole(spent["input"]) is not { } input || Whole(spent["output"]) is not { } output)
+                return;
+            var total = Whole(spent["total"]) ?? input + output;
+            var sum = state.Tokens ??= new JsonObject { ["input"] = 0, ["output"] = 0, ["total"] = 0 };
+            sum["input"] = (int)sum["input"]! + input;
+            sum["output"] = (int)sum["output"]! + output;
+            sum["total"] = (int)sum["total"]! + total;
         }
 
         // ---- the job limit --------------------------------------------------------------------

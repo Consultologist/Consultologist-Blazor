@@ -640,9 +640,9 @@ matter. Every member is present (#1394).
 ### 8.2 Stub keys
 
 A stub key is the node's **rooted key**, then, for an instance inside a loop or a `while`, `:` and
-its path: item ids and pass numbers from the outermost inward, joined by `/`, exactly the record's
-row key ([part 08](08-record.md), #1384): `node.plan`, `node.sections.outline:2`,
-`node.sections.paragraphs.draft_paragraph:2/1`, `node.refine.judge:3`. Inside a function the key
+its path: item ids from the outermost inward, joined by `/`, and `#<n>` for a pass of a `while`
+where it sits, exactly the record's row key ([part 08](08-record.md) § 2.1, #1384; [ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 2): `node.plan`, `node.sections.outline:2`,
+`node.sections.paragraphs.draft_paragraph:2/1`, `node.refine.judge#3`. Inside a function the key
 goes through the call node: `node.hpi_section.standard_draft`.
 
 - A text format's stub is a JSON string; a data or object format's stub is the JSON value.

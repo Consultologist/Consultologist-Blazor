@@ -90,8 +90,8 @@ A list that has to be computed is a `computed` node, which `in` then names (#147
   with the same rules: for example to write one line per section, skipped sections included,
   each naming its state
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)).
-- The source must be typed as a list (a JSON Schema array). Item ids keep v30's forms: array
-  inputs 0-based, node values 1-based, folder items their file stems (v30 § 1.1).
+- The source must be typed as a list (a JSON Schema array). Item ids are **1-based wherever
+  a person sees them** — array inputs included, which at 30 were 0-based ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 2) — and folder items keep their file stems. No id or item id holds `.`, `/`, `:` or `#`.
 
 ### 2.3 `parallel` and `maxParallel`
 

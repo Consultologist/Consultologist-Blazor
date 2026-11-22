@@ -1395,7 +1395,7 @@ package's level. `Scope` is `RunScope.Data` over exactly the entry's compiled `r
 | Seam | Here | Who plugs in |
 |---|---|---|
 | `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)`, `EvaluateAsync(RuleCall)` (area 08) | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's byte-equivalence run and area 11's in-package tests bring their own |
-| `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, `DeliveryAsync(DeliveryRow)` and `NoticeAsync(RunNotice)` (area 08), awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | area 09 (the record's storage), replacing the engine's `EntityRunRecorder` (D12: counts on the job's entity, telemetry by key, state and hash) |
+| `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, `DeliveryAsync(DeliveryRow)` and `NoticeAsync(RunNotice)` (area 08) and `FlushAsync()` (area 09, #1506), awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | the engine's `StoredRunRecorder` (area 09, which replaced `EntityRunRecorder`): it buffers a round's rows, decisions and delivery rows, and writes them at each flush to the record's table in one activity, then counts them on the job's entity; telemetry gets the key, state and hashes |
 | `AgentTurn`, `RenderTurn` (in the library, since area 07) | `AgentTurn.Prepare(plan, call, stepLimit, strictRejects)`, `AgentTurn.Finish(prepared, reply)`, `RenderTurn.Render(plan, call)` | the engine's two activities call them; area 07 removed the Api's `IBodyComposer` and `ScribanBodyComposer` (see "templates" below) |
 | A deliverable's outcome (area 08: `RunResult.Deliverables`) | `DeliveryRunner` takes the list | the engine's `DurableDeliveryHost` ("checks, deliverables and delivery" below) |
 | `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts`, `NoDeliverableCanExist` and `Signature` (area 08) | area 12's Create page, which calls the same checks |
@@ -1457,8 +1457,9 @@ function they are said in.
   `run-spots`, which the engine runs. A body reading a local name (`node.draft_summary` inside `refine`) reads its
   rooted key through the entry's `names`.
 - **Area 08: now built** ("checks, deliverables and delivery" below): everything after `Composed`.
-- **Area 09:** the record. It maps `RunRow.Detail` and the decisions to storage rows, and gives the final form of
-  keys. Area 09 also records the tokens, which the agent activity only logs today.
+- **Area 09: now built** (part 08; the engine guide's "The record"): it maps `RunRow.Detail` and the decisions to
+  stored rows (`RecordRows`, `RecordDocument`, `RecordKeys`, `RecordReplay`), with the final form of keys, and records
+  the tokens on the agent rows.
 - **Areas 11 and 12:** they call `SpecVersionAdmission` and `V31StartChecks`.
 - **Not modelled by the tests' oracle:** a loop over another loop's `.items` chained further, and calls nested
   more than one deep.
@@ -1936,7 +1937,7 @@ rulings on #1504:
   reads, gating and delivery. Its `templateHash`, `sites` and `substitutions` are area 09's. This area checks a
   deliverable's body as a dialect template and composes it.
 - **Area 09:** storing rows, sub-rows and decisions. This area puts them in `RunRow.Detail` and `RunDecision` under
-  part 08's names. The engine's `EntityRunRecorder` passes only the hashes on to telemetry.
+  part 08's names. The engine's `StoredRunRecorder` (area 09, now built) stores them and passes only the hashes on to telemetry.
 - **Area 10:** converting a 30 package (part 05 § 10).
 - **Area 11:** in-package test stubs, and the publish path that stores a pair.
 - **Area 12:** the Create page's three-state boolean for a per-run choice, and History's sub-rows.

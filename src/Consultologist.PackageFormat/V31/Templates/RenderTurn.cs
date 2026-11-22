@@ -30,8 +30,8 @@ public static class RenderTurn
         ArgumentNullException.ThrowIfNull(call);
 
         Composition composition;
-        if (call.Function == null && plan.Entries.GetValueOrDefault(call.EntryKey) is { Kind: PlanKind.Deliverable } deliverable
-            && plan.Formats.IsObject(deliverable.Format))
+        var deliverable = call.Function == null && plan.Entries.GetValueOrDefault(call.EntryKey) is { Kind: PlanKind.Deliverable } entry ? entry : null;
+        if (deliverable != null && plan.Formats.IsObject(deliverable.Format))
         {
             composition = ObjectText(plan, deliverable, call.Scope);
         }
@@ -53,7 +53,20 @@ public static class RenderTurn
             ["renders"] = AgentTurn.RenderRows(call.Key, composition),
             ["units"] = AgentTurn.UnitRows(composition),
         };
-        return new RenderOutcome(text, false, null, composition.NeutralText, detail);
+
+        // #1506 (area 09; D2): the text the render produced beside its text, never in the detail
+        var produced = new JsonObject { ["neutral"] = composition.NeutralText, ["renders"] = AgentTurn.RenderTexts(call.Key, composition) };
+        if (deliverable != null)
+        {
+            // #1506 (area 09; part 08 §§ 9, 10; D6): a deliverable's sites and substitutions, and its profile reads by hash;
+            // each substitution's value beside the row, at its index
+            detail["sites"] = BodyComposer.SiteRows(composition.Sites);
+            detail["substitutions"] = BodyComposer.SubstitutionRows(call.Key, composition.Substitutions);
+            detail["profileReads"] = ProfileReads(composition.Substitutions, call.Scope);
+            produced["substitutions"] = new JsonArray([.. composition.Substitutions.Select(s => (JsonNode)s.Value)]);
+        }
+
+        return new RenderOutcome(text, false, null, composition.NeutralText, detail, produced);
     }
 
     /// <summary>
@@ -89,7 +102,33 @@ public static class RenderTurn
         var text = CanonicalJson.Write(at);
         if (Encoding.UTF8.GetByteCount(text) > BodyComposer.OutputLimit)
             return Failed(RunSentences.OutputPassedLimit(RunSentences.Subject(entry, null)));
-        return new Composition(text, null, null, false, [], [], [], []);
+        // #1506 (area 09; part 08 § 10): its one tag is its one site, and its whole text that site's one substitution
+        return new Composition(text, null, null, false, [], [], [], [])
+        {
+            Sites = BodyComposer.Sites(syntax!),
+            Substitutions = [BodyComposer.Whole(text, string.Join('.', rooted.Split('.').Concat(segments[2..])))],
+        };
+    }
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 9): each <c>profile.&lt;field&gt;</c> a substitution read, once, in order: <c>{ field, hash }</c>,
+    /// the hash of the value <paramref name="scope"/> holds for it (of its text, or of its canonical JSON when it is not text),
+    /// as a macro's profile reads are; never the value.
+    /// </summary>
+    private static JsonArray ProfileReads(IReadOnlyList<Substitution> substitutions, JsonObject scope)
+    {
+        var reads = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var substitution in substitutions)
+        {
+            if (substitution.Reads.Split('.') is not ["profile", var field, ..] || !seen.Add(field))
+                continue;
+            var value = (scope["profile"] as JsonObject)?[field];
+            var hash = value is JsonValue text && text.TryGetValue<string>(out var written) ? CanonicalJson.HashText(written) : CanonicalJson.Hash(value);
+            reads.Add(new JsonObject { ["field"] = field, ["hash"] = hash });
+        }
+
+        return reads;
     }
 
     private static Composition Failed(string sentence) => new(null, null, sentence, false, [], [], [], []);

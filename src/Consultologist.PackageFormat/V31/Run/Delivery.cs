@@ -68,7 +68,37 @@ public sealed record DeliveryAttempt(DateTime AtUtc, string Outcome);
 /// (<c>null</c> otherwise); <paramref name="Attempts"/> each attempt made, in order.
 /// </summary>
 public sealed record DeliveryRow(
-    string Key, string Deliverable, string Kind, string Result, string? Reason, DateTime? AtUtc, IReadOnlyList<DeliveryAttempt> Attempts);
+    string Key, string Deliverable, string Kind, string Result, string? Reason, DateTime? AtUtc, IReadOnlyList<DeliveryAttempt> Attempts)
+{
+    /// <summary>
+    /// #1506 (area 09; part 08 § 10): the row as the record holds it: <c>key</c>, <c>deliverable</c>, <c>kind</c>,
+    /// <c>result</c>, <c>reason</c>, <c>atUtc</c> (the round-trip UTC text, or null) and <c>attempts</c>
+    /// (<c>[{ atUtc, outcome }]</c>). Never a value from an input or a model.
+    /// </summary>
+    public System.Text.Json.Nodes.JsonObject ToJson()
+    {
+        var attempts = new System.Text.Json.Nodes.JsonArray();
+        foreach (var attempt in Attempts)
+            attempts.Add(new System.Text.Json.Nodes.JsonObject { ["atUtc"] = Utc(attempt.AtUtc), ["outcome"] = attempt.Outcome });
+        return new System.Text.Json.Nodes.JsonObject
+        {
+            ["key"] = Key,
+            ["deliverable"] = Deliverable,
+            ["kind"] = Kind,
+            ["result"] = Result,
+            ["reason"] = Reason,
+            ["atUtc"] = AtUtc is { } at ? Utc(at) : null,
+            ["attempts"] = attempts,
+        };
+    }
+
+    private static string Utc(DateTime time) => (time.Kind switch
+    {
+        DateTimeKind.Utc => time,
+        DateTimeKind.Local => time.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(time, DateTimeKind.Utc),
+    }).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+}
 
 /// <summary>#1505 (specVersion 31, area 08; part 06 § 8; D11, D13): what is sent where, and the rows of a job that failed.</summary>
 public static class DeliveryPlan

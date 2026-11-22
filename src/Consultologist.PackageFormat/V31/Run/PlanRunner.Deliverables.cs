@@ -133,15 +133,25 @@ public sealed partial class PlanRunner
 
         /// <summary>
         /// #1505 (part 08 § 10): a deliverable's row is final: its detail is its render's (<see cref="Merge"/>) with
-        /// <c>check</c> (the gate's key, or <c>null</c>) and <c>composedHash</c>, and its outcome is kept for <see cref="RunResult.Deliverables"/> (a deliverable cancelled by the
-        /// job's time limit has none).
+        /// <c>check</c> (the gate's row key, or <c>null</c>) and <c>composedHash</c>, and its outcome is kept for <see cref="RunResult.Deliverables"/> (a deliverable cancelled by the
+        /// job's time limit has none). #1506 (area 09; part 08 § 10; R1): with its template's hash, its format, its
+        /// template's sites (package text, so a deliverable never composed has them too) and the delivery rows of a
+        /// released one (<c>[]</c> otherwise: a blocked deliverable is never delivered).
         /// </summary>
         private void DeliverableSettled(RunInstance instance, RowState state, string? reason, JsonObject detail)
         {
             var entry = instance.Entry;
             Merge(instance.CallDetail, detail);
-            detail["check"] = entry.Check;
+            var gate = entry.Check == null ? null : instance.Frame.Find(entry.Check)?.Key ?? entry.Check;
+            var format = plan.Formats.TextFormat(entry.Format) ?? BundleKey(entry.Format) ?? "";
+            var kinds = entry.Json["delivery"] is JsonArray listed ? listed.Select(k => SourceLayout.Text(k)).OfType<string>().ToList() : [];
+            detail["templateHash"] = SourceLayout.Text(entry.Json["bodyHash"]);
+            detail["format"] = format;
+            detail["check"] = gate;
             detail["composedHash"] = instance.ComposedHash;
+            detail["delivery"] = new JsonArray([.. (state == RowState.Released ? kinds : []).Select(k => (JsonNode)DeliveryPlan.Key(instance.Key, k))]);
+            if (!detail.ContainsKey("sites"))
+                detail["sites"] = SourceLayout.Text(entry.Json["body"]) is { } body ? BodyComposer.SiteRows(BodyComposer.Sites(TemplateSyntax.Parse(body))) : new JsonArray();
             DeliverableState? outcome = state switch
             {
                 RowState.Released => DeliverableState.Released,
@@ -158,15 +168,72 @@ public sealed partial class PlanRunner
             outcomes.Add((entry.Order, new DeliverableOutcome(
                 instance.Key,
                 SourceLayout.Text(entry.Json["label"]) ?? entry.Id,
-                plan.Formats.TextFormat(entry.Format) ?? BundleKey(entry.Format) ?? "",
+                format,
                 rest.Length > entry.Id.Length ? rest[..^(entry.Id.Length + 1)] : "",
                 decided,
                 reason,
-                entry.Check == null ? null : instance.Frame.Find(entry.Check)?.Key ?? entry.Check,
+                gate,
                 instance.ComposedText,
                 instance.ComposedHash,
-                entry.Json["delivery"] is JsonArray kinds ? kinds.Select(k => SourceLayout.Text(k)).OfType<string>().ToList() : [],
+                kinds,
                 SourceLayout.Text(entry.Json["bundle"]))));
+        }
+
+        /// <summary>#1506 (area 09; D7): the gate checks settled whose rows wait for their deliverables, in the order they settled.</summary>
+        private readonly List<(RunInstance Gate, RunRow Row)> heldGates = [];
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7): records <paramref name="gate"/>'s held row once every deliverable it gates has
+        /// settled, its <c>effect</c> their outcome (<see cref="GateEffect"/>); until then it stays held. Its value, its
+        /// decisions and its deliverables' outcomes were all settled as before: only its row waits.
+        /// </summary>
+        private async Task ReleaseGateAsync(RunInstance gate)
+        {
+            var at = heldGates.FindIndex(h => ReferenceEquals(h.Gate, gate));
+            if (at < 0)
+                return;
+            var settled = new List<(string Key, RowState State)>();
+            foreach (var key in gate.Entry.Gates)
+            {
+                if (gate.Frame.Find(key) is not { IsSettled: true, State: { } state } deliverable)
+                    return;
+                settled.Add((deliverable.Key, state));
+            }
+
+            var row = heldGates[at].Row;
+            heldGates.RemoveAt(at);
+            row.Detail["effect"] = GateEffect(settled);
+            await recorder.RowAsync(row);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; D7): when the run ends, whatever the end (completed, failed, timed out), each gate's row still held
+        /// is recorded with <c>effect</c> <c>null</c>: what it would have caused is not known.
+        /// </summary>
+        private async Task RecordHeldGatesAsync()
+        {
+            foreach (var (_, row) in heldGates)
+            {
+                row.Detail["effect"] = null;
+                await recorder.RowAsync(row);
+            }
+
+            heldGates.Clear();
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7): a gate's <c>effect</c> from its deliverables' states: the state word
+        /// (<c>released</c>, <c>held</c>, <c>blocked</c>; <c>skipped</c> for one its own <c>if</c> skipped) for one deliverable;
+        /// for more, <c>&lt;word&gt; &lt;deliverable key&gt;</c> joined by <c>; </c> in key order. <c>null</c> when one failed
+        /// or was cancelled: the job ended there, and what the gate caused is not known.
+        /// </summary>
+        private static string? GateEffect(List<(string Key, RowState State)> settled)
+        {
+            if (settled.Count == 0 || settled.Any(s => s.State is not (RowState.Released or RowState.Held or RowState.Blocked or RowState.Skipped)))
+                return null;
+            if (settled.Count == 1)
+                return StateWord(settled[0].State);
+            return string.Join("; ", settled.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => $"{StateWord(s.State)} {s.Key}"));
         }
 
         /// <summary>A composed deliverable's read form once released or held: <c>{ value, content, state }</c>, with its <c>neutral</c> text when it has one.</summary>

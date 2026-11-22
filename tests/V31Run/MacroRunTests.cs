@@ -108,13 +108,14 @@ public class MacroRunTests
         Assert.Equal(
             CanonicalJson.Write(JsonNode.Parse($$"""
                 { "id": "node.draft/macro:m", "macro": "macro.m", "offered": true, "decisions": ["node.draft/if:macro.m"],
-                  "classifier": "node.classify", "placed": true, "form": "block", "contentHash": "{{CanonicalJson.HashText(Body)}}" }
+                  "classifier": "node.classify", "placed": true, "form": "block", "contentHash": "{{CanonicalJson.HashText(Body)}}",
+                  "runNeutralHash": null, "runSpots": [] }
                 """)),
             CanonicalJson.Write(macro));
 
         // Its decision is recorded under the placing row's key, at the macro's site.
-        var decision = Assert.Single(recorder.Decisions, d => d.Site == "node.draft");
-        Assert.Equal(("macro.m", true), (decision.Member, decision.Result));
+        var decision = Assert.Single(recorder.Decisions, d => d.Owner == "node.draft");
+        Assert.Equal(("macro.m", true), (decision.Site, decision.Result));
     }
 
     [Fact]
@@ -150,7 +151,7 @@ public class MacroRunTests
         Assert.False((bool)macro["placed"]!);
         Assert.Null(macro["form"]);
         Assert.Null(macro["contentHash"]);
-        Assert.Equal(("macro.m", false), (recorder.Decisions.Single(d => d.Site == "node.draft").Member, recorder.Decisions.Single(d => d.Site == "node.draft").Result));
+        Assert.Equal(("macro.m", false), (recorder.Decisions.Single(d => d.Owner == "node.draft").Site, recorder.Decisions.Single(d => d.Owner == "node.draft").Result));
     }
 
     [Fact]
@@ -273,7 +274,7 @@ public class MacroRunTests
         Assert.True(result.State == RunState.Completed, result.Sentence);
         Assert.Equal(
             [("node.first.draft", true), ("node.second.draft", false), ("node.third.draft", true)],
-            recorder.Decisions.Where(d => d.Member == "macro.follow_up").Select(d => (d.Site, d.Result == true)).OrderBy(d => d.Site, StringComparer.Ordinal));
+            recorder.Decisions.Where(d => d.Site == "macro.follow_up").Select(d => (d.Owner, d.Result == true)).OrderBy(d => d.Owner, StringComparer.Ordinal));
         Assert.Equal($"{WorkflowStubOutputs.Text("node.first.draft")}\n{Body} (section_a)\n", Content(result, "node.first"));
         Assert.Equal(WorkflowStubOutputs.Text("node.second.draft"), Content(result, "node.second"));
         Assert.Equal($"{WorkflowStubOutputs.Text("node.third.draft")}\n{Body} (section_b)\n", Content(result, "node.third"));
@@ -384,7 +385,7 @@ public class MacroRunTests
             host.Calls.Single(c => c.Key == "node.draft").Placed);
         Assert.Equal(["macro.f.n"], host.Prompt("node.draft").Composition.Macros.Select(m => m.Site));
         Assert.Equal($"{WorkflowStubOutputs.Text("node.draft")}\n{Body}\n", Content(result, "node.draft"));
-        Assert.Equal([("part.p", false)], recorder.Decisions.Where(d => d.Site == "node.draft").Select(d => (d.Member, d.Result == true)));
+        Assert.Equal([("part.p", false)], recorder.Decisions.Where(d => d.Owner == "node.draft").Select(d => (d.Site, d.Result == true)));
 
         // A folder rule is decided once for the row, wherever its macros stand, and holds the macro back when false.
         var ruled = RunFixture.Plan(FolderInTwoPlaces(PlacementDecisionsTests.FolderIf));
@@ -394,7 +395,7 @@ public class MacroRunTests
                 call.EntryKey == "node.classify" ? $$"""{"answer":true,"reason":"{{reason}}"}""" : Replies()(call, prompt));
             Assert.True(run.State == RunState.Completed, run.Sentence);
             var folder = reason == "The plan says so.";
-            Assert.Equal([folder], ruledRecorder.Decisions.Where(d => d.Site == "node.draft" && d.Member == "macro-folder.f").Select(d => d.Result == true));
+            Assert.Equal([folder], ruledRecorder.Decisions.Where(d => d.Owner == "node.draft" && d.Site == "macro-folder.f").Select(d => d.Result == true));
             string[] offered = folder ? ["macro.f.m", "macro.f.n"] : []; // the reason given, the part holds
             Assert.Equal(offered, ruledHost.Prompt("node.draft").Composition.Macros.Select(m => m.Site));
         }
