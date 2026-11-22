@@ -380,7 +380,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: entity operation `RecordV31Rows`: counts as `RecordV31Progress` does, adds tokens to `V31Progress.Tokens { Input, Output, Total }`; `RecordV31Progress` stays for histories in flight. `FinalizeJob` writes a 31 job's usage row from `V31Progress.Tokens`.
 - Produces: `run-agent-node-v31` writes `produced` text `{ sent, neutral, renders, macros }` for its row key (the prompt as sent; each renderer step's input and output; each macro's rendered body), and `render-node-v31` writes `{ neutral, renders, substitutions }`, each overwriting an earlier attempt's; both strip `Produced` from what they answer. Their logs keep lengths and hashes only.
 
-- [ ] **Step 1: Write the failing tests** (with `FakeOrchestrationContext` and Task 9's fakes):
+- [x] **Step 1: Write the failing tests** (with `FakeOrchestrationContext` and Task 9's fakes):
   - `ARoundsRows_GoInOneActivity_ThenOneEntityCall`: three rows and two decisions buffered, one flush: one `write-record-rows-v31` call holding five rows, then one `RecordV31Rows`; a flush with nothing buffered calls nothing.
   - `AReplay_WritesNothingNew` (Review Focus 1): running the orchestration twice over the same fakes leaves each row stored once and reports no conflict.
   - `ADifferingRow_FailsTheJobAsAnEngineFault`: a store that answers `Conflict` gives a job `Failed` with `ConsultGenerationOrchestratorV31.EngineFault`, the first row still stored, and a log line holding the key and no row content.
@@ -389,10 +389,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `TheRenderActivity_WritesItsSubstitutions`: values by index, each hashing to its substitution's `hash`.
   - `TheSettledText_HoldsTheContent`: a completed agent row's `content` hashes to its `outputHash`; a blocked deliverable's `content` hashes to its `composedHash` (R1).
   - `Tokens_ReachTheUsageRow`: a 31 job's usage row sums its rows' tokens.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the whole suite (shared code). Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1506): a 31 job's rows are stored as they finish; its activities keep the text they make`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the whole suite (shared code). Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1506): a 31 job's rows are stored as they finish; its activities keep the text they make`; push.
 
 ### Task 11: Sealing
 

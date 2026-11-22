@@ -210,8 +210,12 @@ has changed since. The orchestration runs these steps in order:
 7. It runs `PlanRunner` with:
    - `DurableRunHost`: an agent call is `run-agent-node-v31`, a render is `render-node-v31`, a rule that holds
      `matches` or `has_word` is `evaluate-rule-v31` (below), and a wait is a durable timer;
-   - `EntityRunRecorder`: progress counts on the entity through `RecordV31Progress`, and each row to telemetry
-     as its key, state and value hash.
+   - `StoredRunRecorder` (#1506): a round's rows, decisions and delivery rows are buffered and, at each flush, written
+     in one `write-record-rows-v31` call (each row's settled text to its `settled` blob, then the rows to
+     `ConsultGenerationRecordRows`, insert-if-absent; a row that differs from the stored one fails the job with
+     A06-010), then counted on the entity in one `RecordV31Rows` with the round's token sums (`RecordV31Progress`
+     stays for histories in flight). `FinalizeJob` writes a 31 job's usage row from those sums. Each row goes to
+     telemetry as its key, state and hashes.
 8. **Delivery** (#1505), when the run completed and some released deliverable has a destination: the job enters
    `delivering`, and the released deliverables are sent (below).
 9. It finalises the job: `Completed`, or `Failed` with the run's sentence. A timed-out run is a failed job with
@@ -304,8 +308,10 @@ replaced), and the counts of marker faults. The tokens are not recorded on the j
 
 `render-node-v31` (`RenderNodeV31Activity`) returns `RenderTurn.Render(plan, call)`: the text, the run-neutral text
 and the row's detail, with the runner's decisions (`RenderCall.Placed`). Its log line carries the key and the lengths
-and hashes of the two texts. `EntityRunRecorder` passes only a row's `inputHash` and `runNeutralHash` to telemetry;
-the whole detail is stored by area 09.
+and hashes of the two texts. #1506: both activities write the text only they hold (`AgentOutcome.Produced`,
+`RenderOutcome.Produced`, with `spots`, the texts of the run spots whose row `output` is null) to the row key's
+`produced` blob and strip it from what they answer, so the prompt as sent never enters the history.
+`StoredRunRecorder` passes only a row's `inputHash` and `runNeutralHash` to telemetry; the whole detail is stored.
 
 ## Delivery
 
@@ -363,9 +369,9 @@ released sends nothing.
 **The rows (#1505 D13).** A delivery row's key is `delivery:<deliverable key>/<kind>`. Its `reason` is S08-006's
 sentence for a kind not set up, `not sent: the job failed` for a failed job, `failed: <kind>` after the attempts or
 the window, and `null` when sent. A row records each attempt with its start time and `sent` or
-`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `EntityRunRecorder`
+`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `StoredRunRecorder`
 counts the rows on the entity as `delivery:sent`, `delivery:not sent` and `delivery:failed`, apart from the run's row
-states, so a failed delivery is never counted as a failed run row. Storing them is area 09's.
+states, so a failed delivery is never counted as a failed run row, and stores them with the record's rows.
 
 **What the email carries.** Boilerplate, the labels of the documents (package text) and the History link, as today.
 No document's text and no value from an input, a model or a profile is in a body, a log line or a row.
