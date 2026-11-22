@@ -252,7 +252,7 @@ public sealed record DeliverableOutcome(
 - Produces: read forms. To an entry in `ReadsComposed`: `{ value, content, state: "composed" }`. To any other reader, once final: released or held `{ value, content, state }`; skipped or blocked `{ value: null, content: null, state }`. A reader outside the gate set is not ready until the outcome is final.
 - Reasons, as written: skipped: S03-001's form (as today); held: `held: empty`; blocked: `blocked: check '<id>' failed (<detail>)` (D6), `blocked: check '<id>' could not run (<error>)`; released through a skipped gate: `released: check '<id>' didn't apply (its if was false)`; released otherwise: `null`; failed: A08-005 (the job fails with it, naming the deliverable's key).
 
-- [ ] **Step 1: Write the failing tests** (`FakeRunHost` scripts each render; `ListRecorder` holds the rows):
+- [x] **Step 1: Write the failing tests** (`FakeRunHost` scripts each render; `ListRecorder` holds the rows):
   - `AnUngatedDeliverable_IsReleased_WhenComposed`; `ASkippedDeliverable_ReadsNull_AndTheJobGoesOn` (R1: a check outside its gate set reads `.content` `null`, `.state` `skipped`).
   - `AnEmptyDeliverable_Holds_Releases_OrFailsTheJob` (a theory over `whenEmpty`; text `" \n\n"`; Review Focus 2 adds `"## Plan\n"` released under `hold`, and an object deliverable released under `fail`).
   - `AFailingGate_BlocksIt_AndTheJobCompletes` (state `Blocked`, reason `blocked: check 'all_sections' failed (1 of 2 passed)`, `Text` kept, `RunResult.State` Completed); `ATermsGate_SaysHowManyTermsAreMissing` (`2 terms missing`).
@@ -260,11 +260,11 @@ public sealed record DeliverableOutcome(
   - `ABlockedDeliverable_ReadsNullToTheRestOfTheJob` (R2, Review Focus 1: B's gate reads A's `.content` as `null` and `.state` as `blocked`, and B is decided on that).
   - `EveryDeliverableBlocked_IsACompletedJob` (R3).
   - `ARow_IsRecordedOnce_WhenTheOutcomeIsFinal`: one row per deliverable, after its gate's row.
-- [ ] **Step 2: Run.** Expected: FAIL (`RowState.Released` does not exist).
-- [ ] **Step 3: Implement** `PlanRunner.Deliverables.cs`: `ComposedAsync` (after the render), `DecideOutcomesAsync` (in the settle round, in the fixed order, for each composed deliverable whose gate has settled), and the reader's form in `RunScope`.
-- [ ] **Step 4: Regenerate and read** the four run goldens (the `composed` rows become `released`, in their new place) and add `checked-note.run.txt` with a stub that fails one section's coverage, so the golden shows a blocked deliverable, a held one and their reasons.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): a deliverable's outcome: skipped, failed, held, blocked or released`; push.
+- [x] **Step 2: Run.** Expected: FAIL (`RowState.Released` does not exist).
+- [x] **Step 3: Implement** `PlanRunner.Deliverables.cs`: `ComposedAsync` (after the render), `DecideOutcomesAsync` (in the settle round, in the fixed order, for each composed deliverable whose gate has settled), and the reader's form in `RunScope`.
+- [x] **Step 4: Regenerate and read** the four run goldens (the `composed` rows become `released`, in their new place) and add `checked-note.run.txt` with a stub that fails one section's coverage, so the golden shows a blocked deliverable, a held one and their reasons.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): a deliverable's outcome: skipped, failed, held, blocked or released`; push.
 
 ### Task 9: The delivery runner (D10 to D13, the library half)
 
