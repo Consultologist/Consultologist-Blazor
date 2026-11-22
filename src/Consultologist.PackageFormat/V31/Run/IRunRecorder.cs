@@ -152,4 +152,47 @@ public interface IRunRecorder
     /// that alerts the operator never fails the run for an alert that could not be sent.
     /// </summary>
     Task NoticeAsync(RunNotice notice);
+
+    /// <summary>
+    /// #1506 (area 09; D12): everything recorded so far is to be written. The runner awaits it once at the end of each round
+    /// that recorded a row or a decision and once before it returns; the delivery runner after each delivery row.
+    /// </summary>
+    Task FlushAsync();
+}
+
+/// <summary>
+/// #1506 (area 09; D12): the recorder the runner talks to: it passes everything to the real one and counts the rows and
+/// decisions recorded since the last flush, so <see cref="FlushRoundAsync"/> flushes once per round that recorded, and never
+/// when nothing is new.
+/// </summary>
+internal sealed class FlushingRecorder(IRunRecorder inner) : IRunRecorder
+{
+    private int unflushed;
+
+    public Task RowAsync(RunRow row)
+    {
+        unflushed++;
+        return inner.RowAsync(row);
+    }
+
+    public Task DecisionAsync(RunDecision decision)
+    {
+        unflushed++;
+        return inner.DecisionAsync(decision);
+    }
+
+    public Task DeliveryAsync(DeliveryRow row) => inner.DeliveryAsync(row);
+
+    public Task NoticeAsync(RunNotice notice) => inner.NoticeAsync(notice);
+
+    public Task FlushAsync() => FlushRoundAsync();
+
+    /// <summary>Flushes the inner recorder when a row or decision was recorded since the last flush.</summary>
+    public Task FlushRoundAsync()
+    {
+        if (unflushed == 0)
+            return Task.CompletedTask;
+        unflushed = 0;
+        return inner.FlushAsync();
+    }
 }

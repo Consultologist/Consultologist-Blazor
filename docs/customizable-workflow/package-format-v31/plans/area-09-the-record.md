@@ -281,7 +281,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: `IRunRecorder.FlushAsync()`; the runner awaits it once after each round that recorded a row or decision and before it returns; the delivery runner after each delivery row.
 - Produces: `VersionsRan.Of`: R4's shape; `operations` and `builtins` take the lock's keys with this engine's versions (`JsonLogicOperations`, the built-ins table `LockCompiler` reads).
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `Escape_RoundTripsThroughTables`: for `node.a.b#2:3/1/x`, `delivery:deliverable.emr.note/email` and `node.x/if:macro.y`, the result holds none of `/ \ # ?` or a control character; `Escape("a/b") != Escape("a!2Fb")`; a 600-character key gives `~` and 64 hex digits; two long keys differing in their last character differ.
   - `Assemble_IsCanonicalAndInKeyOrder`: rows given in any order give the same text; the text equals `CanonicalJson` of itself; `decisions` is sorted by id; a deliverable holds its two delivery rows.
   - `Assemble_TakesARepeatedRowOnce` and `Assemble_RefusesADifferingRow`.
@@ -290,11 +290,11 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `NoRecord_HoldsAValue` (Review Focus 4): each golden run is run with the sentinel `ZZ-SENTINEL-OKAFOR` in every input and every stub reply; no record document holds `SENTINEL`.
   - `TheRunner_FlushesEachRound`: `ListRecorder.Flushes` is at least 1 per round that recorded, and the last recorded thing is followed by a flush.
   - `VersionsRan_IsTheLocksShapeWithoutThree`: for `nested-note.lock.json`, the member names are exactly R4's eight, `resolver`, `runtime` and `catalogues` nested, `operations` the lock's keys.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Generate and read** the record goldens (`GOLDEN_UPDATE_V31=1`); each goes in the PR's *Goldens to review*.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1506): the canonical record document, its keys and versionsRan`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Generate and read** the record goldens (`GOLDEN_UPDATE_V31=1`); each goes in the PR's *Goldens to review*.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1506): the canonical record document, its keys and versionsRan`; push.
 
 ### Task 8: The header of a 31 job
 

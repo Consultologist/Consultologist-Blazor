@@ -111,7 +111,7 @@ public sealed partial class PlanRunner
         private readonly RunPlan plan = runner.plan;
         private readonly RunLimits limits = runner.limits;
         private readonly IRunHost host = runner.host;
-        private readonly IRunRecorder recorder = runner.recorder;
+        private readonly FlushingRecorder recorder = new(runner.recorder);
         private readonly RunScope scope = new(inputs);
         private readonly RunFrame top = RunFrame.Top(runner.plan);
 
@@ -175,6 +175,7 @@ public sealed partial class PlanRunner
                     await DispatchAsync();
                     if (failure != null)
                         break;
+                    await recorder.FlushRoundAsync();
 
                     if (flights.Count == 0)
                     {
@@ -199,12 +200,14 @@ public sealed partial class PlanRunner
                     if (ReferenceEquals(finished, slowTimer))
                     {
                         await SlowAsync();
+                        await recorder.FlushRoundAsync();
                         continue;
                     }
 
                     var flight = flights.First(f => ReferenceEquals(f.Task, finished));
                     flights.Remove(flight);
                     await LandAsync(flight);
+                    await recorder.FlushRoundAsync();
                 }
             }
             finally
@@ -222,6 +225,7 @@ public sealed partial class PlanRunner
             }
 
             await RecordHeldGatesAsync();
+            await recorder.FlushRoundAsync();
 
             var values = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
             foreach (var instance in top.Instances)

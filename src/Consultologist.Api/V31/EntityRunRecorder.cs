@@ -75,6 +75,9 @@ public sealed class EntityRunRecorder(TaskOrchestrationContext context, ConsultG
         return AlertOperatorV31Activity.RaiseAsync(context, new OperatorAlert(notice.Kind, input.JobId, notice.Key, notice.Minutes), _logger);
     }
 
+    /// <summary>#1506 (area 09; D12): this recorder buffers nothing; the stored recorder that replaces it writes at a flush.</summary>
+    public Task FlushAsync() => Task.CompletedTask;
+
     /// <summary>A delivery row's result as the entity counts it: <c>delivery:sent</c>, <c>delivery:not sent</c>, <c>delivery:failed</c>.</summary>
     internal static string DeliveryStateName(string result) => $"delivery:{result}";
 
