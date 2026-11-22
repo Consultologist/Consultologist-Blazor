@@ -33,9 +33,10 @@ internal static partial class Migrate
     /// An input's 31 format (part 02 § 11): <c>text</c> and no type are <c>markdown_block</c>; <c>date</c> is
     /// <c>"date"</c>; <c>boolean</c> and <c>number</c> keep their names; <c>enum</c> + <c>values</c> is a <c>string</c>
     /// with a plain <c>enum</c> and no titles; <c>object</c> + <c>fields</c> is <see cref="ObjectOf"/>; <c>array</c> +
-    /// <c>items</c> an array of the element; a "one or many" union <c>[x, array]</c> its array form. A union with no
-    /// array arm (or more than one other) has no 31 input format: it is written as an <c>anyOf</c> of its arms, which the
-    /// checker refuses at an input's root, and is a hand edit (A10-024).
+    /// <c>items</c> an array of the element; a "one or many" union <c>[x, array]</c> its array form, when the array's
+    /// <c>items</c> is absent or is <c>x</c>. Any other union (no array arm, more than one other, or an array of something
+    /// else than <c>x</c>) has no 31 input format: it is written as an <c>anyOf</c> of its arms, which the checker refuses
+    /// at an input's root, and is a hand edit (A10-023).
     /// </summary>
     private static JsonNode InputFormat(Migrated m, WorkflowInputSpec input)
     {
@@ -43,7 +44,7 @@ internal static partial class Migrate
         if (types.Count > 1)
         {
             var others = types.Where(t => t != WorkflowInputTypes.Array).ToList();
-            if (others.Count == 1 && others.Count < types.Count)
+            if (others.Count == 1 && others.Count < types.Count && (input.Items is null || input.Items.Type == others[0]))
             {
                 var element = input.Items ?? new WorkflowElementSpec(others[0]);
                 return new JsonObject { ["type"] = "array", ["items"] = Element(element, input.Fields, input.Values) };
@@ -52,7 +53,7 @@ internal static partial class Migrate
             m.HandEdit("manifest.json", $"inputs.{input.Id}.format", MigrationSentences.UnionInput);
             return new JsonObject
             {
-                ["anyOf"] = new JsonArray([.. types.Select(t => (JsonNode?)Element(new WorkflowElementSpec(t), input.Fields, input.Values))]),
+                ["anyOf"] = new JsonArray([.. types.Select(t => (JsonNode?)Nested(t, input.Items, input.Fields, input.Values))]),
             };
         }
 
