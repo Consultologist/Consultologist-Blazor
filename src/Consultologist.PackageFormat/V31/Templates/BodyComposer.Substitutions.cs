@@ -104,7 +104,7 @@ public static partial class BodyComposer
             var value = text.Substring(start, length);
             var size = Runes(text, start, length);
             substitutions.Add(new Substitution(s.Site, s.Pass, s.Reads, CanonicalJson.HashText(value), runes, size, s.Renders, value));
-            (at, runes) = (start, runes);
+            at = start;
         }
 
         return substitutions;
