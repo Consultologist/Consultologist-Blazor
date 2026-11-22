@@ -1,0 +1,1571 @@
+{
+  "converted": [
+    {
+      "id": "composer-gates.patient_copy.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.audience.value"
+          },
+          "patient"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.audience.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-macros.section_draft.section_close.if",
+      "logic": {
+        "!==": [
+          {
+            "var": "item.value.title"
+          },
+          "Plan"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.value.title"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-macros.gated.review_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.visit.value"
+          },
+          "review"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.visit.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-macros.review_summary.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.visit.value"
+          },
+          "review"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.visit.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-macros.new_visit_note.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.visit.value"
+          },
+          "new"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.visit.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.topic_gate.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.value.kind"
+          },
+          "drafted"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.value.kind"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.refine.while",
+      "logic": {
+        "===": [
+          {
+            "var": "input.redraft.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.redraft.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.refine.until",
+      "logic": {
+        "===": [
+          {
+            "var": "node.judge.value.verdict"
+          },
+          "good"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.judge.value.verdict"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.plan_gate.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.include_plan.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.include_plan.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.tone_case.case",
+      "logic": {
+        "var": "input.tone.value"
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.tone.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.topic_tally.let",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "example-classifier-scope.plan.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.scope.value.value"
+          },
+          "in_scope"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.scope.value.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-classifier-scope.decline_letter.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.scope.value.value"
+          },
+          "out_of_scope"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.scope.value.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-classifier-scope.information_request.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.scope.value.value"
+          },
+          "needs_information"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.scope.value.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-documents.consult_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.encounter_kind.value"
+          },
+          "new_patient"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.encounter_kind.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-documents.progress_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.encounter_kind.value"
+          },
+          "follow_up"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.encounter_kind.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-sections.route.case",
+      "logic": {
+        "var": "item.value.kind"
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.value.kind"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-sections.narrative_only.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.value.kind"
+          },
+          "narrative"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.value.kind"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-sections.applies.if",
+      "logic": {
+        "or": [
+          {
+            "!==": [
+              {
+                "var": "item.id"
+              },
+              "billing"
+            ]
+          },
+          {
+            "===": [
+              {
+                "var": "input.include_billing.value"
+              },
+              true
+            ]
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.id",
+        "input.include_billing.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.standing_draft.counselling.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.id"
+          },
+          "assessment_plan"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.id"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.route.case",
+      "logic": {
+        "var": "item.value.kind"
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.value.kind"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.narrative_draft.section_caveat.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.consult_note.header_line.if",
+      "logic": {
+        "!==": [
+          {
+            "var": "input.note_type.value"
+          },
+          "discharge_summary"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.consult_note.followup_only.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "follow_up"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.brief_plan.md.if",
+      "logic": {
+        "and": [
+          {
+            "or": [
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "consult"
+                ]
+              },
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "follow_up"
+                ]
+              }
+            ]
+          },
+          {
+            "!==": [
+              {
+                "var": "input.include_counselling.value"
+              },
+              true
+            ]
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value",
+        "input.include_counselling.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.counselling.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros.followup_only.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.standing_draft.counselling.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.id"
+          },
+          "assessment_plan"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.id"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.route.case",
+      "logic": {
+        "var": "item.value.kind"
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.value.kind"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.narrative_draft.section_caveat.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.consult_note.header_line.if",
+      "logic": {
+        "!==": [
+          {
+            "var": "input.note_type.value"
+          },
+          "discharge_summary"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.consult_note.followup_only.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "follow_up"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.brief_plan.md.if",
+      "logic": {
+        "and": [
+          {
+            "or": [
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "consult"
+                ]
+              },
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "follow_up"
+                ]
+              }
+            ]
+          },
+          {
+            "!==": [
+              {
+                "var": "input.include_counselling.value"
+              },
+              true
+            ]
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value",
+        "input.include_counselling.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.counselling.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.followup_only.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.note_type.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-nested-note.section_count.let",
+      "logic": {
+        "size": [
+          {
+            "var": "node.plan.value.sections"
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.plan.value.sections"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-nested-note.refine.while",
+      "logic": {
+        "!==": [
+          {
+            "var": "node.judge.value.verdict"
+          },
+          "good"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.judge.value.verdict"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-prior-letters.letters.until",
+      "logic": {
+        "===": [
+          {
+            "var": "node.read_letter.value.answers_question"
+          },
+          true
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.read_letter.value.answers_question"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-problem-list.follow_up_plan.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.follow_up.value.value"
+          },
+          "yes"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.follow_up.value.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-structured-intake.senior_review.if",
+      "logic": {
+        ">=": [
+          {
+            "var": "input.patient.value.age"
+          },
+          65
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.patient.value.age"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-structured-intake.long_stay_summary.if",
+      "logic": {
+        ">": [
+          {
+            "var": "input.length_of_stay.value"
+          },
+          7
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.length_of_stay.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-structured-intake.notes_index.if",
+      "logic": {
+        ">": [
+          {
+            "size": [
+              {
+                "var": "input.prior_notes.value"
+              }
+            ]
+          },
+          2
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.prior_notes.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-v12-constructs.consult.formal_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.tone.value.value"
+          },
+          "formal"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.tone.value.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "example-v12-constructs.consult.friendly_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.tone.value.value"
+          },
+          "friendly"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.tone.value.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.read.node-value",
+      "logic": {
+        "===": [
+          {
+            "var": "node.triage.value.priority"
+          },
+          "high"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.triage.value.priority"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.read.node-content",
+      "logic": {
+        "===": [
+          {
+            "var": "node.summary.content"
+          },
+          "Reviewed in clinic."
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.summary.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.read.item-id",
+      "logic": {
+        "===": [
+          {
+            "var": "item.id"
+          },
+          "plan"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.id"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.read.item-value",
+      "logic": {
+        "===": [
+          {
+            "var": "item.value.kind"
+          },
+          "table"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "item.value.kind"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.read.pass-number",
+      "logic": {
+        ">=": [
+          {
+            "var": "pass.number"
+          },
+          2
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "pass.number"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.read.run-date",
+      "logic": {
+        "===": [
+          {
+            "var": "run.date"
+          },
+          "2026-11-10"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "run.date"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.input.x",
+      "logic": {
+        "===": [
+          {
+            "var": "input.reason.content"
+          },
+          "Breathlessness"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.input.x-y",
+      "logic": {
+        "===": [
+          {
+            "var": "input.patient.value.name"
+          },
+          "Margaret Okafor"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.patient.value.name"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.eq",
+      "logic": {
+        "===": [
+          {
+            "var": "input.kind.value"
+          },
+          "new"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.kind.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.ne",
+      "logic": {
+        "!==": [
+          {
+            "var": "input.kind.value"
+          },
+          "new"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.kind.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.lt",
+      "logic": {
+        "<": [
+          {
+            "var": "input.age.value"
+          },
+          18
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.le",
+      "logic": {
+        "<=": [
+          {
+            "var": "input.age.value"
+          },
+          18
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.gt",
+      "logic": {
+        ">": [
+          {
+            "var": "input.age.value"
+          },
+          65
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.ge",
+      "logic": {
+        ">=": [
+          {
+            "var": "input.age.value"
+          },
+          65
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.and3",
+      "logic": {
+        "and": [
+          {
+            "var": "input.urgent.value"
+          },
+          {
+            "===": [
+              {
+                "var": "input.kind.value"
+              },
+              "new"
+            ]
+          },
+          {
+            ">": [
+              {
+                "var": "input.age.value"
+              },
+              65
+            ]
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.urgent.value",
+        "input.kind.value",
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.or3",
+      "logic": {
+        "or": [
+          {
+            "var": "input.urgent.value"
+          },
+          {
+            "===": [
+              {
+                "var": "input.kind.value"
+              },
+              "review"
+            ]
+          },
+          {
+            "<": [
+              {
+                "var": "input.age.value"
+              },
+              18
+            ]
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.urgent.value",
+        "input.kind.value",
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.not-boolean",
+      "logic": {
+        "!": [
+          {
+            "var": "input.urgent.value"
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.urgent.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.not-text.node",
+      "logic": {
+        "!": [
+          {
+            "var": "node.summary.content"
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.summary.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.not-text.input",
+      "logic": {
+        "!": [
+          {
+            "var": "input.reason.content"
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.add",
+      "logic": {
+        ">": [
+          {
+            "+": [
+              {
+                "var": "input.age.value"
+              },
+              1
+            ]
+          },
+          65
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.subtract",
+      "logic": {
+        "<": [
+          {
+            "-": [
+              {
+                "var": "input.age.value"
+              },
+              1
+            ]
+          },
+          18
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.multiply",
+      "logic": {
+        ">=": [
+          {
+            "*": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          100
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.divide",
+      "logic": {
+        "<=": [
+          {
+            "/": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          30
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.divide.half",
+      "logic": {
+        "===": [
+          {
+            "/": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          1.5
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.modulo",
+      "logic": {
+        "===": [
+          {
+            "%": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          0
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.size.pipe",
+      "logic": {
+        ">": [
+          {
+            "size": [
+              {
+                "var": "input.problems.value"
+              }
+            ]
+          },
+          1
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.problems.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.size.member",
+      "logic": {
+        "===": [
+          {
+            "size": [
+              {
+                "var": "input.problems.value"
+              }
+            ]
+          },
+          0
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.problems.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.downcase",
+      "logic": {
+        "===": [
+          {
+            "lower": [
+              {
+                "var": "input.reason.content"
+              }
+            ]
+          },
+          "breathlessness"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.strip.input",
+      "logic": {
+        "===": [
+          {
+            "trim": [
+              {
+                "var": "input.reason.content"
+              }
+            ]
+          },
+          ""
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.strip.node",
+      "logic": {
+        "===": [
+          {
+            "trim": [
+              {
+                "var": "node.summary.content"
+              }
+            ]
+          },
+          ""
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "node.summary.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.starts-with",
+      "logic": {
+        "starts_with": [
+          {
+            "var": "input.reason.content"
+          },
+          "Breath"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.ends-with",
+      "logic": {
+        "ends_with": [
+          {
+            "var": "input.reason.content"
+          },
+          "ness"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.contains",
+      "logic": {
+        "in": [
+          "less",
+          {
+            "var": "input.reason.content"
+          }
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.date-parse.lt",
+      "logic": {
+        "<": [
+          {
+            "var": "input.seen_on.value"
+          },
+          "2026-11-10"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.seen_on.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.date-parse.eq",
+      "logic": {
+        "===": [
+          {
+            "var": "input.seen_on.value"
+          },
+          "2026-11-10"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.seen_on.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.literal.number",
+      "logic": {
+        "===": [
+          {
+            "var": "input.age.value"
+          },
+          65
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.literal.true",
+      "logic": {
+        "===": [
+          {
+            "var": "input.urgent.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.urgent.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.literal.false",
+      "logic": {
+        "===": [
+          {
+            "var": "input.urgent.value"
+          },
+          false
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.urgent.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.literal.string",
+      "logic": {
+        "===": [
+          {
+            "var": "input.kind.value"
+          },
+          "review"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.kind.value"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.let-object",
+      "logic": {
+        "object": {
+          "age": {
+            "var": "input.age.value"
+          },
+          "priority": {
+            "var": "node.triage.value.priority"
+          }
+        }
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.age.value",
+        "node.triage.value.priority"
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.let-array",
+      "logic": {
+        "object": {
+          "reasons": [
+            {
+              "var": "input.reason.content"
+            },
+            {
+              "var": "node.summary.content"
+            }
+          ]
+        }
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content",
+        "node.summary.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "refuse.builtin.upcase",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition '(string.upcase input.reason) == \"BREATHLESSNESS\"' uses string.upcase, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.builtin.round",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition '(math.round input.age) == 65' uses math.round, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.builtin.first",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition '(input.problems | array.first) == \"\"' uses array.first, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.text-less-than",
+      "logic": {
+        "<": [
+          {
+            "var": "input.reason.content"
+          },
+          "m"
+        ]
+      },
+      "resultFormat": null,
+      "reads": [
+        "input.reason.content"
+      ],
+      "notices": []
+    },
+    {
+      "id": "refuse.profile",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition 'profile.name == \"Dr A. Sample\"' uses the read profile.name, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.assignment",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition 'x = 1' uses an assignment, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.template",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition '{{ input.kind }}' uses a template, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.two-statements",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "notices": [
+        "The condition 'input.urgent; input.kind == \"new\"' uses more than one statement, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    }
+  ]
+}
