@@ -136,6 +136,8 @@ public static class ApiServices
         services.AddSingleton<IAccountStore, AccountStore>();
         services.AddSingleton<IAccountSettingsStore, AccountSettingsStore>();
         services.AddSingleton<IConsultGenerationJobEventStore, TableConsultGenerationJobEventStore>();
+        // #1506 (D10): a 31 job's record rows; the table is created on a first write.
+        services.AddSingleton<Consultologist.Api.V31.IRecordRowStore, Consultologist.Api.V31.TableRecordRowStore>();
         services.AddSingleton<IConsultGenerationJobIndexStore, TableConsultGenerationJobIndexStore>();
         // #546: the links index — the lineage graph, ids only, records account.
         services.AddSingleton<IConsultGenerationLinkStore, TableConsultGenerationLinkStore>();
@@ -225,6 +227,8 @@ public static class ApiServices
         // #557: the text account's outputs blobs — written at completion, read on
         // GET, deleted by the retention drop.
         services.AddSingleton<IJobOutputsBlobStore, JobOutputsBlobStore>();
+        // #1506 (D10): a 31 job's retained text and canonical record, beside the outputs.
+        services.AddSingleton<Consultologist.Api.V31.IRecordBlobStore, Consultologist.Api.V31.BlobRecordStore>();
         // #547: the held inputs — written by the starter, read by History and the
         // rerun, deleted by the retention drop.
         services.AddSingleton<JobInputsBlobStore>();

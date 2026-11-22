@@ -352,7 +352,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   ```
 - Produces: D10's names and D11's comparison. `WriteAsync` inserts each row alone (a batch transaction fails whole on one conflict): `Add`; on 409 it reads the stored `hash`: equal is `AlreadyThere`, other is `Conflict`. The table is created on the first write. A `row` longer than 30,000 characters is split across `row`, `row1`, `row2`…
 
-- [ ] **Step 1: Write the failing tests** (the table store against a substituted `TableClient` as `ConsultGenerationJobEventStore`'s tests do, or its seam; the fakes against the same assertions):
+- [x] **Step 1: Write the failing tests** (the table store against a substituted `TableClient` as `ConsultGenerationJobEventStore`'s tests do, or its seam; the fakes against the same assertions):
   - `ARow_IsWrittenOnce`: the second identical write is `AlreadyThere`; a write of the same key with other JSON is `Conflict` and `ReadAsync` still gives the first (Review Focus 1).
   - `AKeyWithASlashAndAHash_RoundTrips` and `ALongKey_Stores` (Review Focus 2): `ReadAsync(key)` gives the row with its true `Key`.
   - `ALongRow_IsSplitAndRejoined`: a 70,000-character row reads back equal.
@@ -360,10 +360,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `Text_MergesItsTwoParts`; `DeleteText_LeavesTheRecord`: after it `ReadTextAsync` is null and `ReadRecordAsync` still answers.
   - `TheRecord_IsWrittenOnce`: a second `WriteRecordAsync` answers false and leaves the first.
   - `NothingIsCreated_UntilA31JobWrites`: constructing the stores touches no storage.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the V31 filter and the composition test that resolves `ApiServices`. Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1506): the record's rows in a table, its text and its document in blobs`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the V31 filter and the composition test that resolves `ApiServices`. Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1506): the record's rows in a table, its text and its document in blobs`; push.
 
 ### Task 10: The recorder, and the activities' text
 

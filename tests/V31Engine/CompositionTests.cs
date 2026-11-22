@@ -43,6 +43,20 @@ public class CompositionTests
     }
 
     [Fact]
+    public void TheHostsRegistrations_GiveTheRecordsStores_AsSingletons_WithoutTouchingStorage()
+    {
+        // #1506 (Task 9): the record's rows (a table) and its text and document (blobs); built over a local connection
+        // string and never called, so nothing is created
+        using var provider = HostServices();
+        using var scope = provider.CreateScope();
+
+        Assert.IsType<TableRecordRowStore>(scope.ServiceProvider.GetRequiredService<IRecordRowStore>());
+        Assert.IsType<BlobRecordStore>(scope.ServiceProvider.GetRequiredService<IRecordBlobStore>());
+        Assert.Same(provider.GetRequiredService<IRecordRowStore>(), scope.ServiceProvider.GetRequiredService<IRecordRowStore>());
+        Assert.Same(provider.GetRequiredService<IRecordBlobStore>(), scope.ServiceProvider.GetRequiredService<IRecordBlobStore>());
+    }
+
+    [Fact]
     public void TheHostsStartup_LoadsThe31AgentsCatalogue_SoADefectStopsTheHost()
     {
         // #1504 (D9): what Program.cs resolves before the host runs (ApiServices.ResolveAtStartup) includes the 31 agents
