@@ -380,6 +380,35 @@ public class EmailIntakeProcessorTests
         await _mail.Received(1).MoveMessageAsync(Mailbox, "g-1", "folder-Rejected", Arg.Any<CancellationToken>());
     }
 
+    public static TheoryData<string> StartSentences() =>
+    [
+        Consultologist.PackageFormat.V31.ResolveSentences.SignatureNotSet().Sentence,
+        Consultologist.PackageFormat.V31.ResolveSentences.ProfileFieldNotSet("credentials").Sentence,
+        Consultologist.Api.V31.V31StartChecks.NoTimeZone,
+    ];
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 §§ 10.4, 10.7): a 31 start the account refuses (S06-031, S06-032, S06-008)
+    /// is answered with the start's own sentence, as written, and the reply's fixed lines around it.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(StartSentences))]
+    public async Task TheEmailIntake_RepliesWithTheStartsSentence(string sentence)
+    {
+        SetupStartFailure(new ConsultGenerationJobStartOutcome(
+            "job-refused", ConsultGenerationJobStartError.InputsMismatch, sentence, SenderSafeDetail: sentence));
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Rejected);
+        await _mail.Received(1).SendMailAsync(
+            Mailbox,
+            "doc@example.com",
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.StartsWith("Your consult submitted by email could not be processed.\n\n" + sentence + "\n\nYou can re-send", StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task ClaimLost_RejectedClaimWithARow_RepairsToRejected()
     {

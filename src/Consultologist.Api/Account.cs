@@ -515,6 +515,39 @@ public sealed class Account
         return null;
     }
 
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 10.7; D16): the Profile page's settings a 31 job reads, held to their
+    /// limits: the Letter details <c>profile.credentials</c> (120 characters), <c>profile.organisation</c> (200) and
+    /// <c>profile.closing</c> (4,000, a signature block's), and <c>account.timeZone</c>, an IANA zone as
+    /// <see cref="V31.V31StartChecks.IsZone"/> accepts it. The refusal names the key and the limit, never the value; null
+    /// for a value that fits, and for every other key.
+    /// </summary>
+    internal static string? ValidateProfileSetting(string key, string value)
+    {
+        if (string.Equals(key, AccountSettingKeys.TimeZone, StringComparison.Ordinal))
+        {
+            return V31.V31StartChecks.IsZone(value)
+                ? null
+                : $"{AccountSettingKeys.TimeZone} must be an IANA time zone name, such as America/Toronto.";
+        }
+
+        var limit = key switch
+        {
+            AccountSettingKeys.ProfileCredentials => MaxCredentialsLength,
+            AccountSettingKeys.ProfileOrganisation => MaxOrganisationLength,
+            AccountSettingKeys.ProfileClosing => MaxClosingLength,
+            _ => (int?)null,
+        };
+
+        return limit is { } max && value.Length > max
+            ? string.Create(CultureInfo.InvariantCulture, $"{key} must be at most {max} characters.")
+            : null;
+    }
+
+    internal const int MaxCredentialsLength = 120;
+    internal const int MaxOrganisationLength = 200;
+    internal const int MaxClosingLength = 4_000;
+
     // #486 widened this from the one secret to every key the generic routes
     // must not touch: the address is not secret, but a route that could write
     // it would be a way to plant an address nobody confirmed.
@@ -843,6 +876,14 @@ public sealed class Account
             && SttConfidenceSettings.Validate(key, request.Value) is { } sttError)
         {
             return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, sttError, cancellationToken);
+        }
+
+        // #1505 (specVersion 31, part 06 § 10.7; D16): the Letter details keep their
+        // limits and the time zone is one a 31 start accepts — refused by name, the
+        // value never quoted.
+        if (ValidateProfileSetting(key, request.Value) is { } profileError)
+        {
+            return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, profileError, cancellationToken);
         }
 
         await _settingsStore.SaveAsync(account.AppUserId, key, request.Value, contentType, cancellationToken);

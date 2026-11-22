@@ -94,7 +94,15 @@ public record ConsultGenerationRequest(
     // resolves. No filename (the InputFilePayload rule). Cleared once the
     // origins are stamped, so it never rides the durable payload. Appended
     // last, wire-compat.
-    Dictionary<string, InputFilePayload>? InputFormFiles = null);
+    Dictionary<string, InputFilePayload>? InputFormFiles = null,
+    // #1505 (specVersion 31, area 08; part 06 § 10.3; D15): the id of the
+    // account's signature block this job signs with, picked on the Create page;
+    // absent, the account's chosen block. Read at 31 only, and only when the
+    // package reads profile.signature; a 5–30 start ignores it. An id, never a
+    // block's text. Not written when null, so every payload that has none
+    // writes the bytes it always wrote. Appended last, wire-compat.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? SignatureBlockId = null);
 
 /// <summary>
 /// #510: one deliverable of one of the account's completed runs. #1144:

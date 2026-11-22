@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Consultologist.Api.Auth;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.V31;
@@ -299,6 +300,68 @@ public class V31StartChecksTests
         Assert.Equal(["package"], V31StartChecks.RunFacts(Plan(facts: ["run.package", "run.id"]), LateEvening, "America/Toronto").Select(f => f.Key));
     }
 
+    // ---- the signature block and R8 (#1505, area 08; D15, R8) --------------------------------------------------
+
+    [Theory]
+    [InlineData(null, "sig-1", "default")]
+    [InlineData("", "sig-1", "default")]
+    [InlineData("sig-1", "sig-1", "default")]
+    [InlineData("sig-2", "sig-2", "job")]
+    public void TheSignature_IsTheBlockNamed_ElseTheChosenOne(string? requested, string block, string chosen)
+    {
+        var (found, how, refusal) = V31StartChecks.Signature(Blocks("sig-1"), requested);
+
+        Assert.Equal((block, chosen), (found!.Id, how));
+        Assert.Null(refusal);
+    }
+
+    [Fact]
+    public void ASignatureNamedThatIsNotTheAccounts_IsA08004()
+    {
+        var (found, how, refusal) = V31StartChecks.Signature(Blocks("sig-1"), "sig-9");
+
+        Assert.Equal(((SignatureBlocks.SignatureBlock?)null, (string?)null), (found, how));
+        V31Contract.AssertSentence(new SourceRefusal("A08-004", refusal!, ""));
+    }
+
+    [Fact]
+    public void WithNoBlockChosen_AndNoneNamed_ThereIsNoSignature()
+    {
+        Assert.Equal(((SignatureBlocks.SignatureBlock?)null, (string?)null, (string?)null), V31StartChecks.Signature(Blocks(null), null));
+    }
+
+    [Fact]
+    public void ADeliverableWhoseIfReadsARunFactTheStartDoesNotGive_CanExist()
+    {
+        // run.date is worked out when the orchestration starts (D6), not at the start: the run decides
+        var plan = Plan(deliverableIf: """{ "===": [{ "var": "run.date" }, "2026-11-17"] }""");
+        var (inputs, _) = V31StartChecks.Inputs(plan, Valid(), new JsonObject { ["id"] = "job-1" }, NoProfile);
+
+        Assert.False(V31StartChecks.NoDeliverableCanExist(plan, inputs!));
+
+        // given (as a caller that knows it may), it decides
+        var (dated, _) = V31StartChecks.Inputs(plan, Valid(), new JsonObject { ["date"] = "2026-11-16" }, NoProfile);
+        Assert.True(V31StartChecks.NoDeliverableCanExist(plan, dated!));
+    }
+
+    [Fact]
+    public void ADeliverableWhoseIfIsTrue_OrHasNone_CanExist()
+    {
+        var plan = Plan(deliverableIf: """{ "===": [{ "var": "input.code.value" }, "ABC-1"] }""");
+        var (inputs, _) = V31StartChecks.Inputs(plan, Valid(), new JsonObject(), NoProfile);
+        Assert.False(V31StartChecks.NoDeliverableCanExist(plan, inputs!));
+
+        var (unconditional, _) = V31StartChecks.Inputs(Plan(), Valid(), new JsonObject(), NoProfile);
+        Assert.False(V31StartChecks.NoDeliverableCanExist(Plan(), unconditional!));
+    }
+
+    private static SignatureBlocks.SignatureBlockSet Blocks(string? chosen) => new(
+        [
+            new("sig-1", "Clinic", "Dr A. Sample\nSample Oncology Clinic", DateTimeOffset.UnixEpoch),
+            new("sig-2", "Ward", "Dr A. Sample\nWard 4", DateTimeOffset.UnixEpoch),
+        ],
+        chosen);
+
     private static IReadOnlyList<SourceRefusal> Refusals(Dictionary<string, JsonNode?> supplied)
     {
         var (inputs, refusals) = Check(supplied);
@@ -325,7 +388,7 @@ public class V31StartChecksTests
     /// <c>string</c>), <c>dose</c> (an optional enum of numbers, R4) and <c>kind</c> (an optional labelled choice), and with
     /// <paramref name="needs"/> as its <c>needs.profile</c> and <paramref name="facts"/> as its <c>run</c>.
     /// </summary>
-    private static RunPlan Plan(string[]? needs = null, string[]? facts = null)
+    private static RunPlan Plan(string[]? needs = null, string[]? facts = null, string? deliverableIf = null)
     {
         var pair = CompiledGoldenTests.Published(CompiledGoldenTests.Cases().Single(c => c.Name == "conditional"));
         var document = JsonNode.Parse(pair.Resolve)!.AsObject();
@@ -342,6 +405,12 @@ public class V31StartChecksTests
         document["inputOrder"] = new JsonArray("consult_draft", "sections", "include_billing", "notes", "code", "dose", "kind");
         document["needs"] = new JsonObject { ["profile"] = new JsonArray((needs ?? []).Select(n => (JsonNode?)n).ToArray()) };
         document["run"] = new JsonArray((facts ?? []).Select(f => (JsonNode?)f).ToArray());
+        if (deliverableIf != null)
+        {
+            var note = document["deliverables"]!["deliverable.note"]!.AsObject();
+            note["if"] = JsonNode.Parse(deliverableIf);
+            note["plainConverts"]!["if"] = new JsonArray();
+        }
 
         var text = CanonicalJson.Write(document);
         var (plan, refusal) = RunPlan.Build(text, CanonicalJson.HashText(text), pair.LockHash, null);

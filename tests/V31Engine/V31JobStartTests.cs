@@ -447,6 +447,227 @@ public class V31JobStartTests
         AssertStartFailure(start, outcome.JobId!, sentence);
     }
 
+    // ---- the signature block (#1505, area 08; part 06 § 10.3; part 08 § 3; D15) -------------------------------
+
+    [Fact]
+    public async Task TheChosenBlock_IsTheDefault()
+    {
+        var start = new Start(preview: "31", signatures: Blocks());
+        var packageRef = start.PutSigned();
+
+        var outcome = await start.RunAsync(packageRef, Text(Draft));
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(ClinicBlock, (string?)Assert.Single(start.Inputs.Documents).Value["profile"]!["signature"]);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        Assert.Equal(("sig-1", "default"), (initialize.SignatureBlockId, initialize.SignatureChosen));
+
+        // the entity keeps them, written once at Initialize
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(initialize));
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(
+            initialize with { SignatureBlockId = "sig-2", SignatureChosen = "job" }));
+        var state = (ConsultGenerationJobState)StateProperty.GetValue(entity)!;
+        Assert.Equal(("sig-1", "default"), (state.SignatureBlockId, state.SignatureChosen));
+
+        // the block's text is in no signal, no orchestration input
+        Assert.DoesNotContain("Sample Oncology Clinic", JsonSerializer.Serialize(initialize), StringComparison.Ordinal);
+        Assert.DoesNotContain("Sample Oncology Clinic", JsonSerializer.Serialize(Assert.Single(start.Scheduled).Input), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ABlockNamedByTheRequest_IsThisJobs()
+    {
+        var start = new Start(preview: "31", signatures: Blocks());
+        var packageRef = start.PutSigned();
+
+        var outcome = await start.RunAsync(Signed(packageRef, "sig-2"));
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(WardBlock, (string?)Assert.Single(start.Inputs.Documents).Value["profile"]!["signature"]);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        Assert.Equal(("sig-2", "job"), (initialize.SignatureBlockId, initialize.SignatureChosen));
+    }
+
+    [Fact]
+    public async Task NamingTheChosenBlock_IsStillTheDefault()
+    {
+        var start = new Start(preview: "31", signatures: Blocks());
+        var packageRef = start.PutSigned();
+
+        var outcome = await start.RunAsync(Signed(packageRef, "sig-1"));
+
+        Assert.Null(outcome.Error);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        Assert.Equal(("sig-1", "default"), (initialize.SignatureBlockId, initialize.SignatureChosen));
+    }
+
+    [Fact]
+    public async Task ABlockThatIsNotTheAccounts_RefusesTheStart()
+    {
+        var start = new Start(preview: "31", signatures: Blocks());
+        var packageRef = start.PutSigned();
+
+        var outcome = await start.RunAsync(Signed(packageRef, "sig-9"));
+
+        var sentence = "The signature chosen for this job isn't in your profile. Choose one in Profile.";
+        Assert.Equal(sentence, V31StartChecks.SignatureNotInProfile);
+        V31Contract.AssertSentence(new SourceRefusal("A08-004", sentence, ""));
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Equal(sentence, outcome.ErrorDetail); // and not S06-031 as well: the account has a signature
+        Assert.Equal(sentence, outcome.SenderSafeDetail);
+        Assert.Empty(start.Scheduled);
+        Assert.Empty(start.Inputs.Documents);
+        var failure = AssertStartFailure(start, outcome.JobId!, sentence);
+        Assert.Equal(((string?)null, (string?)null), (failure.Initialize.SignatureBlockId, failure.Initialize.SignatureChosen));
+    }
+
+    [Fact]
+    public async Task ABlankBlock_CountsAsNotSet()
+    {
+        var signature = ResolveSentences.SignatureNotSet();
+        foreach (var (signatures, requested) in new[] { (Blocks(chosen: "sig-3"), (string?)null), (Blocks(), "sig-3"), (Blocks(chosen: null), null) })
+        {
+            var start = new Start(preview: "31", signatures: signatures);
+            var packageRef = start.PutSigned();
+
+            var outcome = await start.RunAsync(Signed(packageRef, requested));
+
+            V31Contract.AssertSentence(signature);
+            Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+            Assert.Equal(signature.Sentence, outcome.ErrorDetail);
+            Assert.Equal(signature.Sentence, outcome.SenderSafeDetail);
+            Assert.Empty(start.Scheduled);
+            AssertStartFailure(start, outcome.JobId!, signature.Sentence);
+        }
+    }
+
+    [Fact]
+    public async Task APackageThatReadsNoSignature_RecordsNeither()
+    {
+        // the request's block is not even the account's: a package that reads no signature does not look
+        var start = new Start(preview: "31", signatures: Blocks());
+        var packageRef = start.Put("nested-note");
+
+        var outcome = await start.RunAsync(Signed(packageRef, "sig-9"));
+
+        Assert.Null(outcome.Error);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        Assert.Equal(((string?)null, (string?)null), (initialize.SignatureBlockId, initialize.SignatureChosen));
+        Assert.DoesNotContain("Signature", JsonSerializer.Serialize(initialize), StringComparison.Ordinal);
+
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(initialize));
+        var state = (ConsultGenerationJobState)StateProperty.GetValue(entity)!;
+        Assert.Equal(((string?)null, (string?)null), (state.SignatureBlockId, state.SignatureChosen));
+        Assert.DoesNotContain("Signature", JsonSerializer.Serialize(state), StringComparison.Ordinal);
+
+        // a state stored before this change (no members) reads both as null
+        var stored = JsonSerializer.Deserialize<ConsultGenerationJobState>("""{"JobId":"job-1","PackageSpecVersion":31}""")!;
+        Assert.Equal(((string?)null, (string?)null), (stored.SignatureBlockId, stored.SignatureChosen));
+    }
+
+    [Fact]
+    public async Task A30Start_IgnoresTheMember()
+    {
+        var package = ByteEquivalenceFixtures.Load("example-prior-letters");
+        var inputs = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = ConsultInputValue.OfText(Draft),
+            ["prior_letters"] = ConsultInputValue.OfArray([ConsultInputValue.OfText("Dear Dr A. Sample, Margaret Okafor was seen in clinic. (Fictional.)")]),
+        };
+
+        var without = new Start(preview: "31", package30: package, signatures: Blocks());
+        var withoutOutcome = await without.RunAsync(new ConsultGenerationRequest(null, package.Ref, Inputs: inputs));
+        var with = new Start(preview: "31", package30: package, signatures: Blocks());
+        var withOutcome = await with.RunAsync(new ConsultGenerationRequest(null, package.Ref, Inputs: inputs, SignatureBlockId: "sig-9"));
+
+        Assert.Null(withoutOutcome.Error);
+        Assert.Null(withOutcome.Error);
+        Assert.Equal(nameof(ConsultGenerationOrchestrator), Assert.Single(with.Scheduled).Name);
+        Assert.Equal(Masked(without, withoutOutcome.JobId!), Masked(with, withOutcome.JobId!));
+        Assert.DoesNotContain("sig-9", Masked(with, withOutcome.JobId!), StringComparison.Ordinal);
+    }
+
+    // ---- no deliverable can exist (#1505, area 08; R8) ---------------------------------------------------------
+
+    [Fact]
+    public async Task AStart_WhereNoDeliverableCanExist_IsRefused()
+    {
+        // the note's if reads an input only, and is false (the input sent false) or null (left out): 30's refusal and words
+        foreach (var billing in new bool?[] { false, null })
+        {
+            var start = new Start(preview: "31");
+            var packageRef = start.PutGated(Billed);
+            var inputs = Text(Draft);
+            if (billing is { } sent)
+                inputs["include_billing"] = ConsultInputValue.OfBoolean(sent);
+
+            var outcome = await start.RunAsync(packageRef, inputs);
+
+            var detail = "No document applies to these inputs. 'Consultation note' skipped: input.include_billing.value = true is false.";
+            Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, outcome.Error);
+            Assert.Equal(detail, outcome.ErrorDetail);
+            Assert.Equal(detail, outcome.SenderSafeDetail);
+            Assert.NotNull(outcome.JobId);
+            Assert.Empty(start.Scheduled);
+            Assert.Empty(start.Inputs.Documents);
+            var failure = AssertStartFailure(start, outcome.JobId!, detail);
+            var skipped = Assert.Single(failure.Initialize.SkippedDocuments!);
+            Assert.Equal(("deliverable.note", "Consultation note"), (skipped.ResultId, skipped.Label));
+        }
+
+        // and with the input sent true, it starts
+        var billed = new Start(preview: "31");
+        var billedInputs = Text(Draft);
+        billedInputs["include_billing"] = ConsultInputValue.OfBoolean(true);
+        Assert.Null((await billed.RunAsync(billed.PutGated(Billed), billedInputs)).Error);
+        Assert.Single(billed.Scheduled);
+    }
+
+    [Fact]
+    public async Task AStart_WhereNoDeliverableCanExist_WithADeliverableWhoseIfReadsANode_Starts()
+    {
+        // a node's value is not known at the start (read now, it would be null and the if false): the note may exist, so the run decides
+        var start = new Start(preview: "31");
+        var packageRef = start.PutGated("{ \"!\": [{ \"blank\": [{ \"var\": \"node.plan.value\" }] }] }");
+
+        var outcome = await start.RunAsync(packageRef, Text(Draft));
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(nameof(ConsultGenerationOrchestratorV31), Assert.Single(start.Scheduled).Name);
+    }
+
+    [Fact]
+    public async Task AStart_WhereNoDeliverableCanExist_WithAnUnconditionalDeliverable_Starts()
+    {
+        var start = new Start(preview: "31");
+        var packageRef = start.PutGated(Billed, unconditional: true);
+
+        var outcome = await start.RunAsync(packageRef, Text(Draft));
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(nameof(ConsultGenerationOrchestratorV31), Assert.Single(start.Scheduled).Name);
+    }
+
+    private const string Billed = "{ \"===\": [{ \"var\": \"input.include_billing.value\" }, true] }";
+
+    private const string ClinicBlock = "Dr A. Sample\nSample Oncology Clinic";
+
+    private const string WardBlock = "Dr A. Sample\nWard 4, Sample Oncology Clinic";
+
+    /// <summary>The account's signature blocks as the Web stores them: <c>sig-1</c> (the clinic), <c>sig-2</c> (the ward), <c>sig-3</c> (blank), <paramref name="chosen"/> chosen.</summary>
+    private static string Blocks(string? chosen = "sig-1") => JsonSerializer.Serialize(new SignatureBlocks.SignatureBlockSet(
+        [
+            new("sig-1", "Clinic", ClinicBlock, DateTimeOffset.UnixEpoch),
+            new("sig-2", "Ward", WardBlock, DateTimeOffset.UnixEpoch),
+            new("sig-3", "Blank", "  \n ", DateTimeOffset.UnixEpoch),
+        ],
+        chosen));
+
+    private static ConsultGenerationRequest Signed(WorkflowPackageRef packageRef, string? block) =>
+        new(null, RefText(packageRef), Inputs: Text(Draft), SignatureBlockId: block);
+
     /// <summary>
     /// The optional boolean input <c>letrozole</c> (the per-run choice of the macro <c>letrozole</c>, part 05 § 8.2), the
     /// macro decided on it, and the agent <c>draft</c> placing it.
@@ -502,13 +723,19 @@ public class V31JobStartTests
     {
         private readonly ConsultGenerationJobStarter _starter;
 
-        public Start(string? preview, string? timeZone = Zone, WorkflowPackage? package30 = null)
+        public Start(string? preview, string? timeZone = Zone, WorkflowPackage? package30 = null, string? signatures = null)
         {
             var settings = Substitute.For<IAccountSettingsStore>();
             if (timeZone != null)
             {
                 settings.GetAsync(Arg.Any<string>(), AccountSettingKeys.TimeZone, Arg.Any<CancellationToken>())
                     .Returns(new AccountSetting(AccountSettingKeys.TimeZone, timeZone, "text/plain", DateTimeOffset.UnixEpoch));
+            }
+
+            if (signatures != null)
+            {
+                settings.GetAsync(Arg.Any<string>(), AccountSettingKeys.ProfileSignatures, Arg.Any<CancellationToken>())
+                    .Returns(new AccountSetting(AccountSettingKeys.ProfileSignatures, signatures, "application/json", DateTimeOffset.UnixEpoch));
             }
 
             var accounts = Substitute.For<IAccountStore>();
@@ -600,9 +827,35 @@ public class V31JobStartTests
         }
 
         /// <summary>Publishes <see cref="Choices"/>.</summary>
-        public WorkflowPackageRef PutChoices()
+        public WorkflowPackageRef PutChoices() => Publish(Choices());
+
+        /// <summary>Publishes <see cref="SourceFixture.Minimal"/> with its note signed: it reads <c>profile.signature</c>.</summary>
+        public WorkflowPackageRef PutSigned() => Publish(SourceFixture.Minimal().With("deliverables/note.md", SourceFixture.Md(
+            SourceFixture.Deliverable("Consultation note", TemplateFixture.Plain, "null", "hold"),
+            "{{ node.plan.content }}\n\n{{ profile.signature }}\n")));
+
+        /// <summary>
+        /// Publishes <see cref="SourceFixture.Minimal"/> with the optional boolean input <c>include_billing</c> and its note's
+        /// <c>if</c> <paramref name="condition"/>; with <paramref name="unconditional"/>, a second deliverable <c>letter</c> with none.
+        /// </summary>
+        public WorkflowPackageRef PutGated(string condition, bool unconditional = false)
         {
-            var (refusals, compiled) = CompiledPackage.Publish(Choices(), ResolveFixture.Published(), CompiledGoldenTests.Fixed);
+            var files = SourceFixture.Minimal()
+                .WithJson("manifest.json", m => m["inputs"]!["include_billing"] = JsonNode.Parse(
+                    "{ \"label\": \"Include the billing section\", \"description\": null, \"format\": \"boolean\", \"required\": false, \"channel\": null }"))
+                .WithJson("deliverables/note.md", h => h["if"] = JsonNode.Parse(condition));
+            if (unconditional)
+            {
+                files = files.Listed("deliverables/index.json", "letter").With("deliverables/letter.md", SourceFixture.Md(
+                    SourceFixture.Deliverable("Letter to the GP", TemplateFixture.Plain, "null", "hold"), "{{ node.plan.content }}\n"));
+            }
+
+            return Publish(files);
+        }
+
+        private WorkflowPackageRef Publish(Dictionary<string, byte[]> files)
+        {
+            var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed);
             Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Sentence}")));
             return Registry.Put(compiled!.Resolve, compiled.Lock);
         }
