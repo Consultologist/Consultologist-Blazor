@@ -105,4 +105,39 @@ public class ConsultGenerationJobEventPayloadTests
         var ex = Assert.Throws<InvalidOperationException>(() => TableConsultGenerationJobEventStore.ToStoredEvent(entity));
         Assert.Equal("Consult generation SSE event row job/000000000002 declares 3 payload chunks but has no PayloadJson1.", ex.Message);
     }
+
+    [Fact]
+    public void ARowFinishedPayload_IsItsKeySectionAndStatus_Only()
+    {
+        // #1506 (specVersion 31, area 09; D16): one candidate per stored row, decisions left out, keyed row:<key>, in key
+        // order and before done; the payload names the row and its state word, never its contents.
+        var response = new Consultologist.Api.Models.ConsultGenerationJobResponse(
+            "job-31", "user-1", ConsultGenerationJobStatuses.Completed, 0, 0, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true, SchemaVersion: 12);
+        var rows = new[]
+        {
+            new Consultologist.PackageFormat.V31.Run.RecordRow("node", "node.b#2", "{\"status\":\"Completed\",\"outputHash\":\"sha256:aa\"}"),
+            new Consultologist.PackageFormat.V31.Run.RecordRow("decision", "node.b/if:pass.1", "{\"result\":\"true\"}"),
+            new Consultologist.PackageFormat.V31.Run.RecordRow("delivery", "delivery:deliverable.note/email", "{\"result\":\"sent\"}"),
+            new Consultologist.PackageFormat.V31.Run.RecordRow("deliverable", "deliverable.note", "{\"state\":\"blocked\",\"composedHash\":\"sha256:bb\"}"),
+            new Consultologist.PackageFormat.V31.Run.RecordRow("check", "check.a", "{\"status\":\"Completed\"}"),
+        };
+
+        var candidates = ConsultGenerationJobs.CreateSemanticEventCandidates(response, rows);
+        var finished = candidates.Where(c => c.EventType == ConsultGenerationRowEvents.EventName).ToList();
+
+        Assert.Equal(["row:check.a", "row:deliverable.note", "row:delivery:deliverable.note/email", "row:node.b#2"], finished.Select(c => c.EventKey));
+        Assert.Equal(
+            [
+                """{"key":"check.a","section":"check","status":"Completed"}""",
+                """{"key":"deliverable.note","section":"deliverable","status":"blocked"}""",
+                """{"key":"delivery:deliverable.note/email","section":"delivery","status":"sent"}""",
+                """{"key":"node.b#2","section":"node","status":"Completed"}""",
+            ],
+            finished.Select(c => c.PayloadJson));
+        Assert.Equal("done", candidates[^1].EventType);
+
+        // without rows (every 5–30 job): no row event
+        Assert.DoesNotContain(ConsultGenerationJobs.CreateSemanticEventCandidates(response), c => c.EventType == ConsultGenerationRowEvents.EventName);
+    }
 }

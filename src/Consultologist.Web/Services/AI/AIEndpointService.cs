@@ -713,7 +713,23 @@ public record ConsultGenerationJobResponse(
     IReadOnlyList<ConsultHeldDocumentResponse>? HeldDocuments = null,
     // v30 (#1341, record storage 11): one row per instance of a loop inside a loop or a
     // while — its outer path, count, reason, and (#1342) passes and why it stopped. Trailing.
-    IReadOnlyList<ConsultLoopInstanceRow>? LoopInstances = null);
+    IReadOnlyList<ConsultLoopInstanceRow>? LoopInstances = null,
+    // #1506 (specVersion 31, record storage 12): mirrors the Api's 31 header and progress — the
+    // resolve and lock hashes, the versions that ran, run facts, the ten limits, the signature
+    // block by id and how it was chosen, recordHash once sealed, and the rows stored so far by
+    // state, the decisions made and the last row's key. Each absent below storage 12. Trailing.
+    string? ResolveHash = null,
+    string? LockHash = null,
+    System.Text.Json.Nodes.JsonObject? VersionsRan = null,
+    System.Text.Json.Nodes.JsonObject? RunFacts = null,
+    IReadOnlyDictionary<string, int>? Limits = null,
+    string? SignatureBlockId = null,
+    string? SignatureChosen = null,
+    string? RecordHash = null,
+    int? Rows = null,
+    IReadOnlyDictionary<string, int>? RowStates = null,
+    int? Decisions = null,
+    string? CurrentKey = null);
 
 /// <summary>
 /// Mirrors Consultologist.Api.Jobs.ConsultLoopInstanceRow (v30 #1341/#1342, record storage 11):

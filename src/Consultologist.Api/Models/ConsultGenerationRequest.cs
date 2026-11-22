@@ -478,7 +478,37 @@ public record ConsultGenerationJobResponse(
     // v30 (#1341, design § 7, storage 11): the rows of a nested loop's instances.
     // Omitted when null, so a 26–29 record serves the bytes it always did.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<Consultologist.Api.Jobs.ConsultLoopInstanceRow>? LoopInstances = null);
+    IReadOnlyList<Consultologist.Api.Jobs.ConsultLoopInstanceRow>? LoopInstances = null,
+    // #1506 (specVersion 31, area 09; part 08 § 3; part 09 § 6.2): a 31 job's header (record storage 12): the hashes of the
+    // resolve.json and lock.json it ran, the versions that ran, its run facts, the ten limits in force, the signature block
+    // by id and how it was chosen, and recordHash once sealed. Each null, and omitted, below storage 12, so a 5–30 response
+    // writes the bytes it always did.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? ResolveHash = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? LockHash = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    System.Text.Json.Nodes.JsonObject? VersionsRan = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    System.Text.Json.Nodes.JsonObject? RunFacts = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, int>? Limits = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? SignatureBlockId = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? SignatureChosen = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? RecordHash = null,
+    // #1506 (D12): a 31 job's progress: the rows stored so far (decisions apart), by state, the decisions made, and the
+    // last row's key. Counts and keys only; a row itself is fetched from ConsultGenerationJobs/{jobId}/Rows?key=.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? Rows = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, int>? RowStates = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? Decisions = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? CurrentKey = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

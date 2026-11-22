@@ -2752,6 +2752,9 @@ public sealed class ConsultGenerationJobState
                     pair.Value.CompletedStepCount,
                     pair.Value.TotalStepCount));
 
+        // #1506: record storage 12, the first with a 31 header (the sealer's own floor)
+        var v31 = SchemaVersion >= V31.RecordSealer.SealedFrom;
+
         return new ConsultGenerationJobResponse(
             JobId,
             AppUserId,
@@ -2895,7 +2898,21 @@ public sealed class ConsultGenerationJobState
             SkippedBlocks: skippedSections.Count > 0 ? skippedSections : null,
             UnresolvedLoops: UnresolvedLoops is { Count: > 0 } ? UnresolvedLoops : null,
             HeldDocuments: HeldDocuments is { Count: > 0 } ? HeldDocuments : null,
-            LoopInstances: LoopInstances is { Count: > 0 } ? LoopInstances : null);
+            LoopInstances: LoopInstances is { Count: > 0 } ? LoopInstances : null,
+            // #1506 (specVersion 31, area 09; part 08 § 3; part 09 § 6.2): the 31 header and progress, from storage 12 only,
+            // so a 5–30 response carries none of them (each is omitted when null).
+            ResolveHash: v31 ? ResolveHash : null,
+            LockHash: v31 ? LockHash : null,
+            VersionsRan: v31 ? (System.Text.Json.Nodes.JsonObject?)VersionsRan?.DeepClone() : null,
+            RunFacts: v31 ? (System.Text.Json.Nodes.JsonObject?)RunFacts?.DeepClone() : null,
+            Limits: v31 && Limits != null ? new Dictionary<string, int>(Limits, StringComparer.Ordinal) : null,
+            SignatureBlockId: v31 ? SignatureBlockId : null,
+            SignatureChosen: v31 ? SignatureChosen : null,
+            RecordHash: v31 ? RecordHash : null,
+            Rows: v31 ? V31Progress?.Rows : null,
+            RowStates: v31 && V31Progress != null ? new Dictionary<string, int>(V31Progress.States, StringComparer.Ordinal) : null,
+            Decisions: v31 ? V31Progress?.Decisions : null,
+            CurrentKey: v31 ? V31Progress?.CurrentKey : null);
     }
 }
 

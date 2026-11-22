@@ -442,7 +442,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `GetConsultGenerationJobRecord`, `ConsultGenerationJobs/{jobId}/Record`: the canonical document's bytes as `application/json` with `Content-Disposition: attachment; filename="record-<jobId>.json"` and the header `X-Record-Hash`; it seals a terminal job that is not sealed (D13); 409 with `{ error = "The job hasn't finished." }` for a job not terminal; 404 below storage 12.
 - Produces: event `row-finished` (D16) for a 31 job, one per stored row not yet announced (decisions excluded), in key order within a materialisation, before `done`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `A31JobsResponse_ShowsItsHeader` and `A30JobsResponse_IsUnchanged` (its JSON holds none of the new names).
   - `ARow_IsFetchedByItsKey` (a key with `/` and `#` in the query), `ARowOfAnotherAccountsJob_IsNotFound`, `AnUnknownKey_Is404`.
   - `ARowsText_IsOfferedOnlyWhenItHashes`: a `content` that does not hash to `outputHash` (a late write after a cancel) is left out.
@@ -450,10 +450,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `TheRecord_DownloadsAsItsSealedBytes`: the body hashes to `X-Record-Hash` and to the entity's `RecordHash`; a running job answers 409; a cancelled job never sealed is sealed by the request.
   - `EachStoredRow_IsAnnouncedOnce`: two materialisations over a growing table give one `row-finished` per row, each payload `{ key, section, status }` and nothing else.
   - `TheNewRoutes_AnswerOptions_WithCors`.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the whole suite and `dotnet build Consultologist.sln` (the Web project reads the response type's twin, if it has one; add the members there as nullable). Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1506): a 31 job's rows, record and row events are served`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the whole suite and `dotnet build Consultologist.sln` (the Web project reads the response type's twin, if it has one; add the members there as nullable). Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1506): a 31 job's rows, record and row events are served`; push.
 
 ### Task 13: Retention and closure
 

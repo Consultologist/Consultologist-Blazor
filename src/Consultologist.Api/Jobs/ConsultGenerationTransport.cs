@@ -20,6 +20,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31.Run;
 namespace Consultologist.Api.Jobs;
 
 public sealed class ConsultGenerationJobs
@@ -108,6 +109,9 @@ public sealed class ConsultGenerationJobs
     private readonly IConsultGenerationLinkStore _linkStore;
     // #1506 (D13): a cancelled 31 job's record is sealed here; optional, so a host or a test without one cancels as before.
     private readonly V31.RecordSealers? _recordSealers;
+    // #1506 (D16): a 31 job's stored rows, listed to announce each as row-finished; optional, so a host or a test without
+    // one materialises as before. Read for record storage 12 only.
+    private readonly V31.IRecordRowStore? _recordRows;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
@@ -120,9 +124,11 @@ public sealed class ConsultGenerationJobs
         IJobOutputsBlobStore outputsStore,
         IJobInputsBlobStore inputsStore,
         IConsultGenerationLinkStore linkStore,
-        V31.RecordSealers? recordSealers = null)
+        V31.RecordSealers? recordSealers = null,
+        V31.IRecordRowStore? recordRows = null)
     {
         _recordSealers = recordSealers;
+        _recordRows = recordRows;
         _logger = logger;
         _authorizer = authorizer;
         _eventStore = eventStore;
@@ -2025,7 +2031,7 @@ public sealed class ConsultGenerationJobs
         SseConnectionState connection,
         CancellationToken cancellationToken)
     {
-        var candidates = CreateSemanticEventCandidates(response);
+        var candidates = CreateSemanticEventCandidates(response, await ListRecordRowsAsync(response, cancellationToken));
         IReadOnlyList<ConsultGenerationJobStoredEvent> storedEvents;
 
         try
@@ -2124,7 +2130,7 @@ public sealed class ConsultGenerationJobs
             latestEventType);
     }
 
-    private async Task TryMaterializeEventsForPollingAsync(
+    internal async Task TryMaterializeEventsForPollingAsync(
         ConsultGenerationJobResponse response,
         CancellationToken cancellationToken)
     {
@@ -2133,7 +2139,7 @@ public sealed class ConsultGenerationJobs
             await _eventStore.AppendAsync(
                 response.JobId,
                 response.AppUserId,
-                CreateSemanticEventCandidates(response),
+                CreateSemanticEventCandidates(response, await ListRecordRowsAsync(response, cancellationToken)),
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -2147,6 +2153,36 @@ public sealed class ConsultGenerationJobs
                 "Consult generation polling event materialization failed. Returning job response without persisted SSE catch-up events. JobId={JobId}, Status={Status}",
                 response.JobId,
                 response.Status);
+        }
+    }
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; D16): a storage-12 job's stored rows, for its <c>row-finished</c> events; null, with
+    /// no storage read, below 12 or without a row store. A failed list is logged (the job id and the type) and answers null:
+    /// this materialisation announces no row, and the next one, listing again, does.
+    /// </summary>
+    private async Task<IReadOnlyList<RecordRow>?> ListRecordRowsAsync(ConsultGenerationJobResponse response, CancellationToken cancellationToken)
+    {
+        if (_recordRows == null || response.SchemaVersion is not >= V31.RecordSealer.SealedFrom)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _recordRows.ListAsync(response.JobId, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "V31 record rows not listed for row events. JobId={JobId}, ExceptionType={ExceptionType}",
+                response.JobId,
+                ex.GetType().FullName);
+            return null;
         }
     }
 
@@ -2167,7 +2203,8 @@ public sealed class ConsultGenerationJobs
     }
 
     internal static IReadOnlyList<ConsultGenerationJobEventCandidate> CreateSemanticEventCandidates(
-        ConsultGenerationJobResponse response)
+        ConsultGenerationJobResponse response,
+        IReadOnlyList<RecordRow>? rows = null)
     {
         var candidates = new List<ConsultGenerationJobEventCandidate>();
 
@@ -2235,6 +2272,8 @@ public sealed class ConsultGenerationJobs
                 $"{ConsultGenerationCountResolvedEvent.EventName}:{instance.LoopId}:{instance.Path}",
                 new ConsultGenerationCountResolvedEvent(response.JobId, instance.LoopId, instance.Count!.Value, response.TotalBlockCount, response.UnresolvedLoops?.Count ?? 0, instance.Path));
         }
+
+        AddRowFinishedEventCandidates(candidates, rows);
 
         if (IsTerminalJobStatus(response.Status))
         {
@@ -2392,6 +2431,31 @@ public sealed class ConsultGenerationJobs
                     $"{labels[nodeId]} completed.",
                     progress.CompletedStepCount,
                     progress.TotalStepCount));
+        }
+    }
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 § 1.1; part 09 § 3.7; D16): one <c>row-finished</c> per stored row, decisions
+    /// apart, in key order, keyed <c>row:&lt;key&gt;</c> (the store keeps the first candidate for a key, so each row is
+    /// announced once). The payload is <c>{ key, section, status }</c>, <c>status</c> the row's state word (a node's or
+    /// check's <c>status</c>, a deliverable's <c>state</c>, a delivery's <c>result</c>): keys, never row contents; the browser
+    /// fetches the row by its key.
+    /// </summary>
+    private static void AddRowFinishedEventCandidates(
+        List<ConsultGenerationJobEventCandidate> candidates,
+        IReadOnlyList<RecordRow>? rows)
+    {
+        foreach (var row in (rows ?? Array.Empty<RecordRow>())
+            .Where(row => !string.Equals(row.Section, "decision", StringComparison.Ordinal))
+            .OrderBy(row => row.Key, StringComparer.Ordinal))
+        {
+            var payload = new System.Text.Json.Nodes.JsonObject
+            {
+                ["key"] = row.Key,
+                ["section"] = row.Section,
+                ["status"] = ConsultGenerationRowEvents.StatusOf(row),
+            };
+            candidates.Add(new ConsultGenerationJobEventCandidate(ConsultGenerationRowEvents.EventName, $"row:{row.Key}", payload.ToJsonString()));
         }
     }
 
@@ -2614,6 +2678,36 @@ public sealed record ConsultGenerationJobStreamError(
     string JobId,
     string Error,
     string? Stage = null);
+
+/// <summary>#1506 (specVersion 31, area 09; D16): a 31 job's stored row, announced by its key.</summary>
+public static class ConsultGenerationRowEvents
+{
+    public const string EventName = "row-finished";
+
+    /// <summary>The row's state word: a node's or check's <c>status</c>, a deliverable's <c>state</c>, a delivery's <c>result</c>; null when it has none.</summary>
+    internal static string? StatusOf(RecordRow row)
+    {
+        var member = row.Section switch
+        {
+            "deliverable" => "state",
+            "delivery" => "result",
+            _ => "status",
+        };
+
+        try
+        {
+            return System.Text.Json.Nodes.JsonNode.Parse(row.Json) is System.Text.Json.Nodes.JsonObject stored
+                && stored[member] is System.Text.Json.Nodes.JsonValue value
+                && value.TryGetValue<string>(out var word)
+                ? word
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}
 
 public static class ConsultGenerationNodeEvents
 {

@@ -94,6 +94,39 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void A31JobsHeader_ReachesTheClient()
+    {
+        // #1506 (specVersion 31, record storage 12): the header's 31 members and the progress counts, through the wire.
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 0, 0, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            SchemaVersion: 12,
+            ResolveHash: "sha256:aa",
+            LockHash: "sha256:bb",
+            VersionsRan: new System.Text.Json.Nodes.JsonObject { ["culture"] = "invariant" },
+            RunFacts: new System.Text.Json.Nodes.JsonObject { ["id"] = "job-1" },
+            Limits: new Dictionary<string, int> { ["jobInstances"] = 10000 },
+            SignatureBlockId: "block-2",
+            SignatureChosen: "job",
+            RecordHash: "sha256:cc",
+            Rows: 3,
+            RowStates: new Dictionary<string, int> { ["Completed"] = 2, ["released"] = 1 },
+            Decisions: 4,
+            CurrentKey: "deliverable.note");
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
+            JsonSerializer.Serialize(response, Web), Web)!;
+
+        Assert.Equal(("sha256:aa", "sha256:bb", "sha256:cc"), (mirrored.ResolveHash, mirrored.LockHash, mirrored.RecordHash));
+        Assert.Equal("invariant", (string?)mirrored.VersionsRan!["culture"]);
+        Assert.Equal("job-1", (string?)mirrored.RunFacts!["id"]);
+        Assert.Equal(10000, mirrored.Limits!["jobInstances"]);
+        Assert.Equal(("block-2", "job"), (mirrored.SignatureBlockId, mirrored.SignatureChosen));
+        Assert.Equal((3, 4, "deliverable.note"), (mirrored.Rows!.Value, mirrored.Decisions!.Value, mirrored.CurrentKey));
+        Assert.Equal(1, mirrored.RowStates!["released"]);
+    }
+
+    [Fact]
     public void TheHostAndTheEngine_ReachTheClient()
     {
         // #514: the residency statement and the build, through the wire.
