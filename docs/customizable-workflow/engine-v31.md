@@ -100,12 +100,15 @@ version against git: the bundled manifest `agents/<name>.yaml` must exist and de
 - `Holds(name, version)`.
 
 `ApiServices.ResolveAtStartup` resolves it, with `SpecVersionAdmission` and `EngineLimitSettings`, before the host
-runs, but only when `WorkflowPackages__PreviewSpecVersions` admits 31: a 5–30 host never touches `agents/v31`
-(#1505, R15). Every defect in the two files, a version that is not an integer or a missing member included, is the
-catalogue's own `InvalidOperationException` naming the file and the member. So a missing file, a file not of the
-published shape, or a manifest at another version stops the host (`InvalidOperationException`) rather than failing
-job starts. It is attested against git only, not against Foundry: `judgement` 1 exists in Foundry only once the
-contracts are released, and `AgentAttestationService` does not compare the 31 agents.
+runs, but only when `WorkflowPackages__PreviewSpecVersions` admits 31: a 5–30 host never touches `agents/v31` (#1505,
+R15). Nothing else reads it there either: the 31 store (`CompiledPackageStore`) takes the engine's capabilities, and
+the 31 agent activity the catalogue, as a `Lazy<…>`, so only a 31 load or a 31 agent call reads it
+(`CompositionTests` builds every registration and function class with a catalogue that throws). Every defect in the
+two files, a version that is not an integer or a missing member included, is the catalogue's own
+`InvalidOperationException` naming the file and the member. So a missing file, a file not of the published shape, or
+a manifest at another version stops the host (`InvalidOperationException`) rather than failing job starts. It is
+attested against git only, not against Foundry: `judgement` 1 exists in Foundry only once the contracts are released,
+and `AgentAttestationService` does not compare the 31 agents.
 
 ## Starting a job
 
@@ -336,7 +339,7 @@ throws for one; a channel's fault is a failed send `error`. The activity's input
 text across the boundary and is never logged; the log has the job, the kind, the folder, the number of documents,
 the attempt and the result.
 
-**The channels, and what sets each up (D10).** There is no new setting. A kind is set up from what the account
+**The channels, and what sets each up (#1505 D10).** There is no new setting. A kind is set up from what the account
 already has:
 
 | Kind | Set up when | What it sends |
@@ -348,21 +351,21 @@ already has:
 
 **`emr` and `zip` have no channel yet.** No account can set them up, so each destination is recorded *not sent: EMR
 isn't set up for this account* or *…Zip…* (S08-006), final at once and never retried. The mapping's home in the
-account is still to design (D10, flagged for the owner; #1408 item 9). A folder asking
-`["email", "pdf"]` for an account with an address and no document password gets one row `sent` and one `not sent`,
-and nothing is retried for the second. The settings are read at the attempt, inside the activity, so a replay reads
-the stored outcome and a retry can see a setting changed between attempts.
+account is still to design (#1505 D10, flagged for the owner; #1408 item 9). A folder asking `["email", "pdf"]` for
+an account with an address and no document password gets one row `sent` and one `not sent`, and nothing is retried
+for the second. The settings are read at the attempt, inside the activity, so a replay reads the stored outcome and a
+retry can see a setting changed between attempts.
 
-**Bundles (D11).** A folder with `bundle: "zip"` makes one send per kind for all its released deliverables, in plan
-order, and each deliverable still gets its own delivery row with the send's result. A folder with nothing released
-sends nothing.
+**Bundles (#1505 D11).** A folder with `bundle: "zip"` makes one send per kind for all its released deliverables, in
+plan order, and each deliverable still gets its own delivery row with the send's result. A folder with nothing
+released sends nothing.
 
-**The rows (D13).** A delivery row's key is `delivery:<deliverable key>/<kind>`. Its `reason` is S08-006's sentence
-for a kind not set up, `not sent: the job failed` for a failed job, `failed: <kind>` after the attempts or the
-window, and `null` when sent. A row records each attempt with its start time and `sent` or `failed: <error kind>`,
-where the error kind is `unreachable`, `error`, `too-large` or `window`. `EntityRunRecorder` counts the rows on the
-entity as `delivery:sent`, `delivery:not sent` and `delivery:failed`, apart from the run's row states, so a failed
-delivery is never counted as a failed run row. Storing them is area 09's.
+**The rows (#1505 D13).** A delivery row's key is `delivery:<deliverable key>/<kind>`. Its `reason` is S08-006's
+sentence for a kind not set up, `not sent: the job failed` for a failed job, `failed: <kind>` after the attempts or
+the window, and `null` when sent. A row records each attempt with its start time and `sent` or
+`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `EntityRunRecorder`
+counts the rows on the entity as `delivery:sent`, `delivery:not sent` and `delivery:failed`, apart from the run's row
+states, so a failed delivery is never counted as a failed run row. Storing them is area 09's.
 
 **What the email carries.** Boilerplate, the labels of the documents (package text) and the History link, as today.
 No document's text and no value from an input, a model or a profile is in a body, a log line or a row.
@@ -397,20 +400,23 @@ build*. With no alert address it is only logged, as counts.
 
 A template the engine fails to read in a way no text explains is the engine's fault, not the author's: an exception
 other than Scriban's own for unreadable text (`ScriptRuntimeException`, and the stack-depth exception for text too
-deep) is **A08-006** at publish, *"<Subject> couldn't be checked: the engine failed reading its template. This is
-a fault in the engine, not in the package; report it."*, never A07-005. At run time the composition still fails with
-the composer's sentence (S07-006). The log is where it is seen: `run-agent-node-v31` (a prompt) and `render-node-v31`
-(a `rendered` node or a deliverable) log once per failed composition, at error level, *V31 engine fault reading a
-template* with `SentenceId=A08-006`, the key, the entry's key, the function and the exception's full type name.
-Never the exception's message, its stack or the text. Publish carries the type on its refusal
-(`SourceRefusal.EngineFault`) for area 11's caller, which has a logger.
+deep) is **A08-006** at publish, *"<Subject> couldn't be checked: the engine failed reading its template. This is a
+fault in the engine, not in the package; report it."*, never A07-005. At run time the node fails with A06-008,
+*"<Subject> couldn't be rendered."*, never S07-006, which would say the compiled document is not what was published.
+The log is where the fault is seen: `run-agent-node-v31` (a prompt) and `render-node-v31` (a `rendered` node or a
+deliverable) log once per failed composition, at error level, *V31 engine fault reading a template* with
+`SentenceId=A08-006`, the key, the entry's key, the function and the exception's full type name. Never the
+exception's message, its stack or the text. Publish carries the type on its refusal (`SourceRefusal.EngineFault`) for
+area 11's caller, which has a logger.
 
 ## Settings
 
-Each setting is read once, at startup. `Program.cs` resolves `SpecVersionAdmission` and `EngineLimitSettings`
-before the host runs, so a bad value stops the host, and the message names the setting and the value. An unset,
-empty or white-space value is the default. The limits are read at a job's start, recorded in its orchestration
-input and in the job header's `limits`, and never re-read for that job.
+Each setting is read once, at startup, except those read at each send or alert: `EmailIntake__MailboxAddress` and
+`EmailIntake__AppBaseUrl` by the delivery channels, and `Operators__AlertAddress` (with the mailbox) by the alerts.
+`Program.cs` resolves `SpecVersionAdmission` and `EngineLimitSettings` before the host runs, so a bad value stops the
+host, and the message names the setting and the value. An unset, empty or white-space value is the default. The
+limits are read at a job's start, recorded in its orchestration input and in the job header's `limits`, and never
+re-read for that job.
 
 | Setting | Default | What it is |
 |---|---|---|

@@ -1394,11 +1394,11 @@ package's level. `Scope` is `RunScope.Data` over exactly the entry's compiled `r
 
 | Seam | Here | Who plugs in |
 |---|---|---|
-| `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)` | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's byte-equivalence run and area 11's in-package tests bring their own |
-| `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | area 09 (the record's storage), replacing the engine's `EntityRunRecorder` (D12: counts on the job's entity, telemetry by key, state and hash) |
+| `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)`, `EvaluateAsync(RuleCall)` (area 08) | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's byte-equivalence run and area 11's in-package tests bring their own |
+| `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, `DeliveryAsync(DeliveryRow)` and `NoticeAsync(RunNotice)` (area 08), awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | area 09 (the record's storage), replacing the engine's `EntityRunRecorder` (D12: counts on the job's entity, telemetry by key, state and hash) |
 | `AgentTurn`, `RenderTurn` (in the library, since area 07) | `AgentTurn.Prepare(plan, call, stepLimit, strictRejects)`, `AgentTurn.Finish(prepared, reply)`, `RenderTurn.Render(plan, call)` | the engine's two activities call them; area 07 removed the Api's `IBodyComposer` and `ScribanBodyComposer` (see "templates" below) |
 | A deliverable's outcome (area 08: `RunResult.Deliverables`) | `DeliveryRunner` takes the list | the engine's `DurableDeliveryHost` ("checks, deliverables and delivery" below) |
-| `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts` | area 12's Create page, which calls the same checks |
+| `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts`, `NoDeliverableCanExist` and `Signature` (area 08) | area 12's Create page, which calls the same checks |
 | `SpecVersionAdmission` (in the Api) | `Admits`, `Runs31`, `NotSupported` | area 11 (publish, import, `WorkflowPackages/Current`) |
 
 `RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail)`
@@ -2227,22 +2227,23 @@ A sentence with a row in `sentences.json` is that row with its `<…>` filled. A
 rules that part 06 states and another part already says (R-C5, R-C6, R-C8, R-C9, R-D1, R-D3, R-D8, R-D9, R-D12,
 R-D13, R-F1 to R-F5) keep that part's id: one rule, one sentence. A08-006 is the engine's, not the author's: a
 template the reader fails on with an exception other than Scriban's own for unreadable text
-(`ScriptRuntimeException`, `InsufficientExecutionStackException`, which stay A07-005). The publish refusal carries the
-exception's type on `SourceRefusal.EngineFault` (not serialised), `Composition` and `RenderOutcome` carry it too, and
-the engine logs it (engine guide). A07-013 holds at every depth: in a loop over a loop's `.items`, the `item` and every
-read along the chain to the folder item (`item.item` one loop down, `item.item.value.item` two) carries its body.
+(`ScriptRuntimeException`, `InsufficientExecutionStackException`, which stay A07-005). The publish refusal carries
+the exception's type on `SourceRefusal.EngineFault` (not serialised), `Composition` and `RenderOutcome` carry it too,
+and the engine logs it (engine guide); at run time the node fails with A06-008, never S07-006. A07-013 holds at every
+depth: in a loop over a loop's `.items`, the `item` and every read along the chain to the folder item (`item.item`
+one loop down, `item.item.value.item` two) carries its body.
 
 ### The conformance cases
 
 `tests/V31Source/RefusalPackages.Checks.cs` adds a case for each publish sentence above that a source reaches: 15
-cases, all built on the resolver's `example-functions` package. `RefusalPackagesTests.ChecksNotShipped` lists
-the one that has none, A08-006, since no package produces it. A08-004 and A08-005 are said at start and at run
-time, so they are not in that list: it holds only sentences the checker can say. Three area 05 and 06 cases changed
-(`S03-030`, `S05-024`, `S05-025`). `compiled-documents` gains `checked-note`, with every deliverable entry carrying
-`delivery`, `bundle` and `escapes`; `dialect-goldens` gains `deliverable-escaped`, `deliverable-plaintext` and
-`deliverable-object`; `markdown-escape-vectors` gains five (47 in all). The families shared with area 07 are added to,
-never rewritten (R11): `DialectGoldensExport.ExportTo` keeps what it does not produce, and
-`TheCasesAreaSevenExported_AreUnchanged` pins area 07's 40 dialect cases by name and hash.
+cases, all built on the resolver's `example-functions` package. `RefusalPackagesTests.ChecksNotShipped` lists the one
+that has none, A08-006, since no package produces it. A08-004 and A08-005 are said at start and at run time, so they
+are not in that list: it holds only sentences the checker can say. Three earlier areas' cases changed (area 04's
+`S03-030`, area 07's `S05-024` and `S05-025`). `compiled-documents` gains `checked-note`, with every deliverable
+entry carrying `delivery`, `bundle` and `escapes`; `dialect-goldens` gains `deliverable-escaped`,
+`deliverable-plaintext` and `deliverable-object`; `markdown-escape-vectors` gains five (47 in all). The families
+shared with area 07 are added to, never rewritten (R11): `DialectGoldensExport.ExportTo` keeps what it does not
+produce, and `TheCasesAreaSevenExported_AreUnchanged` pins area 07's 40 dialect cases by name and hash.
 
 **Run the exports one filter at a time**, `RefusalPackagesExport`, then `CompiledDocumentsExport`, then
 `DialectGoldensExport`, and read `git status` in the content repo after each. The three share a collection so that
@@ -2259,11 +2260,13 @@ The earlier sections' one-line export commands list all three exporters in one f
 **The one golden switch is `GOLDEN_UPDATE_V31=1`** (R16), everywhere a golden is rewritten: the compiled documents,
 the run goldens (`tests/V31Run/Golden/*.run.txt`, six of them since `checked-note` and `checked-note-outcomes`),
 the dialect and renderer goldens, the escape vectors, and `tests/V31Types/Golden/format-hashes.json`
-(`FormatHashGoldenTests`, which read `UPDATE_V31_GOLDENS` until Task 17). Read each golden after regenerating it.
+(`FormatHashGoldenTests`, which read `UPDATE_V31_GOLDENS` until #1505). Read each golden after regenerating it.
 
 ### Not wired in
 
 31 stays outside `AcceptedSpecVersions`. The engine runs delivery, the alerts and the engine-fault log only where
-`WorkflowPackages__PreviewSpecVersions` lists 31, and the alert and summary timers run only when their settings are
-set (see [the engine at specVersion 31](engine-v31.md)). The 5–30 path, `SendEmailIntakeReplyActivity`,
+`WorkflowPackages__PreviewSpecVersions` lists 31. The weekly summary runs only when its schedule
+(`OperatorWeeklySummarySchedule`) is set; an alert is always raised and logged, and mailed only when
+`Operators__AlertAddress` and the mailbox are both set; the job-slow timer is a host timer on every 31 run (see [the
+engine at specVersion 31](engine-v31.md)). The 5–30 path, `SendEmailIntakeReplyActivity`,
 `ConsultGenerationOrchestrator` and `RecordDelivery` are read and reused, not changed in behaviour.
