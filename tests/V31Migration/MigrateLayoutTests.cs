@@ -612,6 +612,36 @@ public class MigrateLayoutTests
             header.ToJsonString());
     }
 
+    [Theory]
+    [InlineData("[\"null\", \"null\"]")]
+    [InlineData("\"null\"")]
+    [InlineData("\"string\"")]
+    [InlineData("[\"string\"]")]
+    public void AFormatWhoseRootIsNullOrAScalar_IsOneHandEdit_NeverAThrow(string type)
+    {
+        // A 31 package format is an object or a list (part 02 § 3.3); a root of null alone (["null", "null"] too) or of a
+        // scalar is written as 30 had it, which the checker refuses, with one hand edit.
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
+        var wrapper = JsonNode.Parse(files["formats/verdict.json"])!.AsObject();
+        wrapper["schema"]!["type"] = JsonNode.Parse(type);
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["formats/verdict.json"] = wrapper.ToJsonString() };
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-nested-note"));
+
+        if (!result.Succeeded)
+        {
+            // 30 may refuse the format itself; then nothing is written and nothing throws.
+            Assert.All(result.Refusals, r => Assert.StartsWith("At specVersion 30: ", r, StringComparison.Ordinal));
+            return;
+        }
+
+        var edit = Assert.Single(result.HandEdits, e => e.Contains("formats/verdict.json", StringComparison.Ordinal));
+        Assert.Equal("Hand edit needed in formats/verdict.json, type: a package format's root is an object or a list at 31; make it one, or use a registry format.", edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "formats/verdict.json"));
+        V31Contract.AssertSentence(new SourceRefusal("A10-031", "a package format's root is an object or a list at 31; make it one, or use a registry format.", ""));
+        Assert.NotEmpty(FormatDialect.Check(JsonOf(result, "formats/verdict.json"), SchemaSite.PackageFormat, "Format 'verdict'", "verdict", "formats/verdict.json"));
+    }
+
     [Fact]
     public void APromptThatOpensLikeAHeader_IsNotHeldToStrictJson_But30RefusesIt()
     {
