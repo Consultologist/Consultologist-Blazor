@@ -633,7 +633,7 @@ record shows which was false. The folder is a namespace: `macro.<folder>.<id>`
 - **A per-run choice input takes the macro's id and label** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)), and is joined
   with `and` to any existing `if`. The Create page shows three states (unset, yes, no), and unset
   is sent as `null`. A migrated choice whose id is already an input's id gets the suffix
-  `_macro` (`letrozole` → `letrozole_macro`), reported by the migration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
+  `_macro` (`letrozole` → `letrozole_macro`), reported by the migration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)). A `MacroChoices` entry keyed by a macro's id sets the one boolean input that macro's `if` reads ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647); part 10 § 1.3).
 - One classifier per macro, per node, per item. A classifier answering several questions is
   #1416 (Milestone 40).
 

@@ -114,7 +114,7 @@ otherwise** ([decided](https://github.com/Consultologist/Consultologist-Blazor/i
 the entry is mapped through the macro's `if`, not through the id. For `letrozole`, renamed `letrozole_macro` because an input
 `letrozole` exists (§ 1.9), a rerun's `{ "letrozole": true }` sets `letrozole_macro`, the input the macro's `if` reads, and
 leaves the input `letrozole` alone. When the macro's `if` reads no single boolean input (or the id names no macro), the entry is
-refused with A07-015, and an input also given in `Inputs` with another value is refused with A07-016. A migrated package with a
+refused with a sentence. A migrated package with a
 colliding choice is tested for this.
 
 ### 1.4 Hand edits, with notices
