@@ -188,6 +188,9 @@ public static class ApiServices
         // #1505 (part 06 § 8; D10): a 31 job's delivery channels, email and pdf, over the mailbox and the account's
         // delivery settings, as the 5–30 reply reads them (deliver-v31's).
         services.AddSingleton<Consultologist.Api.V31.DeliveryChannels>();
+        // #1505 (part 09 § 3.9; D14): alerts for the operator, logged and mailed from the mailbox to Operators__AlertAddress when
+        // both are set (alert-operator-v31's); the weekly summary's function reads the job index on its own schedule.
+        services.AddSingleton<Consultologist.Api.V31.IOperatorAlerts, Consultologist.Api.V31.OperatorAlerts>();
         // #1503 (part 09 § 3.6; D9): the drain before a deploy — its state on the text account (drain/ in the job outputs'
         // container), read on every call; both starters park behind it; Admin/Drain, Admin/Resume and GET Admin/Drain drive it.
         services.AddSingleton<IDrainBlobs, TextDrainBlobs>();

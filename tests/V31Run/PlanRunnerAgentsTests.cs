@@ -325,7 +325,7 @@ public class PlanRunnerAgentsTests
         V31Contract.AssertSentence(new SourceRefusal(id, result.Sentence!, ""));
         // no retry: the one attempt, the row failed with the sentence
         Assert.Single(host.Calls);
-        Assert.Equal(1, host.DelaysMade); // the job's timer only
+        Assert.Equal(2, host.DelaysMade); // the job's timer and (#1505, D14) the slow-job timer only
         var row = recorder.Row("node.plan");
         Assert.Equal(RowState.Failed, row.State);
         Assert.Equal(result.Sentence, row.Reason);
@@ -489,7 +489,7 @@ public class PlanRunnerAgentsTests
             var run = runner.RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
             if (ending != "fails")
             {
-                Assert.Equal(2, host.OutstandingDelays); // the job's timer and node.n1's wait
+                Assert.Equal(3, host.OutstandingDelays); // the job's timer, (#1505, D14) the slow-job timer and node.n1's wait
                 host.Advance(TimeSpan.FromSeconds(ending == "completes" ? 1 : 60));
             }
 

@@ -40,6 +40,12 @@ public sealed partial class PlanRunner
         /// <summary>Each agent instance's call, by instance (reference equality: only looked up, never iterated).</summary>
         private readonly Dictionary<RunInstance, AgentState> agentStates = new(ReferenceEqualityComparer.Instance);
 
+        /// <summary>#1505 (D14): the job's 429 waits taken, in all across its nodes, in milliseconds.</summary>
+        private long capacityWaitedInAll;
+
+        /// <summary>#1505 (D14): whether the capacity-wait notice was raised, so it is raised once.</summary>
+        private bool capacityNoticed;
+
         /// <summary>Makes the first attempt of <paramref name="call"/>, in the slot <see cref="DispatchAsync"/> gave it.</summary>
         private void StartAgent(RunInstance instance, AgentCall call)
         {
@@ -87,6 +93,7 @@ public sealed partial class PlanRunner
 
                     state.CapacityWaited += wait;
                     Retry(instance, wait, "capacity", null);
+                    await CapacityWaitedAsync(instance, wait);
                     return;
                 case AgentOutcomeKind.Failed:
                     // Not the model service's: no retry changes it, so the node fails with the sentence for its kind.
@@ -238,6 +245,41 @@ public sealed partial class PlanRunner
         {
             var left = StartedAtUtc + TimeSpan.FromMinutes(limits.JobMinutes) - host.UtcNow;
             return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+        }
+
+        /// <summary>#1505 (D14): the minutes into the job at which it is slow: <see cref="SlowJobPercent"/> of its <see cref="RunLimits.JobMinutes"/>.</summary>
+        private TimeSpan SlowAt => TimeSpan.FromTicks(TimeSpan.FromMinutes(limits.JobMinutes).Ticks / 100 * SlowJobPercent);
+
+        /// <summary>#1505 (D14): the time to <see cref="SlowAt"/> by the host's clock, never below zero.</summary>
+        private TimeSpan TimeToSlow()
+        {
+            var left = StartedAtUtc + SlowAt - host.UtcNow;
+            return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+        }
+
+        /// <summary>
+        /// #1505 (part 09 § 3.9; D14): the slow-job timer ended before the job's limit: the operator is told once, with the
+        /// minutes the job has run (<c>job-slow</c>), and the timer is not made again.
+        /// </summary>
+        private Task SlowAsync()
+        {
+            slowNoticed = true;
+            slowTimer = null;
+            return recorder.NoticeAsync(new RunNotice("job-slow", null, (int)SlowAt.TotalMinutes));
+        }
+
+        /// <summary>
+        /// #1505 (part 09 § 3.9; D14): adds a 429 wait to the job's in all; the first that takes it past
+        /// <see cref="CapacityAlertMinutes"/> tells the operator once (<c>capacity-wait</c>), with the row that waited and the
+        /// waits in all, in whole minutes.
+        /// </summary>
+        private Task CapacityWaitedAsync(RunInstance instance, int wait)
+        {
+            capacityWaitedInAll += wait;
+            if (capacityNoticed || capacityWaitedInAll <= CapacityAlertMinutes * 60_000L)
+                return Task.CompletedTask;
+            capacityNoticed = true;
+            return recorder.NoticeAsync(new RunNotice("capacity-wait", instance.Key, (int)(capacityWaitedInAll / 60_000)));
         }
 
         /// <summary>

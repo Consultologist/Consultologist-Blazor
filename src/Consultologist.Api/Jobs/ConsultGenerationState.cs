@@ -2802,6 +2802,12 @@ public static class ConsultGenerationActivityNames
     /// </summary>
     public const string EvaluateRuleV31 = "evaluate-rule-v31";
 
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 09 § 3.9; D14): an alert for the operator, raised by a 31 orchestration so a replay
+    /// never raises it twice. No Durable retry policy; it never throws, and its failure never fails the job.
+    /// </summary>
+    public const string AlertOperatorV31 = "alert-operator-v31";
+
     /// <summary>#1503 (specVersion 31, area 06): a 31 job's verified <c>resolve.json</c>, for its orchestration's plan.</summary>
     public const string LoadPlanV31 = "load-plan-v31";
 

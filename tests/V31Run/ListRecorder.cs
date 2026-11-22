@@ -5,7 +5,7 @@ namespace Consultologist.Api.Tests.V31Run;
 /// <summary>
 /// #1503 (specVersion 31, area 06): an <see cref="IRunRecorder"/> that keeps the rows and decisions in order, each row with
 /// what <paramref name="stamp"/> gave when it was recorded (the agent calls made so far, say; 0 without one), and #1505
-/// (area 08) the delivery rows.
+/// (area 08) the delivery rows and the notices for the operator.
 /// </summary>
 internal sealed class ListRecorder(Func<int>? stamp = null) : IRunRecorder
 {
@@ -43,6 +43,16 @@ internal sealed class ListRecorder(Func<int>? stamp = null) : IRunRecorder
     public Task DeliveryAsync(DeliveryRow row)
     {
         Deliveries.Add(row);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>#1505 (area 08; D14): the notices for the operator raised, in order.</summary>
+    public List<RunNotice> Notices { get; } = [];
+
+    /// <inheritdoc/>
+    public Task NoticeAsync(RunNotice notice)
+    {
+        Notices.Add(notice);
         return Task.CompletedTask;
     }
 }

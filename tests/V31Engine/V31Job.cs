@@ -24,7 +24,7 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// the real <see cref="ConsultGenerationOrchestratorV31"/> runs on a <see cref="FakeOrchestrationContext"/> whose
 /// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c>, <c>render-node-v31</c> and (#1505) <c>evaluate-rule-v31</c> are the real activities (the inputs from a
 /// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/> at the job's held-inputs pointer), and whose <c>run-agent-node-v31</c> is
-/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key) and (#1505) <c>deliver-v31</c> by <see cref="Deliver"/>. Timers longer than five minutes (the job's)
+/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key), (#1505) <c>deliver-v31</c> by <see cref="Deliver"/> and <c>alert-operator-v31</c> by <see cref="Alert"/>. Timers longer than five minutes (the job's)
 /// wait, as durable timers do, until cancelled; shorter ones (a retry's) end at once.
 /// </summary>
 internal sealed class V31Job
@@ -51,6 +51,7 @@ internal sealed class V31Job
         Store = StoreOver(Registry);
         Plan = Store.TryLoadAsync(Ref, CancellationToken.None).GetAwaiter().GetResult()!.Plan!;
         Agent = call => new AgentOutcome(AgentOutcomeKind.Completed, RunFixture.StubReply(Plan, call), 0, null);
+        Alert = Alerts.Add;
         Entity = new ConsultGenerationJobEntity(
             Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
             HeldInputs, Substitute.For<IAccountUsageStore>());
@@ -86,6 +87,12 @@ internal sealed class V31Job
 
     /// <summary>#1505: answers each attempt of a delivery send (by default, sent).</summary>
     public Func<DeliverV31Input, DeliverySendOutcome> Deliver { get; set; } = _ => new DeliverySendOutcome(DeliverySendResult.Sent, null);
+
+    /// <summary>#1505 (D14): answers each <c>alert-operator-v31</c> call (by default, it keeps the alert in <see cref="Alerts"/>).</summary>
+    public Action<OperatorAlert> Alert { get; set; }
+
+    /// <summary>#1505 (D14): the alerts raised through the activity, in order.</summary>
+    public List<OperatorAlert> Alerts { get; } = [];
 
     /// <summary>The limits the job's input records.</summary>
     public RunLimits Limits { get; set; } = new();
@@ -126,6 +133,11 @@ internal sealed class V31Job
                 new EvaluateRuleV31Activity(Store, NullLogger<EvaluateRuleV31Activity>.Instance)
                     .RunAsync((EvaluateRuleV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.DeliverV31, payload => Deliver((DeliverV31Input)payload!))
+            .On(ConsultGenerationActivityNames.AlertOperatorV31, payload =>
+            {
+                Alert((OperatorAlert)payload!);
+                return null;
+            })
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
                 new RenderNodeV31Activity(Store, NullLogger<RenderNodeV31Activity>.Instance)
                     .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())

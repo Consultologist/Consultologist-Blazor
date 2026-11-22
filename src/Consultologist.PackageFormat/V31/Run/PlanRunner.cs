@@ -46,7 +46,9 @@ public sealed record RunResult(
 /// in a frame of its own under the same ceiling, <c>PlanRunner.Calls.cs</c>'s. #1504 (area 07; D3): the placements of an
 /// agent's, a rendered node's or a deliverable's body are decided once its gate holds, and passed with its call,
 /// <c>PlanRunner.Placements.cs</c>'s. #1505 (area 08; part 06 § 7): a deliverable's outcome (skipped, failed, held, then
-/// once its gate settles blocked or released) is <c>PlanRunner.Deliverables.cs</c>'s.
+/// once its gate settles blocked or released) is <c>PlanRunner.Deliverables.cs</c>'s. #1505 (D14): it tells the recorder
+/// once of the job's 429 waits passing <see cref="CapacityAlertMinutes"/> and once of the job reaching
+/// <see cref="SlowJobPercent"/> of its time, on a host timer cancelled with the others (<see cref="RunNotice"/>).
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IRunHost"/>'s (and the recorder's), reads no clock but
@@ -55,6 +57,18 @@ public sealed record RunResult(
 /// </remarks>
 public sealed partial class PlanRunner
 {
+    /// <summary>
+    /// #1505 (area 08; part 09 § 3.9; D14): the minutes of 429 waits, in all across a job's nodes, past which the operator is
+    /// told once (<see cref="RunNotice"/> <c>capacity-wait</c>).
+    /// </summary>
+    public const int CapacityAlertMinutes = 5;
+
+    /// <summary>
+    /// #1505 (area 08; part 09 § 3.9; D14): the share of <see cref="RunLimits.JobMinutes"/>, in percent, at which the operator
+    /// is told once that the job is slow (<see cref="RunNotice"/> <c>job-slow</c>).
+    /// </summary>
+    public const int SlowJobPercent = 80;
+
     private readonly RunPlan plan;
     private readonly RunLimits limits;
     private readonly IRunHost host;
@@ -122,6 +136,15 @@ public sealed partial class PlanRunner
         /// <summary>The host's timer for the job's time left, made the first time the run waits.</summary>
         private Task? jobTimer;
 
+        /// <summary>
+        /// #1505 (D14): the host's timer for <see cref="SlowJobPercent"/> of the job's time, made the first time the run waits
+        /// and cancelled with the others; null again once it has ended and its notice was raised.
+        /// </summary>
+        private Task? slowTimer;
+
+        /// <summary>#1505 (D14): whether the job-slow notice was raised, so it is raised once.</summary>
+        private bool slowNoticed;
+
         /// <summary>Cancels every timer the run made (the job's and each retry's) when the run ends, on every path.</summary>
         private readonly CancellationTokenSource timers = new();
 
@@ -156,12 +179,21 @@ public sealed partial class PlanRunner
                     }
 
                     jobTimer ??= host.DelayAsync(TimeLeft(), timers.Token);
-                    var finished = await Task.WhenAny(flights.Select(f => f.Task).Append(jobTimer));
+                    if (!slowNoticed)
+                        slowTimer ??= host.DelayAsync(TimeToSlow(), timers.Token);
+                    var waits = flights.Select(f => f.Task).Append(jobTimer);
+                    var finished = await Task.WhenAny(slowTimer == null ? waits : waits.Append(slowTimer));
                     if (ReferenceEquals(finished, jobTimer) || PastTheJobLimit())
                     {
                         // Nothing that finished at or after the limit is read.
                         await TimeOutAsync();
                         break;
+                    }
+
+                    if (ReferenceEquals(finished, slowTimer))
+                    {
+                        await SlowAsync();
+                        continue;
                     }
 
                     var flight = flights.First(f => ReferenceEquals(f.Task, finished));
@@ -178,6 +210,8 @@ public sealed partial class PlanRunner
                     Observe(abandoned.Task);
                 if (jobTimer != null)
                     Observe(jobTimer);
+                if (slowTimer != null)
+                    Observe(slowTimer);
                 timers.Dispose();
             }
 

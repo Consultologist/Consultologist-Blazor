@@ -512,6 +512,120 @@ public class OrchestratorV31Tests
         Assert.DoesNotContain(sends, s => s.Input.Send.Documents.Any(d => d.Deliverable == "deliverable.note"));
     }
 
+    // ---- #1505 (area 08; part 09 § 3.9; D14): alerts for the operator -------------------------------------------------
+
+    [Theory]
+    [InlineData("a failed node")]
+    [InlineData("a failed node, the alert failing too")]
+    [InlineData("a timed-out run")]
+    [InlineData("an engine fault")]
+    public async Task AFailedJob_AlertsTheOperator(string how)
+    {
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        var context = job.Context().WrapActivityFailures();
+        switch (how)
+        {
+            case "a timed-out run":
+                // every call held; the job's timer (and the slow-job timer) end, as their time coming would
+                await Task.Run(() =>
+                {
+                    var run = V31Job.RunAsync(context.HoldActivities());
+                    while (context.ReleaseOldest((name, _) => name != ConsultGenerationActivityNames.RunAgentNodeV31))
+                    {
+                    }
+
+                    Assert.False(run.IsCompleted, "The run waits on its agent calls.");
+                    Assert.Equal(2, context.PendingTimers); // the job's and the slow-job timer
+                    context.EndHeldTimers();
+                    while (context.HeldActivities > 0)
+                        context.ReleaseOldest();
+                    Assert.True(run.IsCompleted, "The orchestration has not ended: something it waits on was never released.");
+                    return run;
+                });
+                break;
+            case "an engine fault":
+                job.Agent = _ => throw new InvalidOperationException("Unauthorized: Margaret Okafor's prompt (fictional)");
+                await Assert.ThrowsAsync<Microsoft.DurableTask.TaskFailedException>(() => V31Job.RunAsync(context));
+                break;
+            default:
+                job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
+                if (how.EndsWith("too", StringComparison.Ordinal))
+                    job.Alert = _ => throw new InvalidOperationException("The mailbox is down.");
+                await V31Job.RunAsync(context);
+                break;
+        }
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.Equal(
+            how switch
+            {
+                "a timed-out run" => "The job didn't finish within 30 minutes. Run the workflow again later.",
+                "an engine fault" => ConsultGenerationOrchestratorV31.EngineFault,
+                _ => "The model service returned an error 5 times in a row. Run the workflow again later.",
+            },
+            job.State.FailureError);
+        var alert = Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+        Assert.Equal(new OperatorAlert(OperatorAlertKinds.JobFailed, V31Job.JobId, how.StartsWith("a failed node", StringComparison.Ordinal) ? "node.plan" : null, null),
+            JsonSerializer.Deserialize<OperatorAlert>(alert.InputJson));
+        Assert.DoesNotContain("Margaret", alert.InputJson, StringComparison.Ordinal);
+        // raised once the job is final, and after nothing else
+        Assert.True(context.Calls.IndexOf(alert) > context.Calls.FindLastIndex(c => c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob)));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Fact]
+    public async Task AFailedDelivery_AlertsTheOperator()
+    {
+        // the letter's email fails at each of its 3 attempts; its PDF is sent: one alert, naming the failed row and the count
+        var job = V31Job.Of("checked-note");
+        job.Deliver = input => new DeliverySendOutcome(input.Send.Kind == "email" ? DeliverySendResult.Failed : DeliverySendResult.Sent, input.Send.Kind == "email" ? "error" : null);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal(1, job.State.V31Progress!.States["delivery:failed"]);
+        Assert.Equal([new OperatorAlert(OperatorAlertKinds.DeliveryFailed, V31Job.JobId, "delivery:deliverable.patient.patient_letter/email", 1)], job.Alerts);
+        var alert = context.Calls.FindIndex(c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+        Assert.True(alert > Sends(context)[^1].At);
+        Assert.True(alert < context.Calls.FindLastIndex(c => c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob)));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Fact]
+    public async Task ALongCapacityWait_AlertsTheOperatorOnce_ThroughTheActivity()
+    {
+        // the run's notice (EntityRunRecorder.NoticeAsync) is the activity: node.plan waits 3 minutes twice, 6 in all
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal([new OperatorAlert(OperatorAlertKinds.CapacityWait, V31Job.JobId, "node.plan", 6)], job.Alerts);
+    }
+
+    [Theory]
+    [InlineData("nested-note")]
+    [InlineData("checked-note")]
+    public async Task ACompletedJob_AlertsNoOne(string package)
+    {
+        var job = V31Job.Of(package);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Empty(job.Alerts);
+        Assert.DoesNotContain(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+        // the slow-job timer was made at 80% of the job's 30 minutes, and cancelled with the job's when the run ended
+        Assert.Contains(context.Calls, c => c.Kind == "timer" && c.InputJson == JsonSerializer.Serialize(V31Job.Now.AddMinutes(24)));
+        Assert.Equal(0, context.PendingTimers);
+    }
+
     /// <summary>Each <c>deliver-v31</c> call: where it is in the calls, and its input.</summary>
     private static List<(int At, DeliverV31Input Input)> Sends(Engine.FakeOrchestrationContext context) =>
         context.Calls
