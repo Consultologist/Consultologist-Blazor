@@ -394,7 +394,7 @@ public class V31JobStartTests
         Assert.Equal("[]", Assert.Single(at31Empty.Inputs.Documents).Value["inputs"]!["prior_letters"]!["value"]!.ToJsonString());
     }
 
-    // ---- MacroChoices (#1504, ruled by the owner on #1504, ruling 6; part 05 § 8.2) ----------------------------
+    // ---- MacroChoices (#1504; keyed by the macro, ruled by the owner on #1507, 2026-11-22, 3; part 05 § 8.2) -----
 
     [Theory]
     [InlineData(true)]
@@ -438,16 +438,16 @@ public class V31JobStartTests
     [Theory]
     [InlineData("tamoxifen")]
     [InlineData("consult_draft")]
-    public async Task AMacroChoiceNamingNoBooleanInput_IsRefused(string id)
+    public async Task AMacroChoiceNamingNoMacro_IsRefused(string id)
     {
-        // an id the package does not declare, and a declared input that is text
+        // #1507 (R7): an entry is keyed by a macro; an id the package does not declare, and a declared input, name none.
         var start = new Start(preview: "31");
         var packageRef = start.PutChoices();
 
         var outcome = await start.RunAsync(WithChoices(packageRef, Text(Draft), (id, true)));
 
-        var sentence = $"MacroChoices names '{id}', which is not a boolean input of the package.";
-        V31Contract.AssertSentence(new SourceRefusal("A07-015", sentence, ""));
+        var sentence = $"MacroChoices names '{id}', which is not a macro of the package.";
+        V31Contract.AssertSentence(new SourceRefusal("A10-043", sentence, ""));
         Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
         Assert.Equal(sentence, outcome.ErrorDetail);
         Assert.Null(outcome.SenderSafeDetail); // it quotes the caller's own id, as A06-013 does

@@ -21,7 +21,7 @@ namespace Consultologist.Api.V31;
 /// version with no 31 stamp is today's path's (null, after one <c>publish.json</c> read). A load refusal is a start failure
 /// recorded on the job (<c>RecordStartFailure</c>, the clinician's sentence; the operator's in the log). Otherwise the
 /// request's typed inputs and its documents (read as today's start reads them), with its <c>MacroChoices</c> read as
-/// boolean inputs (#1504, ruled by the owner on #1504, ruling 6; <see cref="V31StartChecks.Choices"/>), are checked with the account
+/// boolean inputs (#1504; by the macro's <c>if</c>, ruled by the owner on #1507; <see cref="V31StartChecks.Choices"/>), are checked with the account
 /// (<see cref="V31StartChecks"/>): any refusal is one recorded start failure holding every sentence. Then the inputs are
 /// held (<see cref="IRunInputsStore"/>, where the job's held inputs live), the entity initialised at specVersion 31 with
 /// the hashes and the limits, and <see cref="ConsultGenerationOrchestratorV31"/> scheduled with the job's id as its instance
@@ -96,7 +96,7 @@ public sealed class V31JobStarter(
         }
 
         request = ConsultGenerationJobStarter.NormalizeInputs(extraction.Request);
-        // #1504 (ruled by the owner on #1504, ruling 6): each MacroChoices entry is its boolean input's value.
+        // #1507 (ruled by the owner on #1507, 2026-11-22, 3): each MacroChoices entry is the value of the boolean input its macro's if reads.
         var (supplied, choiceRefusals) = V31StartChecks.Choices(plan, Supplied(request), request.MacroChoices);
         var (profile, signature) = await ProfileAsync(plan, appUserId, request.SignatureBlockId, cancellationToken);
         var timeZone = (await settings.GetAsync(appUserId, AccountSettingKeys.TimeZone, cancellationToken))?.Value;
@@ -142,9 +142,9 @@ public sealed class V31JobStarter(
             logger.LogWarning(
                 "Rejected 31 job start: the account or the inputs were refused. JobId={JobId}, Package={Package}@{Version}, Refusals={Refusals}",
                 jobId, plan.Package, plan.Version, string.Join(", ", refusals.Select(r => r.Id)));
-            // A06-013 (and A07-015, #1504) quote the caller's own ids, which on the email door can be a file name: the
+            // A06-013 (and A10-043, #1507) quote the caller's own ids, which on the email door can be a file name: the
             // sender is told every other sentence, and nothing when those are all there is.
-            var senderSafe = refusals.Where(r => r.Id is not ("A06-013" or "A07-015")).Select(r => r.Sentence).ToList();
+            var senderSafe = refusals.Where(r => r.Id is not ("A06-013" or "A10-043")).Select(r => r.Sentence).ToList();
             return await RecordStartFailureAsync(
                 client, entityId, header, string.Join("\n", refusals.Select(r => r.Sentence)),
                 ConsultGenerationJobStartError.InputsMismatch, senderSafe.Count > 0 ? string.Join("\n", senderSafe) : null);

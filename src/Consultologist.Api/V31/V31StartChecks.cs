@@ -190,14 +190,24 @@ public static class V31StartChecks
             : (new RunInputs(inputs, (JsonObject)runFacts.DeepClone(), new Dictionary<string, string?>(profile, StringComparer.Ordinal)), refusals);
     }
 
+    /// <summary>A10-043 (#1507; part 10 § 1.3, R7): a <c>MacroChoices</c> entry names no macro of the package.</summary>
+    public static string ChoiceNamesNoMacro(string id) => $"MacroChoices names '{id}', which is not a macro of the package.";
+
+    /// <summary>A10-044 (#1507; part 10 § 1.3, R7): a <c>MacroChoices</c> entry names a macro whose <c>if</c> reads no boolean input, or several.</summary>
+    public static string ChoiceReadsNoOneInput(string id) =>
+        $"MacroChoices names macro '{id}', whose if does not read exactly one boolean input; send the input in Inputs instead.";
+
     /// <summary>
-    /// #1504 (specVersion 31, area 07; ruled by the owner on #1504, ruling 6; part 05 § 8.2: a per-run choice is an optional
-    /// boolean input that takes the macro's id): <paramref name="supplied"/> with the request's <paramref name="choices"/>
-    /// (<c>MacroChoices</c>) read in, for <see cref="Inputs"/> to check. Each entry <c>&lt;id&gt;: &lt;bool&gt;</c> is the value of
-    /// the package's boolean input <c>&lt;id&gt;</c>, exactly as if the request had sent that input. An id that is no input
-    /// of <paramref name="plan"/>, or one whose format is not <c>boolean</c>, is A07-015; an input the request also sent
-    /// (as a value other than <c>null</c>) with a different value is A07-016. Each names the id alone, never a value;
-    /// entries are read in ordinal order of their ids.
+    /// #1507 (specVersion 31, area 10; ruled by the owner on #1507, 2026-11-22, 3; part 10 § 1.3; part 05 § 8.2: a per-run
+    /// choice is an optional boolean input the macro's <c>if</c> reads): <paramref name="supplied"/> with the request's
+    /// <paramref name="choices"/> (<c>MacroChoices</c>) read in, for <see cref="Inputs"/> to check. An entry
+    /// <c>&lt;id&gt;: &lt;bool&gt;</c> is keyed by a macro's id, as at 30: it is the value of the one boolean input that
+    /// macro's <c>if</c> reads (the plan's <c>macro.&lt;id&gt;</c> entry in <c>resolve.json</c>, the <c>input.*</c> paths of
+    /// its <c>if</c>), exactly as if the request had sent that input; the input may have another id (a migrated
+    /// <c>letrozole</c>'s is <c>letrozole_macro</c> when an input <c>letrozole</c> exists, which the entry leaves alone). An id
+    /// that names no macro is A10-043; a macro whose <c>if</c> reads no boolean input, or more than one, is A10-044; an input
+    /// the request also sent (as a value other than <c>null</c>) with a different value is A07-016. Each names an id alone,
+    /// never a value; entries are read in ordinal order of their ids.
     /// </summary>
     public static (IReadOnlyDictionary<string, JsonNode?> Supplied, IReadOnlyList<SourceRefusal> Refusals) Choices(
         RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, IReadOnlyDictionary<string, bool>? choices)
@@ -207,22 +217,36 @@ public static class V31StartChecks
 
         var merged = new Dictionary<string, JsonNode?>(supplied, StringComparer.Ordinal);
         var refusals = new List<SourceRefusal>();
+        var macros = plan.Document["macros"] as JsonObject;
         foreach (var (id, choice) in (choices ?? new Dictionary<string, bool>()).OrderBy(c => c.Key, StringComparer.Ordinal))
         {
-            if (!plan.Inputs.TryGetValue(id, out var declared) || !IsBoolean(plan, declared["format"]))
+            if (macros?[$"macro.{id}"] is not JsonObject macro)
             {
-                refusals.Add(new SourceRefusal("A07-015", $"MacroChoices names '{id}', which is not a boolean input of the package.", ""));
+                refusals.Add(new SourceRefusal("A10-043", ChoiceNamesNoMacro(id), ""));
                 continue;
             }
 
-            if (supplied.GetValueOrDefault(id) is { } sent)
+            var read = JsonLogicShape.Paths(macro["if"])
+                .Select(path => path.Split('.'))
+                .Where(path => path is ["input", _, ..])
+                .Select(path => path[1])
+                .Where(input => plan.Inputs.TryGetValue(input, out var declared) && IsBoolean(plan, declared["format"]))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (read is not [var input])
+            {
+                refusals.Add(new SourceRefusal("A10-044", ChoiceReadsNoOneInput(id), ""));
+                continue;
+            }
+
+            if (supplied.GetValueOrDefault(input) is { } sent)
             {
                 if (!JsonNode.DeepEquals(sent, JsonValue.Create(choice)))
-                    refusals.Add(new SourceRefusal("A07-016", $"Input '{id}' is given one value in Inputs and another in MacroChoices; send it once.", ""));
+                    refusals.Add(new SourceRefusal("A07-016", $"Input '{input}' is given one value in Inputs and another in MacroChoices; send it once.", ""));
                 continue;
             }
 
-            merged[id] = JsonValue.Create(choice);
+            merged[input] = JsonValue.Create(choice);
         }
 
         return (merged, refusals);
