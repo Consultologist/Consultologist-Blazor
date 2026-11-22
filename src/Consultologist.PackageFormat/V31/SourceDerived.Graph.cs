@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.PackageFormat.V31;
 
@@ -48,6 +49,15 @@ internal sealed class Vertex(string id, string key, SourceFunction? function, bo
     /// <summary>The body nodes of a flow node (for circles: a flow node waits for its body).</summary>
     public List<string> Contains { get; } = [];
 
+    /// <summary>
+    /// #1504 (area 07; part 05 §§ 3.2, 6.3, 8.2; D2): the reads of every placement rule of a templated node (each unit's
+    /// <c>if</c> its <c>placements</c> lists, a macro folder's included), read at the node's place. For circles only: at
+    /// run time a placement's rule is decided before the body is composed, so what it reads is a dependency of the node
+    /// (<c>RunPlan</c>). Beyond a part's <c>if</c>, which is among <see cref="Conditions"/> too, they are no condition of the
+    /// entry's: <c>reads</c>, the flags and the decisions do not count them.
+    /// </summary>
+    public List<GraphRead> Placed { get; } = [];
+
     public TemplateReads? Body { get; set; }
 
     public bool BodyKnown { get; set; } = true;
@@ -69,14 +79,16 @@ internal sealed class DerivedGraph
     private readonly SourcePackage package;
     private readonly Resolution resolution;
     private readonly ITemplateReads? templates;
+    private readonly PackageTemplates? dialect;
     private readonly Dictionary<object, TemplateReads?> bodies = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<object, Dictionary<string, Vertex>> byDeclaration = new(ReferenceEqualityComparer.Instance);
 
-    private DerivedGraph(SourcePackage package, Resolution resolution, ITemplateReads? templates)
+    private DerivedGraph(SourcePackage package, Resolution resolution, ITemplateReads? templates, PackageTemplates? dialect)
     {
         this.package = package;
         this.resolution = resolution;
         this.templates = templates;
+        this.dialect = dialect;
     }
 
     private ScopeTree Tree => resolution.Tree;
@@ -151,9 +163,14 @@ internal sealed class DerivedGraph
         return reads;
     }
 
-    public static DerivedGraph Build(SourcePackage package, Resolution resolution, ITemplateReads? templates)
+    /// <summary>
+    /// The graph of <paramref name="package"/>, each body read as <paramref name="templates"/> says, each templated node's
+    /// placement rules as <paramref name="dialect"/> (the dialect's check, which <c>placements</c> is compiled from) places
+    /// them; none when it is null.
+    /// </summary>
+    public static DerivedGraph Build(SourcePackage package, Resolution resolution, ITemplateReads? templates, PackageTemplates? dialect = null)
     {
-        var graph = new DerivedGraph(package, resolution, templates);
+        var graph = new DerivedGraph(package, resolution, templates, dialect);
         graph.AddAll();
         graph.FillAll();
         return graph;
@@ -318,6 +335,7 @@ internal sealed class DerivedGraph
                         break;
                     default:
                         FillBody(vertex, leaf, leaf.Body, frame, leaf);
+                        PlacementRules(vertex, leaf, frame);
                         break;
                 }
 
@@ -377,6 +395,21 @@ internal sealed class DerivedGraph
 
         foreach (var place in reads.Places)
             vertex.Content.Add(Definition(place, vertex) with { Canonical = "" });
+    }
+
+    /// <summary>
+    /// #1504 (area 07; D2): the reads of each rule <paramref name="leaf"/>'s <c>placements</c> lists, as the compiler writes
+    /// them (<c>ResolveCompiler.Templated</c>): each unit its body places (a part, a snippet, nested ones, a macro) and each
+    /// snippet a placed macro's body places, with a placed folder macro's folder <c>if</c>, all read at the leaf's place.
+    /// </summary>
+    private void PlacementRules(Vertex vertex, SourceLeaf leaf, ScopeFrame frame)
+    {
+        foreach (var unit in (dialect?.Units(leaf, vertex.Function) ?? []).SelectMany(u => (u.MacroBody?.Units ?? []).Prepend(u)))
+        {
+            var folders = unit.Instruction is null ? [] : PlacedBy(unit.Site, "macro", vertex.Function).OfType<SourceTextFolder>();
+            foreach (var path in folders.Select(f => f.Index["if"]).Append(unit.If).SelectMany(JsonLogicShape.Paths))
+                vertex.Placed.Add(Map(path, frame, vertex, leaf));
+        }
     }
 
     /// <summary>#1504: the roots a body reads a value through (part 05 § 3.1).</summary>

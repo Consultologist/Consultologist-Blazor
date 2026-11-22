@@ -70,19 +70,21 @@ public static partial class SourceDerived
     /// <summary>
     /// The derived values of <paramref name="package"/>, resolved as <paramref name="resolution"/> says, its sites as
     /// <paramref name="expressions"/> checked them (under <paramref name="types"/>), each body read as
-    /// <paramref name="templates"/> says (none: every non-empty body unknown). <c>Derived</c> is null exactly when there is
+    /// <paramref name="templates"/> says (none: every non-empty body unknown), each templated node's placement rules as
+    /// <paramref name="dialect"/> places them (none: <paramref name="templates"/>, when it is the dialect's). <c>Derived</c> is null exactly when there is
     /// a refusal; the refusals are ordered by path (ordinal), then in the order found. A null argument other than
     /// <paramref name="templates"/> is the caller's error.
     /// </summary>
     public static (IReadOnlyList<SourceRefusal> Refusals, PackageDerived? Derived) Check(
-        SourcePackage package, PackageTypes types, Resolution resolution, PackageExpressions expressions, ITemplateReads? templates = null)
+        SourcePackage package, PackageTypes types, Resolution resolution, PackageExpressions expressions, ITemplateReads? templates = null,
+        Templates.PackageTemplates? dialect = null)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(types);
         ArgumentNullException.ThrowIfNull(resolution);
         ArgumentNullException.ThrowIfNull(expressions);
 
-        var graph = DerivedGraph.Build(package, resolution, templates);
+        var graph = DerivedGraph.Build(package, resolution, templates, dialect ?? templates as Templates.PackageTemplates);
         var refusals = new List<SourceRefusal>();
         Circles(graph, refusals);
         if (refusals.Count > 0)

@@ -8,9 +8,11 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// condition at each placer's frame, through nested placements, by the expression checker
 /// (<see cref="ExpressionChecker.Check"/>) in the scope of that place (<see cref="ResolvedScope"/>): a snippet's read the
 /// place does not give is S05-022, naming the snippet and the place; a macro's is S04-063 when a function has no node it
-/// reads, and the checker's sentence otherwise (S03-014). A unit placed by a node whose <c>if</c> reads that node
-/// reads in a circle (A05-003, the resolver's sentence for a node reading itself). So the rule <c>placements</c> roots
-/// for the entry reads only what its place has, and every package publish accepts loads.
+/// reads, and the checker's sentence otherwise (S03-014). So the rule <c>placements</c> roots for the entry reads only
+/// what its place has. What it reads is a dependency of the placing node at run time (<c>RunPlan</c>), so the derived
+/// step counts it among that node's edges for circles (<c>SourceDerived.Circles</c>): a unit's <c>if</c> reading its
+/// placer, or a node that reads its placer, is A05-003 there, worded as every circle is. Together, a package publish
+/// accepts builds a <c>RunPlan</c> as far as its placement rules go.
 /// </summary>
 public static partial class SourceTemplates
 {
@@ -75,36 +77,6 @@ public static partial class SourceTemplates
 
                 foreach (var node in missing)
                     Refusals.Add(ResolveSentences.PlacedMacroReadsNothing(macro.Name, function!.Id, node, body.Host.Path));
-            }
-        }
-
-        /// <summary>
-        /// A05-003: a unit <paramref name="units"/> holds (a snippet, a macro, a macro's folder) whose <c>if</c> reads
-        /// <paramref name="placer"/>, the node that places it: the node would wait for itself.
-        /// </summary>
-        private void ReadsItsPlacer(IReadOnlyList<PlacedUnit> units, SourceNode placer, ScopeFrame frame)
-        {
-            foreach (var unit in units)
-            {
-                var s = unit.Site.Split('.');
-                if (s[0] is not ("snippet" or "macro"))
-                    continue;
-                IEnumerable<JsonNode?> rules = [unit.If];
-                if (s is ["macro", var id, _] && (frame.Function?.Definitions.Macros.Items.FirstOrDefault(e => e.Id == id)
-                        ?? package.Definitions.Macros.Items.FirstOrDefault(e => e.Id == id)) is SourceTextFolder folder)
-                {
-                    rules = rules.Prepend(folder.Index["if"]);
-                }
-
-                foreach (var path in rules.SelectMany(r => JsonLogicShape.Paths(Ruled(r))))
-                {
-                    if (ReferenceString.Parse(path) is { Segments: ["node", _, ..] } reference
-                        && resolution.Tree.Resolve(reference, frame, "", "", condition: true, placer).Key == placer.Key)
-                    {
-                        Refusals.Add(ResolveSentences.ReadInACircle(placer.Id, placer.Id, placer.Path));
-                        return;
-                    }
-                }
             }
         }
 

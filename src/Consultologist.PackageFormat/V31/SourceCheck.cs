@@ -68,7 +68,7 @@ public static class SourceCheck
         if (dialect.Templates is not { } bodies)
             return new SourceCheckResult(parse, dialect.Refusals, types.Types, expressions.Expressions, resolution);
 
-        var (derivedRefusals, derived) = SourceDerived.Check(parse.Package, types.Types, resolution, expressions.Expressions, templates ?? bodies);
+        var (derivedRefusals, derived) = SourceDerived.Check(parse.Package, types.Types, resolution, expressions.Expressions, templates ?? bodies, bodies);
         return new SourceCheckResult(parse, derivedRefusals, types.Types, expressions.Expressions, resolution, derived, bodies);
     }
 }
