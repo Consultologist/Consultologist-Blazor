@@ -499,11 +499,11 @@ Runs before Task 8.
 - Modify: `src/Consultologist.Api/ApiServices.cs` (`ResolveAtStartup`, near line 34), `src/Consultologist.Api/V31/V31AgentsCatalogue.cs`, `tests/V31Types/FormatHashGoldenTests.cs`, `docs/customizable-workflow/package-format-library.md` and `engine-v31.md` where they name the switch or the startup resolve
 - Test: `tests/V31Engine/`, beside the existing catalogue tests
 
-- [ ] **Step 1: Write the failing tests:** `WithPreviewUnset_StartupNeverReadsTheV31Catalogue` (a catalogue source that throws when touched; startup succeeds); `WithPreviewAdmitting31_StartupResolvesIt` (an incoherent catalogue still stops startup); `ACatalogueWithANonIntegerVersion_FailsWithAClearMessage` and `ACatalogueWithAMissingMember_FailsWithAClearMessage` (the failure is the catalogue's wrapped startup error naming the file and the member, never a bare `FormatException` or `NullReferenceException`).
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement**; rename the switch in `FormatHashGoldenTests` and in the current guides (not in earlier areas' plans).
-- [ ] **Step 4: Run** the solution's tests (shared code). Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1505): the 31 agents catalogue is resolved at startup only under preview`, `Tests (#1505): FormatHashGoldenTests reads GOLDEN_UPDATE_V31`; push.
+- [x] **Step 1: Write the failing tests:** `WithPreviewUnset_StartupNeverReadsTheV31Catalogue` (a catalogue source that throws when touched; startup succeeds); `WithPreviewAdmitting31_StartupResolvesIt` (an incoherent catalogue still stops startup); `ACatalogueWithANonIntegerVersion_FailsWithAClearMessage` and `ACatalogueWithAMissingMember_FailsWithAClearMessage` (the failure is the catalogue's wrapped startup error naming the file and the member, never a bare `FormatException` or `NullReferenceException`).
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement**; rename the switch in `FormatHashGoldenTests` and in the current guides (not in earlier areas' plans).
+- [x] **Step 4: Run** the solution's tests (shared code). Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1505): the 31 agents catalogue is resolved at startup only under preview`, `Tests (#1505): FormatHashGoldenTests reads GOLDEN_UPDATE_V31`; push.
 
 ## Spec coverage
 
