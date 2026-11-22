@@ -22,13 +22,13 @@ public class DeliverableFormatsTests
     private const string NoteKey = "deliverable.note";
 
     /// <summary>
-    /// <see cref="TemplateFixture.Package"/> with <c>section_request</c> too, the list input <c>sections</c> of them, the
+    /// <see cref="TemplateFixture.Package"/> with <c>section_request</c> and <c>standard_section</c> too, the list input <c>sections</c> of them, the
     /// plain-text agent <c>summary</c>, the <c>markdown_block</c> agent <c>assessment</c>, the <c>markdown_inline</c> agent
     /// <c>headline</c>, the number <c>count</c>, the boolean <c>urgent</c>, the <c>verdict</c> agent <c>judge</c> and the
     /// renderers <c>bullets</c> (plain text to <c>markdown_block</c>) and <c>plan_text</c> (a <c>section_plan</c> to plain text).
     /// </summary>
     private static Dictionary<string, byte[]> Base() =>
-        ResolveFixture.WithFormats(Package(), "section_plan", "outline", "verdict", "section_request")
+        ResolveFixture.WithFormats(Package(), "section_plan", "outline", "verdict", "section_request", "standard_section")
             .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = System.Text.Json.Nodes.JsonNode.Parse(
                 "{ \"label\": \"Sections\", \"description\": null, "
                 + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
@@ -110,6 +110,39 @@ public class DeliverableFormatsTests
     public void AMarkdownDeliverable_WritingAnObject_IsRefused(string body, string read) =>
         AssertRefusal(WithNote("markdown_block", $"## Plan\n\n{body}\n"),
             "S06-021", $"Deliverable 'note' is markdown_block, and reads {read} at line 3. Use a renderer or a node.");
+
+    /// <summary>
+    /// <see cref="WithNote"/> with the snippet folder <c>standards</c> of the header format <paramref name="folderFormat"/>
+    /// holding <c>hpi</c> (header <paramref name="header"/>), whose body is Markdown.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithFolder(string format, string body, string folderFormat, string header) =>
+        WithNote(format, body)
+            .Listed("snippets/index.json", "standards")
+            .With("snippets/standards/index.json", Index(["hpi"], extra: $", \"format\": \"{folderFormat}\""))
+            .With("snippets/standards/hpi.md", Md(header, "**Open** with a one-sentence orientation to Margaret Okafor.\n"));
+
+    /// <summary>The folder formats of <see cref="AFolderItemsContent_IsMarkdownBlock"/>: the header's format is not the body's.</summary>
+    public static TheoryData<string, string> FolderFormats => new()
+    {
+        { "standard_section", "{ \"title\": \"History of Present Illness\" }" },
+        { "verdict", "{ \"verdict\": \"good\" }" },
+    };
+
+    [Theory]
+    [MemberData(nameof(FolderFormats))]
+    public void AFolderItemsContent_IsMarkdownBlock(string folderFormat, string header)
+    {
+        // #1505 ruling 2 (R10): a folder item's .content is markdown_block, whatever the folder's format, which types its
+        // header only. A deliverable reaches a folder item as snippet.<folder>.<item>.content (a body for over a folder is
+        // S05-037): written as it is, in a line or on its own, and never escaped.
+        var check = Accepted(WithFolder("markdown_block",
+            "## Plan\n\n{{ snippet.standards.hpi.content }}\nAlso: {{ snippet.standards.hpi.content }}\n", folderFormat, header));
+
+        Assert.Empty(check.Templates!.Escapes(NoteKey));
+
+        AssertRefusal(WithFolder("plaintext", "Dear Margaret Okafor,\n\n{{ snippet.standards.hpi.content }}\n", folderFormat, header),
+            "S06-021", "Deliverable 'note' is plaintext, and reads snippet.standards.hpi.content (markdown_block) at line 3. Convert it in a node.");
+    }
 
     // ---- plaintext ----------------------------------------------------------------------------
 

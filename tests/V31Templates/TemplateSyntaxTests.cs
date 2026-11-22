@@ -162,6 +162,47 @@ public class TemplateSyntaxTests
         Assert.Equal("value.concepts", Assert.Single(syntax.Fors).Source);
     }
 
+    // ---- a fault of the engine (#1505 ruling 6, R14) ------------------------------------------------
+
+    private const string Summary = "Summary for Margaret Okafor\n{{ node.plan.content }}\n";
+
+    [Fact]
+    public void AnUnexpectedParserException_IsAnEngineFault()
+    {
+        // The parser fails in a way Scriban never does for text: the fault is the engine's (A08-006), not the author's
+        // (A07-005), and it carries the exception's type only, never its message or the body.
+        var syntax = TemplateSyntax.Parse(Summary, text => throw new InvalidOperationException("Margaret Okafor: " + text));
+
+        var fault = Assert.Single(syntax.Faults);
+        Assert.Equal(("A08-006", 1), (fault.Id, fault.Line));
+        Assert.Equal(["System.InvalidOperationException"], fault.Fill);
+        Assert.Empty(syntax.Tags);
+        Assert.Empty(syntax.Outputs);
+        var refusal = DialectSentences.Of(fault, "Prompt of node 'plan'", "nodes/plan.md");
+        V31Contract.AssertSentence(refusal);
+        Assert.Equal("Prompt of node 'plan' couldn't be checked: the engine failed reading its template. "
+            + "This is a fault in the engine, not in the package; report it.", refusal.Sentence);
+        Assert.DoesNotContain("Margaret", refusal.Sentence, StringComparison.Ordinal);
+
+        Assert.Equal("A08-006", Assert.Single(TemplateSyntax.Parse(Summary, _ => throw new NullReferenceException()).Faults).Id);
+        Assert.Throws<OutOfMemoryException>(() => TemplateSyntax.Parse(Summary, _ => throw new OutOfMemoryException()));
+    }
+
+    [Fact]
+    public void WhatScribanSaysOfUnreadableText_IsStillTheAuthors()
+    {
+        // Scriban's own exception for text it cannot read, and a stack too shallow for the text, are A07-005 at line 1.
+        var scriban = Assert.Single(TemplateSyntax.Parse(Summary, _ => throw new Scriban.Syntax.ScriptRuntimeException(default, "unreadable")).Faults);
+        Assert.Equal(("A07-005", 1), (scriban.Id, scriban.Line));
+        Assert.Empty(scriban.Fill);
+        var stack = Assert.Single(TemplateSyntax.Parse(Summary, _ => throw new InsufficientExecutionStackException()).Faults);
+        Assert.Equal("A07-005", stack.Id);
+
+        // Scriban's expected parse errors (messages, not exceptions) and the tree's depth limit are A07-005 as before.
+        Assert.Equal("A07-005", Assert.Single(TemplateSyntax.Parse("{{ node.plan.value | }}").Faults).Id);
+        Assert.Equal("A07-005", Assert.Single(TemplateSyntax.Parse("{{ node" + string.Concat(Enumerable.Repeat(".a", 100_000)) + " }}").Faults).Id);
+    }
+
     /// <summary>A built-in renderer's body: everything after the second <c>---</c> line of <c>v31/renderers/&lt;id&gt;.md</c>.</summary>
     internal static string RendererBody(string id)
     {

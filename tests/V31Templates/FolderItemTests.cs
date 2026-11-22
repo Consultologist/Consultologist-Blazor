@@ -268,36 +268,46 @@ public class FolderItemTests
 
     private const string States = "{ \"type\": \"string\", \"enum\": [\"completed\", \"skipped\", \"not_run\"] }";
 
-    private const string Items = "{ \"type\": \"array\", \"items\": { \"type\": \"object\", "
+    /// <summary>An element of <c>node.standards.items</c>: its <c>item</c> (<see cref="Entry"/>), its label, state, value and content, and its nodes'.</summary>
+    private const string Element = "{ \"type\": \"object\", "
         + "\"required\": [\"item\", \"label\", \"state\", \"reason\", \"value\", \"content\", \"nodes\"], \"additionalProperties\": false, \"properties\": { "
         + "\"item\": " + Entry + ", \"label\": { \"type\": \"string\" }, \"state\": " + States + ", \"reason\": { \"type\": [\"string\", \"null\"] }, "
         + "\"value\": " + OrNullText + ", \"content\": " + OrNullText + ", "
         + "\"nodes\": { \"type\": \"object\", \"required\": [\"section\"], \"additionalProperties\": false, \"properties\": { \"section\": { "
         + "\"type\": \"object\", \"required\": [\"value\", \"content\", \"state\"], \"additionalProperties\": false, \"properties\": { "
-        + "\"value\": " + OrNullText + ", \"content\": " + OrNullText + ", \"state\": " + States + " } } } } } } }";
+        + "\"value\": " + OrNullText + ", \"content\": " + OrNullText + ", \"state\": " + States + " } } } } } }";
+
+    private const string Items = "{ \"type\": \"array\", \"items\": " + Element + " }";
 
     /// <summary>
     /// Part 04 § 7.7's package (hpi's body <paramref name="hpi"/>) with the loop <c>again</c> over <c>node.standards.items</c>
     /// whose call <c>redo</c> passes <paramref name="argument"/> to the function <c>note_item</c>, of the one parameter
     /// <c>entry</c> (<paramref name="format"/>, inline), which reads <c>param.entry.content</c>.
     /// </summary>
-    private static Dictionary<string, byte[]> Redone(string argument, string format, string hpi)
+    private static Dictionary<string, byte[]> Redone(string argument, string format, string hpi) =>
+        WithNoteItem(Edited(ResolveFixture.Functions(), "snippets/standards/hpi.md",
+                "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n", hpi), format)
+            .Listed("nodes/index.json", "again")
+            .With("nodes/again/index.json", Json(Node("for", "Again", ArrayOf(Plain), false, true,
+                "\"in\": \"node.standards.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": null, \"nodes\": [\"redo\"], \"ret\": \"node.again.redo\"")))
+            .With("nodes/again/redo.md", Redo(argument));
+
+    /// <summary>The call <c>redo</c> passing <paramref name="argument"/> to <see cref="WithNoteItem"/>'s function as <c>param.entry</c>.</summary>
+    private static string Redo(string argument) =>
+        Md(Node("call", "Redoing the section", Plain, false, true,
+            "\"if\": null, \"function\": \"note_item\", \"with\": { \"entry\": \"" + argument + "\" }"), "");
+
+    /// <summary>Adds the function <c>note_item</c>, of the one parameter <c>entry</c> (<paramref name="format"/>, inline), which reads <c>param.entry.content</c>.</summary>
+    private static Dictionary<string, byte[]> WithNoteItem(Dictionary<string, byte[]> files, string format)
     {
-        var files = Edited(ResolveFixture.Functions(), "snippets/standards/hpi.md",
-                "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n", hpi)
-            .Listed("functions/index.json", "note_item")
+        files.Listed("functions/index.json", "note_item")
             .With("functions/note_item/index.json", Json(
                 "{ \"label\": \"Note an item\", \"description\": null, \"inputs\": { "
                 + "\"entry\": { \"label\": \"Entry\", \"description\": null, \"format\": " + format + " } }, "
                 + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [\"standard_section\"], \"renderers\": [] }, "
                 + "\"nodes\": [\"say\"], \"ret\": \"node.say\", \"format\": \"plaintext\" }"))
-            .With("functions/note_item/say.md", Agent("Noting the entry", Plain, "Note:\n{{ param.entry.content }}\n"))
-            .Listed("nodes/index.json", "again")
-            .With("nodes/again/index.json", Json(Node("for", "Again", ArrayOf(Plain), false, true,
-                "\"in\": \"node.standards.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
-                + "\"itemLabel\": null, \"nodes\": [\"redo\"], \"ret\": \"node.again.redo\"")))
-            .With("nodes/again/redo.md", Md(Node("call", "Redoing the section", Plain, false, true,
-                "\"if\": null, \"function\": \"note_item\", \"with\": { \"entry\": \"" + argument + "\" }"), ""));
+            .With("functions/note_item/say.md", Agent("Noting the entry", Plain, "Note:\n{{ param.entry.content }}\n"));
         foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
             files.With($"functions/note_item/{folder}/index.json", Index([]));
         return files;
@@ -305,6 +315,7 @@ public class FolderItemTests
 
     [Theory]
     [InlineData("item.item", Entry)]
+    [InlineData("item", Element)]
     [InlineData("node.standards.items", Items)]
     public void AFolderBodyCarriedByALoopsItems_IsPlainText(string argument, string format)
     {
@@ -335,6 +346,7 @@ public class FolderItemTests
 
     [Theory]
     [InlineData("item.item", Entry)]
+    [InlineData("item", Element)]
     [InlineData("node.standards.items", Items)]
     public void AFolderBodyCarriedByALoopsItems_InAnExpression_IsPlainText(string read, string format)
     {
@@ -346,6 +358,100 @@ public class FolderItemTests
         Assert.Equal(Carried("Node 'copy'", "reads it in its expression"), copy.Sentence);
 
         Assert.Empty(Check(Copied(read, format, "Open with a one-sentence orientation.\n")).Refusals);
+    }
+
+    // ---- at every depth (#1505 ruling 5, R13) ---------------------------------------------------------
+
+    /// <summary>
+    /// Part 04 § 7.7's package (hpi's body <paramref name="hpi"/>) with loops chained below <c>standards</c>, each over the
+    /// one before's <c>.items</c>: <c>again</c>, then <c>third</c>, then <c>fourth</c>, <paramref name="loops"/> loops in
+    /// all with <c>standards</c>. Each but the last runs the computed node <c>&lt;loop&gt;_step</c> (a fixed text); the last
+    /// runs <paramref name="last"/> (the file <paramref name="file"/>), of format <paramref name="format"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Chained(Dictionary<string, byte[]> files, int loops, string last, string file, string format)
+    {
+        string[] ids = ["again", "third", "fourth"];
+        var over = "standards";
+        for (var i = 0; i < loops - 1; i++)
+        {
+            var (id, final) = (ids[i], i == loops - 2);
+            var node = final ? last : $"{id}_step";
+            files.Listed("nodes/index.json", id)
+                .With($"nodes/{id}/index.json", Json(Node("for", $"Loop {id}", ArrayOf(final ? format : Plain), false, true,
+                    $"\"in\": \"node.{over}.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                    + $"\"itemLabel\": null, \"nodes\": [\"{node}\"], \"ret\": \"node.{id}.{node}\"")))
+                .With($"nodes/{id}/{node}.md", final ? file
+                    : Md(Node("computed", $"Step {id}", Plain, true, true, "\"if\": null, \"expression\": \"Next.\""), ""));
+            over = id;
+        }
+
+        return files;
+    }
+
+    private static Dictionary<string, byte[]> WithHpi(string hpi) =>
+        Edited(ResolveFixture.Functions(), "snippets/standards/hpi.md",
+            "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n", hpi);
+
+    /// <summary><see cref="Chained"/> whose last loop's call <c>redo</c> passes <paramref name="argument"/> to <c>note_item</c> as <c>param.entry</c> (<paramref name="format"/>).</summary>
+    private static Dictionary<string, byte[]> RedoneDeep(int loops, string argument, string format, string hpi) =>
+        Chained(WithNoteItem(WithHpi(hpi), format), loops, "redo", Redo(argument), Plain);
+
+    /// <summary><see cref="Chained"/> whose last loop's computed node <c>copy</c> (<paramref name="format"/>) reads <paramref name="read"/>.</summary>
+    private static Dictionary<string, byte[]> CopiedDeep(int loops, string read, string format, string hpi) =>
+        Chained(WithHpi(hpi), loops, "copy",
+            Md(Node("computed", "Copy", format, true, true, "\"if\": null, \"expression\": { \"var\": \"" + read + "\" }"), ""), format);
+
+    /// <summary>
+    /// The folder item as the last of <paramref name="loops"/> loops reads it: its <c>item</c> is the element of the loop
+    /// before's <c>.items</c>, whose <c>item.value</c> is the element of the one before that, down to the production loop's,
+    /// whose <c>item</c> is the folder item (<c>item.item</c> two loops deep, <c>item.item.value.item</c> three deep).
+    /// </summary>
+    private static string Through(int loops) => "item.item" + string.Concat(Enumerable.Repeat(".value.item", loops - 2));
+
+    private const string Tagged = "Open with '{{ item.value.title }}'.\n";
+
+    private const string Plainly = "Open with a one-sentence orientation.\n";
+
+    /// <summary>A body with a tag carried out of the last of <paramref name="loops"/> loops, to a function and to an expression, is A07-013 there.</summary>
+    private static void AssertCarriedDeep(int loops)
+    {
+        // The folder item itself, and the production loop's element, which holds it.
+        var element = Through(loops)[..^".item".Length];
+        foreach (var (path, format) in new[] { (Through(loops), Entry), (element, Element) })
+        {
+            var call = Check(RedoneDeep(loops, path, format, Tagged));
+            var redo = Assert.Single(call.Refusals, r => r.Path.EndsWith("/redo.md", StringComparison.Ordinal));
+            V31Contract.AssertSentence(redo);
+            Assert.Equal(Carried("Call 'redo'", "passes it to function 'note_item' as param.entry"), redo.Sentence);
+            Assert.Empty(Check(RedoneDeep(loops, path, format, Plainly)).Refusals);
+
+            var expression = Check(CopiedDeep(loops, path, format, Tagged));
+            var copy = Assert.Single(expression.Refusals, r => r.Path.EndsWith("/copy.md", StringComparison.Ordinal));
+            V31Contract.AssertSentence(copy);
+            Assert.Equal(Carried("Node 'copy'", "reads it in its expression"), copy.Sentence);
+            Assert.Empty(Check(CopiedDeep(loops, path, format, Plainly)).Refusals);
+        }
+    }
+
+    [Fact]
+    public void AFolderItemCarried_ThreeLoopsDeep_IsRefused() => AssertCarriedDeep(3);
+
+    [Fact]
+    public void AFolderItemCarried_FourLoopsDeep_IsRefused() => AssertCarriedDeep(4);
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void WhatTheChainHoldsBesideTheBody_IsNotCarried(int loops)
+    {
+        // The folder item's header (its .value) and the production loop's element's content (its section, as rendered) are
+        // not the body: only a read that holds the folder item is A07-013.
+        var element = Through(loops)[..^".item".Length];
+        foreach (var (path, format) in new[] { (Through(loops) + ".value", "\"standard_section\""), (element + ".content", OrNullText) })
+        {
+            Assert.Empty(Check(RedoneDeep(loops, path, format, Tagged)).Refusals.Where(r => r.Path.EndsWith("/redo.md", StringComparison.Ordinal)));
+            Assert.Empty(Check(CopiedDeep(loops, path, format, Tagged)).Refusals.Where(r => r.Path.EndsWith("/copy.md", StringComparison.Ordinal)));
+        }
     }
 
     [Theory]
