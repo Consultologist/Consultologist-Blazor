@@ -102,6 +102,9 @@ internal sealed class Migrated
     /// <summary>The 31 manifest (identity and inputs, part 01 § 3); the layout pass writes it, the inputs pass its <c>inputs</c>.</summary>
     public JsonObject Manifest { get; } = new();
 
+    /// <summary>The 31 files kept as text, path to text: a root <c>README.md</c> (part 01 § 2.3), copied as 30 had it.</summary>
+    public SortedDictionary<string, string> Texts { get; } = new(StringComparer.Ordinal);
+
     /// <summary>The 31 files, path to model, in ordinal path order (the manifest apart).</summary>
     public SortedDictionary<string, MigratedFile> Sources { get; } = new(StringComparer.Ordinal);
 
@@ -128,10 +131,10 @@ internal sealed class Migrated
     /// <summary>
     /// The 30 package <paramref name="manifestJson"/> and <paramref name="files"/> (the chain's output) read for the
     /// passes, or the refusals that stop the run. Every file is normalised first (<c>\r\n</c> and a lone <c>\r</c> to
-    /// <c>\n</c>, no byte-order mark: part 01 § 2.4), then every plain JSON file and every text header must be strict JSON
-    /// (A10-019: .NET reads a member written twice and throws on its first access, so the hazard is refused here), then the
-    /// manifest is read (<see cref="WorkflowPackageManifestJson.Read"/>), its texts resolved
-    /// (<see cref="WorkflowTextHeaders.Resolve"/>) and the package validated at 30 against <see cref="Migration31Options.Formats30"/>,
+    /// <c>\n</c>, no byte-order mark: part 01 § 2.4), then every plain JSON file must be strict JSON (A10-019: .NET reads a
+    /// member written twice and throws on its first access, so the hazard is refused here), then the manifest is read
+    /// (<see cref="WorkflowPackageManifestJson.Read"/>), its texts resolved (<see cref="WorkflowTextHeaders.Resolve"/>),
+    /// whose snippet and macro headers must be strict JSON too (A10-019), and the package validated at 30 against <see cref="Migration31Options.Formats30"/>,
     /// each error a refusal naming the version (A10-017); then it is walked. Package content never throws here (A10-020).
     /// </summary>
     public static (Migrated? Migrated, IReadOnlyList<string> Refusals) Read(
@@ -152,12 +155,6 @@ internal sealed class Migrated
                 if (StrictJson.Parse(text) is { Fault: { } fault } read)
                     unread.Add(MigrationSentences.FileDoesNotRead(path, header: false, fault, read.Detail));
             }
-            else if (path.EndsWith(".md", StringComparison.Ordinal)
-                && WorkflowTextHeaders.Split(text).HeaderJson is { } header
-                && StrictJson.Parse(header) is { Fault: { } fault } read)
-            {
-                unread.Add(MigrationSentences.FileDoesNotRead(path, header: true, fault, read.Detail));
-            }
         }
 
         if (unread.Count > 0)
@@ -177,6 +174,18 @@ internal sealed class Migrated
 
             var errors = new List<string>();
             var resolved = WorkflowTextHeaders.Resolve(manifest, normalised, errors);
+
+            // The headers of the snippet and macro files the manifest lists (Resolve's, which reads them without
+            // JsonNode), never a prompt's: a 30 prompt has no header, and one that opens like one is 30's to refuse.
+            foreach (var path in resolved.Headers.Keys.Order(StringComparer.Ordinal))
+            {
+                if (WorkflowTextHeaders.Split(normalised[path]).HeaderJson is { } header
+                    && StrictJson.Parse(header) is { Fault: { } fault } read)
+                    unread.Add(MigrationSentences.FileDoesNotRead(path, header: true, fault, read.Detail));
+            }
+
+            if (unread.Count > 0)
+                return (null, unread);
             if (errors.Count == 0)
                 errors.AddRange(WorkflowPackageValidator.Validate(manifest, normalised, NoCatalogSchemas, formats: options.Formats30).Errors);
             if (errors.Count > 0)
@@ -200,6 +209,10 @@ internal sealed class Migrated
             text = text[1..];
         return text.Contains('\r', StringComparison.Ordinal) ? text.Replace("\r\n", "\n").Replace('\r', '\n') : text;
     }
+
+    /// <summary>Whether <paramref name="text"/> holds a <c>\r</c> that is not part of a <c>\r\n</c> (A10-026 when normalised).</summary>
+    public static bool HasLoneCarriageReturn(string text) =>
+        text.Contains('\r', StringComparison.Ordinal) && text.Replace("\r\n", "\n", StringComparison.Ordinal).Contains('\r', StringComparison.Ordinal);
 
     /// <summary>One plain JSON file's text: indented, every member as the model holds it, <c>\n</c> line endings and a final <c>\n</c>.</summary>
     public static string Json(JsonObject json) => json.ToJsonString(Indented) + "\n";
@@ -277,10 +290,12 @@ internal sealed class Migrated
             FormatSet.ForPackage(Options.Registry, PackageFormats())) { RequiredInputs = required };
     }
 
-    /// <summary>The 31 files serialised (without <c>manifest.json</c>): each plain file by <see cref="Json"/>, each other by <see cref="Md"/>.</summary>
+    /// <summary>The 31 files serialised (without <c>manifest.json</c>): each of <see cref="Texts"/> as it is, each plain file by <see cref="Json"/>, each other by <see cref="Md"/>.</summary>
     public Dictionary<string, string> Files()
     {
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (path, text) in Texts)
+            files[path] = text;
         foreach (var (path, file) in Sources)
             files[path] = file.Body is null ? Json(file.Json) : Md(file.Json, file.Body);
         return files;

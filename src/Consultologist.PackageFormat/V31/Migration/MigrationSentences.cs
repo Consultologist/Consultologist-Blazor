@@ -110,4 +110,19 @@ internal static class MigrationSentences
     /// <summary>A10-023 (part 02 § 8.1, § 11): a reason: a 30 union input with no array arm, which no 31 input format is.</summary>
     public const string UnionInput =
         "the input takes one of several types, which a 31 input cannot; choose one format.";
+
+    /// <summary>A10-024 (part 02 § 3.1, § 3.2): a reason: a 30 type union of several types in a package format, which 31 has no type array for.</summary>
+    public const string UnionField =
+        "the field takes one of several types, which 31 writes as an anyOf; choose one.";
+
+    /// <summary>A10-025 (part 02 § 3.2, § 3.3): a reason: a package format 30 made nullable at its root, which 31 writes as an anyOf a model's format may not have there.</summary>
+    public const string NullableRoot =
+        "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.";
+
+    /// <summary>
+    /// A10-026 (part 01 § 2.4): <paramref name="file"/> held a carriage return that did not end a line, which 31 refuses;
+    /// it was made a line end, so the file's bytes changed there.
+    /// </summary>
+    public static string LoneCarriageReturn(string file) =>
+        $"{file}: a carriage return that didn't end a line became a line end.";
 }

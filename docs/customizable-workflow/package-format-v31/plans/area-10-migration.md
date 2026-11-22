@@ -72,7 +72,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-006 | notice | `Renamed <kind> '<id>' to '<new id>': '<id>' is reserved at 31.` |
 | A10-007 | notice | `Macro '<id>' is now offered by the input '<input id>'.` (with S10-006's form when `_macro` was needed) |
 | A10-008 | notice | `<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.` |
-| A10-009 | notice | `Input '<id>', field '<field>' holds free text; consider a text format.` |
+| A10-009 | notice | ~~`Input '<id>', field '<field>' holds free text; consider a text format.`~~ Unused: 30's inputs have no data `string` (every text becomes `markdown_block`); a package format's free-text field is A10-021 (Task 6). |
 | A10-010 | notice | `Node '<id>' declared reproducible <true \| false> at 30; <true \| false> is written, as its reads give it.` |
 | A10-011 | notice | `No snapshot test was written: hand edits remain.` |
 | A10-012 | refusal | `The package is at specVersion <n>; migration starts at 5.` |
@@ -86,7 +86,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-020 | refusal | `The package does not read at specVersion 30; fix it, then migrate.` (the 30 reader, validator or walk threw on the package's content; Task 6) |
 | A10-021 | notice | `Format '<id>', field '<field>' holds free text; consider a text format.` (a package format's `string` field, `<field>` its path of property names; 30's inputs have no data `string`, so A10-009 has no 30 source; Task 6) |
 | A10-022 | reason | `a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.` (Task 6) |
-| A10-023 | reason | `the input takes one of several types, which a 31 input cannot; choose one format.` (a 30 union with no array arm; Task 6) |
+| A10-023 | reason | `the input takes one of several types, which a 31 input cannot; choose one format.` (a 30 union input with no array arm, or whose array holds another type; Task 6) |
+| A10-024 | reason | `the field takes one of several types, which 31 writes as an anyOf; choose one.` (a 30 type union of several types in a package format, `<member>` its JSON pointer; Task 6) |
+| A10-025 | reason | `the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.` (Task 6) |
+| A10-026 | notice | `<file>: a carriage return that didn't end a line became a line end.` (part 01 § 2.4; Task 6) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 

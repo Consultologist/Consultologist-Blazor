@@ -122,6 +122,17 @@ public static class WorkflowPackageMigration30To31
             return Refused(manifestJson, files, refusals);
         }
 
+        // A10-026: a lone \r became a line end (part 01 § 2.4 refuses one), so the file's bytes changed there.
+        if (Migrated.HasLoneCarriageReturn(manifestJson))
+        {
+            migrated.Notice(MigrationSentences.LoneCarriageReturn("manifest.json"));
+        }
+
+        foreach (var file in files.Keys.Where(k => Migrated.HasLoneCarriageReturn(files[k])).Order(StringComparer.Ordinal))
+        {
+            migrated.Notice(MigrationSentences.LoneCarriageReturn(file));
+        }
+
         V31.Migration.Migrate.Layout(migrated);
         V31.Migration.Migrate.Inputs(migrated);
         return migrated.Result(at30.Notices);

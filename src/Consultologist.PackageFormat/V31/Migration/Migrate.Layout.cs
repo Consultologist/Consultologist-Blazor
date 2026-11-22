@@ -11,13 +11,15 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// </summary>
 internal static partial class Migrate
 {
-    /// <summary>The first pass's layout: the manifest's identity, the formats, then the snippets (whose folders add formats).</summary>
+    /// <summary>The first pass's layout: the manifest's identity, the formats, then the snippets (whose folders add formats), and a root <c>README.md</c> as it was (part 01 § 2.3).</summary>
     public static void Layout(Migrated m)
     {
         ArgumentNullException.ThrowIfNull(m);
         Manifest(m);
         Formats(m);
         Snippets(m);
+        if (m.Files30.TryGetValue("README.md", out var readme))
+            m.Texts["README.md"] = readme;
     }
 
     /// <summary>
@@ -76,7 +78,16 @@ internal static partial class Migrate
                     written[member] = value?.DeepClone();
             }
 
-            Strict(written);
+            var path = $"formats/{reference.Id}.json";
+            if (HasNullType(written) && TypesOf(written) is { Count: 2 } && !IsUnion(written))
+            {
+                // 30's nullable root (["object", "null"]): 31 writes it as an anyOf, which the root of a format a model
+                // writes may not be (part 02 § 3.3). Written in that form, the checker refuses it: a hand edit.
+                written = NullableRoot(written);
+                m.HandEdit(path, "type", MigrationSentences.NullableRoot);
+            }
+
+            Strict(written, (pointer, _) => m.HandEdit(path, pointer, MigrationSentences.UnionField));
             SuggestTextFormats(m, reference.Id, written, "");
             m.Put($"formats/{reference.Id}.json", written);
             m.Items("formats").Add(reference.Id);
@@ -86,11 +97,17 @@ internal static partial class Migrate
     /// <summary>
     /// Part 02 § 3.3, part 10 § 1.8: every property of <paramref name="schema"/>'s objects, at every depth (nested objects,
     /// array items, the arms of an <c>anyOf</c>), listed in <c>required</c> in property order, and each one 30 left out of
-    /// <c>required</c> made nullable (<see cref="Nullable"/>). A <c>required</c> the schema has keeps its place; one it
-    /// lacks is added after its other members.
+    /// <c>required</c>, or wrote nullable in 30's form (a <c>type</c> array with <c>"null"</c>), made nullable in 31's
+    /// (<see cref="Nullable"/>). A <c>required</c> the schema has keeps its place; one it lacks is added after its other
+    /// members. A <c>type</c> array of more than one type besides <c>"null"</c> (30's union) has no 31 form (part 02 § 3.1,
+    /// § 3.2): it is kept as written, which the checker refuses, and <paramref name="union"/> is told its JSON pointer in
+    /// the written file (once each; <paramref name="pointer"/> is <paramref name="schema"/>'s own).
     /// </summary>
-    internal static void Strict(JsonObject schema)
+    internal static void Strict(JsonObject schema, Action<string, JsonObject>? union = null, string pointer = "")
     {
+        if (IsUnion(schema))
+            union?.Invoke(pointer + "/type", schema);
+
         if (schema["properties"] is JsonObject properties)
         {
             var required = (schema["required"] as JsonArray ?? [])
@@ -101,12 +118,13 @@ internal static partial class Migrate
             {
                 if (properties[name] is not JsonObject property)
                     continue;
-                Strict(property);
                 if (!required.Contains(name) || HasNullType(property))
                 {
                     properties[name] = null;
-                    properties[name] = Nullable(property);
+                    properties[name] = property = Nullable(property);
                 }
+
+                Strict(property, union, $"{pointer}/properties/{FormatDialect.Escape(name)}");
             }
 
             schema["required"] = new JsonArray([.. properties.Select(p => (JsonNode?)JsonValue.Create(p.Key))]);
@@ -114,36 +132,68 @@ internal static partial class Migrate
 
         if (schema["items"] is JsonObject items)
         {
-            Strict(items);
             if (HasNullType(items))
             {
                 schema["items"] = null;
-                schema["items"] = Nullable(items);
+                schema["items"] = items = Nullable(items);
             }
+
+            Strict(items, union, pointer + "/items");
         }
 
         if (schema["anyOf"] is JsonArray arms)
         {
-            foreach (var arm in arms.OfType<JsonObject>())
-                Strict(arm);
+            for (var i = 0; i < arms.Count; i++)
+            {
+                if (arms[i] is JsonObject arm)
+                    Strict(arm, union, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{pointer}/anyOf/{i}"));
+            }
         }
+    }
+
+    /// <summary>The type names of <paramref name="schema"/>'s <c>type</c> (one, or the array's), none when it has none.</summary>
+    private static List<string> TypesOf(JsonObject schema) => schema["type"] switch
+    {
+        JsonValue value when value.TryGetValue<string>(out var single) => [single],
+        JsonArray array => array.Select(t => t is JsonValue v && v.TryGetValue<string>(out var n) ? n : null).OfType<string>().ToList(),
+        _ => [],
+    };
+
+    /// <summary>Whether <paramref name="schema"/>'s <c>type</c> is 30's union: an array of more than one type besides <c>"null"</c>.</summary>
+    private static bool IsUnion(JsonObject schema) => TypesOf(schema).Count(t => t != "null") > 1;
+
+    /// <summary>
+    /// A format whose root 30 wrote nullable (<c>["object", "null"]</c>) in 31's form (part 02 § 3.2): <c>$schema</c> and
+    /// the <c>description</c> stay at the root, beside an <c>anyOf</c> of the schema with its one type and <c>null</c>.
+    /// </summary>
+    private static JsonObject NullableRoot(JsonObject written)
+    {
+        var root = new JsonObject { ["$schema"] = written["$schema"]!.DeepClone() };
+        if (written["description"] is { } description)
+            root["description"] = description.DeepClone();
+        var arm = new JsonObject();
+        foreach (var (member, value) in written)
+        {
+            if (member is not ("$schema" or "description"))
+                arm[member] = value?.DeepClone();
+        }
+
+        arm["type"] = TypesOf(written).Single(t => t != "null");
+        root["anyOf"] = new JsonArray(arm, new JsonObject { ["type"] = "null" });
+        return root;
     }
 
     /// <summary>
     /// Part 02 § 3.2's one way to write "nullable", for <paramref name="schema"/> (detached): a scalar's <c>type</c> becomes
     /// the array of it and <c>"null"</c>, an enum listing <c>null</c> too; an object, an array, a reference or anything
-    /// with no <c>type</c> is wrapped as <c>anyOf</c> with <c>{ "type": "null" }</c>. A schema already nullable is kept.
+    /// with no <c>type</c> is wrapped as <c>anyOf</c> with <c>{ "type": "null" }</c>. A schema already nullable is kept, and
+    /// so is 30's union of several types (<see cref="Strict"/> makes it a hand edit).
     /// </summary>
     internal static JsonObject Nullable(JsonObject schema)
     {
-        var types = schema["type"] switch
-        {
-            JsonValue value when value.TryGetValue<string>(out var single) => [single],
-            JsonArray array => array.Select(t => t is JsonValue v && v.TryGetValue<string>(out var n) ? n : null).OfType<string>().ToList(),
-            _ => new List<string>(),
-        };
+        var types = TypesOf(schema);
         var others = types.Where(t => t != "null").ToList();
-        if (types.Count > 0 && others.Count == 0)
+        if ((types.Count > 0 && others.Count == 0) || others.Count > 1)
             return schema;
 
         if (others.Count == 1 && others[0] is not ("object" or "array"))
@@ -210,8 +260,8 @@ internal static partial class Migrate
 
     /// <summary>
     /// Part 05 § 6, part 01 § 5.3: each 30 snippet in its table's order. A single snippet becomes
-    /// <c>snippets/&lt;id&gt;.md</c> with <c>label</c>, <c>description: null</c>, <c>if: null</c> (a 30 <c>if</c> is the
-    /// conditions pass's, read from <see cref="Migrated.Resolved30"/>) and <c>format: "markdown_block"</c> (as 30's bodies
+    /// <c>snippets/&lt;id&gt;.md</c> with <c>label</c>, <c>description: null</c>, <c>if</c> (<c>null</c>, or 30's Scriban
+    /// condition as a JSON string, D3's form, which the conditions pass converts) and <c>format: "markdown_block"</c> (as 30's bodies
     /// are, part 05 § 6.2), its body as it was. A folder becomes <c>snippets/&lt;folder&gt;/index.json</c> (its 28
     /// <c>label</c>, if any, as its description) and one file per item, whose header is a value of the folder's format:
     /// 30's item <c>label</c> as the member <c>title</c> of the package format the hand choice names
@@ -234,7 +284,7 @@ internal static partial class Migrate
     {
         ["label"] = m.Resolved30.Headers.GetValueOrDefault(path)?.Label ?? id,
         ["description"] = null,
-        ["if"] = null,
+        ["if"] = m.Resolved30.Headers.GetValueOrDefault(path)?.If,
         ["format"] = "markdown_block",
     };
 
