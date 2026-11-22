@@ -227,10 +227,15 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 way, with `body`, `bodyHash`, `reads`, `runDependent`, `modelDerived`, `renders` and `runSpots`. A
 deliverable's `reads` are its sources: the retired `sources` member is derived from them
 ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)).
- Each `deliverables` entry also carries `delivery` and `bundle`, as its delivery folder's `index.json` writes
-them ([part 06 § 8](06-checks-deliverables-profile.md)): `delivery` an array of `email`, `pdf`, `emr` and `zip`, `bundle` `"zip"` or `null`, and `[]` and
-`null` when the folder writes none. They are on the entry because the engine loads only `resolve.json`
-(§ 1); the schema requires both ([#1505](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)).
+
+Each `deliverables` entry also carries `delivery` and `bundle`, as its delivery folder's `index.json`
+writes them ([part 06 § 8](06-checks-deliverables-profile.md)): `delivery` an array of `email`, `pdf`,
+`emr` and `zip`, `bundle` `"zip"` or `null`, and `[]` and `null` when the folder writes none. It also
+carries `escapes`: `{ "unit": <site or null>, "at": "<line>:<column>" }` for each output tag whose value
+composition escapes ([part 06 § 6.4](06-checks-deliverables-profile.md#64-strict-formats)), in order of
+appearance with placed snippets expanded, `unit` and `at` as in `runSpots`; `[]` for a `plaintext` or
+object deliverable. They are on the entry because the engine loads only `resolve.json` (§ 1); the
+schema requires all three ([#1505](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)).
 
 ### 2.6 `sourceHash`
 
