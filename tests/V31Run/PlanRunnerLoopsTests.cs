@@ -99,16 +99,52 @@ public class PlanRunnerLoopsTests
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Supplied("visits", visits), FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
-        // the outer ids are an input's (0-based), the inner a field list's (1-based)
-        Assert.Equal(["node.visits.points.note:0/1", "node.visits.points.note:0/2", "node.visits.points.note:1/1"],
+        // #1506 (R3): ids are 1-based everywhere
+        Assert.Equal(["node.visits.points.note:1/1", "node.visits.points.note:1/2", "node.visits.points.note:2/1"],
             host.Dispatched.Where(k => k.StartsWith("node.visits.", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
         Assert.Equal("""{"item":{"parent":{"value":{"title":"April visit"}},"value":"Results"}}""",
-            host.Calls.Single(c => c.Key == "node.visits.points.note:1/1").Scope.ToJsonString());
-        Assert.Equal(["node.visits.points:0/1", "node.visits.points:0/2", "node.visits.points:1/1"],
+            host.Calls.Single(c => c.Key == "node.visits.points.note:2/1").Scope.ToJsonString());
+        Assert.Equal(["node.visits.points:1/1", "node.visits.points:1/2", "node.visits.points:2/1"],
             recorder.Rows.Where(r => r.EntryKey == "node.visits.points" && r.Key.Contains('/', StringComparison.Ordinal)).Select(r => r.Key).Order(StringComparer.Ordinal));
-        Assert.Equal(["node.visits:0", "node.visits:1"],
+        Assert.Equal(["node.visits:1", "node.visits:2"],
             recorder.Rows.Where(r => r.EntryKey == "node.visits" && r.Key != "node.visits").Select(r => r.Key).Order(StringComparer.Ordinal));
         Assert.Equal(2, result.Values["node.visits"]!["value"]![0]!.AsArray().Count);
+    }
+
+    // ---- #1506: item ids start at 1; the instances limit ------------------------------------------
+
+    [Fact]
+    public async Task AnArrayInputsItems_AreNumberedFromOne()
+    {
+        var plan = RunFixture.Plan(InputLoop(Members()), InputLoopReads());
+        var host = new FakeRunHost(auto: true);
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Sections(Rows("A", "B", "C")), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(["node.drafts.draft:1", "node.drafts.draft:2", "node.drafts.draft:3"],
+            host.Dispatched.Where(k => k.StartsWith("node.drafts.", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+        Assert.Equal(["node.drafts:1", "node.drafts:2", "node.drafts:3"],
+            recorder.Rows.Where(r => r.EntryKey == "node.drafts" && r.Key != "node.drafts").Select(r => r.Key).Order(StringComparer.Ordinal));
+        Assert.Equal("1", (string?)result.Values["node.drafts"]!["items"]![0]!["item"]!["id"]);
+    }
+
+    [Fact]
+    public async Task AJobPastItsInstances_FailsWithItsSentence()
+    {
+        var plan = RunFixture.Plan(InputLoop(Members()), InputLoopReads());
+        var host = new FakeRunHost(auto: true);
+        var recorder = new ListRecorder();
+        var titles = Enumerable.Range(1, 10).Select(n => $"S{n}").ToArray();
+
+        var result = await new PlanRunner(plan, new RunLimits(JobInstances: 5), host, recorder).RunAsync(Sections(Rows(titles)), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal("The job reached 5 steps, the most this engine runs for one job.", result.Sentence);
+        V31Contract.AssertSentence(new SourceRefusal("A09-001", result.Sentence!, ""));
+        Assert.True(host.Dispatched.Count(k => k.StartsWith("node.drafts.", StringComparison.Ordinal)) < 5);
+        Assert.True(recorder.Rows.Count(r => r.Key.Contains(':', StringComparison.Ordinal)) <= 5);
     }
 
     // ---- sizes ------------------------------------------------------------------------------------
@@ -256,14 +292,14 @@ public class PlanRunnerLoopsTests
         var result = await FakeRunHost.Drive(() =>
         {
             var run = runner.RunAsync(Sections(Rows("History", "Examination", "Plan")), FakeRunHost.Start);
-            Assert.Equal(["node.plan", "node.drafts.draft:0"], host.Dispatched);
+            Assert.Equal(["node.plan", "node.drafts.draft:1"], host.Dispatched);
             host.Release("node.plan");
-            Assert.Equal(["node.plan", "node.drafts.draft:0"], host.Dispatched);
-            host.Release("node.drafts.draft:0");
-            Assert.Equal(RowState.Completed, recorder.Row("node.drafts:0").State);
-            Assert.Equal(["node.plan", "node.drafts.draft:0", "node.drafts.draft:1"], host.Dispatched);
+            Assert.Equal(["node.plan", "node.drafts.draft:1"], host.Dispatched);
             host.Release("node.drafts.draft:1");
-            Assert.Equal(["node.plan", "node.drafts.draft:0", "node.drafts.draft:1", "node.drafts.draft:2"], host.Dispatched);
+            Assert.Equal(RowState.Completed, recorder.Row("node.drafts:1").State);
+            Assert.Equal(["node.plan", "node.drafts.draft:1", "node.drafts.draft:2"], host.Dispatched);
+            host.Release("node.drafts.draft:2");
+            Assert.Equal(["node.plan", "node.drafts.draft:1", "node.drafts.draft:2", "node.drafts.draft:3"], host.Dispatched);
             host.ReleaseAll();
             return run;
         });
@@ -287,7 +323,7 @@ public class PlanRunnerLoopsTests
         var plan = RunFixture.Plan(PriorLetters(), PriorLettersReads());
         var host = new FakeRunHost(auto: true)
             .Reply("node.letters.read_letter", """{"answers_question":false}""")
-            .Reply("node.letters.read_letter:1", """{"answers_question":true}""");
+            .Reply("node.letters.read_letter:2", """{"answers_question":true}""");
         var recorder = new ListRecorder();
         var letters = new JsonArray("Letter of 3 March (fictional).", "Letter of 9 April (fictional).",
             "Letter of 2 June (fictional).", "Letter of 7 July (fictional).");
@@ -295,7 +331,7 @@ public class PlanRunnerLoopsTests
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Letters(letters), FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
-        Assert.Equal(["node.letters.read_letter:0", "node.letters.letter_summary:0", "node.letters.read_letter:1", "node.letters.letter_summary:1"],
+        Assert.Equal(["node.letters.read_letter:1", "node.letters.letter_summary:1", "node.letters.read_letter:2", "node.letters.letter_summary:2"],
             host.Dispatched.Where(k => k.StartsWith("node.letters.", StringComparison.Ordinal)));
 
         var read = result.Values["node.letters"]!;
@@ -303,7 +339,7 @@ public class PlanRunnerLoopsTests
         Assert.Equal(2, read["value"]!.AsArray().Count);
         var items = read["items"]!.AsArray();
         Assert.Equal(4, items.Count);
-        foreach (var (index, key) in new[] { (2, "node.letters:2"), (3, "node.letters:3") })
+        foreach (var (index, key) in new[] { (2, "node.letters:3"), (3, "node.letters:4") })
         {
             Assert.Equal("not_run", (string?)items[index]!["state"]);
             Assert.Equal("stopped early at Prior letters 2", (string?)items[index]!["reason"]);
@@ -333,14 +369,14 @@ public class PlanRunnerLoopsTests
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Sections(Rows("History", "Examination", "Plan")), FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
-        Assert.Equal(["node.plan", "node.drafts.draft:0", "node.drafts.draft:1"], host.Dispatched);
+        Assert.Equal(["node.plan", "node.drafts.draft:1", "node.drafts.draft:2"], host.Dispatched);
         var read = result.Values["node.drafts"]!;
         Assert.Equal("bound", (string?)read["stopped"]);
         Assert.Equal(2, read["value"]!.AsArray().Count);
         Assert.Equal(3, read["items"]!.AsArray().Count);
         Assert.Equal("not_run", (string?)read["items"]![2]!["state"]);
 
-        var row = recorder.Row("node.drafts:2");
+        var row = recorder.Row("node.drafts:3");
         Assert.Equal(RowState.NotRun, row.State);
         Assert.Equal("not run: beyond max 2", row.Reason);
         V31Contract.AssertSentence(new SourceRefusal("S04-002", row.Reason!, ""));
@@ -361,11 +397,11 @@ public class PlanRunnerLoopsTests
             var run = runner.RunAsync(Sections(Rows("History", "Examination", "Results", "Assessment", "Plan")), FakeRunHost.Start);
 
             // two open at a time; the items beyond max are not run at once, while the first two still run
-            Assert.Equal(["node.plan", "node.drafts.draft:0", "node.drafts.draft:1"], host.Dispatched);
-            Assert.Equal(RowState.NotRun, recorder.Row("node.drafts:3").State);
-            Assert.Equal("not run: beyond max 3", recorder.Row("node.drafts:4").Reason);
-            host.Release("node.drafts.draft:1");
-            Assert.Equal(["node.plan", "node.drafts.draft:0", "node.drafts.draft:1", "node.drafts.draft:2"], host.Dispatched);
+            Assert.Equal(["node.plan", "node.drafts.draft:1", "node.drafts.draft:2"], host.Dispatched);
+            Assert.Equal(RowState.NotRun, recorder.Row("node.drafts:4").State);
+            Assert.Equal("not run: beyond max 3", recorder.Row("node.drafts:5").Reason);
+            host.Release("node.drafts.draft:2");
+            Assert.Equal(["node.plan", "node.drafts.draft:1", "node.drafts.draft:2", "node.drafts.draft:3"], host.Dispatched);
             host.ReleaseAll();
             return run;
         });
@@ -389,9 +425,9 @@ public class PlanRunnerLoopsTests
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Sections(Rows("History", "Examination", "Plan")), FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
-        Assert.Equal(["node.plan", "node.drafts.draft:0"], host.Dispatched);
-        Assert.Equal("History", (string?)recorder.Row("node.drafts:0").Detail["itemName"]);
-        foreach (var key in new[] { "node.drafts:1", "node.drafts:2" })
+        Assert.Equal(["node.plan", "node.drafts.draft:1"], host.Dispatched);
+        Assert.Equal("History", (string?)recorder.Row("node.drafts:1").Detail["itemName"]);
+        foreach (var key in new[] { "node.drafts:2", "node.drafts:3" })
         {
             var row = recorder.Row(key);
             Assert.Equal("stopped early at Sections 1", row.Reason);
@@ -562,9 +598,9 @@ public class PlanRunnerLoopsTests
     {
         var plan = RunFixture.Plan(InputLoop(Members()), InputLoopReads());
         var host = new FakeRunHost(auto: true)
-            .Reply("node.drafts.draft:0", "Margaret Okafor reports three months of fatigue.")
-            .Reply("node.drafts.draft:1", "Pale; thyroid not enlarged.")
-            .Reply("node.drafts.draft:2", "Repeat TSH in six weeks with Dr A. Sample.");
+            .Reply("node.drafts.draft:1", "Margaret Okafor reports three months of fatigue.")
+            .Reply("node.drafts.draft:2", "Pale; thyroid not enlarged.")
+            .Reply("node.drafts.draft:3", "Repeat TSH in six weeks with Dr A. Sample.");
         var recorder = new ListRecorder();
 
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Sections(Rows("History", "Examination", "Plan")), FakeRunHost.Start);
@@ -577,7 +613,7 @@ public class PlanRunnerLoopsTests
         Assert.Equal(CanonicalJson.HashText(Expected), recorder.Row("node.drafts").ValueHash);
         Assert.Equal("Rendered deliverable.note.", (string?)result.Values["deliverable.note"]!["content"]);
         Assert.Equal(Expected, (string?)host.Renders.Single().Scope["node"]!["drafts"]!["content"]);
-        Assert.Equal(CanonicalJson.HashText("Pale; thyroid not enlarged."), recorder.Row("node.drafts:1").ValueHash);
+        Assert.Equal(CanonicalJson.HashText("Pale; thyroid not enlarged."), recorder.Row("node.drafts:2").ValueHash);
     }
 
     [Fact]
@@ -597,7 +633,7 @@ public class PlanRunnerLoopsTests
 
         Assert.Equal(RunState.Completed, result.State);
         var read = result.Values["node.drafts"]!;
-        Assert.Equal(["Text of node.drafts.draft:0.", "Text of node.drafts.draft:2."], read["value"]!.AsArray().Select(v => (string)v!));
+        Assert.Equal(["Text of node.drafts.draft:1.", "Text of node.drafts.draft:3."], read["value"]!.AsArray().Select(v => (string)v!));
         var skipped = read["items"]!.AsArray()[1]!;
         Assert.Equal("skipped", (string?)skipped["state"]);
         Assert.Equal("skipped: item.value.kind = \"narrative\" is false", (string?)skipped["reason"]);
@@ -605,10 +641,10 @@ public class PlanRunnerLoopsTests
         Assert.Null(skipped["value"]);
         Assert.Null(skipped["content"]);
         Assert.Equal("skipped", (string?)skipped["nodes"]!["draft"]!["state"]);
-        Assert.Equal("1", (string?)skipped["item"]!["id"]);
-        Assert.Equal(RowState.Skipped, recorder.Row("node.drafts:1").State);
-        Assert.Equal("skipped: item.value.kind = \"narrative\" is false", recorder.Row("node.drafts:1").Reason);
-        Assert.Equal("## History\n\nText of node.drafts.draft:0.\n\n## Plan\n\nText of node.drafts.draft:2.", (string?)read["content"]);
+        Assert.Equal("2", (string?)skipped["item"]!["id"]);
+        Assert.Equal(RowState.Skipped, recorder.Row("node.drafts:2").State);
+        Assert.Equal("skipped: item.value.kind = \"narrative\" is false", recorder.Row("node.drafts:2").Reason);
+        Assert.Equal("## History\n\nText of node.drafts.draft:1.\n\n## Plan\n\nText of node.drafts.draft:3.", (string?)read["content"]);
     }
 
     // ---- failures -----------------------------------------------------------------------------------
@@ -617,13 +653,13 @@ public class PlanRunnerLoopsTests
     public async Task AFailedItem_FailsTheJob()
     {
         var plan = RunFixture.Plan(InputLoop(Members()), InputLoopReads());
-        var host = new FakeRunHost(auto: true).Agent("node.drafts.draft:1", new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 0, "error"));
+        var host = new FakeRunHost(auto: true).Agent("node.drafts.draft:2", new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 0, "error"));
         var recorder = new ListRecorder();
 
         var result = await new PlanRunner(plan, new RunLimits(ServiceAttempts: 1), host, recorder).RunAsync(Sections(Rows("History", "Examination", "Plan")), FakeRunHost.Start);
 
         Assert.Equal(RunState.Failed, result.State);
-        Assert.Equal("node.drafts.draft:1", result.FailedKey);
+        Assert.Equal("node.drafts.draft:2", result.FailedKey);
         V31Contract.AssertSentence(new SourceRefusal("S09-011", result.Sentence!, ""));
         Assert.DoesNotContain(recorder.Rows, r => r.Key == "node.drafts");
         Assert.Empty(host.Renders);

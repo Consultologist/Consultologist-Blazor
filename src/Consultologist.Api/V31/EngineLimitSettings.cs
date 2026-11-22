@@ -8,7 +8,7 @@ namespace Consultologist.Api.V31;
 /// #1503 (specVersion 31, area 06; part 09 §§ 3.2, 3.4; R2; D8): the engine's limits for a 31 job, each an engine setting
 /// under <c>ConsultGeneration__*</c>, not part of the format. Unset or empty is the spec's starting value; a value that is not
 /// an integer of at least 1 stops the host at startup (Program.cs resolves this before the host runs), naming the setting.
-/// The nine of <see cref="RunLimits"/> go in the job header's <c>limits</c>; the regex time limit sits beside them and is
+/// The ten of <see cref="RunLimits"/> go in the job header's <c>limits</c>; the regex time limit sits beside them and is
 /// not in the record (D8).
 /// </summary>
 public sealed class EngineLimitSettings(IConfiguration configuration)
@@ -31,7 +31,8 @@ public sealed class EngineLimitSettings(IConfiguration configuration)
         DeliveryAttempts: Read(configuration, "DeliveryAttempts", Defaults.DeliveryAttempts),
         LoopItems: Read(configuration, "LoopItems", Defaults.LoopItems),
         JobAgentCalls: Read(configuration, "JobAgentCalls", Defaults.JobAgentCalls),
-        RenderSteps: Read(configuration, "RenderSteps", Defaults.RenderSteps));
+        RenderSteps: Read(configuration, "RenderSteps", Defaults.RenderSteps),
+        JobInstances: Read(configuration, "JobInstances", Defaults.JobInstances));
 
     /// <summary>The longest regex time-out .NET accepts, so the evaluator's: <see cref="int.MaxValue"/> - 1 milliseconds.</summary>
     private const int MaxRegexMilliseconds = int.MaxValue - 1;

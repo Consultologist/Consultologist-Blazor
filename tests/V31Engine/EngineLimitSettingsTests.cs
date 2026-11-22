@@ -30,6 +30,7 @@ public class EngineLimitSettingsTests
             Assert.Equal(200, settings.Limits.LoopItems);
             Assert.Equal(500, settings.Limits.JobAgentCalls);
             Assert.Equal(100_000, settings.Limits.RenderSteps);
+            Assert.Equal(10_000, settings.Limits.JobInstances);
             Assert.Equal(TimeSpan.FromMilliseconds(2000), settings.RegexLimit);
         }
     }
@@ -56,6 +57,13 @@ public class EngineLimitSettingsTests
         Assert.Equal(TimeSpan.FromMilliseconds(250), settings.RegexLimit);
     }
 
+    [Fact]
+    public void JobInstances_IsRead()
+    {
+        Assert.Equal(250, With(("JobInstances", "250")).Limits.JobInstances);
+        Assert.Throws<InvalidOperationException>(() => With(("JobInstances", "0")));
+    }
+
     [Theory]
     [InlineData("MaxAgentCallsPerJob", "0")]
     [InlineData("CapacityWaitMinutes", "-1")]
@@ -66,6 +74,7 @@ public class EngineLimitSettingsTests
     [InlineData("LoopItems", "two hundred")]
     [InlineData("JobAgentCalls", "99999999999")]
     [InlineData("RenderSteps", "0")]
+    [InlineData("JobInstances", "0")]
     [InlineData("RegexMilliseconds", "0")]
     [InlineData("RegexMilliseconds", "2147483647")]
     public void AValueBelowOne_OrNotANumber_Throws(string key, string value)

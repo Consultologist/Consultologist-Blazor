@@ -6,7 +6,7 @@ namespace Consultologist.PackageFormat.V31.Run;
 /// #1503 (specVersion 31, area 06; part 09 §§ 3.2, 3.4; part 08 § 3): every engine limit in force for one job, each an
 /// engine setting, recorded once in the job header's <c>limits</c>. The defaults are the spec's starting values. A limit the
 /// runner counts against (<see cref="MaxAgentCalls"/>, <see cref="CapacityWaitMinutes"/>, <see cref="ServiceAttempts"/>,
-/// <see cref="JobMinutes"/>, <see cref="LoopItems"/>, <see cref="JobAgentCalls"/>, <see cref="RenderSteps"/>) below 1 is
+/// <see cref="JobMinutes"/>, <see cref="LoopItems"/>, <see cref="JobAgentCalls"/>, <see cref="RenderSteps"/>, <see cref="JobInstances"/>) below 1 is
 /// refused, through <c>with</c> too, with an <see cref="ArgumentOutOfRangeException"/> naming it: it is an engine setting, not
 /// package content.
 /// </summary>
@@ -19,6 +19,7 @@ namespace Consultologist.PackageFormat.V31.Run;
 /// <param name="LoopItems">The items one loop instance may be given.</param>
 /// <param name="JobAgentCalls">The agent calls one job may make (a retry or a repair is part of its call).</param>
 /// <param name="RenderSteps">The steps one render may take.</param>
+/// <param name="JobInstances">The instances one job may open (a node, check or deliverable instance, a loop item, a pass, a call).</param>
 public sealed record RunLimits(
     int MaxAgentCalls = 16,
     int CapacityWaitMinutes = 10,
@@ -28,7 +29,8 @@ public sealed record RunLimits(
     int DeliveryAttempts = 3,
     int LoopItems = 200,
     int JobAgentCalls = 500,
-    int RenderSteps = 100_000)
+    int RenderSteps = 100_000,
+    int JobInstances = 10_000)
 {
     private readonly int maxAgentCalls = AtLeastOne(MaxAgentCalls, nameof(MaxAgentCalls));
     private readonly int capacityWaitMinutes = AtLeastOne(CapacityWaitMinutes, nameof(CapacityWaitMinutes));
@@ -37,6 +39,7 @@ public sealed record RunLimits(
     private readonly int loopItems = AtLeastOne(LoopItems, nameof(LoopItems));
     private readonly int jobAgentCalls = AtLeastOne(JobAgentCalls, nameof(JobAgentCalls));
     private readonly int renderSteps = AtLeastOne(RenderSteps, nameof(RenderSteps));
+    private readonly int jobInstances = AtLeastOne(JobInstances, nameof(JobInstances));
 
     /// <summary>The per-job ceiling: agent calls in flight at once.</summary>
     public int MaxAgentCalls { get => maxAgentCalls; init => maxAgentCalls = AtLeastOne(value, nameof(MaxAgentCalls)); }
@@ -59,7 +62,10 @@ public sealed record RunLimits(
     /// <summary>The steps one render may take.</summary>
     public int RenderSteps { get => renderSteps; init => renderSteps = AtLeastOne(value, nameof(RenderSteps)); }
 
-    /// <summary>The header's <c>limits</c> (part 08 § 3, D8): exactly its nine members, in its order.</summary>
+    /// <summary>The instances one job may open.</summary>
+    public int JobInstances { get => jobInstances; init => jobInstances = AtLeastOne(value, nameof(JobInstances)); }
+
+    /// <summary>The header's <c>limits</c> (part 08 § 3, D8): exactly its ten members, in its order.</summary>
     public JsonObject ToJson() => new()
     {
         ["maxAgentCalls"] = MaxAgentCalls,
@@ -71,10 +77,11 @@ public sealed record RunLimits(
         ["loopItems"] = LoopItems,
         ["jobAgentCalls"] = JobAgentCalls,
         ["renderSteps"] = RenderSteps,
+        ["jobInstances"] = JobInstances,
     };
 
     /// <summary>
-    /// The limits <paramref name="limits"/> holds, as <see cref="ToJson"/> wrote them: each of the nine members an integer.
+    /// The limits <paramref name="limits"/> holds, as <see cref="ToJson"/> wrote them: each of the ten members an integer.
     /// The engine rebuilds a job's limits from what its orchestration input recorded, so a replay never reads a setting
     /// that changed since. A member absent or not an integer is the engine's own error (an <see cref="ArgumentException"/>
     /// naming it), never package content; one below 1 is refused as the constructor refuses it.
@@ -91,7 +98,8 @@ public sealed record RunLimits(
             Member(limits, "deliveryAttempts"),
             Member(limits, "loopItems"),
             Member(limits, "jobAgentCalls"),
-            Member(limits, "renderSteps"));
+            Member(limits, "renderSteps"),
+            Member(limits, "jobInstances"));
     }
 
     private static int Member(JsonObject limits, string name) =>

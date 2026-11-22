@@ -52,7 +52,7 @@ public class OrchestratorV31Tests
         // on the entity, write-once
         Assert.Equal(job.Pair.ResolveHash, job.State.ResolveHash);
         Assert.Equal(job.Pair.LockHash, job.State.LockHash);
-        Assert.Equal(9, job.State.Limits!.Count);
+        Assert.Equal(10, job.State.Limits!.Count);
         Assert.Equal(new DateTimeOffset(V31Job.Now, TimeSpan.Zero), job.State.StartedAtUtc);
 
         // the agent calls in RunGoldenTests' dispatch order: the runner's, unchanged by Durable

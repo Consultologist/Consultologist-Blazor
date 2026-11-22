@@ -124,6 +124,9 @@ public sealed partial class PlanRunner
         /// <summary>How many instances the run has made.</summary>
         private int made;
 
+        /// <summary>How many instances the run has opened, against <see cref="RunLimits.JobInstances"/>.</summary>
+        private int opened;
+
         /// <summary>The calls in flight, in the order dispatched.</summary>
         private readonly List<Flight> flights = [];
 
@@ -235,12 +238,32 @@ public sealed partial class PlanRunner
         // ---- the round ----------------------------------------------------------------------
 
         /// <summary>The instance of <paramref name="entry"/> in <paramref name="frame"/>, added to the run.</summary>
-        private RunInstance Add(RunFrame frame, PlanEntry entry)
+        private void Add(RunFrame frame, PlanEntry entry)
         {
+            if (!Opens(frame.Owner))
+                return;
             var instance = frame.Add(entry);
             instance.Sequence = made++;
             pending.Add(instance);
-            return instance;
+        }
+
+        /// <summary>
+        /// #1506 (R2, D1): whether the run may open one more instance (a node, check or deliverable instance, a loop item, a
+        /// pass, a call's body). Past <see cref="RunLimits.JobInstances"/> the job fails with A09-001, naming
+        /// <paramref name="owner"/> when there is one, and the instance is not opened.
+        /// </summary>
+        private bool Opens(RunInstance? owner)
+        {
+            if (failure != null)
+                return false;
+            if (opened >= limits.JobInstances)
+            {
+                failure = (RunSentences.JobInstances(limits.JobInstances), owner?.Key);
+                return false;
+            }
+
+            opened++;
+            return true;
         }
 
         /// <summary>The instances not settled, in the fixed order.</summary>

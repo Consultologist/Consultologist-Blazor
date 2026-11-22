@@ -218,9 +218,8 @@ public sealed partial class PlanRunner
                 if (value is not JsonArray list)
                     return (loop, NotAList(entry, reference));
 
-                // Ids keep v30's forms: an array input's 0-based, a node's (or any other) list's 1-based (§ 2.2).
-                var first = reference.StartsWith("input.", StringComparison.Ordinal) ? 0 : 1;
-                given = list.Select((element, i) => ((i + first).ToString(CultureInfo.InvariantCulture), element, (string?)null, false)).ToList();
+                // #1506 (R3): item ids are 1-based everywhere, an array input's included.
+                given = list.Select((element, i) => ((i + 1).ToString(CultureInfo.InvariantCulture), element, (string?)null, false)).ToList();
             }
 
             loop.Count = given.Count;
@@ -431,6 +430,8 @@ public sealed partial class PlanRunner
                     continue;
                 }
 
+                if (!Opens(instance))
+                    return moved;
                 Open(instance, loop, item);
                 moved = true;
             }

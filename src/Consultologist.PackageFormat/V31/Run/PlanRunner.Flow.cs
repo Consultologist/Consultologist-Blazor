@@ -128,6 +128,8 @@ public sealed partial class PlanRunner
             var entry = instance.Entry;
             var outer = instance.Frame;
             var number = loop.Passes.Count + 1;
+            if (!Opens(instance))
+                return;
             var binding = new JsonObject
             {
                 ["number"] = number,

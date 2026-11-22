@@ -13,10 +13,23 @@ public class RunLimitsTests
     public void FromJson_IsToJsonsInverse()
     {
         var limits = new RunLimits(MaxAgentCalls: 2, CapacityWaitMinutes: 3, ServiceAttempts: 4, JobMinutes: 5, DeliveryMinutes: 6,
-            DeliveryAttempts: 7, LoopItems: 8, JobAgentCalls: 9, RenderSteps: 10);
+            DeliveryAttempts: 7, LoopItems: 8, JobAgentCalls: 9, RenderSteps: 10, JobInstances: 11);
 
         Assert.Equal(limits, RunLimits.FromJson(limits.ToJson()));
         Assert.Equal(new RunLimits(), RunLimits.FromJson(new RunLimits().ToJson()));
+    }
+
+    [Fact]
+    public void TheLimits_AreTenMembers()
+    {
+        var names = new RunLimits().ToJson().Select(m => m.Key).ToList();
+
+        Assert.Equal(10, names.Count);
+        Assert.Equal("jobInstances", names[^1]);
+        Assert.Equal(10_000, new RunLimits().JobInstances);
+        var without = new RunLimits().ToJson();
+        without.Remove("jobInstances");
+        Assert.Contains("jobInstances", Assert.Throws<ArgumentException>(() => RunLimits.FromJson(without)).Message, StringComparison.Ordinal);
     }
 
     [Theory]

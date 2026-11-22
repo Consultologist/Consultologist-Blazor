@@ -123,16 +123,16 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 **Interfaces:**
 - Produces: `RunLimits` gains `int JobInstances = 10_000` (last parameter; at least 1; in `ToJson` and `FromJson` as `jobInstances`, the tenth member); `RunSentences.JobInstances(int limit)` returning A09-001; `EngineLimitSettings` reads `ConsultGeneration:JobInstances`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `AnArrayInputsItems_AreNumberedFromOne`: a loop over an array input of three gives row keys ending `:1`, `:2`, `:3`, and `item.id` reads `"1"` in the first.
   - `AJobPastItsInstances_FailsWithItsSentence`: `JobInstances: 5` and a loop of ten items: the run is `Failed` with `The job reached 5 steps, the most this engine runs for one job.`, no agent call is dispatched after the limit, and at most 5 rows have a key of their own.
   - `TheLimits_AreTenMembers`: `ToJson()` has exactly the ten names, `jobInstances` last; `FromJson` refuses a document without it.
   - `JobInstances_IsRead`: the setting `ConsultGeneration:JobInstances` = `250` gives 250; `0` stops the host as the other limits do.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.** Count where `made` is incremented and where loop items and passes are opened; fail the job through the path `JobAgentCalls` uses.
-- [ ] **Step 4: Regenerate and read** the run goldens (`conditional.run.txt` moves from `:0` to `:1`); fix the tests that pinned 0-based ids.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1506): item ids start at 1; a job has an instances limit`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.** Count where `made` is incremented and where loop items and passes are opened; fail the job through the path `JobAgentCalls` uses.
+- [x] **Step 4: Regenerate and read** the run goldens (`conditional.run.txt` moves from `:0` to `:1`); fix the tests that pinned 0-based ids.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1506): item ids start at 1; a job has an instances limit`; push.
 
 ### Task 3: Decision rows
 
