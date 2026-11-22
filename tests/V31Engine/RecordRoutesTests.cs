@@ -367,6 +367,57 @@ public class RecordRoutesTests
     // ----- row-finished ------------------------------------------------------------------------------------------------
 
     [Fact]
+    public async Task TheStream_ListsTheRows_OnlyWhenTheirCountMoves_AndAtTheEnd()
+    {
+        // #1506 (final review F6): per connection, the row count (and the terminal flag) of the last listing; an unchanged
+        // count lists nothing, a changed one lists again, and the terminal materialisation always lists
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var rows = new FakeRecordRowStore();
+        await rows.WriteAsync(V31Job.JobId, await job.Rows.ListAsync(V31Job.JobId, CancellationToken.None), CancellationToken.None);
+        var transport = Transport(new MemoryEventStore(), rows);
+        var channel = Channel.CreateUnbounded<SseItem<string>>();
+        var connection = new ConsultGenerationJobs.SseConnectionState();
+        var done = job.State.ToResponse();
+        var running = done with { Status = ConsultGenerationJobStatuses.Running, Rows = 3 };
+        var lists = 0;
+        async Task MaterialiseAsync(ConsultGenerationJobResponse response)
+        {
+            var before = rows.Table.Calls;
+            await transport.WriteMaterializedEventsAsync(channel.Writer, response, 0, connection, CancellationToken.None);
+            lists += rows.Table.Calls - before;
+        }
+
+        await MaterialiseAsync(running);
+        await MaterialiseAsync(running);
+        Assert.Equal(1, lists);
+
+        await MaterialiseAsync(running with { Rows = 4 });
+        Assert.Equal(2, lists);
+
+        await MaterialiseAsync(done with { Rows = 4 });
+        Assert.Equal(3, lists);
+    }
+
+    [Fact]
+    public async Task APoll_ListsNoRows_ForAJobWithNoneYet()
+    {
+        // #1506 (final review F6): the stateless materialisation skips the listing while the job has no stored row
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var rows = new FakeRecordRowStore();
+        var transport = Transport(new MemoryEventStore(), rows);
+        var response = job.State.ToResponse() with { Status = ConsultGenerationJobStatuses.Running };
+
+        await transport.TryMaterializeEventsForPollingAsync(response with { Rows = null }, CancellationToken.None);
+        await transport.TryMaterializeEventsForPollingAsync(response with { Rows = 0 }, CancellationToken.None);
+        Assert.Equal(0, rows.Table.Calls);
+
+        await transport.TryMaterializeEventsForPollingAsync(response with { Rows = 1 }, CancellationToken.None);
+        Assert.Equal(1, rows.Table.Calls);
+    }
+
+    [Fact]
     public async Task EachStoredRow_IsAnnouncedOnce()
     {
         var job = V31Job.Of("nested-note");

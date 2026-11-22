@@ -2015,6 +2015,17 @@ public sealed class ConsultGenerationJobs
         public HashSet<string> EmittedUnpersistedKeys { get; } = new(StringComparer.Ordinal);
 
         public bool PersistenceFailureLogged { get; set; }
+
+        /// <summary>
+        /// #1506 (final review F6): whether a materialisation on this connection has listed the job's record rows, and the
+        /// response's row count (<see cref="ConsultGenerationJobResponse.Rows"/>) and terminal flag when it last did. An
+        /// unchanged count lists nothing again; a terminal response always lists.
+        /// </summary>
+        public bool RowsListed { get; set; }
+
+        public int? ListedRowCount { get; set; }
+
+        public bool ListedTerminal { get; set; }
     }
 
     /// <summary>
@@ -2031,7 +2042,7 @@ public sealed class ConsultGenerationJobs
         SseConnectionState connection,
         CancellationToken cancellationToken)
     {
-        var candidates = CreateSemanticEventCandidates(response, await ListRecordRowsAsync(response, cancellationToken));
+        var candidates = CreateSemanticEventCandidates(response, await ListRecordRowsForStreamAsync(response, connection, cancellationToken));
         IReadOnlyList<ConsultGenerationJobStoredEvent> storedEvents;
 
         try
@@ -2139,7 +2150,8 @@ public sealed class ConsultGenerationJobs
             await _eventStore.AppendAsync(
                 response.JobId,
                 response.AppUserId,
-                CreateSemanticEventCandidates(response, await ListRecordRowsAsync(response, cancellationToken)),
+                // #1506 (final review F6): a job with no stored row yet lists nothing; a poll otherwise lists, as it holds no state
+                CreateSemanticEventCandidates(response, response.Rows is > 0 ? await ListRecordRowsAsync(response, cancellationToken) : null),
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -2154,6 +2166,32 @@ public sealed class ConsultGenerationJobs
                 response.JobId,
                 response.Status);
         }
+    }
+
+    /// <summary>
+    /// #1506 (final review F6): <see cref="ListRecordRowsAsync"/> for one SSE connection, which lists only when the job's row
+    /// count has moved since its last listing, or the response is terminal (the last materialisation always lists); else
+    /// null, with no storage read: every row it would announce was announced by that listing. A listing that failed is
+    /// not remembered, so the next materialisation lists again.
+    /// </summary>
+    private async Task<IReadOnlyList<RecordRow>?> ListRecordRowsForStreamAsync(
+        ConsultGenerationJobResponse response, SseConnectionState connection, CancellationToken cancellationToken)
+    {
+        var terminal = IsTerminalJobStatus(response.Status);
+        if (connection.RowsListed && !terminal && connection.ListedRowCount == response.Rows && !connection.ListedTerminal)
+        {
+            return null;
+        }
+
+        var rows = await ListRecordRowsAsync(response, cancellationToken);
+        if (rows != null)
+        {
+            connection.RowsListed = true;
+            connection.ListedRowCount = response.Rows;
+            connection.ListedTerminal = terminal;
+        }
+
+        return rows;
     }
 
     /// <summary>
