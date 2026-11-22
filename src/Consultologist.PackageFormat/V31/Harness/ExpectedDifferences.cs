@@ -15,6 +15,5 @@ public static class ExpectedDifferences
     public static IReadOnlyDictionary<string, string> ConditionReasons { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["blank"] = "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given.",
-        ["trim-blank"] = "Part 05 § 7 (the migrated test/general's part if uses blank); #1507, Task 12 fix round 1's ruling: '(x | string.strip) == \"\"' on text is blank(x) (and '!=' is !blank(x)), which also holds for a text that is null at 31 (a node that did not run), where 30 compared it as not empty (A10-050).",
     };
 }

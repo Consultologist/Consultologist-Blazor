@@ -13,8 +13,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// (<see cref="MigrationFixture.DataOf"/>), and must answer as 30 did: a condition decided as the engine decides an
 /// <c>if</c>, a <c>case</c> subject or a <c>let</c> evaluated, compared as canonical JSON. A case 30 answered with an
 /// error is not compared: 31's answer is listed beside 30's sentence. A difference is listed in
-/// <c>conditions/equivalence.json</c> with its reason: <c>blank</c> (R1), <c>trim-blank</c> (part 05 § 7 and the Task 12
-/// fix round 1 ruling: a trimmed text compared with <c>""</c> is <c>blank</c>, which holds for a null text) or another reason of
+/// <c>conditions/equivalence.json</c> with its reason: <c>blank</c> (R1) or another reason of
 /// <see cref="ExpectedDifferences.ConditionReasons"/>, else <c>unruled</c>, which is pinned here and goes to the owner.
 /// An expression with no logic is listed as not converted, with its notice ids, and not compared. With
 /// <c>GOLDEN_UPDATE_V31=1</c> the golden is rewritten; a rewritten golden is read before it is committed.
@@ -53,8 +52,13 @@ public class ConditionEquivalenceTests
     /// not given and reads <c>null</c> (part 03 § 6.1), <c>size</c> of <c>null</c> is <c>null</c> and <c>===</c> compares
     /// <c>null</c> with 0 as a value (part 03 § 6.2): <c>false</c>. No ruling covers it; the package expression of the same
     /// shape (<c>example-structured-intake.notes_index.if</c>, <c>&gt; 2</c>) agrees on every case.
+    /// <c>row.strip.node#0</c>: <c>(x | string.strip) == ""</c>, written <c>blank(x)</c> (part 05 § 7), with <c>x</c> null:
+    /// a node with no output. 30's comparison is <c>false</c> on a null
+    /// text, 31's <c>blank(null)</c> is <c>true</c>. No ruling covers it; the migration lists each such conversion
+    /// (A10-050), and no public package's condition has that shape (its <c>strip == ""</c> reads are a text input whole
+    /// and a folder item's text, which agree).
     /// </remarks>
-    private static readonly string[] UnruledDifferences = ["row.size.member#0"];
+    private static readonly string[] UnruledDifferences = ["row.size.member#0", "row.strip.node#0"];
 
     [Fact]
     public void EveryConvertedExpression_AnswersAs30Does()
@@ -74,10 +78,6 @@ public class ConditionEquivalenceTests
                 else if (reason == "blank" && !BlankApplies(expression, run))
                 {
                     failures.Add($"{expression.Id}#{run.Index}: listed blank, but no blank conversion reads empty, white-space-only text or an input not given.");
-                }
-                else if (reason == "trim-blank" && !TrimBlankApplies(expression.TrimBlanks, run.Data))
-                {
-                    failures.Add($"{expression.Id}#{run.Index}: listed trim-blank, but no trim compared with \"\" reads a null text.");
                 }
                 else if (reason != Unruled && !ExpectedDifferences.ConditionReasons.ContainsKey(reason))
                 {
@@ -154,22 +154,6 @@ public class ConditionEquivalenceTests
         Assert.Equal(["row.not-text.node#1", "row.not-text.node#2", "row.not-text.input#0", "row.not-text.input#1", "row.not-text.input#2"], blank);
     }
 
-    /// <summary>
-    /// The trim-blank cases, pinned: <c>(node.summary.content | string.strip) == ""</c> with the node absent (false at 30,
-    /// which compared a node that did not run as not empty; <c>blank(null)</c> is true at 31). Its <c>""</c>, <c>" "</c>
-    /// and <c>"lorem"</c> cases agree, as do all of <c>row.strip.input</c>'s (30 read an input not given as <c>""</c>).
-    /// </summary>
-    [Fact]
-    public void TheTrimBlankDifferences_AreTheseOnes()
-    {
-        var trimBlank = Run()
-            .SelectMany(e => e.Cases.Where(c => c.Reason == "trim-blank").Select(c => $"{e.Id}#{c.Index}"))
-            .ToList();
-
-        Assert.Equal(["row.strip.node#0"], trimBlank);
-        Assert.All(Run().Single(e => e.Id == "row.strip.input").Cases, c => Assert.True(c.Agrees));
-    }
-
     [Fact]
     public void DataOf_PassesInputsThrough31sStart_AndPlacesEachReadWhere31ReadsIt()
     {
@@ -207,12 +191,8 @@ public class ConditionEquivalenceTests
     /// <summary>One case: 30's answer (<paramref name="Result30"/>, or <paramref name="Error30"/>) and 31's (<paramref name="Answer31"/>, the value's canonical JSON or the failure).</summary>
     private sealed record CaseRun(int Index, JsonObject Scope, JsonObject Data, JsonNode? Result30, string? Error30, string Answer31, bool Agrees, string? Reason);
 
-    /// <summary>One expression: whether it converted, its notice ids, its blank conversions (R1's paths, then A10-050's), how many cases 30 answered, and the cases run at 31 (none when it did not convert).</summary>
-    private sealed record ExpressionRun(string Id, string Kind, bool Converted, IReadOnlyList<string> NoticeIds, IReadOnlyList<string> BlankConversions, int Cases30, IReadOnlyList<CaseRun> Cases)
-    {
-        /// <summary>The paths of each trimmed text compared with <c>""</c> that became <c>blank</c> and can be null (A10-050).</summary>
-        public IReadOnlyList<string> TrimBlanks { get; init; } = [];
-    }
+    /// <summary>One expression: whether it converted, its notice ids, its blank conversions, how many cases 30 answered, and the cases run at 31 (none when it did not convert).</summary>
+    private sealed record ExpressionRun(string Id, string Kind, bool Converted, IReadOnlyList<string> NoticeIds, IReadOnlyList<string> BlankConversions, int Cases30, IReadOnlyList<CaseRun> Cases);
 
     private static readonly Lazy<IReadOnlyList<ExpressionRun>> Runs = new(RunAll);
 
@@ -237,7 +217,6 @@ public class ConditionEquivalenceTests
                 continue;
             }
 
-            var trims = result.TrimBlanks.SelectMany(t => t.Reads).Distinct(StringComparer.Ordinal).ToList();
             var rule = Evaluator.Compile(result.Logic);
             var cases = new List<CaseRun>();
             var index = 0;
@@ -250,10 +229,10 @@ public class ConditionEquivalenceTests
                 var error30 = (string?)vectorCase["error"];
                 var agrees = error30 is null && answer == Json(result30);
                 var run = new CaseRun(index++, scope, data, result30, error30, answer, agrees, null);
-                cases.Add(run with { Reason = error30 is null && !agrees ? ReasonOf(result.BlankConversions, trims, run) : null });
+                cases.Add(run with { Reason = error30 is null && !agrees ? ReasonOf(result.BlankConversions, run) : null });
             }
 
-            runs.Add(new ExpressionRun(id, kind, true, result.NoticeIds, result.BlankConversions, vectorCases.Count, cases) { TrimBlanks = trims });
+            runs.Add(new ExpressionRun(id, kind, true, result.NoticeIds, result.BlankConversions, vectorCases.Count, cases));
         }
 
         return runs;
@@ -277,25 +256,9 @@ public class ConditionEquivalenceTests
 
     private static string Json(JsonNode? node) => CanonicalJson.Write(node);
 
-    /// <summary>Why a case differs: <c>blank</c> when R1 explains it, <c>trim-blank</c> when A10-050's conversion does, else <c>unruled</c>.</summary>
-    private static string ReasonOf(IReadOnlyList<string> blankConversions, IReadOnlyList<string> trimBlanks, CaseRun run) =>
-        BlankApplies(blankConversions, run.Data) ? "blank" : TrimBlankApplies(trimBlanks, run.Data) ? "trim-blank" : Unruled;
-
-    /// <summary>
-    /// Part 05 § 7 and the Task 12 fix round 1 ruling: a trimmed text compared with <c>""</c>, written <c>blank</c>, reads a
-    /// null text here (a node that did not run), which <c>blank</c> holds and 30's comparison did not.
-    /// </summary>
-    private static bool TrimBlankApplies(IReadOnlyList<string> trimBlanks, JsonObject data) =>
-        trimBlanks.Any(path =>
-        {
-            JsonNode? at = data;
-            foreach (var segment in path.Split('.'))
-            {
-                at = at is JsonObject obj ? obj[segment] : null;
-            }
-
-            return at is null;
-        });
+    /// <summary>Why a case differs: <c>blank</c> when R1 explains it, else <c>unruled</c>.</summary>
+    private static string ReasonOf(IReadOnlyList<string> blankConversions, CaseRun run) =>
+        BlankApplies(blankConversions, run.Data) ? "blank" : Unruled;
 
     private static bool BlankApplies(ExpressionRun expression, CaseRun run) => BlankApplies(expression.BlankConversions, run.Data);
 

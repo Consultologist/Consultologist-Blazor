@@ -151,7 +151,7 @@ internal static class V31Contract
     /// macro with a condition, one naming no single macro, a snippet copy's id, the deliverables pass, part 10 § 1.4, D3, D4;
     /// A10-046: a check inside a node flow, the checks pass, part 06 §§ 1, 3; A10-010: a 30 reproducible claim the derived-flags
     /// pass did not write, part 02 § 11; A10-049: flags derived without a hand-edited body, D15; A10-050: a trim compared with
-    /// "" that became blank and answers otherwise for a null text, part 05 § 7, Task 12 fix round 1's ruling; A10-051: a macro placed in a snippet folder's item, part 05 § 6.2, A07-012).
+    /// "" that became blank and answers otherwise for a null text, part 05 § 7, an unruled difference listed for the owner; A10-051: a macro placed in a snippet folder's item, part 05 § 6.2, A07-012).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
