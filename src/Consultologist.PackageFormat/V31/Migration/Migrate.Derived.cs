@@ -15,11 +15,12 @@ internal static partial class Migrate
     /// <summary>
     /// The derived-flags pass. The 31 files are read as an upload (<see cref="SourceParser.Parse"/>), then held to the
     /// shape and type rules and resolved (<see cref="SourceResolve.Check"/>), whose results the derivation reads; the
-    /// bodies are read by the dialect (<see cref="V31.Templates.SourceTemplates.Check"/>) when it refuses nothing, and are
-    /// otherwise unknown. A hand edit is written in a form the checker refuses: one the reader, the shape or type rules or
+    /// bodies are read by the dialect (<see cref="V31.Templates.SourceTemplates.Readable"/>): every body is read but those
+    /// whose file it refuses, which are unknown (a snippet's or a macro's own text stays read when only its instruction or
+    /// its <c>if</c> is refused, and is unknown when the text itself does not read). A hand edit is written in a form the checker refuses: one the reader, the shape or type rules or
     /// the resolver refuse leaves every header's placeholders as they are; one the expressions or the dialect refuse still
-    /// lets the flags be derived, a body the dialect refused counting as unknown (a flag that is then <c>false</c> is the
-    /// placeholder, which is <c>false</c> too). A <c>reproducible</c> with no rule for its kind keeps its placeholder.
+    /// lets the flags be derived, a body the dialect refused counting as unknown: a flag that is then <c>false</c> is the
+    /// placeholder, which is <c>false</c> too, and is said (A10-049). A <c>reproducible</c> with no rule for its kind keeps its placeholder.
     /// Each 30 node whose <c>reproducible</c> claim differs from the value written is listed (A10-010,
     /// <see cref="Migrated.Reproducible"/>). Never throws on package content.
     /// </summary>
@@ -36,6 +37,16 @@ internal static partial class Migrate
             file.Json["modelDerived"] = flags.ModelDerived;
             file.Json["runDependent"] = flags.RunDependent;
             file.Json["profileCarrying"] = flags.ProfileCarrying;
+        }
+
+        // A header made of a body the dialect refused (a hand edit's) is derived without it: a flag that is then false is
+        // not known to be false, so it is said (A10-049), in path order.
+        foreach (var (path, flags) in values.Where(v => !v.Value.Known && m.Sources.ContainsKey(v.Key)).OrderBy(v => v.Key, StringComparer.Ordinal))
+        {
+            var unknown = new[] { ("modelDerived", flags.ModelDerived), ("runDependent", flags.RunDependent), ("profileCarrying", flags.ProfileCarrying) }
+                .Where(f => !f.Item2).Select(f => f.Item1).ToList();
+            if (unknown.Count > 0)
+                m.Notice(MigrationSentences.FlagsNotKnown(path, unknown));
         }
 
         // Part 02 § 11: each 30 node whose reproducible claim differs from the value written, in 30's order.
@@ -84,7 +95,7 @@ internal static partial class Migrate
         var (_, resolution) = SourceResolve.Check(package, typed);
         if (resolution is null)
             return none;
-        var bodies = V31.Templates.SourceTemplates.Check(package, typed, resolution, registry).Templates;
+        var (_, bodies) = V31.Templates.SourceTemplates.Readable(package, typed, resolution, registry);
         return SourceDerived.Values(package, resolution, bodies, bodies);
     }
 }

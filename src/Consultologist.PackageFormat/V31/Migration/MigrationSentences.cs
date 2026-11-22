@@ -169,6 +169,19 @@ internal static class MigrationSentences
     private static string Word(bool value) => value ? "true" : "false";
 
     /// <summary>
+    /// A10-049 (D15): the header <paramref name="file"/> is made of a body the dialect refused (a hand edit's), so its
+    /// <paramref name="flags"/> (each derived <c>false</c>) are not known to be false; the checker holds them once the edits
+    /// are made.
+    /// </summary>
+    public static string FlagsNotKnown(string file, IReadOnlyList<string> flags)
+    {
+        ArgumentNullException.ThrowIfNull(flags);
+        var list = flags.Count == 1 ? flags[0] : string.Join(", ", flags.Take(flags.Count - 1)) + " and " + flags[^1];
+        var (verb, pronoun) = flags.Count == 1 ? ("is", "it") : ("are", "them");
+        return $"{file}: {list} {verb} written false without the bodies that need a hand edit; check {pronoun} once the edits are made.";
+    }
+
+    /// <summary>
     /// A10-030 (D16): node <paramref name="id"/> declared <paramref name="member"/> at 30, which 31 has no member for (a
     /// classifier's <c>with</c> values); it is not written.
     /// </summary>

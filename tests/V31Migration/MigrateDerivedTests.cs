@@ -145,6 +145,41 @@ public class MigrateDerivedTests
     }
 
     [Fact]
+    public void ABodyTheDialectRefuses_LeavesTheOtherBodiesRead()
+    {
+        // example-macros: the dialect refuses header_line's case, the deliverable's fixed_text reads and several macros'
+        // instructions, never summary.md itself. summary places sign_off, whose body reads profile.name (part 03 § 4.6):
+        // it is profile-carrying (part 02 § 1.2), as the checker will hold it once the listed edits are made.
+        var result = MigratedPackagesTests.Migrated("example-macros");
+        Assert.NotEmpty(result.HandEdits);
+
+        var summary = Md(result, "nodes/summary.md").Header;
+        Assert.True(summary["profileCarrying"]!.GetValue<bool>());
+        Assert.True(summary["modelDerived"]!.GetValue<bool>());
+        Assert.True(Md(MigratedPackagesTests.Migrated("example-macros-warnings"), "nodes/summary.md").Header["profileCarrying"]!.GetValue<bool>());
+
+        // sign_off's instruction is refused (A10-003), its text is not: summary is known, and nothing is said of its flags.
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("nodes/summary.md: ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AHeaderMadeOfARefusedBody_SaysWhichFlagsAreNotKnown()
+    {
+        // composer-gates' extract_note_terms reads deliverable.note (A10-039, refused by the dialect): its own body is not
+        // known, so its false flags are not known to be false, and the check reading it is in the same case.
+        var result = MigratedPackagesTests.Migrated("composer-gates");
+
+        const string notice = "nodes/extract_note_terms.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.";
+        Assert.Single(result.Notices, n => n == notice);
+        Assert.Contains("checks/note_coverage.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.", result.Notices);
+        Assert.DoesNotContain(result.HandEdits, n => n == notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-049", notice, ""));
+
+        // A package whose bodies are all read says none.
+        Assert.DoesNotContain(MigratedPackagesTests.Migrated("example-nested-note").Notices, n => n.Contains("written false without", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AHandEditTheReaderRefuses_LeavesThePlaceholders()
     {
         // A check left in a flow's list (A10-046) names no file there, which the reader refuses (S01-009): nothing is
