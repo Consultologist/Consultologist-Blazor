@@ -209,16 +209,23 @@ alone: a throttled job is slower, but it isn't kept waiting without end.
   (22 jobs over 30 days). **Activities still running at the limit** are recorded with the row
   state `cancelled`, and their late results are ignored.
 - **Total-work limits** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), starting at: **200 items per loop instance**, **500 agent calls
-  per job** (a retry is part of its call), and **100,000 steps per render**. Each is checked at
-  run time and fails the node or the job with a sentence (§ 9), and is noted at publish when the
+  per job** (a retry is part of its call), **10,000 instances per job**, and **100,000 steps per render**.
+  The instances limit is the tenth limit ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 1), since nested loops can
+  otherwise open 200³ frames before any agent call counts. **An instance is anything the runner opens
+  with a row key:** a node, check or deliverable instance, a loop item, a pass, a call. The limit is
+  checked where the runner opens one; past it the job fails with A09-001 and the instance is not
+  opened (decided in the build, #1506). 10,000 is twenty times the agent-call limit, a starting value
+  the owner may change. The publish half is #1508.
+  Each limit is checked at run time and fails the node or the job with a sentence (§ 9), and is noted at publish when the
   package's worst case can exceed it (§ 3.5).
 - **Delivering has its own window** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)): **`deliveryMinutes` (15)**, outside the
   30-minute production limit. Production's 30 minutes ends when the last node finishes; the job
   then enters `delivering` (§ 3.8), so slow deliveries never fail the job for time.
 - **All of these are engine settings,** not part of the format, recorded in the job header's
   `limits` at job start (part 08): `capacityWaitMinutes` (10), `serviceAttempts` (5),
-  `jobMinutes` (30), `deliveryMinutes` (15), `deliveryAttempts` (3), `loopItems` (200), `jobAgentCalls` (500) and `renderSteps` (100,000), beside
-  `maxAgentCalls` (§ 3.2).
+  `jobMinutes` (30), `deliveryMinutes` (15), `deliveryAttempts` (3), `loopItems` (200), `jobAgentCalls` (500), `jobInstances` (10,000) and
+  `renderSteps` (100,000), beside `maxAgentCalls` (§ 3.2). The instances limit's setting is
+  `ConsultGeneration__JobInstances`.
 - **Every retry is recorded on the node's row** (part 08): its time, the wait applied, whether it
   was for capacity or a service failure, and the error's kind. No model text is involved.
 - **A failed node fails its job;** nothing is half-delivered. The sentences are in § 9.
@@ -690,8 +697,10 @@ The wording below is the starting text. It follows the style rules in [index § 
   running is recorded *"cancelled: the job didn't finish within <n> minutes"*.
 - The total-work limits (§ 3.4), recorded and shown in History:
   *"Loop '<id>' was given <n> items; this engine runs at most <limit> per loop."*,
-  *"The job reached <limit> agent calls, the most this engine runs for one job."* and
-  *"<Subject> stopped rendering: it took more than <limit> steps."*
+  *"The job reached <limit> agent calls, the most this engine runs for one job."*,
+  *"The job reached <n> steps, the most this engine runs for one job."* (A09-001; `<n>` is written
+  as the other limits are, `10,000`, and the job fails when the runner would open one more instance)
+  and *"<Subject> stopped rendering: it took more than <limit> steps."*
 - A destination whose delivery failed after its retries (§ 3.8), shown in History; the job stays completed:
   *"Couldn't send to <destination>. Copy the note instead."*
 - The publish note, never a refusal (#1393):
