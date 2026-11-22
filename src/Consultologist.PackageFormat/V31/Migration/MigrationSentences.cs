@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Consultologist.PackageFormat.V31.Migration;
 
 /// <summary>
@@ -27,4 +29,32 @@ internal static class MigrationSentences
         ArgumentNullException.ThrowIfNull(blank);
         return $"{file}, {member}: '!{blank.Written}' became blank({blank.Printed}); it now also holds for empty and white-space-only text.";
     }
+
+    /// <summary>
+    /// A10-012 (part 10 § 1.4, D2): the package is at specVersion <paramref name="version"/>, below 5, where no rung
+    /// starts (the script's exit 2). Pre-v5 packages are archived.
+    /// </summary>
+    public static string BelowFive(int version) =>
+        string.Create(CultureInfo.InvariantCulture, $"The package is at specVersion {version}; migration starts at 5.");
+
+    /// <summary>
+    /// A10-015 (part 10 § 1.1, D2): the package is at specVersion <paramref name="version"/>, at or past the version the
+    /// migration writes, so there is nothing to raise. The earlier rungs' sentence, word for word.
+    /// </summary>
+    public static string AlreadyAt(int version) =>
+        string.Create(CultureInfo.InvariantCulture, $"The package is already at specVersion {version}.");
+
+    /// <summary>
+    /// A10-016 (part 10 § 1.4, D2): <c>manifest.json</c> is not JSON, not an object, or has no whole-number
+    /// <c>specVersion</c> (the script's exit 2). No part of the manifest is quoted.
+    /// </summary>
+    public const string ManifestDoesNotRead =
+        "The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.";
+
+    /// <summary>
+    /// A10-017 (D2): an earlier rung's own <paramref name="refusal"/> (its sentence, unchanged), naming the rung
+    /// <paramref name="rung"/> as the Editor's upgrade names it.
+    /// </summary>
+    public static string AtRung(int rung, string refusal) =>
+        string.Create(CultureInfo.InvariantCulture, $"At specVersion {rung}: {refusal}");
 }
