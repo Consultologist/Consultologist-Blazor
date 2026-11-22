@@ -271,7 +271,7 @@ internal static class MigrationSentences
 
     /// <summary>
     /// A10-003 (part 10 § 1.4, D3; part 05 § 10): a reason: a 30 node instance placed macro <paramref name="macro"/>'s text
-    /// <paramref name="where"/> (<c>before</c>, <c>after</c>) the node's reply; at 31 the model places its marker, so the
+    /// <paramref name="where"/> (<c>before</c>, <c>after</c>, or <c>before and after</c> when instances place it on both sides) the node's reply; at 31 the model places its marker, so the
     /// instruction must say where.
     /// </summary>
     public static string PlacedByTheEngine(string macro, string where) =>
@@ -295,6 +295,14 @@ internal static class MigrationSentences
     /// </summary>
     public static string ReadAsFixedText(string macro, int line) =>
         string.Create(CultureInfo.InvariantCulture, $"macro '{macro}' is read as fixed text at line {line}, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.");
+
+    /// <summary>
+    /// A10-045 (D4; part 05 § 8.1): a reason: a 30 body reads the folder macro <paramref name="macro"/>'s <c>.content</c>
+    /// (<c>&lt;folder&gt;/&lt;id&gt;</c>, in a <c>for</c> over the folder) at <paramref name="line"/>; a folder's item is
+    /// never a snippet, so the read has no 31 form.
+    /// </summary>
+    public static string FolderReadAsFixedText(string macro, int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"macro '{macro}' is read as fixed text at line {line}, but a macro folder's item is never fixed text at 31; place its text as a snippet.");
 
     /// <summary>A10-041 (part 05 § 8.3, § 8.7): a reason: a 30 macro's body places macro <paramref name="placed"/> (its <c>.prompt</c>), which no 31 macro body does.</summary>
     public static string BodyPlacesMacro(string placed) =>

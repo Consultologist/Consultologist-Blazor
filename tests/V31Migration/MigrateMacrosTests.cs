@@ -45,6 +45,38 @@ public class MigrateMacrosTests
             .WithAgent("draft", $"Draft the plan for Margaret Okafor.\n{{{{ macro.{id} }}}}\n"));
 
     /// <summary>
+    /// The refusals of a 31 package with the macro <paramref name="macro"/> (<c>&lt;id&gt;</c>, or <c>&lt;folder&gt;/&lt;id&gt;</c>)
+    /// placed by an agent whose prompt, or a snippet it places (<paramref name="inSnippet"/>), holds <paramref name="line"/>:
+    /// a line the migration wrote.
+    /// </summary>
+    private static IReadOnlyList<SourceRefusal> RefusalsReading(string macro, string line, bool inSnippet)
+    {
+        var slash = macro.IndexOf('/', StringComparison.Ordinal);
+        var files = TemplateFixture.Package();
+        var placed = macro.Replace('/', '.');
+        if (slash < 0)
+        {
+            files.WithMacro(macro, "Reviewed with Margaret Okafor.\n");
+        }
+        else
+        {
+            var (folder, id) = (macro[..slash], macro[(slash + 1)..]);
+            files.Listed("macros/index.json", folder)
+                .With($"macros/{folder}/index.json", SourceFixture.Index([id], extra: ", \"if\": null"))
+                .With($"macros/{folder}/{id}.md", SourceFixture.Md(
+                    $"{{ \"label\": \"Macro {id}\", \"description\": null, \"if\": null, \"format\": \"plaintext\", \"instruction\": [\"Place {{{{ macro.{placed}.content }}}} at the end.\"] }}",
+                    "Reviewed with Margaret Okafor.\n"));
+        }
+
+        return TemplateFixture.RefusalsOf(inSnippet
+            ? files.WithSnippet("echo", line + "\n").WithAgent("draft", $"Draft.\n{{{{ snippet.echo.content }}}}\n{{{{ macro.{placed} }}}}\n")
+            : files.WithAgent("draft", $"Draft.\n{line}\n{{{{ macro.{placed} }}}}\n"));
+    }
+
+    /// <summary>The line of <paramref name="body"/> holding <paramref name="text"/>.</summary>
+    private static string LineWith(string body, string text) => body.Split('\n').Single(l => l.Contains(text, StringComparison.Ordinal));
+
+    /// <summary>
     /// <c>example-macros</c> with an input <c>letrozole</c> and the optional macro <c>letrozole</c> (default off), which
     /// <c>summary.md</c> places, and with <paramref name="inputs"/> more boolean inputs.
     /// </summary>
@@ -92,8 +124,8 @@ public class MigrateMacrosTests
             MigrateNodesTests.Json(result, "macros/index.json")["items"]!.ToJsonString());
 
         // The format is the placing agents' (part 05 § 8.3). Every 30 agent that places a macro is prose (plaintext); one
-        // returning Markdown makes the macros only it places Markdown (wrap_up), and a macro placed through a snippet alone
-        // stays plain (house_style).
+        // returning Markdown makes the macros only it places Markdown (wrap_up), and so does one placing the snippet that
+        // places it (house_style, through style.md, which summary places).
         Assert.All(result.Files.Where(f => f.Key.StartsWith("macros/", StringComparison.Ordinal) && f.Key.EndsWith(".md", StringComparison.Ordinal)),
             f => Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, f.Key).Header["format"]));
         var m = TemplateRewriterTests.Working("example-macros");
@@ -101,7 +133,8 @@ public class MigrateMacrosTests
         m.Sources["nodes/summary.md"].Json["format"] = "markdown_block";
         Migrate.Macros(m);
         Assert.Equal("markdown_block", (string?)m.Sources["macros/wrap_up.md"].Json["format"]);
-        Assert.Equal("plaintext", (string?)m.Sources["macros/house_style.md"].Json["format"]);
+        Assert.Equal("markdown_block", (string?)m.Sources["macros/house_style.md"].Json["format"]);
+        Assert.Equal("plaintext", (string?)m.Sources["macros/counselling.md"].Json["format"]); // placed by other agents too
         var inline = TemplateRewriterTests.Working("example-macros");
         Migrate.Templates(inline);
         inline.Sources["nodes/summary.md"].Json["format"] = "markdown_inline";
@@ -194,9 +227,13 @@ public class MigrateMacrosTests
         // Review Focus 2: letrozole_macro taken too gives the first free number, said in S10-006's form.
         var taken = WithLetrozole("letrozole_macro");
         Assert.Equal("""{"===":[{"var":"input.letrozole_macro_2.value"},true]}""", MigrateNodesTests.Md(taken, "macros/letrozole.md").Header["if"]!.ToJsonString());
+        // The input is said to offer the macro too (A10-007), beside the rename.
         const string renamed = "Renamed 'letrozole' to 'letrozole_macro_2'; 'letrozole_macro' was already taken.";
-        Assert.Equal([renamed], taken.Report.MacroInputs);
+        const string offered = "Macro 'letrozole' is now offered by the input 'letrozole_macro_2'.";
+        Assert.Equal([renamed, offered], taken.Report.MacroInputs);
+        Assert.Contains(offered, taken.Notices);
         V31Contract.AssertSentence(new SourceRefusal("S10-006", renamed, ""));
+        V31Contract.AssertSentence(new SourceRefusal("A10-007", offered, ""));
         Assert.Equal("Input letrozole_macro", (string?)JsonNode.Parse(taken.ManifestJson)!["inputs"]!["letrozole_macro"]!["label"]);
     }
 
@@ -214,6 +251,13 @@ public class MigrateMacrosTests
         AssertHandEdit(result, "macros/sign_off.md", "instruction", "A10-003",
             "macro 'sign_off' was placed after the reply by the engine; say in its instruction where the model writes its marker.");
         Assert.Contains(RefusalsPlacing("table_note", result.Files["macros/table_note.md"]), r => r.Id == "S05-044");
+
+        // A macro placed both before and after a reply has one instruction to write: one notice naming both sides.
+        var sides = MigrateNodesTests.Migrated("example-macros", root =>
+            MigrateNodesTests.Node(root, "narrative_draft")["macros"]!.AsArray().Add(new JsonObject { ["id"] = "table_note", ["at"] = "after" }));
+        const string both = "macro 'table_note' was placed before and after the reply by the engine; say in its instruction where the model writes its marker.";
+        AssertHandEdit(sides, "macros/table_note.md", "instruction", "A10-003", both);
+        Assert.Single(sides.HandEdits, h => h.StartsWith("Hand edit needed in macros/table_note.md, instruction: ", StringComparison.Ordinal));
 
         // The instance's if is that placement's rule, so the macro's if.
         Assert.Equal("""{"===":[{"var":"input.note_type.value"},"consult"]}""", MigrateNodesTests.Md(result, "macros/section_caveat.md").Header["if"]!.ToJsonString());
@@ -253,36 +297,59 @@ public class MigrateMacrosTests
         var echo = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["macros/followup_only.md"] += "{{ macro.closing.content }}\n");
         Assert.EndsWith("Seen in follow-up; interval history reviewed.\n{{ snippet.closing.content }}\n", MigrateNodesTests.Md(echo, "macros/followup_only.md").Body, StringComparison.Ordinal);
 
-        // One of a macro that stays a macro (new_visit_note has an if) is a marker at 31: a hand edit (A10-040) on the 31
-        // file that holds it, composer-macros' visit_echo, itself a snippet.
+        // One of a macro that stays a macro (new_visit_note has an if) has no 31 form: a hand edit (A10-040) on the 31 file
+        // that holds it, composer-macros' visit_echo, itself a snippet, written as macro.<id>.fixed_text, which 31 refuses.
         var echoes = MigrateNodesTests.Migrated("composer-macros");
-        Assert.Equal("New-visit note as this macro reads it: [{{ macro.new_visit_note.content }}]\n", MigrateNodesTests.Md(echoes, "snippets/visit_echo.md").Body);
+        Assert.Equal("New-visit note as this macro reads it: [{{ macro.new_visit_note.fixed_text }}]\n", MigrateNodesTests.Md(echoes, "snippets/visit_echo.md").Body);
         AssertHandEdit(echoes, "snippets/visit_echo.md", "body", "A10-040",
             "macro 'new_visit_note' is read as fixed text at line 1, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.");
+        var written = LineWith(MigrateNodesTests.Md(echoes, "snippets/visit_echo.md").Body, "fixed_text");
+        Assert.Contains(RefusalsReading("new_visit_note", written, inSnippet: true), r => r.Id == "S05-011");
+        Assert.Empty(RefusalsReading("new_visit_note", written.Replace("fixed_text", "content", StringComparison.Ordinal), inSnippet: true)); // 30's read would pass
     }
 
     [Fact]
     public void AMacroReadBothWays_IsAHandEdit()
     {
-        // house_style is placed (style.md reads its .prompt) and now read as .content too: A10-004 at the read, kept as written.
+        // house_style is placed (style.md reads its .prompt) and now read as .content too: A10-004 at the read, written
+        // macro.<id>.fixed_text, which 31 refuses (30's macro.<id>.content would pass as a read).
         var both = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["prompts/summary.md"] += "{{ macro.house_style.content }}\n");
-        Assert.Contains("\n{{ macro.house_style.content }}\n", MigrateNodesTests.Md(both, "nodes/summary.md").Body, StringComparison.Ordinal);
+        var bothBody = MigrateNodesTests.Md(both, "nodes/summary.md").Body;
+        Assert.Contains("\n{{ macro.house_style.fixed_text }}\n", bothBody, StringComparison.Ordinal);
         AssertHandEdit(both, "nodes/summary.md", "body", "A10-004",
             "macro 'house_style' is read both as fixed text and as an instruction; split it into a snippet and a macro.");
         Assert.True(both.Files.ContainsKey("macros/house_style.md"));
+        Assert.Contains(RefusalsReading("house_style", "{{ macro.house_style.fixed_text }}", inSnippet: false), r => r.Id == "S05-011");
+        Assert.Empty(RefusalsReading("house_style", "{{ macro.house_style.content }}", inSnippet: false));
 
         // A folder's macro is never a snippet: an unrolled .content read of it is a hand edit, A10-004 beside its .prompt.
         var folder = MigrateNodesTests.Migrated("example-macros", _ => { }, files =>
             files["prompts/summary.md"] = files["prompts/summary.md"].Replace("{{ m.prompt }}\n", "{{ m.prompt }} {{ m.content }}\n", StringComparison.Ordinal));
-        Assert.Contains("- Red flags: {{ macro.notes.red_flags }} {{ macro.notes.red_flags.content }}\n", MigrateNodesTests.Md(folder, "nodes/summary.md").Body, StringComparison.Ordinal);
+        var red = LineWith(MigrateNodesTests.Md(folder, "nodes/summary.md").Body, "- Red flags:");
+        Assert.Equal("- Red flags: {{ macro.notes.red_flags }} {{ macro.notes.red_flags_fixed_text }}", red);
         AssertHandEdit(folder, "nodes/summary.md", "body", "A10-004",
             "macro 'notes/safety_net' is read both as fixed text and as an instruction; split it into a snippet and a macro.");
+        Assert.Contains(RefusalsReading("notes/red_flags", "{{ macro.notes.red_flags_fixed_text }}", inSnippet: false), r => r.Id == "S05-011");
+        Assert.Contains(RefusalsReading("notes/red_flags", "{{ macro.notes.red_flags_fixed_text }}", inSnippet: true), r => r.Id == "S05-011");
+        Assert.Empty(RefusalsReading("notes/red_flags", "{{ macro.notes.red_flags.fixed_text }}", inSnippet: false)); // why not a member
 
-        // followup_only has an if, so it is no snippet, and its fixed-text read is a marker at 31: A10-040.
+        // Alone in its loop, a folder macro's .content read is A10-045 (a folder's item is never fixed text at 31).
+        var alone = MigrateNodesTests.Migrated("example-macros", _ => { }, files =>
+            files["prompts/summary.md"] = files["prompts/summary.md"].Replace("{{ m.prompt }}\n", "{{ m.prompt }}\n{{ end }}{{ for n in macro.notes }}{{ n.content }}\n", StringComparison.Ordinal));
+        var aloneBody = MigrateNodesTests.Md(alone, "nodes/summary.md").Body;
+        Assert.Contains("{{ macro.notes.red_flags_fixed_text }}\n{{ macro.notes.safety_net_fixed_text }}\n", aloneBody, StringComparison.Ordinal);
+        var at = aloneBody.Split('\n').ToList().FindIndex(l => l.Contains("macro.notes.red_flags_fixed_text", StringComparison.Ordinal)) + 1;
+        AssertHandEdit(alone, "nodes/summary.md", "body", "A10-045",
+            $"macro 'notes/red_flags' is read as fixed text at line {at}, but a macro folder's item is never fixed text at 31; place its text as a snippet.");
+
+        // followup_only has an if, so it is no snippet, and its fixed-text read has no 31 form: A10-040.
         var conditional = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["prompts/summary.md"] += "{{ macro.followup_only.content }}\n");
-        var line = MigrateNodesTests.Md(conditional, "nodes/summary.md").Body.Split('\n').ToList().FindIndex(l => l.Contains("macro.followup_only.content", StringComparison.Ordinal)) + 1;
+        var line = MigrateNodesTests.Md(conditional, "nodes/summary.md").Body.Split('\n').ToList().FindIndex(l => l.Contains("macro.followup_only.fixed_text", StringComparison.Ordinal)) + 1;
+        Assert.True(line > 0);
         AssertHandEdit(conditional, "nodes/summary.md", "body", "A10-040",
             $"macro 'followup_only' is read as fixed text at line {line}, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.");
+        Assert.Contains(RefusalsReading("followup_only", "{{ macro.followup_only.fixed_text }}", inSnippet: false), r => r.Id == "S05-011");
+        Assert.Contains(RefusalsReading("followup_only", "{{ macro.followup_only.fixed_text }}", inSnippet: true), r => r.Id == "S05-011");
     }
 
     [Fact]

@@ -55,13 +55,14 @@ internal static partial class Migrate
     /// reply by the engine) becomes the placement <c>{{ macro.&lt;id&gt; }}</c> on its own line at the end of the node's
     /// prompt (unless the prompt already places it: a template places a macro once), its <c>if</c> that placement's rule
     /// (converted at the node's place, and counted even where the prompt's own placement stands for it, so a condition that
-    /// differs is said, never dropped), and one hand edit on the macro's <c>instruction</c> per macro and side (A10-003),
-    /// which is written <c>[]</c>. The macros placed so are returned.
+    /// differs is said, never dropped), and one hand edit on the macro's <c>instruction</c> per macro, naming the sides
+    /// (A10-003), which is written <c>[]</c>. The macros placed so are returned.
     /// </summary>
     private static HashSet<string> NodeInstances(Migrated m, NodeTree tree)
     {
         var placed = new HashSet<string>(StringComparer.Ordinal);
-        var said = new HashSet<(string, string)>();
+        var sides = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);   // macro → its sides, in 30's order of first instance
+        var order = new List<string>();
         foreach (var (id, node) in tree.ById)
         {
             foreach (var instance in node.Macros ?? [])
@@ -71,8 +72,13 @@ internal static partial class Migrate
                 var macroFile = MacroFileOf(m, instance.Id);
                 var where = instance.IsAfter ? WorkflowNodeMacroSpec.After : WorkflowNodeMacroSpec.Before;
                 placed.Add(instance.Id);
-                if (said.Add((instance.Id, where)))
-                    m.HandEdit(macroFile, "instruction", MigrationSentences.PlacedByTheEngine(instance.Id, where));
+                if (!sides.TryGetValue(instance.Id, out var side))
+                {
+                    sides[instance.Id] = side = new SortedSet<string>(StringComparer.Ordinal);
+                    order.Add(instance.Id);
+                }
+
+                side.Add(where);
 
                 var file = $"{FolderOf(tree, id)}/{id}.md";
                 if (!m.Sources.TryGetValue(file, out var prompt) || prompt.Body is not { } body || (string?)prompt.Json["kind"] != "agent")
@@ -86,6 +92,13 @@ internal static partial class Migrate
                     prompt.Body = (body.Length == 0 || body.EndsWith('\n') ? body : body + "\n") + $"{{{{ macro.{instance.Id.Replace('/', '.')} }}}}\n";
                 m.MacroPlacements.Add(new MacroPlacement(instance.Id, id, file, rule));
             }
+        }
+
+        // One instruction to write per macro: one notice, naming each side it was placed on.
+        foreach (var macro in order)
+        {
+            var where = sides[macro].Count == 2 ? $"{WorkflowNodeMacroSpec.Before} and {WorkflowNodeMacroSpec.After}" : sides[macro].Single();
+            m.HandEdit(MacroFileOf(m, macro), "instruction", MigrationSentences.PlacedByTheEngine(macro, where));
         }
 
         return placed;
@@ -206,7 +219,8 @@ internal static partial class Migrate
     /// added to the manifest (<c>label</c> the macro's, <c>description: null</c>, <c>format: "boolean"</c>,
     /// <c>required: false</c>, <c>channel: null</c>), and its id: the macro's (a folder item's own id), or, when an input
     /// already has it, with <c>_macro</c> (A10-007 names it either way, and a suffixed one is in the report's macro
-    /// inputs); when that is taken too, the first free <c>_2</c>, <c>_3</c>, … (S10-006, as the renames say it).
+    /// inputs); when that is taken too, the first free <c>_2</c>, <c>_3</c>, …, said first as the renames say it (S10-006),
+    /// then with A10-007, both in the report's macro inputs.
     /// </summary>
     private static string ChoiceInput(Migrated m, string key, string label)
     {
@@ -226,7 +240,14 @@ internal static partial class Migrate
             chosen = suffixed;
             for (var n = 2; inputs.ContainsKey(chosen); n++)
                 chosen = Renames.Fit(id, string.Create(CultureInfo.InvariantCulture, $"_macro_{n}"));
-            notice = chosen == suffixed ? MigrationSentences.OfferedByInput(key, chosen) : MigrationSentences.RenameTaken(id, chosen, suffixed);
+            if (chosen != suffixed)
+            {
+                var renamed = MigrationSentences.RenameTaken(id, chosen, suffixed);
+                m.Notice(renamed);
+                m.MacroInputs.Add(renamed);
+            }
+
+            notice = MigrationSentences.OfferedByInput(key, chosen);
         }
 
         inputs[chosen] = new JsonObject
@@ -245,19 +266,39 @@ internal static partial class Migrate
 
     /// <summary>
     /// Part 05 § 8.3's format match: the text format of the agents that place the macro (its body is inserted verbatim, so
-    /// it takes theirs): <c>markdown_inline</c> when one is inline (a block macro is refused there), <c>markdown_block</c>
+    /// it takes theirs), each placement through a snippet body counted as the agents whose 30 prompts place that snippet
+    /// (or its folder): <c>markdown_inline</c> when one is inline (a block macro is refused there), <c>markdown_block</c>
     /// when every one is, else <c>plaintext</c> (30's prose nodes are plain text; a plain macro in a Markdown node is
-    /// escaped).
+    /// escaped). A snippet placed only by another snippet reaches no agent here: 30's agents are all prose, so that leaves
+    /// the format they would give.
     /// </summary>
     private static string MacroFormat(Migrated m, string key)
     {
-        var formats = m.MacroPlacements.Where(p => p.Macro == key && p.Owner is not null)
-            .Select(p => m.Sources.TryGetValue(p.File, out var node) ? (string?)node.Json["format"] : null)
-            .ToList();
+        var files = new List<string>();
+        foreach (var placement in m.MacroPlacements.Where(p => p.Macro == key))
+        {
+            if (placement.Owner is not null)
+                files.Add(placement.File);
+            else if (SnippetOf(placement.File) is { } snippet)
+                files.AddRange(PlacersOf(m, snippet));
+        }
+
+        var formats = files.Select(f => m.Sources.TryGetValue(f, out var node) ? (string?)node.Json["format"] : null).ToList();
         if (formats.Contains("markdown_inline"))
             return "markdown_inline";
         return formats.Count > 0 && formats.All(f => f == "markdown_block") ? "markdown_block" : "plaintext";
     }
+
+    /// <summary>The snippet (or snippet folder) of a 31 snippet file: <c>snippets/&lt;id&gt;.md</c> or <c>snippets/&lt;folder&gt;/&lt;item&gt;.md</c>.</summary>
+    private static string? SnippetOf(string file) =>
+        file.StartsWith("snippets/", StringComparison.Ordinal) ? file["snippets/".Length..].Split('/')[0].Replace(".md", "", StringComparison.Ordinal) : null;
+
+    /// <summary>The 31 files of the agents whose 30 prompts place snippet (or snippet folder) <paramref name="snippet"/>.</summary>
+    private static IEnumerable<string> PlacersOf(Migrated m, string snippet) =>
+        m.Walk30.Templates
+            .Where(t => t.Kind == TemplateKind.Prompt && (t.References.Snippets.Contains(snippet) || t.References.SnippetFolders.Contains(snippet)))
+            .Where(t => m.Keys.TryGetValue(t.Id, out var rooted) && rooted.StartsWith("node.", StringComparison.Ordinal))
+            .Select(t => "nodes/" + m.Keys[t.Id]["node.".Length..].Replace('.', '/') + ".md");
 
     /// <summary>
     /// D5 (part 05 §§ 8.1, 8.4; 30's <see cref="WorkflowMacroMechanics.Prompt"/>): the instruction as lines: 30's instruction

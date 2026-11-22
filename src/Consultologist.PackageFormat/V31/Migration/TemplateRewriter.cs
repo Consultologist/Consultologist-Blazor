@@ -57,6 +57,13 @@ internal sealed record MacroPlacement(string Macro, string? Owner, string File, 
 internal static class TemplateRewriter
 {
     /// <summary>
+    /// D3, D4: the word a 30 fixed-text read of a macro that stays a macro is written with: <c>macro.&lt;id&gt;.fixed_text</c>,
+    /// a member no 31 macro has, or for a folder's item <c>macro.&lt;folder&gt;.&lt;id&gt;_fixed_text</c>, an item the folder
+    /// lacks. The checker refuses either read (S05-011) until the hand edit is made, and the operator sees what 30 read there.
+    /// </summary>
+    internal const string FixedText = "fixed_text";
+
+    /// <summary>
     /// <paramref name="body"/> (a 30 body, its header taken off) rewritten at <paramref name="site"/>; its conditions'
     /// notices, its hand edits and its hoisted placement rules are said on <paramref name="migrated"/>.
     /// </summary>
@@ -643,11 +650,17 @@ internal static class TemplateRewriter
                             Macros.Add(new MacroPlacement($"{folder}/{id}", site.OwnerId, site.File, null));
                             break;
                         case "content":
-                            // D4: a folder macro never becomes a snippet, so its fixed-text read is a marker at 31.
-                            inner.Add(Start(expression), End(expression), $"macro.{folder}.{id}.content");
+                            // D4: a folder macro never becomes a snippet, so its fixed-text read has no 31 form: written
+                            // macro.<folder>.<id>_fixed_text, an item the folder lacks, which 31 refuses (S05-011), with a
+                            // hand edit. (A member after a folder item, macro.<folder>.<id>.fixed_text, is not checked by
+                            // 31's reads, so it would pass.)
+                            var unread = $"{id}_{FixedText}";
+                            while (items.Any(i => i.Id == unread))
+                                unread += "_" + FixedText;
+                            inner.Add(Start(expression), End(expression), $"macro.{folder}.{unread}");
                             var key = $"{folder}/{id}";
                             var both = outputs.Any(o => Member(o, variable!) == "prompt");
-                            inner.Say(Start(expression), line => both ? MigrationSentences.ReadBothWays(key) : MigrationSentences.ReadAsFixedText(key, line));
+                            inner.Say(Start(expression), line => both ? MigrationSentences.ReadBothWays(key) : MigrationSentences.FolderReadAsFixedText(key, line));
                             break;
                         default:
                             Output(output, vars, inner, depth);
@@ -869,6 +882,9 @@ internal static class TemplateRewriter
                         return new Written("snippet", null, null, false);
                     }
 
+                    // D3: no 31 form, so it is written macro.<id>.fixed_text, which 31 refuses (S05-011) until the edit is made;
+                    // left as macro.<id>.content it would pass as a read.
+                    sink.Add(End(steps[^2].Token!), End(steps[^1].Token!), "." + FixedText);
                     var both = m.Walk30.Templates.Any(t => t.References.MacroPrompts.Contains(fixedText));
                     sink.Say(Start(whole), line => both ? MigrationSentences.ReadBothWays(fixedText) : MigrationSentences.ReadAsFixedText(fixedText, line));
                     return Nothing;
