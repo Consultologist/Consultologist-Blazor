@@ -123,7 +123,8 @@ internal static class MigrationFixture
         CompiledGoldenTests.Fixed,
         TestFormats.Catalog,
         Renames: ExampleChoices.Renames(package),
-        WhenEmpty: ExampleChoices.WhenEmpty(package));
+        WhenEmpty: ExampleChoices.WhenEmpty(package),
+        FolderFormats: ExampleChoices.FolderFormats(package));
 
     /// <summary><paramref name="package"/> read from the fixtures (<see cref="ByteEquivalenceFixtures.ReadPackage"/>) and migrated with its <see cref="Options"/>.</summary>
     public static Migration31Result Migrate(string package)

@@ -140,7 +140,9 @@ internal static class V31Contract
     /// <summary>
     /// #1507: area 10's own sentences (<c>A10-NNN</c>), as plan area-10-migration lists them, each added by the task that
     /// first says it (A10-008: a <c>!x</c> on text that became <c>blank(x)</c>, part 10 § 2.3, R1; A10-012, A10-015,
-    /// A10-016, A10-017 and A10-018: the migration's gates and the chain's rung refusals, part 10 § 1.1, § 1.4, D2).
+    /// A10-016, A10-017 and A10-018: the migration's gates and the chain's rung refusals, part 10 § 1.1, § 1.4, D2; A10-019 and
+    /// A10-020: a 30 file or package that does not read; A10-021: a package format's free-text field, part 02 § 11; A10-022
+    /// and A10-023: the reasons of the first pass's hand edits, part 10 § 1.4).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -150,6 +152,11 @@ internal static class V31Contract
         ["A10-016"] = "The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.",
         ["A10-017"] = "At specVersion <n>: <refusal>",
         ["A10-018"] = "At specVersion <n>: the rung could not read this package; fix the manifest, then migrate.",
+        ["A10-019"] = "The file '<file>' does not read: <fault>; fix it, then migrate.",
+        ["A10-020"] = "The package does not read at specVersion 30; fix it, then migrate.",
+        ["A10-021"] = "Format '<id>', field '<field>' holds free text; consider a text format.",
+        ["A10-022"] = "a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.",
+        ["A10-023"] = "the input takes one of several types, which a 31 input cannot; choose one format.",
     };
 
     private static string RepoRoot()
