@@ -46,6 +46,11 @@ public class MigrationChainTests
     [InlineData("""{ "name": "general", "version": "v2026.11.3" }""")]
     [InlineData("""{ "name": "general", "version": "v2026.11.3", "specVersion": "30" }""")]
     [InlineData("""{ "name": "general", "version": "v2026.11.3", "specVersion": 30.5 }""")]
+    [InlineData("""{ "name": "general", "version": "v2026.11.3", "specVersion": 30.0 }""")]
+    [InlineData("""{ "name": "general", "version": "v2026.11.3", "specVersion": 3e1 }""")]
+    [InlineData("""{ "specVersion": 30, "specVersion": 31 }""")]
+    [InlineData("""{ "a": 1, "a": 2, "specVersion": 30 }""")]
+    [InlineData("""{ "specVersion": 27, "nodes": [ { "id": "x", "id": "y" } ] }""")]
     public void AManifestThatDoesNotRead_IsRefused(string manifestJson)
     {
         var files = new Dictionary<string, string>(StringComparer.Ordinal) { ["prompts/a.md"] = "A prompt." };
@@ -104,6 +109,68 @@ public class MigrationChainTests
         var migrated = WorkflowPackageMigration30To31.Migrate(json27, files27, Options());
         Assert.True(migrated.Succeeded, string.Join("\n", migrated.Refusals));
         Assert.Equal(chained27.Notices, migrated.Notices.Take(chained27.Notices.Count));
+    }
+
+    [Fact]
+    public void ThePackageBeyond30_IsRefusedByTheChain()
+    {
+        var (thirty, files) = ByteEquivalenceFixture();
+        var root = JsonNode.Parse(thirty)!.AsObject();
+        root["specVersion"] = 31;
+        var manifestJson = root.ToJsonString();
+
+        var result = WorkflowPackageMigrationChain.To30(manifestJson, files, resolveContract: null);
+
+        Assert.Equal(["The package is already at specVersion 31."], result.Refusals);
+        V31Contract.AssertSentence(new SourceRefusal("A10-015", result.Refusals[0], ""));
+        Assert.Equal(manifestJson, result.ManifestJson);
+    }
+
+    /// <summary>
+    /// D2: with 30's catalogue, each rung's output is validated as the script validates it. V24Package's 25 output places
+    /// three macros with no instruction (the 24 → 25 rewriter's hand-edit notices, the validator's errors), so the run is
+    /// refused at 25, writing nothing.
+    /// </summary>
+    [Fact]
+    public void ARungsValidationErrors_RefuseTheRun_NamingTheRung()
+    {
+        var manifestJson = V24Package.ManifestJson();
+        var files = V24Package.Files();
+
+        var chained = WorkflowPackageMigrationChain.To30(manifestJson, files, V24Package.ResolveContract, TestFormats.Catalog);
+
+        Assert.Equal(
+            new[] { "closing", "handoff", "footer" }.Select(id =>
+                $"At specVersion 25: Macro '{id}' must declare an instruction at specVersion 25; placed text tells the model when to write its text read."),
+            chained.Refusals);
+        Assert.All(chained.Refusals, r => V31Contract.AssertSentence(new SourceRefusal("A10-017", r, "")));
+        Assert.Equal(manifestJson, chained.ManifestJson);
+        Assert.Empty(chained.Notices);
+
+        var migrated = WorkflowPackageMigration30To31.Migrate(manifestJson, files, Options() with { ResolveContract = V24Package.ResolveContract });
+        Assert.Equal(chained.Refusals, migrated.Refusals);
+        AssertRefusedWritingNothing(migrated, manifestJson, files);
+    }
+
+    /// <summary>
+    /// A rung that throws on the package's content is refused, naming the rung: the 24 → 25 rewriter throws a
+    /// <see cref="NullReferenceException"/> on an <c>inputs</c> entry written <c>null</c>.
+    /// </summary>
+    [Fact]
+    public void ARungThatThrowsOnThePackage_IsRefused_NamingTheRung()
+    {
+        var root = JsonNode.Parse(V24Package.ManifestJson())!.AsObject();
+        root["inputs"] = new JsonArray((JsonNode?)null);
+        var manifestJson = root.ToJsonString();
+        var files = V24Package.Files();
+
+        var chained = WorkflowPackageMigrationChain.To30(manifestJson, files, V24Package.ResolveContract);
+        Assert.Equal(["At specVersion 25: the rung could not read this package; fix the manifest, then migrate."], chained.Refusals);
+        V31Contract.AssertSentence(new SourceRefusal("A10-018", chained.Refusals[0], ""));
+
+        var migrated = WorkflowPackageMigration30To31.Migrate(manifestJson, files, Options());
+        Assert.Equal(chained.Refusals, migrated.Refusals);
+        AssertRefusedWritingNothing(migrated, manifestJson, files);
     }
 
     [Fact]
@@ -214,6 +281,7 @@ public class MigrationChainTests
         return at30 with { Notices = [.. at28.Notices, .. at29.Notices, .. at30.Notices] };
     }
 
+    /// <summary>A hand copy of <c>EditorFixtures.V7Preludes()</c> (tests/Consultologist.Web.Tests/EditorFixtures.cs), which this project does not reference.</summary>
     private const string V7PreludesManifest = """
         {
           "name": "acct-1234567890ab",
@@ -274,6 +342,7 @@ public class MigrationChainTests
         }
         """;
 
+    /// <summary>The files of <c>EditorFixtures.V7Preludes()</c>: its <c>Package</c>'s three, and the two preludes.</summary>
     private static Dictionary<string, string> V7PreludesFiles() => new(StringComparer.Ordinal)
     {
         ["prompts/draft-section.md"] = "Draft {{ section_name }} from {{ consult_draft }}.",

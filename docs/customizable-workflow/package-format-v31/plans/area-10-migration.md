@@ -80,7 +80,8 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-014 | notice | `<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes.` (part 10's own words; used only if `sentences.json` has no row for it) |
 | A10-015 | refusal | `The package is already at specVersion <n>.` (the earlier rungs' sentence; Task 5) |
 | A10-016 | refusal | `The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.` (Task 5) |
-| A10-017 | refusal | `At specVersion <n>: <refusal>` (an earlier rung's own refusal, unchanged, naming the rung as the Editor does; D2, Task 5) |
+| A10-017 | refusal | `At specVersion <n>: <refusal>` (an earlier rung's own refusal, unchanged, naming the rung as the Editor does, or a rung's validation error when 30's catalogue is given; D2, Task 5) |
+| A10-018 | refusal | `At specVersion <n>: the rung could not read this package; fix the manifest, then migrate.` (a rung below 30 threw on the package's content; D2, Task 5) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 
