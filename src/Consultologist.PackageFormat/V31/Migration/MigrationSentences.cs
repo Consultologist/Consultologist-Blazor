@@ -18,10 +18,13 @@ internal static class MigrationSentences
         $"The condition '{expression}' uses {construct}, which has no JSON Logic form at 31: rewrite it by hand.";
 
     /// <summary>
-    /// A10-008 (part 10 § 2.3, R1): the 30 <c>!&lt;path&gt;</c> in <paramref name="file"/>'s <paramref name="member"/> on
-    /// a text, written <c>blank(&lt;path&gt;)</c> (<paramref name="path"/> as <see cref="ConversionResult.BlankConversions"/>
-    /// gives it), which also holds for empty and white-space-only text, where 30's did not.
+    /// A10-008 (part 10 § 2.3, R1): the 30 <c>!&lt;written&gt;</c> in <paramref name="file"/>'s <paramref name="member"/>
+    /// on a text, as the author wrote it, became <c>blank(&lt;printed&gt;)</c> (the 31 operand as the printer shows it:
+    /// <see cref="BlankConversion"/>), which also holds for empty and white-space-only text, where 30's did not.
     /// </summary>
-    public static string BecameBlank(string file, string member, string path) =>
-        $"{file}, {member}: '!{path}' became blank({path}); it now also holds for empty and white-space-only text.";
+    public static string BecameBlank(string file, string member, BlankConversion blank)
+    {
+        ArgumentNullException.ThrowIfNull(blank);
+        return $"{file}, {member}: '!{blank.Written}' became blank({blank.Printed}); it now also holds for empty and white-space-only text.";
+    }
 }

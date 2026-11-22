@@ -27,8 +27,9 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// </list>
 /// Anything else adds one S10-003 notice per construct (a call's arguments are walked too, so each reason is said) and
 /// gives <c>null</c>; so does a read of an input, a node, an item or a pass the scope does not hold. A read of
-/// <c>profile.*</c> is written as read, for the checker to refuse (S03-018), and so is any member of a node, an item or
-/// a pass: the checker holds it to what 31 reads there. Never throws on package text; operations nested past
+/// <c>profile.*</c> is written as read, for the checker to refuse (S03-018). A member of a node, an item or a pass that
+/// no row reads (<c>.state</c>, <c>.items</c>, <c>pass.previous</c>, …) is S10-003; a field of a value is written, for
+/// the checker to hold to the format. Never throws on package text; operations nested past
 /// <see cref="SourceBounds.JsonDepth"/> (each writes at least one JSON level; parentheses write none) are a notice,
 /// and the converter measures the written depth itself.
 /// </summary>
@@ -39,9 +40,10 @@ internal static class ConditionTree
     /// <summary>
     /// <paramref name="expression"/>, parsed from <paramref name="text"/> (the author's text, which the notices quote),
     /// as JSON Logic over <paramref name="scope"/>; <c>null</c> with a notice in <paramref name="notices"/> for each
-    /// construct § 2.2 has no row for.
+    /// construct § 2.2 has no row for. Each <c>{ "!": [x] }</c> written is added to <paramref name="nots"/>, when given,
+    /// with <c>x</c> as the author wrote it (the span of <paramref name="text"/> it was parsed from).
     /// </summary>
-    public static JsonNode? Write(ScriptExpression expression, string text, ConversionScope scope, List<string> notices)
+    public static JsonNode? Write(ScriptExpression expression, string text, ConversionScope scope, List<string> notices, IDictionary<JsonObject, string>? nots = null)
     {
         ArgumentNullException.ThrowIfNull(expression);
         ArgumentNullException.ThrowIfNull(text);
@@ -49,12 +51,23 @@ internal static class ConditionTree
         ArgumentNullException.ThrowIfNull(notices);
 
         var before = notices.Count;
-        var logic = new Writer(text, scope, notices).Rule(expression, 0);
+        var logic = new Writer(text, scope, notices, nots).Rule(expression, 0);
         return notices.Count > before ? null : logic;
     }
 
-    private sealed class Writer(string text, ConversionScope scope, List<string> notices)
+    private sealed class Writer(string text, ConversionScope scope, List<string> notices, IDictionary<JsonObject, string>? nots)
     {
+        /// <summary>The text the parser read: <c>text</c> trimmed, as the converter parses it; spans are offsets into it.</summary>
+        private readonly string parsed = text.Trim();
+
+        /// <summary><paramref name="node"/> as the author wrote it: its span of the parsed text, or Scriban's own print of it when the span does not fit.</summary>
+        private string AsWritten(ScriptNode node)
+        {
+            var start = node.Span.Start.Offset;
+            var end = node.Span.End.Offset;
+            return start >= 0 && end >= start && end < parsed.Length ? parsed[start..(end + 1)] : node.ToString() ?? "";
+        }
+
         public JsonNode? Rule(ScriptExpression? expression, int depth)
         {
             if (depth > SourceBounds.JsonDepth)
@@ -149,7 +162,13 @@ internal static class ConditionTree
             switch (unary.Operator)
             {
                 case ScriptUnaryOperator.Not:
-                    return Operation("!", new JsonArray(Rule(unary.Right, depth + 1)));
+                    var not = Operation("!", new JsonArray(Rule(unary.Right, depth + 1)));
+                    if (nots is not null && unary.Right is not null)
+                    {
+                        nots[not] = AsWritten(unary.Right);
+                    }
+
+                    return not;
                 case ScriptUnaryOperator.Negate when unary.Right is ScriptLiteral { Value: not (null or string or bool) } literal:
                     // -1 is the number -1, as Scriban reads it.
                     return Literal(literal.Value, negate: true);
@@ -304,16 +323,27 @@ internal static class ConditionTree
                         return NotInScope("item");
                     }
 
-                    return steps[0] == "value" && scope.Item is { } element
-                        ? Sized("item", element, steps, written)
-                        : Var(written);
+                    // § 2.2 reads item.id and item.value.y (and a snippet folder's item.content); any other member is
+                    // 31's own (item.parent…), with no 30 counterpart.
+                    if (steps is ["id"] or ["content"])
+                    {
+                        return Var(written);
+                    }
+
+                    if (steps[0] != "value")
+                    {
+                        return Refuse($"the read {written}");
+                    }
+
+                    return scope.Item is { } element ? Sized("item", element, steps, written) : Var(written);
                 case "pass":
                     if (!scope.InWhile)
                     {
                         return NotInScope("pass");
                     }
 
-                    return steps.Count == 0 ? Refuse("pass read bare") : Var(written);
+                    // § 2.2 reads pass.number; pass.previous…, pass.node.… and pass.history are 31's own.
+                    return steps is ["number"] ? Var(written) : Refuse(steps.Count == 0 ? "pass read bare" : $"the read {written}");
                 case "run":
                     return steps is [var fact] && JsonLogicOperations.RunFacts.Contains(fact, StringComparer.Ordinal)
                         ? Var(written)
@@ -379,7 +409,9 @@ internal static class ConditionTree
                 return Refuse($"{written} on a value that is not a list");
             }
 
-            return members.Count == 0 ? Refuse($"the read {written}") : Var(string.Join('.', [node.Path, .. members]));
+            // § 2.2 reads node.x.value… and node.x.content; .state, .items, .stopped and the rest are 31's own members,
+            // with no 30 counterpart.
+            return members is ["content"] ? Var(string.Join('.', [node.Path, .. members])) : Refuse($"the read {written}");
         }
 
         /// <summary>

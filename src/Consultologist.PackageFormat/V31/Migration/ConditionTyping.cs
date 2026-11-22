@@ -12,35 +12,38 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <item>A condition is checked at a site of kind <see cref="ExpressionSiteKind.NodeIf"/>, so it yields a boolean
 /// (S03-025); a value (a <c>let</c>, a <c>case</c> subject) at an <see cref="ExpressionSiteKind.Expression"/> site,
 /// held to its declared format when it has one (S03-026, D25).</item>
-/// <item>The site's <c>&lt;site&gt;</c> is <c>The condition '&lt;expression&gt;'</c>, as S10-003 names the expression; its
-/// member is <c>if</c> for a condition and <c>expression</c> for a value. A refusal is the checker's sentence,
-/// unchanged.</item>
+/// <item>The site's <c>&lt;site&gt;</c> is <c>The condition '&lt;expression&gt;'</c>, as S10-003 names the expression, or
+/// <c>Computed node '&lt;expression&gt;'</c> for a value with a declared format (a <c>let</c>, a computed node at 31, whose
+/// rows name one); its member is <c>if</c> for a condition and <c>expression</c> for a value. A refusal is the checker's
+/// sentence, unchanged.</item>
 /// </list>
 /// Never throws on package text.
 /// </summary>
 internal static class ConditionTyping
 {
-    /// <summary>What typing found: the rule (with <c>blank</c> written for <c>!</c> on text), the check, and the <c>!x</c> operands that became <c>blank</c>.</summary>
-    public sealed record Typed(JsonNode? Logic, ExpressionCheck Check, IReadOnlyList<string> BlankConversions);
+    /// <summary>What typing found: the rule (with <c>blank</c> written for <c>!</c> on text), the check, and the <c>!x</c>s that became <c>blank</c>.</summary>
+    public sealed record Typed(JsonNode? Logic, ExpressionCheck Check, IReadOnlyList<BlankConversion> Blanks);
 
     /// <summary>
     /// <paramref name="logic"/> (the tree's, owned by the caller and rewritten in place) typed at the site
-    /// <paramref name="kind"/> gives, for the expression <paramref name="text"/> as written.
+    /// <paramref name="kind"/> gives, for the expression <paramref name="text"/> as written; <paramref name="nots"/> holds
+    /// each written <c>!</c>'s operand as the author wrote it (the tree's).
     /// </summary>
-    public static Typed Type(JsonNode? logic, string text, ConversionScope conversion, ConversionKind kind, JsonNode? declared)
+    public static Typed Type(JsonNode? logic, string text, ConversionScope conversion, ConversionKind kind, JsonNode? declared, IReadOnlyDictionary<JsonObject, string> nots)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(conversion);
 
         var scope = new Scope(conversion);
-        var subject = $"The condition '{text}'";
+        // A let is a computed node at 31 (part 02 § 11), whose sentences name one (S03-026 to S03-028, A04-009).
+        var subject = kind == ConversionKind.Value && declared is not null ? $"Computed node '{text}'" : $"The condition '{text}'";
         var operand = new ExpressionSite(ExpressionSiteKind.Expression, subject, "expression", "", null, null);
         var site = kind == ConversionKind.Condition
             ? new ExpressionSite(ExpressionSiteKind.NodeIf, subject, "if", "", null, null)
             : new ExpressionSite(ExpressionSiteKind.Expression, subject, "expression", "", null, declared);
 
-        var blanks = new List<string>();
-        logic = Blank(logic, operand, scope, conversion.Formats, blanks);
+        var blanks = new List<BlankConversion>();
+        logic = Blank(logic, operand, scope, conversion.Formats, nots, blanks);
         return new Typed(logic, ExpressionChecker.Check(logic, site, scope, conversion.Formats), blanks);
     }
 
@@ -58,9 +61,10 @@ internal static class ConditionTyping
 
     /// <summary>
     /// <paramref name="node"/> with every <c>{ "!": [x] }</c> whose <c>x</c> is of a text format written
-    /// <c>{ "blank": [x] }</c>, innermost first; each such <c>x</c>, printed, is added to <paramref name="blanks"/>.
+    /// <c>{ "blank": [x] }</c>, innermost first; each is added to <paramref name="blanks"/>, with <c>x</c> as written at 30
+    /// (from <paramref name="nots"/>; its printed form when the tree did not say), printed at 31, and its reads.
     /// </summary>
-    private static JsonNode? Blank(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, List<string> blanks)
+    private static JsonNode? Blank(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, IReadOnlyDictionary<JsonObject, string> nots, List<BlankConversion> blanks)
     {
         switch (node)
         {
@@ -68,7 +72,7 @@ internal static class ConditionTyping
                 for (var i = 0; i < array.Count; i++)
                 {
                     var element = array[i];
-                    var rewritten = Blank(element, operand, scope, formats, blanks);
+                    var rewritten = Blank(element, operand, scope, formats, nots, blanks);
                     if (!ReferenceEquals(element, rewritten))
                     {
                         array[i] = rewritten;
@@ -88,7 +92,7 @@ internal static class ConditionTyping
                     foreach (var field in fields.Select(f => f.Key).ToList())
                     {
                         var value = fields[field];
-                        var rewritten = Blank(value, operand, scope, formats, blanks);
+                        var rewritten = Blank(value, operand, scope, formats, nots, blanks);
                         if (!ReferenceEquals(value, rewritten))
                         {
                             fields[field] = rewritten;
@@ -98,14 +102,15 @@ internal static class ConditionTyping
                     return obj;
                 }
 
-                Blank(operands, operand, scope, formats, blanks);
+                Blank(operands, operand, scope, formats, nots, blanks);
                 if (name == "!" && operands is JsonArray { Count: 1 } not
                     && ExpressionChecker.Check(not[0], operand, scope, formats) is { Refusals.Count: 0, Type.Format: { } format }
                     && FormatTypes.Shape(format, formats) == FormatShape.Text)
                 {
                     var x = not[0];
                     not.RemoveAt(0);
-                    blanks.Add(JsonLogicPrinter.Print(x));
+                    var printed = JsonLogicPrinter.Print(x);
+                    blanks.Add(new BlankConversion(nots.GetValueOrDefault(obj, printed), printed, JsonLogicShape.Paths(x)));
                     return new JsonObject { ["blank"] = new JsonArray(x) };
                 }
 
@@ -119,8 +124,9 @@ internal static class ConditionTyping
     /// #1507 (part 10 § 2.1): who a converted rule reads, at 31, as <see cref="IExpressionScope"/> heads:
     /// <list type="bullet">
     /// <item><c>input.&lt;id&gt;</c>, each input of the scope, read through <c>.value</c>, <c>.content</c> or
-    /// <c>.title</c> of its format;</item>
-    /// <item>each node at its <see cref="ConversionRead.Path"/> (the longest that starts the path), read the same way;</item>
+    /// <c>.title</c> of its format, nullable unless it is in <see cref="ConversionScope.RequiredInputs"/>;</item>
+    /// <item>each node at its <see cref="ConversionRead.Path"/> (the longest that starts the path), read the same way,
+    /// nullable unless it is <see cref="ConversionRead.AlwaysValued"/>;</item>
     /// <item><c>item.id</c> a <c>string</c> inside a loop; <c>item.value</c> the loop's element when the scope has one;
     /// <c>item.content</c> a snippet folder item's <c>markdown_block</c> (as area 05's <c>ScopeTree</c> has them);</item>
     /// <item><c>pass.number</c> an integer inside a <c>while</c>; <c>run.&lt;fact&gt;</c> as <see cref="PackageScope"/> types it.</item>
@@ -143,7 +149,8 @@ internal static class ConditionTyping
             switch (segments[0])
             {
                 case "input" when second is not null && conversion.Inputs.TryGetValue(second, out var format):
-                    return new ScopeHead(ScopeHeadKind.Format, 2, format, false, null);
+                    // An input not required reads null when it is not supplied (part 03 § 6.1), as PackageScope types it.
+                    return new ScopeHead(ScopeHeadKind.Format, 2, format, !conversion.RequiredInputs.Contains(second), null);
                 case "item" when conversion.Item is not null || conversion.ItemIsFolderItem:
                     return second switch
                     {
@@ -174,7 +181,8 @@ internal static class ConditionTyping
                 if (path.Length <= segments.Count && (found is null || path.Length > found.Length)
                     && path.Select((s, i) => string.Equals(s, segments[i], StringComparison.Ordinal)).All(same => same))
                 {
-                    found = new ScopeHead(ScopeHeadKind.Format, path.Length, read.Format, false, null);
+                    // A node that may not have completed reads null (part 03 § 6.1), as ScopeTree types it.
+                    found = new ScopeHead(ScopeHeadKind.Format, path.Length, read.Format, !read.AlwaysValued, null);
                 }
             }
 

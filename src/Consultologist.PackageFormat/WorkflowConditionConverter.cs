@@ -47,20 +47,21 @@ public static class WorkflowConditionConverter
         }
 
         var notices = new List<string>();
-        var logic = ConditionTree.Write(parsed, expression, scope, notices);
+        var written = new Dictionary<JsonObject, string>(ReferenceEqualityComparer.Instance);
+        var logic = ConditionTree.Write(parsed, expression, scope, notices, written);
         if (notices.Count > 0)
         {
             return new ConversionResult(null, null, [], notices) { NoticeIds = [.. notices.Select(_ => NoJsonLogicFormId)] };
         }
 
         // The rule sits in a header member: the header object is one level of the file (S01-041).
-        if (Depth(logic, SourceBounds.JsonDepth) + 1 > SourceBounds.JsonDepth)
+        if (ExpressionSentences.Depth(logic) + 1 > SourceBounds.JsonDepth)
         {
             return Refused(MigrationSentences.NoJsonLogicForm(
                 expression, $"nesting deeper than {SourceBounds.JsonDepth.ToString(CultureInfo.InvariantCulture)} levels"));
         }
 
-        var typed = ConditionTyping.Type(logic, expression, scope, kind, declared);
+        var typed = ConditionTyping.Type(logic, expression, scope, kind, declared, written);
         if (typed.Check.Refusals.Count > 0)
         {
             return new ConversionResult(null, null, [], [.. typed.Check.Refusals.Select(r => r.Sentence)])
@@ -71,7 +72,8 @@ public static class WorkflowConditionConverter
 
         return new ConversionResult(typed.Logic, ConditionTyping.Print(typed.Check.Type, scope.Formats), typed.Check.Reads, [])
         {
-            BlankConversions = typed.BlankConversions,
+            BlankConversions = [.. typed.Blanks.SelectMany(b => b.Reads).Distinct(StringComparer.Ordinal)],
+            Blanks = typed.Blanks,
         };
     }
 
@@ -114,23 +116,6 @@ public static class WorkflowConditionConverter
         return false;
     }
 
-    /// <summary>How many container levels <paramref name="node"/> holds, itself included, counted no further than one past <paramref name="bound"/>.</summary>
-    private static int Depth(JsonNode? node, int bound)
-    {
-        if (bound < 0 || node is not JsonObject and not JsonArray)
-        {
-            return 0;
-        }
-
-        var deepest = 0;
-        var children = node is JsonObject obj ? obj.Select(p => p.Value) : (JsonArray)node;
-        foreach (var child in children)
-        {
-            deepest = Math.Max(deepest, Depth(child, bound - 1));
-        }
-
-        return deepest + 1;
-    }
 }
 
 /// <summary>
@@ -143,14 +128,26 @@ public static class WorkflowConditionConverter
 public sealed record ConversionResult(JsonNode? Logic, string? ResultFormat, IReadOnlyList<string> Reads, IReadOnlyList<string> Notices)
 {
     /// <summary>
-    /// #1507 (§ 2.3, R1): each operand of a 30 <c>!x</c> on text that became <c>blank(x)</c>, as the printer shows it
-    /// (<c>input.reason.content</c>), in written order: the conversions the migration lists (A10-008).
+    /// #1507 (§ 2.3, R1): the 31 paths read by the operands of the 30 <c>!x</c>s on text that became <c>blank(x)</c>
+    /// (<c>input.reason.content</c>), each once, in written order: the reads whose empty or white-space-only value
+    /// makes 31's answer differ from 30's.
     /// </summary>
     public IReadOnlyList<string> BlankConversions { get; init; } = [];
+
+    /// <summary>#1507 (§ 2.3, R1): each <c>!x</c> on text that became <c>blank(x)</c>, in written order: what the migration lists (A10-008).</summary>
+    public IReadOnlyList<BlankConversion> Blanks { get; init; } = [];
 
     /// <summary>The id of each notice's sentence, in the order of <see cref="Notices"/>: <c>S10-003</c>, or the 31 checker's own (<c>S03-008</c>, …).</summary>
     public IReadOnlyList<string> NoticeIds { get; init; } = [];
 }
+
+/// <summary>
+/// #1507 (§ 2.3, R1): one 30 <c>!x</c> on text written <c>blank(x)</c>: <paramref name="Written"/> is <c>x</c> as the
+/// author wrote it at 30 (<c>input.reason</c>, package text), <paramref name="Printed"/> the 31 operand as the printer
+/// shows it (<c>input.reason.content</c>, <c>trim(input.reason.content)</c>), and <paramref name="Reads"/> the 31 paths it
+/// reads. A10-008 says <c>'!&lt;Written&gt;' became blank(&lt;Printed&gt;)</c>.
+/// </summary>
+public sealed record BlankConversion(string Written, string Printed, IReadOnlyList<string> Reads);
 
 /// <summary>#1507 (part 10 § 2.1): what a converted expression is at 31.</summary>
 public enum ConversionKind
@@ -166,7 +163,9 @@ public enum ConversionKind
 /// #1507 (part 10 § 2.1): what an expression can read at its place, at 31: each input's 31 format (a name or a
 /// schema), each 30 node in scope and where 31 reads it, the loop element's format (<c>null</c> outside a loop),
 /// whether the item is a snippet folder's (<c>item.id</c> and <c>item.content</c>), whether <c>pass.number</c> is
-/// readable (inside a <c>while</c>), and the package's formats.
+/// readable (inside a <c>while</c>), and the package's formats. <see cref="RequiredInputs"/> names the inputs whose
+/// <c>required</c> is <c>true</c>; every other input reads as nullable, as 31's own scope reads it (an unsupplied
+/// optional input reads <c>null</c>, part 03 § 6.1).
 /// </summary>
 public sealed record ConversionScope(
     IReadOnlyDictionary<string, JsonNode> Inputs,
@@ -174,7 +173,20 @@ public sealed record ConversionScope(
     JsonNode? Item,
     bool ItemIsFolderItem,
     bool InWhile,
-    V31.FormatSet Formats);
+    V31.FormatSet Formats)
+{
+    /// <summary>The ids of the inputs that are required; none by default, so every input is typed nullable unless named here.</summary>
+    public IReadOnlySet<string> RequiredInputs { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
 
-/// <summary>#1507 (part 10 § 2.1): where 31 reads a 30 node (its rooted key: <c>node.sections.outline</c>, <c>check.coverage</c>) and its 31 format.</summary>
-public sealed record ConversionRead(string Path, JsonNode Format);
+/// <summary>
+/// #1507 (part 10 § 2.1): where 31 reads a 30 node (its rooted key: <c>node.sections.outline</c>, <c>check.coverage</c>)
+/// and its 31 format. <see cref="AlwaysValued"/> is set when the node has a value wherever the expression is judged
+/// (it always completes before it: area 05's <c>AlwaysValued</c>); otherwise its reads are nullable (a node that did not
+/// complete reads <c>null</c>, part 03 § 6.1).
+/// </summary>
+public sealed record ConversionRead(string Path, JsonNode Format)
+{
+    /// <summary>Whether the node always has a value here; false by default, so its reads are typed nullable.</summary>
+    public bool AlwaysValued { get; init; }
+}
