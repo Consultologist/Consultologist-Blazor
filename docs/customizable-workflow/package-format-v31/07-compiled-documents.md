@@ -227,6 +227,10 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 way, with `body`, `bodyHash`, `reads`, `runDependent`, `modelDerived`, `renders` and `runSpots`. A
 deliverable's `reads` are its sources: the retired `sources` member is derived from them
 ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)).
+ Each `deliverables` entry also carries `delivery` and `bundle`, as its delivery folder's `index.json` writes
+them ([part 06 § 8](06-checks-deliverables-profile.md)): `delivery` an array of `email`, `pdf`, `emr` and `zip`, `bundle` `"zip"` or `null`, and `[]` and
+`null` when the folder writes none. They are on the entry because the engine loads only `resolve.json`
+(§ 1); the schema requires both ([#1505](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)).
 
 ### 2.6 `sourceHash`
 

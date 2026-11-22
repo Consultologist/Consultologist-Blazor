@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
+using Corvus.Text.Json.Validator;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
 namespace Consultologist.Api.Tests.V31Resolve;
@@ -128,6 +129,51 @@ public class ResolveCompilerTests
                 Assert.True(entry.ContainsKey(member), $"{key} has no {member}");
             Assert.Equal(key.Split('.')[^1], (string?)entry["id"]);
         }
+    }
+
+    /// <summary>R4 (#1505): part 07 § 2.5 names <c>delivery</c> and <c>bundle</c>, and the pinned schema's deliverable entry requires them.</summary>
+    [Theory]
+    [MemberData(nameof(Packages))]
+    public void ADeliverableEntry_FitsThePublishedSchema_WithItsDeliveryAndBundle(string name)
+    {
+        var deliverable = DeliverableSchema();
+        var document = Compile(Package(name)).Document!;
+        var entries = document["deliverables"]!.AsObject();
+        Assert.NotEmpty(entries);
+        foreach (var (key, entry) in entries)
+        {
+            Assert.True(deliverable.Validate(entry!.ToJsonString(), null), $"{key} does not fit the deliverable definition.");
+            var delivery = entry!["delivery"]!.AsArray();
+            Assert.All(delivery, kind => Assert.Contains((string?)kind, new[] { "email", "pdf", "emr", "zip" }));
+            Assert.True(entry["bundle"] is null || (string?)entry["bundle"] == "zip");
+
+            foreach (var member in new[] { "delivery", "bundle" })
+            {
+                var without = entry.DeepClone().AsObject();
+                without.Remove(member);
+                Assert.False(deliverable.Validate(without.ToJsonString(), null), $"{key} without {member} still fits the deliverable definition.");
+            }
+        }
+    }
+
+    /// <summary>The pinned <c>resolve.schema.json</c>'s <c>deliverable</c> definition, with the schemas it refers to.</summary>
+    private static JsonSchema DeliverableSchema()
+    {
+        List<AdditionalSchemaFile> files =
+        [
+            new("urn:consultologist:spec:31:schema:common", V31Contract.Path("schemas", "common.schema.json")),
+            new("urn:consultologist:spec:31:dialect", V31Contract.Path("dialect.schema.json")),
+            new("urn:consultologist:spec:31:schema:resolve", V31Contract.Path("schemas", "resolve.schema.json")),
+        ];
+        var options = new JsonSchema.Options(
+            additionalSchemaFiles: files,
+            allowFileSystemAndHttpResolution: false,
+            defaultDialect: Corvus.Text.Json.RuntimeEvaluator.JsonSchemaDialect.Draft202012,
+            alwaysAssertFormat: false,
+            additionalDocumentResolver: null);
+        return JsonSchema.FromText(
+            "{ \"$ref\": \"urn:consultologist:spec:31:schema:resolve#/$defs/deliverable\" }",
+            "urn:consultologist:spec:31:schema:deliverable-entry", options, false);
     }
 
     [Fact]
