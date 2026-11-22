@@ -1,0 +1,3 @@
+- Malignant neoplasm of breast (disorder) - 254837009
+- Diabetes mellitus (disorder) - 73211009 [not active SNOMED concept]
+- Family support strong [not SNOMED concept]

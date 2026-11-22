@@ -1,5 +1,7 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
@@ -180,7 +182,7 @@ public class ResolveCompilerTests
         Assert.Equal("{\"blank\":\"^1.0.0\",\"size\":\"^1.0.0\"}", Canonical(requires["operations"]));
         Assert.Equal(["agent", "computed", "for", "while"], Strings(requires["kinds"]));
         Assert.Equal(["parallel"], Strings(requires["features"]));
-        Assert.Equal("{\"custom-json\":\"1\",\"test-json\":\"48\"}", Canonical(requires["agents"]));
+        Assert.Equal("{\"custom-json\":1,\"test-json\":48}", Canonical(requires["agents"]));
         Assert.Equal("{\"profile\":[]}", Canonical(document["needs"]));
 
         Assert.Equal(
@@ -207,8 +209,8 @@ public class ResolveCompilerTests
             "{\"body\":\"You are planning the sections of a consultation note.\\n\\n{{ input.consult_draft.content }}\\n\","
             + $"\"bodyHash\":\"{CanonicalJson.HashText("You are planning the sections of a consultation note.\n\n{{ input.consult_draft.content }}\n")}\","
             + "\"format\":{\"$ref\":\"#/$defs/section_plan\"},\"id\":\"plan\",\"if\":null,\"kind\":\"agent\","
-            + "\"label\":\"Planning the sections\",\"modelDerived\":true,\"onInvalid\":\"fail\",\"parent\":null,\"parts\":{},"
-            + "\"places\":[],\"plainConverts\":{},\"producer\":\"generated\",\"profileCarrying\":false,\"reads\":[\"input.consult_draft.content\"],"
+            + "\"label\":\"Planning the sections\",\"modelDerived\":true,\"names\":{},\"onInvalid\":\"fail\",\"parent\":null,\"parts\":{},"
+            + "\"placements\":[],\"places\":[],\"plainConverts\":{},\"producer\":\"generated\",\"profileCarrying\":false,\"reads\":[\"input.consult_draft.content\"],"
             + "\"renders\":[],\"reproducible\":false,\"runDependent\":false,\"runSpots\":[]}",
             Canonical(Without(plan, "formatHash", "typeHash", "description", "failIfEmpty", "ordered")));
         Assert.Equal((string?)document["formatHashes"]!["section_plan"], (string?)plan["formatHash"]);
@@ -326,7 +328,7 @@ public class ResolveCompilerTests
     [Fact]
     public void Functions_AreSealedMaps()
     {
-        var document = Compile(ResolveFixture.Functions(), ResolveFixture.FunctionsReads()).Document!;
+        var document = Compile(ResolveFixture.Functions()).Document!;
 
         Assert.Equal(["draft_section"], Keys(document["functions"]));
         var function = document["functions"]!["draft_section"]!.AsObject();
@@ -428,7 +430,9 @@ public class ResolveCompilerTests
                 + "\"branches\": [{ \"when\": [\"good\"], \"nodes\": [\"keep\"], \"ret\": \"node.refine.route.keep\" }], "
                 + "\"else\": { \"nodes\": [\"redo\"], \"ret\": \"node.refine.route.redo\" }")))
             .With("nodes/refine/route/keep.md", Agent("Keeping the summary", "\"plaintext\"", "Keep the summary for Dr A. Sample.\n"))
-            .With("nodes/refine/route/redo.md", Agent("Redoing the summary", "\"plaintext\"", "Redo the summary for Dr A. Sample.\n"));
+            .With("nodes/refine/route/redo.md", Agent("Redoing the summary", "\"plaintext\"", "Redo the summary for Dr A. Sample.\n"))
+            .With("nodes/refine/draft_summary.md", Agent("Drafting the summary", "\"plaintext\"",
+                "Summarise the note in two sentences for Dr A. Sample.\n\n{{ pass.previous.node.route.content }}\n"));
         var routed = Compile(keyed).Document!["nodes"]!["node.refine.route"]!;
         Assert.Equal("node.refine.judge.value.verdict", (string?)routed["case"]);
         Assert.Equal("{\"nodes\":[\"node.refine.route.redo\"],\"ret\":\"node.refine.route.redo\"}", Canonical(routed["else"]));
@@ -482,7 +486,7 @@ public class ResolveCompilerTests
         Assert.Equal(["agent"], Strings(minimal["kinds"]));
         Assert.Equal("{}", Canonical(minimal["operations"]));
         Assert.Equal("[]", Canonical(minimal["features"]));
-        Assert.Equal("{\"test-json\":\"48\"}", Canonical(minimal["agents"]));
+        Assert.Equal("{\"test-json\":48}", Canonical(minimal["agents"]));
 
         var functions = Compile(ResolveFixture.Functions()).Document!["requires"]!;
         Assert.Equal(["agent", "computed", "for", "call"], Strings(functions["kinds"]));
@@ -504,10 +508,66 @@ public class ResolveCompilerTests
     }
 
     [Fact]
+    public void RequiresAgents_AreIntegerVersions()
+    {
+        // #1504 ruling 4 (R6): requires.agents maps an agent's name to its version as a number, as bindings carries it.
+        var files = TemplateFixture.Package()
+            .WithAgent("classify", "Does the plan for Margaret Okafor need a follow-up?\n\n{{ node.plan.content }}\n", "\"judgement\"");
+        var agents = Compile(files).Document!["requires"]!["agents"]!;
+
+        Assert.Equal(JsonValueKind.Number, agents["judgement"]!.GetValueKind());
+        Assert.Equal(1, (int)agents["judgement"]!);
+        Assert.Equal("{\"custom-json\":1,\"judgement\":1}", Canonical(agents));
+    }
+
+    [Fact]
+    public void TwoVersionsOfOneAgent_AreRefusedAtPublish()
+    {
+        // #1504 ruling 4 (R6): one version per agent. The published catalogue binds each agent at one version, so a
+        // deployment's catalogue that binds classification to judgement 2 is what makes two.
+        var published = ResolveFixture.Published();
+        var bindings = published.Bindings.DeepClone().AsObject();
+        bindings["formats"]!["classification"]!["generated"] = new JsonObject { ["agentName"] = "judgement", ["agentVersion"] = 2 };
+        var agents = published.Agents.DeepClone().AsObject();
+        agents["agents"]!["judgement"]!["2"] = agents["agents"]!["judgement"]!["1"]!.DeepClone();
+        var registry = published with { Bindings = bindings, Agents = agents };
+
+        var files = TemplateFixture.Package()
+            .WithAgent("classify", "Does the plan for Margaret Okafor need a follow-up?\n\n{{ node.plan.content }}\n", "\"judgement\"")
+            .WithAgent("sort", "Which clinic should see Margaret Okafor?\n\n{{ node.plan.content }}\n", "\"classification\"");
+        var check = SourceCheck.Run(files, registry);
+
+        var refusal = Assert.Single(check.Refusals);
+        V31Contract.AssertSentence(refusal);
+        Assert.Equal("A07-014", refusal.Id);
+        Assert.Equal(
+            "Nodes 'classify' and 'sort' bind agent 'judgement' at versions 1 and 2; a package binds one version of an agent.",
+            refusal.Sentence);
+        Assert.Equal("nodes/sort.md", refusal.Path);
+
+        // Both at one version is one agent, as the published catalogue binds them.
+        Assert.Empty(SourceCheck.Run(files, published).Refusals);
+    }
+
+    [Fact]
+    public void ANullTitle_CompilesToThePackagesName()
+    {
+        // #1504 ruling 5 (R7): the package's name, not name@version.
+        var files = Minimal().WithJson("manifest.json", m => m["title"] = null);
+        var document = Compile(files).Document!;
+
+        Assert.Equal((string?)document["package"]!["name"], (string?)document["title"]);
+        Assert.DoesNotContain("@", (string)document["title"]!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Requires_TakesPartsAndTheSeamsFeatures()
     {
-        var files = Minimal().WithJson("nodes/plan.md", h =>
-            h["parts"] = JsonNode.Parse("{ \"closing\": { \"if\": { \"!\": [{ \"blank\": [{ \"var\": \"input.consult_draft.content\" }] }] }, \"text\": [\"Close politely.\"] } }"));
+        var files = Minimal()
+            .With("nodes/plan.md", Agent("Planning the sections", "\"plaintext\"",
+                "Plan the sections of a consultation note for the draft below.\n\n{{ input.consult_draft.content }}\n{{~ part.closing }}\n"))
+            .WithJson("nodes/plan.md", h =>
+                h["parts"] = JsonNode.Parse("{ \"closing\": { \"if\": { \"!\": [{ \"blank\": [{ \"var\": \"input.consult_draft.content\" }] }] }, \"text\": [\"Close politely.\"] } }"));
         var document = Compile(files).Document!;
         Assert.Equal(["parts"], Strings(document["requires"]!["features"]));
         Assert.Equal(["closing"], Keys(document["nodes"]!["node.plan"]!["parts"]));
@@ -520,7 +580,8 @@ public class ResolveCompilerTests
         var withSeam = ResolveCompiler.Compile(SourceCheck.Run(Minimal(), ResolveFixture.Published(), seam), ResolveFixture.Published(), Scriban);
         Assert.Equal(["macro-markers", "run-spots"], Strings(withSeam.Document!["requires"]!["features"]));
         Assert.Equal(["macro.sig"], Strings(withSeam.Document["nodes"]!["node.plan"]!["places"]));
-        Assert.Equal("[{\"at\":\"3:1\",\"reads\":\"run.date\",\"site\":1}]", Canonical(withSeam.Document["nodes"]!["node.plan"]!["runSpots"]));
+        Assert.Equal("[{\"at\":\"3:1\",\"neutral\":\"marker\",\"reads\":\"run.date\",\"site\":1,\"unit\":null}]",
+            Canonical(withSeam.Document["nodes"]!["node.plan"]!["runSpots"]));
     }
 
     // ---- Determinism ---------------------------------------------------------------------------
@@ -594,7 +655,8 @@ public class ResolveCompilerTests
     [Fact]
     public void WithoutTheSeam_IsNotComplete()
     {
-        var without = Compile(ResolveFixture.NestedNote());
+        // #1504 (area 07, D18): the dialect is the seam unless a caller passes one; one that knows no body is none.
+        var without = Compile(ResolveFixture.NestedNote(), new StubTemplates(new Dictionary<string, string[]>(), everyBody: false));
         Assert.False(without.Complete);
         Assert.NotNull(without.Canonical);
         var plan = without.Document!["nodes"]!["node.plan"]!;

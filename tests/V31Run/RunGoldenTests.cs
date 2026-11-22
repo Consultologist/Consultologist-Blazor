@@ -1,5 +1,9 @@
 using System.Text;
+using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Source;
+using Consultologist.Api.Tests.V31Templates;
+using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 
 namespace Consultologist.Api.Tests.V31Run;
@@ -10,7 +14,9 @@ namespace Consultologist.Api.Tests.V31Run;
 /// (<see cref="RunFixture.StubReply"/>) answered at once, gives exactly <c>Golden/&lt;name&gt;.run.txt</c>
 /// (<see cref="RunTrace"/>); with <c>GOLDEN_UPDATE_V31=1</c> the test rewrites it instead, to be read before it is committed.
 /// And a run does not depend on the order its replies come back in: what it settles is the same, and every dispatch is in
-/// the fixed order among the calls waiting then (<see cref="DispatchOracle"/>).
+/// the fixed order among the calls waiting then (<see cref="DispatchOracle"/>). #1504 (area 07): <c>macros.run.txt</c> is a
+/// run on <see cref="ComposingRunHost"/> of a package with a classifier, a folder macro, a part and a run spot, its rows'
+/// details pinned too.
 /// </summary>
 public class RunGoldenTests
 {
@@ -39,9 +45,61 @@ public class RunGoldenTests
             Assert.Equal(1, call.Attempt);
         }
 
-        var text = RunTrace.Of(run.Host, run.Recorder, run.Result);
-        var path = Path.Combine(GoldenFolder(), $"{name}.run.txt");
+        AssertGolden(name, RunTrace.Of(run.Host, run.Recorder, run.Result));
+    }
 
+    [Fact]
+    public void TheGoldenFolder_HoldsARunPerCompiledGolden()
+    {
+        Assert.Equal(
+            CompiledGoldenTests.Cases().Select(c => $"{c.Name}.run.txt").Append("macros.run.txt").Order(StringComparer.Ordinal),
+            Directory.GetFiles(GoldenFolder(), "*.run.txt").Select(f => Path.GetFileName(f)!).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// #1504 (area 07): the package of <c>macros.run.txt</c>. The classifier <c>classify</c> (a <c>judgement</c> on the
+    /// plan); the run-dependent rendered node <c>stamp</c>, a run spot on <c>run.date</c>; and the agent <c>draft</c>,
+    /// reading <c>stamp</c> (a <c>text</c> spot) and placing the part <c>close</c> (decided on the classifier's reason),
+    /// whose text places the macro <c>hpi</c> of the folder <c>section_notes</c> (the folder decided on the reason's words,
+    /// the macro on the answer); the deliverable reads the draft. Fictional (Margaret Okafor, Dr A. Sample).
+    /// </summary>
+    internal static Dictionary<string, byte[]> Macros() =>
+        TemplateFixture.Package()
+            .WithAgent("classify", "Does the plan for Margaret Okafor need a closing history line?\n\n{{ node.plan.content }}\n", "\"judgement\"")
+            .WithRendered("stamp", "Seen {{ run.date | date.to_string \"%d %B %Y\" }}\n").RunDependent("nodes/stamp.md")
+            .Listed("macros/index.json", "section_notes")
+            .With("macros/section_notes/index.json", SourceFixture.Index(["hpi"], extra: $", \"if\": {PlacementDecisionsTests.FolderIf}"))
+            .With("macros/section_notes/hpi.md", SourceFixture.Md(
+                $"{{ \"label\": \"History\", \"description\": null, \"if\": {PlacementDecisionsTests.MacroIf}, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place the history's closing line alone, after the narrative:\", \"{{~ macro.section_notes.hpi.content }}\"] }",
+                "History taken from Margaret Okafor and her daughter; reviewed by Dr A. Sample.\n"))
+            .WithAgent("draft", "Draft the history for Margaret Okafor.\n{{ node.stamp.content }}\n{{~ part.close }}\n").RunDependent("nodes/draft.md")
+            .WithJson("nodes/draft.md", h => h["parts"] = JsonNode.Parse(
+                $"{{ \"close\": {{ \"if\": {PlacementDecisionsTests.PartIf}, \"text\": [\"Close the history.\", \"{{{{~ macro.section_notes.hpi }}}}\"] }} }}"))
+            .WithDeliverable("{{ node.draft.content }}\n");
+
+    [Fact]
+    public async Task TheMacrosRun_IsWhatTheRunnerGives()
+    {
+        // The classifier says yes; every text agent writes the markers its prompt offers (ComposingRunHost.EchoMarkers).
+        var plan = RunFixture.Plan(Macros());
+        var host = new ComposingRunHost(plan, (call, prompt) =>
+            call.EntryKey == "node.plan" ? PlacementDecisionsTests.Sections
+            : prompt.TextReply ? ComposingRunHost.EchoMarkers(call, prompt)
+            : ComposingRunHost.Judgement(true));
+        var recorder = new ListRecorder(() => host.Calls.Count);
+        var inputs = RunFixture.GoldenInputs() with { RunFacts = new JsonObject { ["date"] = "2026-11-21" } };
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(inputs, FakeRunHost.Start);
+        Assert.True(result.State == RunState.Completed, $"{result.State}: {result.FailedKey} {result.Sentence}");
+        Assert.Contains("History taken from Margaret Okafor", SourceLayout.Text(result.Values["node.draft"]?["content"]), StringComparison.Ordinal);
+
+        AssertGolden("macros", RunTrace.Of(host.Dispatched, recorder, result));
+    }
+
+    /// <summary><paramref name="text"/> is <c>Golden/&lt;name&gt;.run.txt</c> to the byte; with <c>GOLDEN_UPDATE_V31=1</c> it is written there first.</summary>
+    private static void AssertGolden(string name, string text)
+    {
+        var path = Path.Combine(GoldenFolder(), $"{name}.run.txt");
         if (Environment.GetEnvironmentVariable("GOLDEN_UPDATE_V31") == "1")
         {
             Directory.CreateDirectory(GoldenFolder());
@@ -52,14 +110,6 @@ public class RunGoldenTests
         var bytes = File.ReadAllBytes(path);
         Assert.True(bytes.AsSpan().SequenceEqual(Utf8NoBom.GetBytes(text)), $"{name}.run.txt is not what the runner gives.");
         Assert.DoesNotContain((byte)'\r', bytes);
-    }
-
-    [Fact]
-    public void TheGoldenFolder_HoldsARunPerCompiledGolden()
-    {
-        Assert.Equal(
-            CompiledGoldenTests.Cases().Select(c => $"{c.Name}.run.txt").Order(StringComparer.Ordinal),
-            Directory.GetFiles(GoldenFolder(), "*.run.txt").Select(f => Path.GetFileName(f)!).Order(StringComparer.Ordinal));
     }
 
     [Theory]

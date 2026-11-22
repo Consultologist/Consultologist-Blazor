@@ -1,0 +1,13 @@
+{
+  "concepts": [
+    {
+      "term": "*Bold* _term_ `code` [link](x) # | <b>",
+      "type": "dis*order*",
+      "id": "123",
+      "isSnomedConcept": true,
+      "isActive": true,
+      "source": "extract",
+      "support": "> quote {{ not a tag }}"
+    }
+  ]
+}

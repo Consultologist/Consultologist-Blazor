@@ -101,7 +101,7 @@ internal static class LogicVectors
     /// <paramref name="json"/> with each <c>\uXXXX</c> escape of a character outside ASCII (a surrogate pair as one
     /// character) written as the character; ASCII controls and a lone surrogate stay escaped.
     /// </summary>
-    private static string AsItself(string json)
+    internal static string AsItself(string json)
     {
         var text = new StringBuilder(json.Length);
         for (var i = 0; i < json.Length; i++)

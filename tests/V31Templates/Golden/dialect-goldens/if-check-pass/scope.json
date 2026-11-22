@@ -1,0 +1,16 @@
+{
+  "check": {
+    "coverage": {
+      "value": {
+        "pass": false,
+        "message": "The plan does not cover every term of the draft.",
+        "uncovered": [
+          "Fatigue"
+        ],
+        "untested": null,
+        "passed": null,
+        "total": null
+      }
+    }
+  }
+}

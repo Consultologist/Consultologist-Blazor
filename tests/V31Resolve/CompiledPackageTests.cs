@@ -96,10 +96,12 @@ public class CompiledPackageTests
     [Fact]
     public void Publish_IsComplete_OnlyWhenEveryBodyIsKnown()
     {
-        Assert.False(Published().Complete);
+        // #1504 (area 07, D18): the dialect says what every body reads; a seam that knows none leaves the pair incomplete.
+        Assert.True(Published().Complete);
 
-        var (_, known) = CompiledPackage.Publish(Source(), ResolveFixture.Published(), LockCompilerTests.Example, templates: StubTemplates.Empty());
-        Assert.True(known!.Complete);
+        var unknown = new StubTemplates(new Dictionary<string, string[]>(), everyBody: false);
+        var (_, partial) = CompiledPackage.Publish(Source(), ResolveFixture.Published(), LockCompilerTests.Example, templates: unknown);
+        Assert.False(partial!.Complete);
     }
 
     [Fact]

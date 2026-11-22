@@ -1,0 +1,3 @@
+A renderer's body may test its own value in an if, here through a pipe to a built-in (ruling R2: a pipe to an allowed built-in inside an if); a blank draft renders (none) (chapter 5 §§ 5.2.5, 5.5.1).
+
+package/ is the upload, byte for byte; entry.txt names the entry composed (node.golden). Composing it over scope.json (the data, keys rooted as the run holds them), with each placement decided as placed.json says (a site it does not name is not placed), gives expected.txt byte for byte: Scriban 7.2.5, the invariant culture, strict variables.

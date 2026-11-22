@@ -15,9 +15,9 @@
     "typeString": "{ value: string }"
   },
   "concept_list": {
-    "typeHash": "sha256:2274315e4d49e60a53446ee874fe0ff8db754659594bb8ff8b1314b6a4e6037f",
-    "formatHash": "sha256:2d3fc9ed9be99c3c29b3ac44f3f6e8dcfc24b8488792789623037b871b68fc46",
-    "typeString": "{ concepts: list<{ term: string, type: string, id: string | null, isSnomedConcept: boolean, isActive: boolean, support: string | null }> }"
+    "typeHash": "sha256:2f29f4f631de4a2ea961d01b9ae371cb7384941de95b185e8c7a85a785659859",
+    "formatHash": "sha256:71a55adc8ad6861c94b42c59b3cd3632285816c04cd7aef99148f9bb96fe77f0",
+    "typeString": "{ concepts: list<{ term: string, type: string, id: string | null, isSnomedConcept: boolean, isActive: boolean, source: string, support: string | null }> }"
   },
   "date": {
     "typeHash": "sha256:406c66553617fc391a3b55374ca199952920f8f66408a8345cae2b3ae35c6593",

@@ -20,8 +20,13 @@ public class SourceDerivedTests
 
     private const string Function = "functions/draft_section/index.json";
 
+    /// <summary>
+    /// <see cref="SourceCheck.Run"/> with <paramref name="templates"/> as the derived step's seam; with none, a seam that
+    /// knows no body, which the derived step reads as having none (#1504, D18: the dialect runs, and is the seam, unless
+    /// a caller passes one; these tests of the derived step keep theirs).
+    /// </summary>
     private static SourceCheckResult Run(Dictionary<string, byte[]> files, ITemplateReads? templates = null) =>
-        SourceCheck.Run(files, ResolveFixture.Published(), templates);
+        SourceCheck.Run(files, ResolveFixture.Published(), templates ?? new StubTemplates(new Dictionary<string, string[]>(), everyBody: false));
 
     private static PackageDerived Accepted(Dictionary<string, byte[]> files, ITemplateReads? templates = null)
     {
@@ -399,7 +404,11 @@ public class SourceDerivedTests
                 h["modelDerived"] = false;
             })
             .With("nodes/refine/draft_summary.md", Md(SourceFixture.Node("computed", "Checking the last judgement", "\"boolean\"", true, false,
-                "\"if\": null, \"expression\": { \"blank\": [{ \"var\": \"pass.previous.node.judge.content\" }] }"), ""));
+                "\"if\": null, \"expression\": { \"blank\": [{ \"var\": \"pass.previous.node.judge.content\" }] }"), ""))
+            .With("nodes/refine/judge.md", Agent("Judging the summary", "\"verdict\"",
+                "Say whether the summary is good or needs another pass.\n\n{{ node.draft_summary.value }}\n"))
+            .With("deliverables/note.md", Md(Deliverable("Nested consultation note", "\"markdown_block\"", "null", "hold"),
+                "## Summary\n\n{{ node.refine.value }}\n"));
         Assert.False(Accepted(files).Entries["node.refine"].Reproducible);
         AssertRefusal(files.WithJson("nodes/refine/index.json", h => h["reproducible"] = true), null, "S04-015",
             "While 'refine' declares reproducible true; its body makes it false.", "nodes/refine/index.json");

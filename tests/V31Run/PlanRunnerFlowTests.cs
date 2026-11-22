@@ -110,7 +110,7 @@ public class PlanRunnerFlowTests
                 j["checkFirst"] = true;
                 j["while"] = JsonNode.Parse("""{ "===": [{ "var": "input.include_billing.value" }, true] }""");
             });
-        var plan = RunFixture.Plan(files, ResolveFixture.NestedNoteReads());
+        var plan = RunFixture.Plan(files);
         var host = NestedHost();
         var recorder = new ListRecorder();
 
@@ -149,7 +149,7 @@ public class PlanRunnerFlowTests
                 j["checkFirst"] = true;
                 j["while"] = JsonNode.Parse("""{ "===": [{ "var": "input.include_billing.value" }, true] }""");
             });
-        var plan = RunFixture.Plan(files, ResolveFixture.NestedNoteReads());
+        var plan = RunFixture.Plan(files);
         var host = NestedHost();
         var recorder = new ListRecorder();
 
@@ -206,7 +206,7 @@ public class PlanRunnerFlowTests
     {
         var files = ResolveFixture.NestedNote()
             .WithJson("nodes/refine/index.json", j => j["until"] = JsonNode.Parse("""{ "===": [{ "var": "pass.number" }, 2] }"""));
-        var plan = RunFixture.Plan(files, ResolveFixture.NestedNoteReads());
+        var plan = RunFixture.Plan(files);
         var host = NestedHost().Reply("node.refine.judge", Revise);
         var recorder = new ListRecorder();
 
@@ -259,7 +259,7 @@ public class PlanRunnerFlowTests
         // the while written with pass.node.judge, the same node as node.judge
         var files = ResolveFixture.NestedNote()
             .WithJson("nodes/refine/index.json", j => j["while"] = JsonNode.Parse("""{ "!==": [{ "var": "pass.node.judge.value.verdict" }, "good"] }"""));
-        var plan = RunFixture.Plan(files, ResolveFixture.NestedNoteReads());
+        var plan = RunFixture.Plan(files);
         var host = NestedHost().Reply("node.refine.judge#1", Revise).Reply("node.refine.judge#2", Good);
         var recorder = new ListRecorder();
 
@@ -277,7 +277,7 @@ public class PlanRunnerFlowTests
         // another pass while fewer than one pass came before this one: two passes
         var files = DraftOnly()
             .WithJson("nodes/refine/index.json", j => j["while"] = JsonNode.Parse("""{ "<": [{ "size": [{ "var": "pass.history" }] }, 1] }"""));
-        var plan = RunFixture.Plan(files, ResolveFixture.NestedNoteReads());
+        var plan = RunFixture.Plan(files);
         var host = NestedHost();
         var recorder = new ListRecorder();
 
@@ -637,9 +637,15 @@ public class PlanRunnerFlowTests
     [Fact]
     public async Task APassNodeRead_OfAFlowNodeEnclosingTheReader_IsNoEdge_AndReadsNotRun()
     {
-        // publish lets the judge read its own enclosing if as pass.node.gate (node.gate is A05-003): no edge that could
-        // never be met, and the read gives the if not yet settled
-        var plan = RunFixture.Plan(Gated(), GatedReads("pass.previous.node.gate.content", judge: "pass.node.gate.content"));
+        // publish refuses the judge reading its own enclosing if as pass.node.gate (A05-003, as node.gate; #1504 ruling 7,
+        // PassNodeReadsTests). A document that holds the read anyway (here: publish's, the read written in after) loads with
+        // no edge that could never be met, and the read gives the if not yet settled
+        var (refusals, compiled) = CompiledPackage.Publish(Gated(), ResolveFixture.Published(), CompiledGoldenTests.Fixed,
+            templates: GatedReads("pass.number", judge: "pass.previous.node.gate.content"));
+        Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}")));
+        var resolve = compiled!.Resolve.Replace("pass.previous.node.gate.content", "pass.node.gate.content", StringComparison.Ordinal);
+        Assert.NotEqual(compiled.Resolve, resolve);
+        var plan = RunPlan.Build(resolve, compiled.ResolveHash, compiled.LockHash, null).Plan!;
         Assert.Empty(plan.Entries["node.refine.gate.judge"].Depends);
         var host = NestedHost().Reply("node.refine.gate.judge", Good);
 
@@ -673,8 +679,9 @@ public class PlanRunnerFlowTests
     [Fact]
     public async Task APassNodeRead_OfANodeInsideAnInnerLoop_WaitsForTheLoop_AndReadsNotRun()
     {
-        // publish resolves pass.node.<id> anywhere in the while, an inner loop's body too; from outside that loop no
-        // instance is visible, so the reader waits for the loop and reads not_run (read the loop instead, part 04 § 4)
+        // pass.node.<id> names the id anywhere in the while, an inner loop's body too (a body's template saying it is
+        // S04-039 at publish, #1504 ruling 7; these stub reads skip that); from outside that loop no instance is visible,
+        // so the reader waits for the loop and reads not_run (read the loop instead, part 04 § 4)
         var reads = new StubTemplates(new Dictionary<string, string[]>
         {
             ["node.plan"] = ["input.consult_draft.content"],
@@ -738,7 +745,7 @@ public class PlanRunnerFlowTests
     /// the while <c>drafts</c> (the same check) of <c>draft</c>; with <paramref name="forBetween"/>, <c>drafts</c> sits in
     /// the loop <c>sections</c> over the input.
     /// </summary>
-    private static Dictionary<string, byte[]> NestedWhiles(bool forBetween)
+    internal static Dictionary<string, byte[]> NestedWhiles(bool forBetween)
     {
         const string Twice = "\"while\": { \"<\": [{ \"var\": \"pass.number\" }, 2] }, \"max\": 3, \"until\": null, \"checkFirst\": false, ";
         var inner = forBetween ? "nodes/rounds/sections/drafts" : "nodes/rounds/drafts";
@@ -830,7 +837,7 @@ public class PlanRunnerFlowTests
     /// The list input <c>sections</c> and the while <c>refine</c> whose body is the loop <c>notes</c> over it (a note per
     /// section) and <c>judge</c>, reading the notes; it returns the notes.
     /// </summary>
-    private static Dictionary<string, byte[]> LoopInWhile() => ResolveFixture.WithFormats(Minimal(), "section_request", "verdict")
+    internal static Dictionary<string, byte[]> LoopInWhile() => ResolveFixture.WithFormats(Minimal(), "section_request", "verdict")
         .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
             "{ \"label\": \"Sections\", \"description\": null, "
             + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
@@ -857,7 +864,8 @@ public class PlanRunnerFlowTests
     /// <summary>
     /// The optional boolean input <c>include_billing</c> and the if <c>letter</c> on it: its then is
     /// <c>with_billing</c> (its ret) and the if <c>billing_extra</c> on the same input (holding <c>billing_line</c>); its
-    /// else is <c>without_billing</c>. The note reads the letter, and the then branch's two nodes' states.
+    /// else is <c>without_billing</c>. The note reads the letter, and (as <see cref="IfElseReads"/> tells the runner; a
+    /// template cannot name a branch's nodes from outside it, #1504) the then branch's two nodes' states.
     /// </summary>
     private static Dictionary<string, byte[]> IfElse() => WithBilling(Minimal())
         .With("nodes/index.json", Index(["plan", "letter"]))
@@ -872,7 +880,7 @@ public class PlanRunnerFlowTests
             + "\"then\": { \"nodes\": [\"billing_line\"], \"ret\": \"node.letter.billing_extra.billing_line\" }, \"else\": null")))
         .With("nodes/letter/billing_extra/billing_line.md", Agent("Writing the billing line", Plain, "Write one billing line.\n"))
         .With("deliverables/note.md", Md(Deliverable("Consultation note", Plain, "null", "hold"),
-            "{{ node.letter.content }} {{ node.billing_extra.state }} {{ node.with_billing.state }}\n"));
+            "{{ node.letter.content }}\n"));
 
     private static StubTemplates IfElseReads() => new(new Dictionary<string, string[]>
     {

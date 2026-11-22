@@ -13,6 +13,7 @@ using Consultologist.Api.Tests.Engine;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.Api.Tests.V31Templates;
 using Consultologist.Api.V31;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
@@ -43,7 +44,7 @@ public class V31JobStartTests
         typeof(ConsultGenerationJobEntity).GetProperty("State", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
 
     private static readonly Lazy<EngineCapabilities> ThisEngine =
-        new(() => new EngineCapabilitiesFactory(OutputContractCatalog.Load(), FormatCatalogLoader.Load()).Current());
+        new(() => V31Job.Factory().Current());
 
     private const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
 
@@ -365,6 +366,108 @@ public class V31JobStartTests
         Assert.Equal("[]", Assert.Single(at31Empty.Inputs.Documents).Value["inputs"]!["prior_letters"]!["value"]!.ToJsonString());
     }
 
+    // ---- MacroChoices (#1504, ruled by the owner on #1504, ruling 6; part 05 § 8.2) ----------------------------
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AMacroChoice_IsItsBooleanInputsValue(bool choice)
+    {
+        var start = new Start(preview: "31");
+        var packageRef = start.PutChoices();
+
+        var outcome = await start.RunAsync(WithChoices(packageRef, Text(Draft), ("letrozole", choice)));
+
+        Assert.Null(outcome.Error);
+        var held = Assert.Single(start.Inputs.Documents).Value;
+        Assert.Equal($$"""{"value":{{(choice ? "true" : "false")}},"content":null,"title":null}""", held["inputs"]!["letrozole"]!.ToJsonString());
+
+        // the run's scope holds input.letrozole.value as chosen, and the macro whose if reads it is decided by it
+        var plan = RunFixture.Plan(Choices());
+        var inputs = new RunInputs(
+            held["inputs"]!.AsObject().ToDictionary(p => p.Key, p => p.Value?.DeepClone(), StringComparer.Ordinal),
+            new JsonObject(),
+            new Dictionary<string, string?>(StringComparer.Ordinal));
+        var (_, host, recorder) = await PlacementDecisionsTests.RunAsync(plan, PlacementDecisionsTests.Host(plan, _ => ComposingRunHost.Judgement(true)), inputs);
+        Assert.Equal([("macro.letrozole", choice)], PlacementDecisionsTests.Placements(recorder, "node.draft").Select(d => (d.Member, d.Result)));
+        Assert.Equal(choice, host.Calls.Single(c => c.Key == "node.draft").Placed!["macro.letrozole"]);
+    }
+
+    [Fact]
+    public async Task AMacroChoiceAgreeingWithTheInputSent_IsAccepted()
+    {
+        var start = new Start(preview: "31");
+        var packageRef = start.PutChoices();
+        var inputs = Text(Draft);
+        inputs["letrozole"] = ConsultInputValue.OfBoolean(true);
+
+        var outcome = await start.RunAsync(WithChoices(packageRef, inputs, ("letrozole", true)));
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(true, (bool?)Assert.Single(start.Inputs.Documents).Value["inputs"]!["letrozole"]!["value"]);
+    }
+
+    [Theory]
+    [InlineData("tamoxifen")]
+    [InlineData("consult_draft")]
+    public async Task AMacroChoiceNamingNoBooleanInput_IsRefused(string id)
+    {
+        // an id the package does not declare, and a declared input that is text
+        var start = new Start(preview: "31");
+        var packageRef = start.PutChoices();
+
+        var outcome = await start.RunAsync(WithChoices(packageRef, Text(Draft), (id, true)));
+
+        var sentence = $"MacroChoices names '{id}', which is not a boolean input of the package.";
+        V31Contract.AssertSentence(new SourceRefusal("A07-015", sentence, ""));
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Equal(sentence, outcome.ErrorDetail);
+        Assert.Null(outcome.SenderSafeDetail); // it quotes the caller's own id, as A06-013 does
+        Assert.Empty(start.Scheduled);
+        Assert.Empty(start.Inputs.Documents);
+        AssertStartFailure(start, outcome.JobId!, sentence);
+    }
+
+    [Fact]
+    public async Task AMacroChoiceAgainstTheSameInputSentDifferently_IsRefused()
+    {
+        var start = new Start(preview: "31");
+        var packageRef = start.PutChoices();
+        var inputs = Text(Draft);
+        inputs["letrozole"] = ConsultInputValue.OfBoolean(false);
+
+        var outcome = await start.RunAsync(WithChoices(packageRef, inputs, ("letrozole", true)));
+
+        var sentence = "Input 'letrozole' is given one value in Inputs and another in MacroChoices; send it once.";
+        V31Contract.AssertSentence(new SourceRefusal("A07-016", sentence, ""));
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Equal(sentence, outcome.ErrorDetail);
+        Assert.Equal(sentence, outcome.SenderSafeDetail);
+        Assert.Empty(start.Scheduled);
+        AssertStartFailure(start, outcome.JobId!, sentence);
+    }
+
+    /// <summary>
+    /// The optional boolean input <c>letrozole</c> (the per-run choice of the macro <c>letrozole</c>, part 05 § 8.2), the
+    /// macro decided on it, and the agent <c>draft</c> placing it.
+    /// </summary>
+    internal static Dictionary<string, byte[]> Choices() =>
+        TemplateFixture.Package()
+            .WithJson("manifest.json", m => m["inputs"]!["letrozole"] = JsonNode.Parse(
+                "{ \"label\": \"On letrozole\", \"description\": null, \"format\": \"boolean\", \"required\": false, \"channel\": null }"))
+            .Listed("macros/index.json", "letrozole")
+            .With("macros/letrozole.md", SourceFixture.Md(
+                "{ \"label\": \"On letrozole\", \"description\": null, "
+                + "\"if\": { \"===\": [{ \"var\": \"input.letrozole.value\" }, true] }, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place {{ macro.letrozole.content }} at the end of the plan.\"] }",
+                "Margaret Okafor continues letrozole 2.5 mg daily.\n"))
+            .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{ macro.letrozole }}\n");
+
+    private static ConsultGenerationRequest WithChoices(
+        WorkflowPackageRef packageRef, Dictionary<string, ConsultInputValue> inputs, params (string Id, bool Choice)[] choices) =>
+        new(null, RefText(packageRef), Inputs: inputs,
+            MacroChoices: choices.ToDictionary(c => c.Id, c => c.Choice, StringComparer.Ordinal));
+
     private static Dictionary<string, ConsultInputValue> Text(string draft) =>
         new(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText(draft) };
 
@@ -492,6 +595,14 @@ public class V31JobStartTests
                 m["inputs"]!["prior_letters"]!["required"] = false;
             });
             var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed, templates: PlanRunnerLoopsTests.PriorLettersReads());
+            Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Sentence}")));
+            return Registry.Put(compiled!.Resolve, compiled.Lock);
+        }
+
+        /// <summary>Publishes <see cref="Choices"/>.</summary>
+        public WorkflowPackageRef PutChoices()
+        {
+            var (refusals, compiled) = CompiledPackage.Publish(Choices(), ResolveFixture.Published(), CompiledGoldenTests.Fixed);
             Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Sentence}")));
             return Registry.Put(compiled!.Resolve, compiled.Lock);
         }

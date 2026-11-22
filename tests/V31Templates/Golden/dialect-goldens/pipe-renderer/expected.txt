@@ -1,0 +1,6 @@
+Terms:
+- Diabetes mellitus (disorder) - 73211009 [not active SNOMED concept]
+- Family support strong [not SNOMED concept]
+Quoted:
+> - Diabetes mellitus (disorder) - 73211009 [not active SNOMED concept]
+- Family support strong [not SNOMED concept]

@@ -82,6 +82,7 @@ public sealed class CompiledPackageStore(
     SpecVersionAdmission admission,
     EngineLimitSettings limits) : ICompiledPackageStore
 {
+    private const string S07HashId = "S07-006";
     private const string S09HashId = "S09-009";
     private const string S09LockId = "S09-014";
     private const string NotSupportedId = "S09-001";
@@ -150,7 +151,10 @@ public sealed class CompiledPackageStore(
         if (!Names(resolve, name, version) || !Names(@lock, name, version))
             return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
 
+        // #1504 (R6): a document that is not what publish wrote (S07-006, an agent's version not an integer) is shown as S09-009.
         var lacking = RequiresCheck.Engine(resolve, @lock, engine);
+        if (lacking.FirstOrDefault(r => r.Id == S07HashId) is { } unwritten)
+            return Shown(unwritten, name, version);
         if (lacking.Count > 0)
             return Refused(lacking[0].Id, lacking[0].Sentence, string.Join("\n", lacking.Select(r => r.Sentence)));
 

@@ -1,0 +1,3 @@
+In a loop over a snippet folder, item.value is the item's header and item.content its body, rendered in the loop's scope where it is read (chapter 5 § 5.6.2): here the item hpi's body reads its own title and the input. scope.json's item.content is the item's body as written.
+
+package/ is the upload, byte for byte; entry.txt names the entry composed (node.standards.section). Composing it over scope.json (the data, keys rooted as the run holds them), with each placement decided as placed.json says (a site it does not name is not placed), gives expected.txt byte for byte: Scriban 7.2.5, the invariant culture, strict variables.

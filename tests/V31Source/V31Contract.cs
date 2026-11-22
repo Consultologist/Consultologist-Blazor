@@ -85,6 +85,32 @@ internal static class V31Contract
         ["A06-013"] = "Unknown input(s) <ids> (declared: <ids>).",
     };
 
+    /// <summary>
+    /// #1504: area 07's own sentences (<c>A07-NNN</c>), as plan area-07-prompts-and-macros lists them: the first nine at
+    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5; A07-012 and A07-013, Task 8b; A07-014, Task 12b; A07-015 and A07-016, Task 12c).
+    /// </summary>
+    private static readonly Dictionary<string, string> TemplateAreaSentences = new()
+    {
+        ["A07-001"] = "Snippet '<id>' places <part.* or macro.*>, and <subject> places it in <a part's text | a macro's instruction>; a snippet placed there doesn't place parts or macros.",
+        ["A07-002"] = "Part '<name>' of node '<id>' uses <if or part.*>; a part's text only presents.",
+        ["A07-003"] = "Macro '<id>' places <macro.* or part.*> in its instruction; combine instructions by placing each macro in the prompt.",
+        ["A07-004"] = "<Subject> uses <form> at line <n>; a for runs over a whole list in order and reads only for.first, for.last, for.index, for.even and for.odd.",
+        ["A07-005"] = "<Subject> can't be read as a template at line <n>: close every tag and every if and for.",
+        ["A07-006"] = "<Subject> stopped rendering: array.join met a list with an empty element.",
+        ["A07-007"] = "<Subject> writes <path> at line <n>, which is <an object | a list>; read a member, loop over it or pipe it into a renderer.",
+        ["A07-008"] = "<Subject> reads <path> at line <n>; read <.value | .content | .title> of it.",
+        ["A07-009"] = "<Subject> places <unit> at line <n> inside <an if | a for>; a part, a snippet or a macro is placed at the top level of its template, and its own if decides it.",
+        ["A07-010"] = "Snippet '<id>' declares format <format>; a snippet's text is plaintext, markdown_block or markdown_inline.",
+        ["A07-011"] = "<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; place fewer.",
+        ["A07-012"] = "Snippet '<id>' <places <unit> | pipes into <renderer> | reads <path>>, and <subject> reads it as <path> at line <n>; "
+            + "a folder item's body read in a loop places no part, macro or snippet, pipes into no renderer and reads no run.* or run-dependent value.",
+        ["A07-013"] = "Snippet '<id>' holds a tag at line <n>, and <subject> <passes it to function '<f>' as param.<p> | reads it in its expression>, "
+            + "where it isn't rendered; keep a folder item's body plain text, or read it as item.content in its loop.",
+        ["A07-014"] = "Nodes '<a>' and '<b>' bind agent '<name>' at versions <m> and <n>; a package binds one version of an agent.",
+        ["A07-015"] = "MacroChoices names '<id>', which is not a boolean input of the package.",
+        ["A07-016"] = "Input '<id>' is given one value in Inputs and another in MacroChoices; send it once.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -115,6 +141,16 @@ internal static class V31Contract
         Assert.True(
             Directory.Exists(path),
             $"{path} is missing — the submodule is not checked out (git submodule update --init), or its pin has no compiled documents.");
+        return path;
+    }
+
+    /// <summary>#1504 (area 07): the folder of the pinned suite's family <paramref name="family"/>; fails when the pin has none.</summary>
+    public static string ConformanceFolder(string family)
+    {
+        var path = System.IO.Path.Combine(RepoRoot(), "external", "consultologist-package-format", "v31", "conformance", family);
+        Assert.True(
+            Directory.Exists(path),
+            $"{path} is missing — the submodule is not checked out (git submodule update --init), or its pin has no {family}.");
         return path;
     }
 
@@ -200,12 +236,36 @@ internal static class V31Contract
             Assert.True(EngineAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
+        else if (refusal.Id.StartsWith("A07-", StringComparison.Ordinal))
+        {
+            Assert.True(TemplateAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
         else
         {
             var found = Json("sentences.json")["sentences"]!.AsArray()
                 .FirstOrDefault(s => (string?)s!["id"] == refusal.Id);
             Assert.True(found != null, $"{refusal.Id} has no row in v31/sentences.json.");
             row = (string)found!["sentence"]!;
+        }
+
+        // #1504: S05-025's row is written as S05-024's middle ("… reads <path> and the run-dependent <value> in one output
+        // …"): the sentence is S05-024's with run.<fact> in that place.
+        if (refusal.Id == "S05-025")
+        {
+            var full = (string)Json("sentences.json")["sentences"]!.AsArray().First(s => (string?)s!["id"] == "S05-024")!["sentence"]!;
+            Assert.Equal("… reads <path> and the run-dependent <value> in one output …", row);
+            Assert.Contains(" and run.<fact> in one output ", full, StringComparison.Ordinal);
+            row = full.Replace(" and run.<fact> in one output ", " and the run-dependent <value> in one output ", StringComparison.Ordinal);
+        }
+
+        // #1504: S05-043's row is written as S05-042's for part.* ("Macro '<id>' places part.<name> in its body; …", part 05
+        // R-M1: "the rest unchanged"): the sentence is that head with S05-042's rest.
+        if (refusal.Id == "S05-043")
+        {
+            var full = (string)Json("sentences.json")["sentences"]!.AsArray().First(s => (string?)s!["id"] == "S05-042")!["sentence"]!;
+            Assert.Equal("Macro '<id>' places part.<name> in its body; …", row);
+            row = row[..^1] + full[(full.IndexOf("; ", StringComparison.Ordinal) + 2)..];
         }
 
         var pattern = "^" + ToPattern(row) + "$";

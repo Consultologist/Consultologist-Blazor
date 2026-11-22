@@ -136,7 +136,7 @@ public sealed class RunPlan
     /// <c>node.</c>, <c>check.</c> or <c>deliverable.</c> that names no entry of its scope; dependencies that form a circle, or
     /// an entry depending on its own ancestor; a function that calls itself, directly or through others; a call whose
     /// <c>with</c> is not exactly its function's parameters; a deliverable inside a flow node; an input not in
-    /// <c>inputOrder</c>; a rule the evaluator declines) is not what publish wrote, and is refused with S07-006 for its package. Never throws on the
+    /// <c>inputOrder</c>; a rule the evaluator declines; #1504, a <c>placements</c> entry not as publish writes it) is not what publish wrote, and is refused with S07-006 for its package. Never throws on the
     /// document; a null argument is the caller's error, and so is a time limit the evaluator refuses.
     /// </summary>
     public static (RunPlan? Plan, SourceRefusal? Refusal) Build(string resolve, string resolveHash, string lockHash, TimeSpan? matchTimeLimit)
@@ -220,7 +220,9 @@ public sealed class RunPlan
         IReadOnlyList<PlanBranch> Branches,
         string? Ret,
         string? Check,
-        IReadOnlyList<string> Reads)
+        IReadOnlyList<string> Reads,
+        IReadOnlyList<PlanPlacement> Placements,
+        IReadOnlyList<string> NeutralReads)
     {
         /// <summary>Every child's key: the body's, then each branch's.</summary>
         public IEnumerable<string> Children => Body.Concat(Branches.SelectMany(b => b.Nodes));
@@ -505,11 +507,95 @@ public sealed class RunPlan
                     break;
             }
 
+            // #1504 (D2, D3): the units a templated body places, each rule compiled with its plainConverts; its reads join the entry's.
+            IReadOnlyList<PlanPlacement> placements = [];
+            IReadOnlyList<string> neutralReads = [];
+            if (kind is PlanKind.Agent or PlanKind.Rendered or PlanKind.Deliverable)
+            {
+                if (Placements(json["placements"], extra) is not { } compiled)
+                    return null;
+                placements = compiled;
+                neutralReads = NeutralReads(json);
+            }
+
             var allReads = reads.Concat(extra).Concat(rules.Keys.SelectMany(m => VarPaths(json[m])))
                 .Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal)
                 .ToList();
-            return new Draft(key, id, kind, parent, function, json, rules, body, branches, ret, check, allReads);
+            return new Draft(key, id, kind, parent, function, json, rules, body, branches, ret, check, allReads, placements, neutralReads);
+        }
+
+        /// <summary>
+        /// #1504 (D2, D3): an entry's <c>placements</c>, each <c>{ site, within, if, plainConverts, form }</c> as publish
+        /// writes it (a site under <c>part.</c>, <c>snippet.</c>, <c>macro.</c> or <c>macro-folder.</c>; <c>within</c>
+        /// <c>null</c> or the site of an entry before it; <c>if</c> a rule the evaluator compiles with its
+        /// <c>plainConverts</c>, or <c>null</c>; <c>form</c> <c>block</c>, <c>inline</c> or <c>null</c>), with each rule's
+        /// <c>var</c>s added to <paramref name="reads"/>; none when the member is absent; null when it is not that.
+        /// </summary>
+        private List<PlanPlacement>? Placements(JsonNode? member, List<string> reads)
+        {
+            var placements = new List<PlanPlacement>();
+            if (member is null)
+                return placements;
+            if (member is not JsonArray list)
+                return null;
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in list)
+            {
+                if (item is not JsonObject placement
+                    || SourceLayout.Text(placement["site"]) is not { } site
+                    || !PlacementRoots.Any(r => site.StartsWith(r, StringComparison.Ordinal) && site.Length > r.Length)
+                    || !NullOrText(placement, "within", out var within)
+                    || (within != null && !seen.Contains(within))
+                    || !NullOrText(placement, "form", out var form)
+                    || form is not (null or "block" or "inline")
+                    || !placement.TryGetPropertyValue("if", out var rule))
+                {
+                    return null;
+                }
+
+                IJsonLogicRule? compiled = null;
+                string? printed = null;
+                if (rule is not null)
+                {
+                    if (placement["plainConverts"] is not JsonArray converts || Booleans(converts) is not { } plains)
+                        return null;
+                    compiled = evaluator.Compile(rule, plains);
+                    if (compiled.Declined != null)
+                        return null;
+                    printed = JsonLogicPrinter.Print(rule);
+                    reads.AddRange(VarPaths(rule));
+                }
+
+                seen.Add(site);
+                placements.Add(new PlanPlacement(site, within, compiled, printed, form));
+            }
+
+            return placements;
+        }
+
+        /// <summary>The roots a placement's site has (D2).</summary>
+        private static readonly string[] PlacementRoots = ["part.", "snippet.", "macro.", "macro-folder."];
+
+        /// <summary>
+        /// #1504 (D4): <c>&lt;rooted head&gt;.neutral</c> for each of the entry's <c>runSpots</c> whose <c>neutral</c> is
+        /// <c>"text"</c>, the head (the first two segments of its <c>reads</c>) rooted through <c>names</c> (D1); a spot not
+        /// read so is left out, as the composer leaves it.
+        /// </summary>
+        private static IReadOnlyList<string> NeutralReads(JsonObject json)
+        {
+            var names = json["names"] as JsonObject;
+            var paths = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var spot in (json["runSpots"] as JsonArray ?? []).OfType<JsonObject>())
+            {
+                if (SourceLayout.Text(spot["neutral"]) != "text" || SourceLayout.Text(spot["reads"])?.Split('.') is not { Length: >= 3 } segments)
+                    continue;
+                var head = $"{segments[0]}.{segments[1]}";
+                paths.Add((SourceLayout.Text(names?[head]) ?? head) + ".neutral");
+            }
+
+            return [.. paths];
         }
 
         /// <summary>
@@ -584,8 +670,9 @@ public sealed class RunPlan
                     if (root == "pass")
                     {
                         // part 04 § 3.3: this pass's node is a dependency edge; an earlier pass's (previous, history) is none.
-                        // Publish lets a node read a flow node that encloses it in this form (it refuses node.<id>, A05-003):
-                        // that is no edge, which could never be met; the read gives the ancestor not yet settled (not_run).
+                        // A node reading a flow node that encloses it in this form (publish refuses it, A05-003, as it
+                        // does node.<id>; #1504 ruling 7) is no edge, which could never be met; the read gives the
+                        // ancestor not yet settled (not_run).
                         if (PassNode(path, draft, map) is { } node && node != draft.Key
                             && !RunScope.Inside(map, d => d.Parent, draft.Key, node))
                         {
@@ -612,7 +699,7 @@ public sealed class RunPlan
                 edges[draft.Key] = depends.Concat(draft.Children).ToList();
                 entries.Add(draft.Key, new PlanEntry(
                     draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order(draft.Key), draft.Json, draft.Rules,
-                    draft.Body, draft.Branches, draft.Ret, draft.Reads, depends.ToList()));
+                    draft.Body, draft.Branches, draft.Ret, draft.Reads, depends.ToList(), draft.Placements, draft.NeutralReads));
             }
 
             return Acyclic(edges) ? entries : null;

@@ -20,7 +20,7 @@ public class CompiledPackageStoreTests
     private static readonly UTF8Encoding Utf8NoBom = new(false);
 
     private static readonly Lazy<EngineCapabilities> ThisEngine =
-        new(() => new EngineCapabilitiesFactory(OutputContractCatalog.Load(), FormatCatalogLoader.Load()).Current());
+        new(() => V31Job.Factory().Current());
 
     private static CompiledPackageStore Store(FakeRegistry registry, EngineCapabilities? engine = null, string? preview = "31") =>
         new(registry, registry, engine ?? ThisEngine.Value, SpecVersionAdmissionTests.With(preview),
@@ -214,6 +214,22 @@ public class CompiledPackageStoreTests
         Assert.Contains("example-other-note@", load.OperatorDetail, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AnAgentVersionWrittenAsText_IsS09009()
+    {
+        // #1504 ruling 4 (R6): publish writes each requires.agents version as an integer; a document holding text is not
+        // publish's (S07-006 for the operator), shown on the job as S09-009.
+        var registry = new FakeRegistry();
+        var packageRef = registry.PutChanged(Golden(), resolve: r => r["requires"]!["agents"]!["test-json"] = "48");
+
+        var load = await Store(registry).TryLoadAsync(packageRef, CancellationToken.None);
+
+        Assert.Null(load!.Plan);
+        Assert.Equal("S09-009", load.RefusalId);
+        V31Contract.AssertSentence(new SourceRefusal("S09-009", load.Refusal!, ""));
+        V31Contract.AssertSentence(new SourceRefusal("S07-006", load.OperatorDetail!, ""));
+    }
+
     [Theory]
     [InlineData("requires.spec", 32)]
     [InlineData("specVersion", 30)]
@@ -353,7 +369,7 @@ public class CompiledPackageStoreTests
                 packageRef = registry.PutChanged(Golden(), resolve: r => r["requires"]!["kinds"]!.AsArray().Add("teleport"));
                 break;
             case "agent test-json 99":
-                packageRef = registry.PutChanged(Golden(), resolve: r => r["requires"]!["agents"]!["test-json"] = "99");
+                packageRef = registry.PutChanged(Golden(), resolve: r => r["requires"]!["agents"]!["test-json"] = 99);
                 break;
             default:
                 // Locked a patch before this engine's Scriban, and a break point at this engine's version: the range

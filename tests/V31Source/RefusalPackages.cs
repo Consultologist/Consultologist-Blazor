@@ -31,7 +31,8 @@ internal sealed record RefusalCase(string Id, string About, Dictionary<string, b
 /// <c>RefusalPackages.Types.cs</c>'s. #1501 (specVersion 31, area 04): and to the expression rules, the third
 /// step; chapter 3's cases are <c>RefusalPackages.Logic.cs</c>'s. #1502 (specVersion 31, area 05): and to the resolve
 /// step before them; the resolver's cases are <c>RefusalPackages.Resolve.cs</c>'s. #1503 (specVersion 31, area 06): the
-/// rules area 06 adds at publish are <c>RefusalPackages.Engine.cs</c>'s.
+/// rules area 06 adds at publish are <c>RefusalPackages.Engine.cs</c>'s. #1504 (specVersion 31, area 07): and to the
+/// dialect, the sixth step; its cases are <c>RefusalPackages.Templates.cs</c>'s.
 /// </summary>
 internal static partial class RefusalPackages
 {
@@ -64,7 +65,7 @@ internal static partial class RefusalPackages
     public static IReadOnlyList<RefusalCase> All() =>
         Intake().Concat(Layout()).Concat(Headers()).Concat(Members()).Concat(Ids()).Concat(Kinds())
             .Concat(Loops()).Concat(Branches()).Concat(Functions()).Concat(Scopes()).Concat(Registry())
-            .Concat(Types()).Concat(Logic()).Concat(Resolve()).Concat(Engine())
+            .Concat(Types()).Concat(Logic()).Concat(Resolve()).Concat(Engine()).Concat(Templates())
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
 
@@ -586,7 +587,8 @@ internal static partial class RefusalPackages
 
     /// <summary>
     /// <see cref="WithWhile"/> whose while <c>refine</c> also holds two ifs, <c>brief</c> and <c>detailed</c>,
-    /// each running one agent node: <c>wording</c>, and <paramref name="second"/>.
+    /// each running one agent node: <c>wording</c>, and <paramref name="second"/>; <c>judge</c> reads both ifs (#1504: a
+    /// while's body node nothing reads is S04-035 now that bodies are read).
     /// </summary>
     private static Dictionary<string, byte[]> TwoWordings(string second)
     {
@@ -598,6 +600,8 @@ internal static partial class RefusalPackages
         return WithWhile()
             .Edit("nodes/refine/index.json", "\"nodes\": [\"draft_summary\", \"judge\"]",
                 "\"nodes\": [\"draft_summary\", \"judge\", \"brief\", \"detailed\"]")
+            .Edit("nodes/refine/judge.md", "{{ node.draft_summary.content }}\n",
+                "{{ node.draft_summary.content }}\n\n{{ node.brief.content }}\n{{ node.detailed.content }}\n")
             .With("nodes/refine/brief/index.json", If("Wording the summary briefly", true, "wording"))
             .With("nodes/refine/brief/wording.md", Agent("Wording the summary briefly", Plain,
                 "Shorten the summary to one sentence for Dr A. Sample.\n"))
@@ -716,12 +720,14 @@ internal static partial class RefusalPackages
         return files;
     }
 
-    /// <summary>A snippet folder, <c>snippets/standards</c>, of one item.</summary>
+    /// <summary>A snippet folder, <c>snippets/standards</c>, of one item, whose header is of the folder's format (an object with a title, #1504: S05-036).</summary>
     private static Dictionary<string, byte[]> WithSnippetFolder() =>
         Minimal()
             .Edit("snippets/index.json", "\"items\": []", "\"items\": [\"standards\"]")
             .With("snippets/standards/index.json", SourceFixture.Index(["hpi"],
-                description: "The standard sections of a consult note, in order.", extra: ", \"format\": \"plaintext\""))
+                description: "The standard sections of a consult note, in order.",
+                extra: ", \"format\": { \"type\": \"object\", \"required\": [\"title\"], \"additionalProperties\": false, "
+                    + "\"properties\": { \"title\": { \"$ref\": \"plaintext\" } } }"))
             .With("snippets/standards/hpi.md", Md(
                 "{ \"title\": \"History of Present Illness\" }",
                 "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n"));

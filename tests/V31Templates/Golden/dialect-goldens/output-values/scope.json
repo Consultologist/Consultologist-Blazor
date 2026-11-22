@@ -1,0 +1,18 @@
+{
+  "node": {
+    "score": {
+      "value": 7.50
+    },
+    "flagged": {
+      "value": false
+    },
+    "summary": {
+      "content": null
+    }
+  },
+  "input": {
+    "visit_date": {
+      "value": "2026-11-20"
+    }
+  }
+}

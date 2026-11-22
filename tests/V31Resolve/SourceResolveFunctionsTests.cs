@@ -21,24 +21,24 @@ public class SourceResolveFunctionsTests
     private const string Plain = "\"plaintext\"";
 
     /// <summary>The one refusal <see cref="SourceCheck.Run"/> says of <paramref name="files"/>, held to its row.</summary>
-    private static SourceRefusal Refused(Dictionary<string, byte[]> files)
+    private static SourceRefusal Refused(Dictionary<string, byte[]> files, ITemplateReads? templates = null)
     {
-        var result = ResolveFixture.Run(files);
+        var result = templates == null ? ResolveFixture.Run(files) : SourceCheck.Run(files, ResolveFixture.Published(), templates);
         Assert.True(result.Refusals.Count == 1, ResolveFixture.Said(result));
         var refusal = result.Refusals[0];
         V31Contract.AssertSentence(refusal);
         return refusal;
     }
 
-    private static void AssertRefusal(Dictionary<string, byte[]> files, string id, string sentence, string path)
+    private static void AssertRefusal(Dictionary<string, byte[]> files, string id, string sentence, string path, ITemplateReads? templates = null)
     {
-        var refusal = Refused(files);
+        var refusal = Refused(files, templates);
         Assert.Equal((id, sentence, path), (refusal.Id, refusal.Sentence, refusal.Path));
     }
 
-    private static Resolution AssertAccepted(Dictionary<string, byte[]> files)
+    private static Resolution AssertAccepted(Dictionary<string, byte[]> files, ITemplateReads? templates = null)
     {
-        var result = ResolveFixture.Run(files);
+        var result = templates == null ? ResolveFixture.Run(files) : SourceCheck.Run(files, ResolveFixture.Published(), templates);
         Assert.True(result.Refusals.Count == 0, ResolveFixture.Said(result));
         return result.Resolution!;
     }
@@ -51,13 +51,16 @@ public class SourceResolveFunctionsTests
     /// <see cref="ResolveFixture.Functions"/> with <c>draft_section</c>'s parameter <c>draft</c> of <paramref name="format"/>,
     /// passed <paramref name="argument"/>; an argument read from the profile or a run fact makes the call profile-carrying
     /// or run-dependent (#1502, Task 5), and the loop that returns it, the check loop over its items and the check that
-    /// reads that, so their headers say so.
+    /// reads that, so their headers say so. #1504 (area 07): <c>patient_draft</c> reads the parameter's <c>.value</c>, which
+    /// every format has, so its prompt is a valid template whatever the format.
     /// </summary>
     private static Dictionary<string, byte[]> Draft(string format, string argument)
     {
         var files = ResolveFixture.Functions()
             .WithJson(Function, f => f["inputs"]!["draft"]!["format"] = JsonNode.Parse(format))
-            .WithJson(Call, h => h["with"]!["draft"] = JsonValue.Create(argument));
+            .WithJson(Call, h => h["with"]!["draft"] = JsonValue.Create(argument))
+            .With("functions/draft_section/patient_draft.md", Agent("Drafting from the patient's facts", Plain,
+                "Using the draft below, write what it says about Margaret Okafor for this section.\n\n{{ param.draft.value }}\n"));
         var flag = argument.StartsWith("profile.", StringComparison.Ordinal) ? "profileCarrying"
             : argument.StartsWith("run.", StringComparison.Ordinal) ? "runDependent" : null;
         if (flag == null)
@@ -158,7 +161,13 @@ public class SourceResolveFunctionsTests
     [InlineData("\"plaintext\"", "item.value.title")]
     [InlineData("\"plaintext\"", "snippet.standards.hpi.value.title")]
     public void Arguments_OfEveryHead_AreTyped(string format, string reference) =>
-        AssertAccepted(Draft(format, reference));
+        AssertAccepted(Draft(format, reference), BodiesUnknown);
+
+    /// <summary>
+    /// #1504 (area 07, D18): a seam that knows no body, so that what the arguments carry into the function's prompts (a
+    /// profile field, a run fact) is not judged: the resolver's typing is what these tests hold.
+    /// </summary>
+    private static StubTemplates BodiesUnknown => new(new Dictionary<string, string[]>(), everyBody: false);
 
     [Theory]
     [InlineData("profile.nickname")]
@@ -425,10 +434,13 @@ public class SourceResolveFunctionsTests
     {
         AssertRefusal(ProfileRead(ParamHasText), "S04-069",
             "Function 'draft_section' reads param.draft, which carries profile.signature, in a condition; the profile is read only in deliverables and macro bodies.",
-            "functions/draft_section/standard_draft.md");
+            "functions/draft_section/standard_draft.md", BodiesUnknown);
 
-        // Read only in a prompt (through the seam, Task 5) and passed on, it is not judged here.
-        AssertAccepted(Draft(Plain, "profile.signature"));
+        // Read only in a prompt and passed on, it is not the condition's; through the dialect's reads the prompt's
+        // read is S04-069 (#1504, area 07).
+        AssertAccepted(Draft(Plain, "profile.signature"), BodiesUnknown);
+        Assert.Contains(ResolveFixture.Run(Draft(Plain, "profile.signature")).Refusals, r => r.Id == "S04-069" && r.Sentence ==
+            "Function 'draft_section' reads param.draft, which carries profile.signature, in a prompt; the profile is read only in deliverables and macro bodies.");
     }
 
     [Fact]

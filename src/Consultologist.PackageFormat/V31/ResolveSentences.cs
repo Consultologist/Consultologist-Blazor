@@ -238,7 +238,7 @@ internal static class ResolveSentences
     public static SourceRefusal AgentMissing(string package, string version, string agent, string agentVersion, string path) =>
         new("S07-005", $"This workflow ({package}@{version}) needs agent {agent} version {agentVersion}, which this engine doesn't have. Publish a new version of the workflow to run it on this engine.", path);
 
-    /// <summary>S07-006 (at load, part 07 § 10): the compiled document's bytes are not canonical, or do not hash to the stamp's <c>resolveHash</c>.</summary>
+    /// <summary>S07-006 (at load, part 07 § 10): the compiled document's bytes are not canonical, or do not hash to the stamp's <c>resolveHash</c>; #1504 (R6): or a member publish writes in one form holds another (<c>requires.agents</c>' versions, <see cref="RequiresCheck.Engine"/>).</summary>
     public static SourceRefusal ResolveDoesNotMatch(string package, string version) =>
         new("S07-006", $"Workflow {package}@{version} can't run: its compiled document doesn't match the hash published for it.", CompiledPackage.ResolveFile);
 

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.PackageFormat.V31.Run;
 
@@ -29,26 +30,40 @@ public enum AgentOutcomeKind
 /// <see cref="PlanFunction.Entries"/> holds it: <c>node.patient_draft</c>), <paramref name="Function"/> the function the entry
 /// lives in (null at the package's level), <paramref name="Attempt"/> from 1, <paramref name="Repair"/> whether it asks
 /// again after an invalid reply, and <paramref name="Scope"/> the data the body reads: exactly the paths it reads
-/// (<see cref="RunScope.Data"/>).
+/// (<see cref="RunScope.Data"/>). #1504 (area 07; D3, D11): <paramref name="Placed"/> is each decided placement of the
+/// entry's <c>placements</c> (<c>part.&lt;id&gt;</c>, <c>snippet.&lt;id&gt;</c>, <c>macro.&lt;id&gt;</c>,
+/// <c>macro-folder.&lt;id&gt;</c>) to its result, none when null; <paramref name="Faults"/> the sentences of the last
+/// reply's marker faults (S05-053 to S05-059) a retry names, none when null.
 /// </summary>
-public sealed record AgentCall(string Key, string EntryKey, string? Function, int Attempt, bool Repair, JsonObject Scope);
+public sealed record AgentCall(
+    string Key, string EntryKey, string? Function, int Attempt, bool Repair, JsonObject Scope,
+    IReadOnlyDictionary<string, bool>? Placed = null, IReadOnlyList<string>? Faults = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; D7): what one attempt gave: the reply, or the wait the activity worked out
 /// (<c>retry-after</c>, else the back-off with its jitter) and the error's kind (<c>"timeout"</c>, <c>"error"</c> or
 /// <c>"unreachable"</c>; for <see cref="AgentOutcomeKind.Failed"/> <c>"steps"</c>, <c>"compose"</c> or <c>"plan"</c>), never
-/// its content.
+/// its content. #1504 (area 07; part 08 §§ 4, 4.3): <paramref name="Detail"/> is the attempt's row detail in part 08's names
+/// (<see cref="AgentTurn"/>), and <paramref name="Invalid"/> the reply's marker faults, null when there were none.
 /// </summary>
-public sealed record AgentOutcome(AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind);
+public sealed record AgentOutcome(
+    AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind, JsonObject? Detail = null, IReadOnlyList<ReplyFault>? Invalid = null);
 
-/// <summary>#1503 (specVersion 31, area 06): one render of a rendered node or a deliverable, with its step budget.</summary>
-public sealed record RenderCall(string Key, string EntryKey, string? Function, JsonObject Scope, int StepLimit);
+/// <summary>
+/// #1503 (specVersion 31, area 06): one render of a rendered node or a deliverable, with its step budget. #1504 (area 07;
+/// D3): <paramref name="Placed"/> is each decided placement of the entry's <c>placements</c> to its result, as
+/// <see cref="AgentCall.Placed"/> is; none when null.
+/// </summary>
+public sealed record RenderCall(string Key, string EntryKey, string? Function, JsonObject Scope, int StepLimit, IReadOnlyDictionary<string, bool>? Placed = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): what a render gave: its text; or <paramref name="TooManySteps"/> when it passed its
-/// step budget; or <paramref name="Failure"/>, the composer's sentence for another failure.
+/// step budget; or <paramref name="Failure"/>, the composer's sentence for another failure. #1504 (area 07; part 05 § 4;
+/// part 08 §§ 8.2, 10): <paramref name="NeutralText"/> is the run-neutral text (<see cref="Composition.NeutralText"/>),
+/// null when no run spot was filled, and <paramref name="Detail"/> the row's detail in part 08's names
+/// (<see cref="RenderTurn"/>).
 /// </summary>
-public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure);
+public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): everything outside the run that <see cref="PlanRunner"/> talks to: agent calls, renders,

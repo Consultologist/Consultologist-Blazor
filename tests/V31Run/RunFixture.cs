@@ -16,7 +16,7 @@ internal static class RunFixture
 {
     /// <summary>The plan of one of the three goldens.</summary>
     public static RunPlan Plan(CompiledGoldenTests.GoldenCase golden, TimeSpan? matchTimeLimit = null) =>
-        Plan(golden.Source(), golden.Reads(), matchTimeLimit);
+        Plan(golden.Source(), null, matchTimeLimit);
 
     /// <summary>The plan of the golden named <paramref name="name"/>.</summary>
     public static RunPlan Plan(string name, TimeSpan? matchTimeLimit = null) =>
@@ -26,8 +26,11 @@ internal static class RunFixture
     public static CompiledGoldenTests.GoldenCase Golden(string name) =>
         CompiledGoldenTests.Cases().Single(c => c.Name == name);
 
-    /// <summary>The plan of <paramref name="files"/>, whose bodies read what <paramref name="reads"/> says.</summary>
-    public static RunPlan Plan(Dictionary<string, byte[]> files, ITemplateReads reads, TimeSpan? matchTimeLimit = null)
+    /// <summary>
+    /// The plan of <paramref name="files"/>, whose bodies read what <paramref name="reads"/> says, or (none) what the
+    /// dialect says (#1504, D18).
+    /// </summary>
+    public static RunPlan Plan(Dictionary<string, byte[]> files, ITemplateReads? reads = null, TimeSpan? matchTimeLimit = null)
     {
         var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed, templates: reads);
         Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}")));

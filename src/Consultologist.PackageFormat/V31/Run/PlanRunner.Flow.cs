@@ -252,6 +252,8 @@ public sealed partial class PlanRunner
                 ["stopped"] = stopped,
                 ["history"] = History(loop),
             };
+            if (last.Read?["neutral"] is { } neutral)
+                read["neutral"] = neutral.DeepClone(); // #1504 (D4): its ret's run-neutral text, read as the ret's is
             return SettleAsync(instance, RowState.Completed, null, read, content == null ? null : CanonicalJson.HashText(content));
         }
 

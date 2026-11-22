@@ -171,7 +171,7 @@ public class FormatTypesTests
         other["$id"] = "urn:consultologist:format:classification@v2027.1.1";
 
         Assert.Equal(FormatTypes.FormatHash(J("\"classification\""), Formats), FormatTypes.FormatHash(other, Formats));
-        Assert.Equal("urn:consultologist:format:classification@v2026.12.1", (string?)FormatTypes.FullForm(J("\"classification\""), Formats)!["$id"]);
+        Assert.Equal("urn:consultologist:format:classification@v2026.12.2", (string?)FormatTypes.FullForm(J("\"classification\""), Formats)!["$id"]);
 
         other["description"] = "Another wording.";
         Assert.NotEqual(FormatTypes.FormatHash(J("\"classification\""), Formats), FormatTypes.FormatHash(other, Formats));

@@ -70,19 +70,21 @@ public static partial class SourceDerived
     /// <summary>
     /// The derived values of <paramref name="package"/>, resolved as <paramref name="resolution"/> says, its sites as
     /// <paramref name="expressions"/> checked them (under <paramref name="types"/>), each body read as
-    /// <paramref name="templates"/> says (none: every non-empty body unknown). <c>Derived</c> is null exactly when there is
+    /// <paramref name="templates"/> says (none: every non-empty body unknown), each templated node's placement rules as
+    /// <paramref name="dialect"/> places them (none: <paramref name="templates"/>, when it is the dialect's). <c>Derived</c> is null exactly when there is
     /// a refusal; the refusals are ordered by path (ordinal), then in the order found. A null argument other than
     /// <paramref name="templates"/> is the caller's error.
     /// </summary>
     public static (IReadOnlyList<SourceRefusal> Refusals, PackageDerived? Derived) Check(
-        SourcePackage package, PackageTypes types, Resolution resolution, PackageExpressions expressions, ITemplateReads? templates = null)
+        SourcePackage package, PackageTypes types, Resolution resolution, PackageExpressions expressions, ITemplateReads? templates = null,
+        Templates.PackageTemplates? dialect = null)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(types);
         ArgumentNullException.ThrowIfNull(resolution);
         ArgumentNullException.ThrowIfNull(expressions);
 
-        var graph = DerivedGraph.Build(package, resolution, templates);
+        var graph = DerivedGraph.Build(package, resolution, templates, dialect ?? templates as Templates.PackageTemplates);
         var refusals = new List<SourceRefusal>();
         Circles(graph, refusals);
         if (refusals.Count > 0)
@@ -96,8 +98,7 @@ public static partial class SourceDerived
         Values(derived, warnings);
         if (templates != null)
         {
-            SourceResolve.UnusedWithBodies(resolution.Tree,
-                leaf => graph.BodyOf(leaf, leaf.Body, resolution.Tree.FrameOf(leaf).Function)?.Reads, refusals);
+            SourceResolve.UnusedWithBodies(resolution.Tree, leaf => WithPlacedRules(graph, leaf, resolution.Tree), refusals);
             SourceResolve.FunctionBodies(package, resolution.Tree,
                 (declaration, function) => graph.BodyOf(declaration, BodyText(declaration), function), refusals, warnings);
         }
@@ -105,6 +106,27 @@ public static partial class SourceDerived
         if (refusals.Count > 0)
             return (Ordered(refusals), null);
         return ([], Package(derived, Ordered(warnings)));
+    }
+
+    /// <summary>
+    /// #1504 (area 07; part 05 §§ 6.3, 8.2): what <paramref name="leaf"/>'s body reads, and the <c>if</c> of each macro and
+    /// snippet it places (a macro folder's shared one included), which is read where it is placed: a node only such an
+    /// <c>if</c> reads (a classifier) is read. Null when the body is not known.
+    /// </summary>
+    private static IReadOnlyList<string>? WithPlacedRules(DerivedGraph graph, SourceLeaf leaf, ScopeTree tree)
+    {
+        var function = tree.FrameOf(leaf).Function;
+        if (graph.BodyOf(leaf, leaf.Body, function) is not { } reads)
+            return null;
+        var placed = reads.Places.SelectMany(p => graph.PlacedBy(p, "macro", function))
+            .Concat(reads.Reads.SelectMany(p => graph.PlacedBy(p, "snippet", function)));
+        var rules = placed.SelectMany(d => JsonLogicShape.Paths(d switch
+        {
+            SourceText text => text.Header["if"],
+            SourceTextFolder folder => folder.Index["if"],
+            _ => null,
+        }));
+        return reads.Reads.Concat(rules).ToList();
     }
 
     private static List<SourceRefusal> Ordered(List<SourceRefusal> said) =>

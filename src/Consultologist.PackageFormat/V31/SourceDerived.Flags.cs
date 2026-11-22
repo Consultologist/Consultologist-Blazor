@@ -249,7 +249,8 @@ public static partial class SourceDerived
 
     /// <summary>
     /// Through the seam: an agent's prompt (its parts' text included) reading a profile-carrying value: S04-069 when it
-    /// is a parameter that carries a profile field (part 04 § 7.7), else S03-044.
+    /// is a parameter that carries a profile field (part 04 § 7.7), else S03-044. #1504 (area 07; part 05 § 8.6): a read
+    /// only a placed macro's body makes is substituted into the reply, never sent, and is not judged.
     /// </summary>
     private static void Prompts(Derivation derived, List<SourceRefusal> refusals)
     {
@@ -260,7 +261,7 @@ public static partial class SourceDerived
             if (vertex.Declaration is not SourceLeaf { Kind: "agent" } agent || vertex.Body == null)
                 continue;
             var said = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var read in vertex.Content.Where(r => r.Canonical.Length > 0 && r.Id != null && r.Carries))
+            foreach (var read in vertex.Content.Where(r => r.Canonical.Length > 0 && r.Id != null && r.Carries && r.Sent))
             {
                 if (!derived.Graph.ById.TryGetValue(read.Id!, out var target) || !derived.Flag(target, LineageFlag.ProfileCarrying)
                     || !said.Add(read.Path))

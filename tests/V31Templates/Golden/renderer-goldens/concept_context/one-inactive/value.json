@@ -1,0 +1,13 @@
+{
+  "concepts": [
+    {
+      "term": "Diabetes mellitus",
+      "type": "disorder",
+      "id": "73211009",
+      "isSnomedConcept": true,
+      "isActive": false,
+      "source": "extract",
+      "support": null
+    }
+  ]
+}

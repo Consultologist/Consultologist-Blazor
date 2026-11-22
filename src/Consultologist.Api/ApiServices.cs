@@ -25,6 +25,20 @@ namespace Consultologist.Api;
 /// </summary>
 public static class ApiServices
 {
+    /// <summary>
+    /// What <c>Program.cs</c> resolves after the host is built and before it runs, so a bad setting or catalogue fails at
+    /// startup, not at the first job: #1503's <see cref="SpecVersionAdmission"/> and
+    /// <see cref="Consultologist.Api.V31.EngineLimitSettings"/>, and #1504's <see cref="Consultologist.Api.V31.V31AgentsCatalogue"/>
+    /// (resolved lazily, a defect in it would fail every job start, 5–30 included, through the 31 starter's store).
+    /// </summary>
+    public static void ResolveAtStartup(IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.GetRequiredService<SpecVersionAdmission>();
+        services.GetRequiredService<Consultologist.Api.V31.EngineLimitSettings>();
+        services.GetRequiredService<Consultologist.Api.V31.V31AgentsCatalogue>();
+    }
+
     public static IServiceCollection AddApiServices(this IServiceCollection services)
     {
         services.AddSingleton<TokenCredential>(sp =>
@@ -154,14 +168,16 @@ public static class ApiServices
         // cached. The version is resolved through the 5–30 store's own latest pointer and cache
         // (IWorkflowPackageVersions, registered with the store above).
         services.AddSingleton<Consultologist.Api.V31.IRegistryFiles, Consultologist.Api.V31.BlobRegistryFiles>();
+        // #1504 (D9): the 31 agents catalogue (agents/v31, bundled from the pinned agents repo), loaded and attested once:
+        // its agents are among what this engine runs, and an agent call's sent format leaves out their strictRejects.
+        services.AddSingleton(_ => Consultologist.Api.V31.V31AgentsCatalogue.Load());
         services.AddSingleton<Consultologist.Api.V31.EngineCapabilitiesFactory>();
         services.AddSingleton(sp => sp.GetRequiredService<Consultologist.Api.V31.EngineCapabilitiesFactory>().Current());
         services.AddSingleton<Consultologist.Api.V31.ICompiledPackageStore, Consultologist.Api.V31.CompiledPackageStore>();
         // #1503 (part 09 §§ 3.1, 3.4): a 31 job's orchestration — one attempt per agent activity
-        // (the orchestration retries), the default body composer until area 07, and the inputs
-        // held by reference as the job's held inputs (JobInputsBlobStore's containers and names).
+        // (the orchestration retries; #1504: its prompt composed by the template library), and the
+        // inputs held by reference as the job's held inputs (JobInputsBlobStore's containers and names).
         services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
-        services.AddSingleton<Consultologist.Api.V31.IBodyComposer, Consultologist.Api.V31.ScribanBodyComposer>();
         services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
         services.AddSingleton<Consultologist.Api.V31.V31JobStarter>();
         // #1503 (part 09 § 3.6; D9): the drain before a deploy — its state on the text account (drain/ in the job outputs'

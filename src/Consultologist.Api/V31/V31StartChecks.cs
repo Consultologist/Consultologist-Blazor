@@ -95,6 +95,44 @@ public static class V31StartChecks
     }
 
     /// <summary>
+    /// #1504 (specVersion 31, area 07; ruled by the owner on #1504, ruling 6; part 05 § 8.2: a per-run choice is an optional
+    /// boolean input that takes the macro's id): <paramref name="supplied"/> with the request's <paramref name="choices"/>
+    /// (<c>MacroChoices</c>) read in, for <see cref="Inputs"/> to check. Each entry <c>&lt;id&gt;: &lt;bool&gt;</c> is the value of
+    /// the package's boolean input <c>&lt;id&gt;</c>, exactly as if the request had sent that input. An id that is no input
+    /// of <paramref name="plan"/>, or one whose format is not <c>boolean</c>, is A07-015; an input the request also sent
+    /// (as a value other than <c>null</c>) with a different value is A07-016. Each names the id alone, never a value;
+    /// entries are read in ordinal order of their ids.
+    /// </summary>
+    public static (IReadOnlyDictionary<string, JsonNode?> Supplied, IReadOnlyList<SourceRefusal> Refusals) Choices(
+        RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, IReadOnlyDictionary<string, bool>? choices)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(supplied);
+
+        var merged = new Dictionary<string, JsonNode?>(supplied, StringComparer.Ordinal);
+        var refusals = new List<SourceRefusal>();
+        foreach (var (id, choice) in (choices ?? new Dictionary<string, bool>()).OrderBy(c => c.Key, StringComparer.Ordinal))
+        {
+            if (!plan.Inputs.TryGetValue(id, out var declared) || !IsBoolean(plan, declared["format"]))
+            {
+                refusals.Add(new SourceRefusal("A07-015", $"MacroChoices names '{id}', which is not a boolean input of the package.", ""));
+                continue;
+            }
+
+            if (supplied.GetValueOrDefault(id) is { } sent)
+            {
+                if (!JsonNode.DeepEquals(sent, JsonValue.Create(choice)))
+                    refusals.Add(new SourceRefusal("A07-016", $"Input '{id}' is given one value in Inputs and another in MacroChoices; send it once.", ""));
+                continue;
+            }
+
+            merged[id] = JsonValue.Create(choice);
+        }
+
+        return (merged, refusals);
+    }
+
+    /// <summary>
     /// The run facts of <paramref name="plan"/> that follow from the plan and the start, by name with <c>run.</c> dropped
     /// (part 03 § 4.3; D6): <c>run.date</c>, the ISO date of <paramref name="startedAtUtc"/> in <paramref name="timeZone"/>
     /// (UTC with no zone or one this machine does not know: the start refuses a job without one before it gets here), and
@@ -135,6 +173,10 @@ public static class V31StartChecks
         !string.IsNullOrWhiteSpace(timeZone)
         && TimeZoneInfo.TryFindSystemTimeZoneById(timeZone, out var zone)
         && zone.HasIanaId;
+
+    /// <summary>Whether <paramref name="format"/>, expanded against <paramref name="plan"/>'s bundle, is a boolean (part 05 § 8.2).</summary>
+    private static bool IsBoolean(RunPlan plan, JsonNode? format) =>
+        plan.Formats.Expand(format) is JsonObject expanded && SourceLayout.Text(expanded["type"]) == "boolean";
 
     /// <summary>A value left blank: absent or <c>null</c>, or a string of nothing but white space, as <c>blank()</c> judges.</summary>
     private static bool LeftBlank(JsonNode? value) =>

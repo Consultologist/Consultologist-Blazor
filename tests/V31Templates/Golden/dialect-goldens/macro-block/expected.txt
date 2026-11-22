@@ -1,0 +1,4 @@
+Draft the plan for Margaret Okafor.
+Place the follow-up line alone, after the plan:
+  {{~ macro.follow_up.content }}
+End with the plan.

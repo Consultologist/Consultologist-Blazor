@@ -5,9 +5,11 @@ public static partial class SourceDerived
 {
     /// <summary>
     /// A05-003: the nodes and checks of the package and of each function (its intrinsic scope; a function's nodes reach
-    /// no node outside it), each reading what its content and its conditions read, except through <c>pass</c> (a while's
-    /// own passes, the earlier ones among them), a loop's <c>item</c> reading the loop's source, and a flow node waiting
-    /// for its body. Each set of nodes that reach each other is said once, from its ordinal-first node, as the shortest
+    /// no node outside it), each reading what its content and its conditions read (this pass's node,
+    /// <c>pass.node.&lt;id&gt;</c>, as <c>node.&lt;id&gt;</c>: #1504, ruled by the owner, ruling 7, part 04 § 3.3), except an
+    /// earlier pass (<c>pass.previous…</c>, <c>pass.history</c>), a loop's <c>item</c> reading the loop's source, and a flow
+    /// node waiting for its body. #1504 (area 07): a templated node also reads what each rule of its <c>placements</c>
+    /// reads at its place (<see cref="Vertex.Placed"/>), as <c>RunPlan</c> counts them among its dependencies. Each set of nodes that reach each other is said once, from its ordinal-first node, as the shortest
     /// circle back to it (the nodes read taken in ordinal order), at that node's file. Each walk visits a vertex once.
     /// </summary>
     private static void Circles(DerivedGraph graph, List<SourceRefusal> refusals)
@@ -16,8 +18,8 @@ public static partial class SourceDerived
             .Where(v => !v.Union && (v.Declaration is SourceNode || v.Id.StartsWith("item:", StringComparison.Ordinal)))
             .ToList();
         var ids = vertices.Select(v => v.Id).ToHashSet(StringComparer.Ordinal);
-        var edges = vertices.ToDictionary(v => v.Id, v => v.Content.Concat(v.Conditions)
-            .Where(r => !r.Pass && r.Id != null && ids.Contains(r.Id))
+        var edges = vertices.ToDictionary(v => v.Id, v => v.Content.Concat(v.Conditions).Concat(v.Placed)
+            .Where(r => !r.Earlier && r.Id != null && ids.Contains(r.Id))
             .Select(r => r.Id!)
             .Concat(v.Contains.Where(ids.Contains))
             .Distinct(StringComparer.Ordinal)

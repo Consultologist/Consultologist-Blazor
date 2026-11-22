@@ -4,7 +4,9 @@
 [the engine and the pages](package-format-v31/09-engine-and-pages.md) §§ 1, 2.1, 3.1 to 3.4 and 3.6, and
 [the plan](package-format-v31/plans/area-06-engine-loading-and-scheduling.md) for the decisions. The library the
 engine runs (`RunPlan`, `PlanRunner`, the seams) is described in
-[the package format as a library](package-format-library.md), "specVersion 31: the run".*
+[the package format as a library](package-format-library.md), "specVersion 31: the run". Area 07 (#1504) added
+the template language the activities run, the 31 agents catalogue and `MacroChoices` at a 31 start; the library's
+side is "specVersion 31: templates" in the same guide.*
 
 This page is for whoever deploys and operates the engine. It covers:
 
@@ -75,13 +77,30 @@ the failure's type and status, never its message, which can carry a URI.
 **What the engine runs** (`EngineCapabilitiesFactory.Current()`):
 
 - **Kinds:** all eight.
-- **Features:** `parallel` and `check-loops`. `parts`, `macro-markers` and `run-spots` are refused (S07-004) until
-  area 07's body composer lands. The reasons are in `EngineCapabilitiesFactory.FeaturesNotRun`.
-- **Agents:** the ones the engine already loads and attests at startup: the output contracts, the formats
-  catalogue and its custom producer. **The 31 agents catalogue (`agents/v31/agents.json`) is not loaded.** So a
-  package that binds an agent only that catalogue lists (for example `judgement` 1) is refused with S07-005.
+- **Features:** all five: `parallel`, `check-loops`, and, since area 07 (#1504), `parts`, `macro-markers` and
+  `run-spots`. `EngineCapabilitiesFactory.FeaturesNotRun` is kept, and is empty.
+- **Agents:** the ones the engine loads and attests at startup: the output contracts, the formats catalogue and its
+  custom producer, and the **31 agents catalogue** (`V31AgentsCatalogue`, below). So a package that binds an agent
+  only that catalogue lists (for example `judgement` 1) loads; one binding an agent version no catalogue holds is
+  still refused with S07-005.
 - **Break points:** `EngineBreakPoints.All`, compiled in (D2) and empty today. One is added only by an upgrade
   that went through the corpus re-render, which is a code change.
+
+**The 31 agents catalogue** (#1504, ruling 3; D9). `V31AgentsCatalogue.Load()` reads `agents/v31/bindings.json` and
+`agents/v31/agents.json` from the bundled agents directory (the pinned `external/consultologist-agents/agents/`,
+copied into the build as `agents/v31/`), through `AgentBindings.Read`, the reader publish uses. It attests each agent
+version against git: the bundled manifest `agents/<name>.yaml` must exist and declare that version. It gives:
+
+- `Version` (`v2026.12.2`), and `Agents`, each `(name, version)`;
+- `StrictRejects(name, version)`: the keywords the agent's provider's strict mode rejects, which are left out of a
+  format sent to it (empty for an agent it does not hold);
+- `Holds(name, version)`.
+
+`ApiServices.ResolveAtStartup` resolves it, with `SpecVersionAdmission` and `EngineLimitSettings`, before the host
+runs. So a missing file, a file not of the published shape, or a manifest at another version stops the host
+(`InvalidOperationException`) rather than failing job starts. It is attested against git only, not against Foundry:
+`judgement` 1 exists in Foundry only once the contracts are released, and `AgentAttestationService` does not compare
+the 31 agents.
 
 ## Starting a job
 
@@ -119,14 +138,22 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
 
 A 31 start failure's History line is "Not started".
 
-**Not read at 31 yet.** A 31 start reads typed inputs and documents only. These request members are not read,
-so an input sent only through one of them reads as missing (A06-011):
+**Macro choices.** A per-run choice is an optional boolean input that takes the macro's id (part 05 § 8.2), so a
+31 start reads each `MacroChoices` entry `<id>: <bool>` as the value of the package's boolean input `<id>`, exactly
+as if the request had sent that input (#1504, ruled by the owner). An id that is no boolean input of the package is
+refused, *"MacroChoices names '<id>', which is not a boolean input of the package."* (A07-015). A07-015 quotes the
+caller's id, so the email sender is not told it, as with A06-013. An input sent both ways with different values is
+refused, *"Input '<id>' is given one value in Inputs and another in MacroChoices; send it once."* (A07-016); the same
+value sent both ways is accepted, and an input sent as `null` counts as not sent. `V31StartChecks.Choices` does this; its
+refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
+
+**Not read at 31 yet.** A 31 start reads typed inputs, documents and macro choices only. These request members are
+not read, so an input sent only through one of them reads as missing (A06-011):
 
 - `InputRefs`, the references to a previous run's input or result;
-- `InputFormRefs` and `InputFormFiles`, a form response's references and files;
-- `MacroChoices`.
+- `InputFormRefs` and `InputFormFiles`, a form response's references and files.
 
-Reruns and the pages that send references are area 12's; macro choices are area 07's.
+Reruns and the pages that send references are area 12's.
 
 ## The orchestration
 
@@ -186,9 +213,12 @@ from 5 seconds, so one storage hiccup does not fail a job.
 ## Agent calls and retries
 
 `run-agent-node-v31` (`RunAgentNodeV31Activity`) makes one attempt of one call. It loads the plan through the
-store's cache, held to the job's `resolveHash`, and composes the entry's body with the job's recorded
-`renderSteps`. It finds the agent in the plan's `bindings` (`bindings.<format key>.<producer>`), then sends the
-body once, through `IAgentAttempts`, which declares:
+store's cache, held to the job's `resolveHash`, and finds the agent in the plan's `bindings`
+(`bindings.<format key>.<producer>`), which the 31 agents catalogue must hold. The prompt is
+`AgentTurn.Prepare(plan, call, renderSteps, catalogue.StrictRejects(agent, version))`: the entry's body composed
+over the call's scope with the runner's placement decisions (`AgentCall.Placed`), within the job's recorded
+`renderSteps`; for a `via: "custom"` binding, ended with the format sent; for a repair, the retry text (below). It
+sends that text once, as the user message, through `IAgentAttempts`, which declares:
 
 ```csharp
 Task<AgentAttempt> TryPromptOnceAsync(string stage, string userMessage, string agentName, string agentVersion, CancellationToken cancellationToken);
@@ -196,14 +226,14 @@ Task<AgentAttempt> TryPromptOnceAsync(string stage, string userMessage, string a
 
 | What happened | The outcome |
 |---|---|
-| a reply | `Completed`, with the text |
+| a reply | `Completed`, with `AgentTurn.Finish`'s value: unwrapped from the envelope, its macro markers checked and replaced, and the row's detail; with marker faults, the reply as it came and the faults (`Invalid`) |
 | an empty reply (`SendPromptAsync`'s *"No assistant response found"*) | `Completed` with `""`, so the node's `onInvalid` and `failIfEmpty` decide it; its token counts are lost |
 | HTTP 429 | `Throttled`, waiting `retry-after-ms`, else `retry-after` (seconds or an HTTP date) |
 | a 5xx | `ServiceFailure` `error` |
 | a time-out | `ServiceFailure` `timeout` |
 | no connection | `ServiceFailure` `unreachable` |
 | any other status (401, 403, 404, …) | propagates, and the job fails with A06-010 |
-| a call that cannot be made | `Failed`: `plan` (the plan is not the job's, or lacks the entry or its binding), `steps`, `compose` |
+| a call that cannot be made | `Failed`, and nothing is sent: `plan` (the plan is not the job's, or lacks the entry or its binding, or the 31 agents catalogue lacks the agent), `steps` (the body passed `renderSteps`), `compose` (the body could not be composed) |
 
 When the service gives no wait, the wait is `AgentBackoff.Wait(attempt, jitter)`: 5 seconds, doubling, capped at
 60 seconds, plus up to 20% jitter (5,000 to 6,000 ms after the first attempt, never over 72,000). The wait is in
@@ -213,13 +243,32 @@ slot, and calls again. A node fails after these limits:
 - `CapacityWaitMinutes` of 429 waits in all: S09-010;
 - `ServiceAttempts` attempts: S09-011, which names the last error's kind, never its content.
 
+**What a retry sends.** The runner asks again in two ways, and each attempt is prepared afresh from the plan:
+
+- **After a 429 or a service failure** the call is made again as it was: the same scope, the same decisions and, once
+  the node has been repaired, the same repair. So the text sent is the text the failed attempt sent.
+- **After a reply that could not be used**, under `onInvalid: "retry"`, the node is asked once more (a repair, in the
+  slot it holds). Its prompt is the composed prompt (with the format, for a custom binding), trimmed at the end, then
+  two newlines and the retry text (D11). For wrong macro markers it is `Your last reply could not be used:`, one
+  line `- <sentence>` per fault (S05-053 to S05-059, which name macro ids only), and `Write the reply again, with
+  each marker exactly as given above.`. For a reply that did not fit its format it is `Your last reply could not be
+  used: it did not fit the required format. Write the reply again.`. The retry never quotes the reply. One exception:
+  S05-056 names the id the model wrote in a marker that names no macro, bounded to the id pattern (two segments of
+  at most 64 characters).
+
 **One attempt per call holds only while `AzureAI__MaxRetries` is 0** (its default). `SendPromptAsync` builds its
 own client retry policy from that setting on every call. A non-zero value makes the SDK retry a 429 or a 5xx
-inside one attempt. Those retries sit under the orchestration's own and outside the record's retry rows. **Leave
-it at 0 on any app that runs 31 jobs.**
+inside one attempt: it resends the same text, but the retry sits under the orchestration's own, outside the record's
+retry rows, and its waits are not in the history. **Leave it at 0 on any app that runs 31 jobs.**
 
-Telemetry from the activity carries the key, the attempt, lengths, hashes and token counts, never text. The tokens
-are not recorded on the job yet (area 09).
+Telemetry from the activity carries the key, the attempt, lengths, hashes and token counts, never text: the
+prompt's, the run-neutral text's, the model's reply's and the finished value's (they differ once markers are
+replaced), and the counts of marker faults. The tokens are not recorded on the job yet (area 09).
+
+`render-node-v31` (`RenderNodeV31Activity`) returns `RenderTurn.Render(plan, call)`: the text, the run-neutral text
+and the row's detail, with the runner's decisions (`RenderCall.Placed`). Its log line carries the key and the lengths
+and hashes of the two texts. `EntityRunRecorder` passes only a row's `inputHash` and `runNeutralHash` to telemetry;
+the whole detail is stored by area 09.
 
 ## Settings
 

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
@@ -42,7 +41,7 @@ public class RequiresCheckTests
         var required = Pair.Value.Resolve["requires"]!["agents"]!.AsObject()
             .ToDictionary(
                 a => a.Key,
-                a => (IReadOnlySet<int>)new HashSet<int> { int.Parse((string)a.Value!, CultureInfo.InvariantCulture) },
+                a => (IReadOnlySet<int>)new HashSet<int> { (int)a.Value! },
                 StringComparer.Ordinal);
         return new EngineCapabilities(
             "1.0.0",
@@ -276,7 +275,7 @@ public class RequiresCheckTests
     public void AMissingAgentVersion_IsRefused()
     {
         var resolve = Resolve();
-        var (name, version) = resolve["requires"]!["agents"]!.AsObject().Select(a => (a.Key, (string)a.Value!)).First();
+        var (name, version) = resolve["requires"]!["agents"]!.AsObject().Select(a => (a.Key, (int)a.Value!)).First();
         var agents = Engine().Agents.ToDictionary(
             a => a.Key,
             a => a.Key == name ? (IReadOnlySet<int>)new HashSet<int> { 9999 } : a.Value,
@@ -291,6 +290,39 @@ public class RequiresCheckTests
 
         var without = agents.Where(a => a.Key != name).ToDictionary(a => a.Key, a => a.Value, StringComparer.Ordinal);
         Assert.Equal("S07-005", Assert.Single(RequiresCheck.Engine(resolve, Lock(), Engine(agents: without))).Id);
+    }
+
+    [Fact]
+    public void RequiresCheck_ReadsIntegerVersions()
+    {
+        // #1504 ruling 4 (R6): requires.agents holds each version as a number. An engine without it is S07-005 as before;
+        // a version written as text is not what publish wrote, so the document is refused as not matching (S07-006).
+        var resolve = Resolve();
+        var (name, version) = resolve["requires"]!["agents"]!.AsObject().Select(a => (a.Key, a.Value!)).First();
+        Assert.Equal(System.Text.Json.JsonValueKind.Number, version.GetValueKind());
+        Assert.Empty(RequiresCheck.Engine(resolve, Lock(), Engine()));
+
+        var lacking = Engine().Agents.ToDictionary(
+            a => a.Key, a => a.Key == name ? (IReadOnlySet<int>)new HashSet<int> { 9999 } : a.Value, StringComparer.Ordinal);
+        Assert.Equal("S07-005", Assert.Single(Said(RequiresCheck.Engine(resolve, Lock(), Engine(agents: lacking)))).Id);
+
+        foreach (var written in new JsonNode?[] { JsonValue.Create(version.ToString()), JsonValue.Create(1.5), null, new JsonArray(1), new JsonObject() })
+        {
+            var edited = Resolve();
+            edited["requires"]!["agents"]![name] = written?.DeepClone();
+            var refusal = Assert.Single(Said(RequiresCheck.Engine(edited, Lock(), Engine())));
+            Assert.Equal("S07-006", refusal.Id);
+            Assert.Equal("Workflow example-nested-note@v2026.12.1 can't run: its compiled document doesn't match the hash published for it.", refusal.Sentence);
+            Assert.Equal("resolve.json", refusal.Path);
+        }
+
+        // Every agent written as text is one S07-006: the document is not publish's once.
+        var allText = Resolve();
+        var texts = allText["requires"]!["agents"]!.AsObject();
+        Assert.True(texts.Count > 1);
+        foreach (var agent in texts.Select(a => a.Key).ToList())
+            texts[agent] = texts[agent]!.ToString();
+        Assert.Equal("S07-006", Assert.Single(Said(RequiresCheck.Engine(allText, Lock(), Engine()))).Id);
     }
 
     [Fact]
@@ -319,7 +351,7 @@ public class RequiresCheckTests
             d => { d["requires"]!["features"] = "parallel"; return d; },
             d => { d["requires"]!["agents"] = new JsonArray(); return d; },
             d => { d["requires"]!["agents"] = new JsonObject { ["custom-json"] = "one" }; return d; },
-            d => { d["requires"]!["agents"] = new JsonObject { ["custom-json"] = 1 }; return d; },
+            d => { d["requires"]!["agents"] = new JsonObject { ["custom-json"] = "1" }; return d; },
             d => { d["package"] = "x"; d.Remove("requires"); return d; },
         };
         foreach (var shape in shapes)

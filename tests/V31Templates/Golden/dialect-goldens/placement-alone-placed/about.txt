@@ -1,0 +1,3 @@
+{{ x }} alone on its line, indented: the indentation before it stays, and the unit's later lines are its own, not indented again (chapter 5 § 5.2.6).
+
+package/ is the upload, byte for byte; entry.txt names the entry composed (node.golden). Composing it over scope.json (the data, keys rooted as the run holds them), with each placement decided as placed.json says (a site it does not name is not placed), gives expected.txt byte for byte: Scriban 7.2.5, the invariant culture, strict variables.

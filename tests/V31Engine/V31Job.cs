@@ -33,7 +33,11 @@ internal sealed class V31Job
         typeof(ConsultGenerationJobEntity).GetProperty("State", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
 
     private static readonly Lazy<EngineCapabilities> ThisEngine =
-        new(() => new EngineCapabilitiesFactory(OutputContractCatalog.Load(), FormatCatalogLoader.Load()).Current());
+        new(() => Factory().Current());
+
+    /// <summary>The engine's capabilities factory over the bundled catalogues, as the host builds it.</summary>
+    public static EngineCapabilitiesFactory Factory() =>
+        new(OutputContractCatalog.Load(), FormatCatalogLoader.Load(), V31AgentsCatalogue.Load());
 
     /// <summary>The orchestration's clock.</summary>
     public static readonly DateTime Now = new(2026, 11, 16, 14, 0, 0, DateTimeKind.Utc);
@@ -105,7 +109,6 @@ internal sealed class V31Job
     /// <summary>The context, every activity answered as the summary says; its input <paramref name="input"/>, else <see cref="Input"/>.</summary>
     public FakeOrchestrationContext Context(ConsultGenerationOrchestrationInputV31? input = null)
     {
-        var composer = new ScribanBodyComposer();
         return new FakeOrchestrationContext(JobId, input ?? Input(), Entity, Now)
             .HoldTimersLongerThan(TimeSpan.FromMinutes(5))
             .On(ConsultGenerationActivityNames.LoadPlanV31, payload =>
@@ -114,7 +117,7 @@ internal sealed class V31Job
                 new LoadRunInputsV31Activity(Inputs, Store).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.RunAgentNodeV31, payload => Agent(((RunAgentNodeV31Input)payload!).Call))
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
-                new RenderNodeV31Activity(Store, composer, NullLogger<RenderNodeV31Activity>.Instance)
+                new RenderNodeV31Activity(Store, NullLogger<RenderNodeV31Activity>.Instance)
                     .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             // #1503 (D9): the input is DrainAware; the drain is off here and check-drain is left out of the calls the
             // tests read (the drain's own tests answer it recorded: DrainDoorsTests).

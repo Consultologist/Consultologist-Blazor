@@ -1,0 +1,28 @@
+{
+  "node": {
+    "terms": {
+      "value": {
+        "concepts": [
+          {
+            "term": "Diabetes mellitus",
+            "type": "disorder",
+            "id": "73211009",
+            "isSnomedConcept": true,
+            "isActive": false,
+            "support": "long-standing type 2 diabetes",
+            "source": "extract"
+          },
+          {
+            "term": "Family support strong",
+            "type": "finding",
+            "id": null,
+            "isSnomedConcept": false,
+            "isActive": false,
+            "support": null,
+            "source": "extract"
+          }
+        ]
+      }
+    }
+  }
+}

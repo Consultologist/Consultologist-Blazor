@@ -12,15 +12,14 @@ namespace Consultologist.Api.Tests.V31Resolve;
 /// <see cref="ResolveFixture.Functions"/> with <see cref="Fixed"/>, the toolchain written by hand so that a machine's patch
 /// level never moves a golden, gives exactly the bytes of <c>Golden/&lt;name&gt;.resolve.json</c> and
 /// <c>Golden/&lt;name&gt;.lock.json</c>: canonical, one line, no final newline. With <c>GOLDEN_UPDATE_V31=1</c> the test
-/// rewrites them instead; a rewritten golden is read before it is committed. What each body reads comes from a stub
-/// (<see cref="ResolveFixture.NestedNoteReads"/> and its siblings) until the dialect (area 07) says it; area 07
-/// regenerates them. The same cases are the conformance family <c>compiled-documents</c>
+/// rewrites them instead; a rewritten golden is read before it is committed. What each body reads is what the dialect
+/// says (#1504, area 07, D18: no stub). The same cases are the conformance family <c>compiled-documents</c>
 /// (<see cref="CompiledDocumentsExport"/>), which the pinned content repo must hold as published here.
 /// </summary>
 public class CompiledGoldenTests
 {
-    /// <summary>One golden: its file name, the package, the stub that says what its bodies read, and its <c>about</c>.</summary>
-    internal sealed record GoldenCase(string Name, Func<Dictionary<string, byte[]>> Source, Func<ITemplateReads> Reads, string About);
+    /// <summary>One golden: its file name, the package and its <c>about</c>.</summary>
+    internal sealed record GoldenCase(string Name, Func<Dictionary<string, byte[]>> Source, string About);
 
     private static readonly UTF8Encoding Utf8NoBom = new(false);
 
@@ -51,19 +50,16 @@ public class CompiledGoldenTests
     [
         new("nested-note",
             () => Named(ResolveFixture.NestedNote(), "example-nested-note", "Nested note demo"),
-            ResolveFixture.NestedNoteReads,
             "example-nested-note: an agent planning the sections, a computed count, the loop sections over the plan's "
             + "sections holding an outline and the loop paragraphs over its points, and the while refine of a summary and "
             + "its judge, after chapter 4 § 4.2.8 and § 4.3.5, with the package formats of chapter 7 § 7.2.9."),
         new("conditional",
             () => Named(ResolveFixture.Conditional(), "example-conditional-sections", "Conditional sections demo"),
-            ResolveFixture.ConditionalReads,
             "example-conditional-sections: a required list input of sections, each with a title and a kind; a loop "
             + "routing each section by a case on its kind (the omit branch empty), a loop holding an if on the kind, and "
             + "a loop holding an if on the section's id and a boolean input, after chapter 4 § 4.5.4."),
         new("functions",
             () => Named(ResolveFixture.Functions(), "example-functions", "Functions demo"),
-            ResolveFixture.FunctionsReads,
             "example-functions, after chapter 4 § 4.7.11 (with an agent plan and a second agent extracting terms, which "
             + "the example does not have): the function draft_section of three agents, called in a loop over the "
             + "snippet folder standards; the check loop section_coverage over the loop's .items and the check "
@@ -84,10 +80,10 @@ public class CompiledGoldenTests
     /// <summary><see cref="CompiledPackage.Publish"/> of <paramref name="golden"/> with <see cref="Fixed"/>, asserted accepted and complete.</summary>
     internal static CompiledPackage Published(GoldenCase golden)
     {
-        var (refusals, compiled) = CompiledPackage.Publish(golden.Source(), ResolveFixture.Published(), Fixed, templates: golden.Reads());
+        var (refusals, compiled) = CompiledPackage.Publish(golden.Source(), ResolveFixture.Published(), Fixed);
         Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}")));
         Assert.NotNull(compiled);
-        Assert.True(compiled!.Complete, $"{golden.Name}: a body's reads are not stated by its stub.");
+        Assert.True(compiled!.Complete, $"{golden.Name}: a body's reads are not known.");
         return compiled;
     }
 

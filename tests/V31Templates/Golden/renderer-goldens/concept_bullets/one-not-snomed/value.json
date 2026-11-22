@@ -1,0 +1,13 @@
+{
+  "concepts": [
+    {
+      "term": "Lives alone",
+      "type": "finding",
+      "id": null,
+      "isSnomedConcept": false,
+      "isActive": false,
+      "source": "extract",
+      "support": null
+    }
+  ]
+}

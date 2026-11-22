@@ -341,13 +341,19 @@ public class SourceResolveLoopsTests
 
     private const string Refine = "nodes/refine/index.json";
 
-    /// <summary><see cref="ResolveFixture.NestedNote"/> with <c>refine</c> checked before each pass, its check <paramref name="rule"/>.</summary>
+    /// <summary>
+    /// <see cref="ResolveFixture.NestedNote"/> with <c>refine</c> checked before each pass, its check <paramref name="rule"/>;
+    /// its draft reads the judge's earlier verdict, so the judge is read whatever the check reads (#1504: S04-035 is
+    /// judged through the bodies).
+    /// </summary>
     private static Dictionary<string, byte[]> CheckedFirst(string rule) =>
         ResolveFixture.NestedNote().WithJson(Refine, h =>
         {
             h["checkFirst"] = true;
             h["while"] = JsonNode.Parse(rule);
-        });
+        })
+        .With("nodes/refine/draft_summary.md", Agent("Drafting the summary", "\"plaintext\"",
+            "Summarise the note in two sentences for Dr A. Sample.\n\n{{ pass.previous.node.judge.value.verdict }}\n"));
 
     [Theory]
     [InlineData("node.judge.value.verdict")]
@@ -379,15 +385,21 @@ public class SourceResolveLoopsTests
     }
 
     [Fact]
-    public void AWhileWithAnAgent_IsNotJudgedYet()
+    public void AWhileWithAnAgent_IsJudgedThroughItsBodies()
     {
-        // refine's body holds agents, whose prompts' reads are unknown until the seam is supplied (D1): an unread node is not judged
+        // #1504 (area 07, D18): refine's body holds agents, whose prompts the dialect reads: an unread node is S04-035,
+        // and one a prompt reads is not.
         var files = ResolveFixture.NestedNote()
             .WithJson("nodes/refine/index.json", h => h["nodes"]!.AsArray().Add("aside"))
             .With("nodes/refine/aside.md", Agent("Noting an aside", "\"plaintext\"", "Note one thing Dr A. Sample may want to add.\n"));
 
-        var result = ResolveFixture.Run(files);
+        AssertRefusal(files, "S04-035",
+            "Node 'aside' in while 'refine' is neither returned nor read; name it with ret, read it from a body node or from the check.",
+            "nodes/refine/aside.md");
 
+        var read = files.With("nodes/refine/judge.md", Agent("Judging the summary", "\"verdict\"",
+            "Say whether the summary is good or needs another pass.\n\n{{ node.draft_summary.content }}\n{{ node.aside.content }}\n"));
+        var result = ResolveFixture.Run(read);
         Assert.True(result.Refusals.Count == 0, ResolveFixture.Said(result));
     }
 }

@@ -21,7 +21,7 @@ public class FormatValuesTests
     public void AValueOfTheFormat_IsValid()
     {
         Assert.True(Check("""{ "answer": true, "reason": "Margaret Okafor has a cough." }""", Judgement).Valid);
-        var r24 = Check("""{ "concepts": [ { "term": "Cough", "type": "finding", "id": null, "isSnomedConcept": false, "isActive": true, "support": null } ] }""", "\"concept_list\"");
+        var r24 = Check("""{ "concepts": [ { "term": "Cough", "type": "finding", "id": null, "isSnomedConcept": false, "isActive": true, "source": "note", "support": null } ] }""", "\"concept_list\"");
         Assert.True(r24.Valid, Faults(r24));
         Assert.True(Check("\"Some **text**.\"", "\"markdown_block\"").Valid);
         Assert.True(Check("""["a", "b"]""", """{ "type": "array", "items": { "$ref": "plaintext" } }""").Valid);
