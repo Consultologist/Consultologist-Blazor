@@ -1295,7 +1295,9 @@ check item *i* opens when production item *i* settles, so checking overlaps prod
   `AgentCalls`.
 - An invalid reply under `onInvalid: "fail"`, or a second invalid reply, fails the node with A06-005.
 - `failIfEmpty` is the package's failure sentence, used as written (part 05 § 1.2). It is judged after
-  validation and never repaired. Empty is judged as at version 30: a blank string or an empty list.
+  validation and never repaired. Empty is judged as at version 30: a blank string or an empty list. In a
+  `markdown_block` or `markdown_inline` node, `&#32;` and `&#9;` count as white space (`MarkdownEscape.IsBlank`, #1505),
+  since R9 writes a blank plain-text line's leading space or tab so; in a `plaintext` node they are text.
 - `Throttled` adds its wait to the node's capacity wait. A wait that would pass `CapacityWaitMinutes` fails the
   node with S09-010 instead of being taken.
 - `ServiceFailure` counts an attempt. At `ServiceAttempts` the node fails with S09-011.
@@ -1856,7 +1858,9 @@ With faults, `Finish` returns the reply as it came, with `AgentOutcome.Invalid` 
 reply. It applies `onInvalid` as for a reply that does not fit its format: under `retry` it asks once more with
 `AgentCall.Faults`; otherwise, or on a second invalid reply, the node fails with `Node '<id>': <the first fault's
 sentence>`. The row's `invalid.reason` is the faults' reasons joined by `; `. The substituted text is then read and
-validated against the node's format, and `failIfEmpty` is judged after.
+validated against the node's format, and `failIfEmpty` is judged after. Since #1505's R9 a blank plain-text body
+escapes to `&#32;` or `&#9;` and white space, which `MarkdownEscape.IsBlank` still counts as empty, so a reply that
+is only the marker of a macro rendering blank fails the node as before.
 
 `RenderTurn.Render(plan, call)` is the same composition for a `rendered` node or a deliverable. It gives the text,
 `RenderOutcome.NeutralText` and the detail. The runner stores the neutral text as the read form's `neutral` (carried
@@ -1950,7 +1954,8 @@ Each family is exported by a test that does nothing without `CONFORMANCE_EXPORT_
     `AgentTurn`;
   - a renderer case is a built-in renderer over the concept cases, piped in a published prompt;
   - the escape vectors are `MarkdownEscape.Escape` over the 32 ASCII punctuation characters and ten sentences (#1505,
-    R9, added three: a line led by one space, lines led by a tab, and a run of spaces mid-line; 45 vectors).
+    R9, added five: a line led by one space, lines led by a tab, a run of spaces mid-line, a line of white space only,
+    and a text of white space only; 47 vectors).
 
   The same bytes are the in-repo goldens under `tests/V31Templates/Golden/`. `DialectGoldenTests` holds them to the
   code and the pinned families to them, and `GOLDEN_UPDATE_V31=1` rewrites them. Since #1505's ruling R11 the three

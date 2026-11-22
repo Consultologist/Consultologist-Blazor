@@ -383,7 +383,8 @@ node with `plain`, or a renderer); the only automatic step is escaping
   **Leading indentation is protected too:** the first space or tab of each line of the plain
   text is written as its character reference (`&#32;`, `&#9;`), so a line led by four spaces
   or a tab is not a code block; the rest of the line is escaped as above, and a line break
-  stays a hard break ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)).
+  stays a hard break. A line of white space only is escaped so too, and Markdown text that is only
+  white space and these two references is still empty (`failIfEmpty`, `whenEmpty`) ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)).
 - **The template's own literal text is typed too:** a `plaintext` deliverable may not write
   Markdown syntax (a line starting `#`, `-`, `*` or `>`, or a `**` pair). A Markdown
   deliverable's literal text is the author's Markdown. An object deliverable allows nothing
