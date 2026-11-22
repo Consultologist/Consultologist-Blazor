@@ -50,4 +50,53 @@ public class ConsultGenerationJobIndexEntriesTests
 
         Assert.Equal(page, ConsultGenerationJobIndexEntries.OnePerJob(page));
     }
+
+    // ---- #1506 (final review F5): the record storage column ---------------------------------------
+
+    /// <summary>The index row's properties as they were before the record storage column (the table binder writes the static type's).</summary>
+    private static readonly string[] RowProperties =
+    [
+        "PartitionKey", "RowKey", "Timestamp", "ETag", "JobId", "Status", "CreatedAtUtc", "StartedAtUtc", "CompletedAtUtc",
+        "TotalBlockCount", "CompletedBlockCount", "FailedBlockCount", "Source", "ScheduledAtUtc", "FailedAtStart",
+        "TextDroppedAtUtc", "DeliveryOutcome", "DeliveredAtUtc", "Deciding", "DecisionFailureKind", "InputsHeld",
+        "InputsDroppedAtUtc",
+    ];
+
+    [Fact]
+    public void A30JobsIndexRow_IsWrittenWithoutTheRecordStorageColumn()
+    {
+        var entity = TableConsultGenerationJobIndexStore.ToEntity(Entry("j", ConsultGenerationJobStatuses.Completed, At));
+
+        Assert.Equal(typeof(ConsultGenerationJobIndexEntity), entity.GetType());
+        Assert.Equal(RowProperties.Order(StringComparer.Ordinal), typeof(ConsultGenerationJobIndexEntity).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal));
+        // nor does its JSON (the job list's) name it
+        Assert.DoesNotContain("RecordStorage", System.Text.Json.JsonSerializer.Serialize(Entry("j", ConsultGenerationJobStatuses.Completed, At)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AStorage12JobsIndexRow_CarriesItsRecordStorage_AndReadsBack()
+    {
+        var entry = Entry("j", ConsultGenerationJobStatuses.Completed, At) with { RecordStorage = 12 };
+
+        var entity = Assert.IsType<ConsultGenerationJobRecordIndexEntity>(TableConsultGenerationJobIndexStore.ToEntity(entry));
+
+        Assert.Equal(12, entity.RecordStorage);
+        Assert.Equal(entry, TableConsultGenerationJobIndexStore.ToEntry(entity));
+        // a row from before the column reads null
+        var old = new ConsultGenerationJobRecordIndexEntity { JobId = "j", PartitionKey = "user-1", Status = ConsultGenerationJobStatuses.Completed, CreatedAtUtc = At, TotalBlockCount = 9 };
+        Assert.Null(TableConsultGenerationJobIndexStore.ToEntry(old).RecordStorage);
+    }
+
+    [Theory]
+    [InlineData(31, 12)]
+    [InlineData(30, null)]
+    [InlineData(26, null)]
+    public void TheEntity_WritesRecordStorage_OnlyForAStorage12Job(int specVersion, int? expected)
+    {
+        var state = ConsultGenerationJobState.Create("j", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>());
+        state.PackageSpecVersion = specVersion;
+        ConsultGenerationJobEntity.Stamp(state, 7);
+
+        Assert.Equal(expected, state.ToIndexEntry().RecordStorage);
+    }
 }

@@ -2515,7 +2515,9 @@ public sealed class ConsultGenerationJobState
             Deciding: Deciding == true && DecidedAtUtc == null && StartFailure == null,
             DecisionFailureKind: DecisionFailureKind,
             InputsHeld: InputsBlob != null,
-            InputsDroppedAtUtc: InputsDroppedAtUtc);
+            InputsDroppedAtUtc: InputsDroppedAtUtc,
+            // #1506 (final review F5): written only for a job at record storage 12 or later; a 5–30 row has none
+            RecordStorage: SchemaVersion >= V31.RecordSealer.SealedFrom ? SchemaVersion : null);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)

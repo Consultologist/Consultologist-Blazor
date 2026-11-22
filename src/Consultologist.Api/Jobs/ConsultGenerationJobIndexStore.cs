@@ -57,7 +57,13 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
     public async Task UpsertAsync(ConsultGenerationJobIndexEntry entry, CancellationToken cancellationToken)
     {
         await EnsureTableAsync(cancellationToken);
-        await _index.UpsertEntityAsync(ToEntity(entry), TableUpdateMode.Replace, cancellationToken);
+        // #1506 (final review F5): the table binder writes the properties of the static type, so a 5–30 row is written
+        // through the type it always was, and only a storage-12 row carries RecordStorage.
+        var entity = ToEntity(entry);
+        if (entity is ConsultGenerationJobRecordIndexEntity recorded)
+            await _index.UpsertEntityAsync(recorded, TableUpdateMode.Replace, cancellationToken);
+        else
+            await _index.UpsertEntityAsync(entity, TableUpdateMode.Replace, cancellationToken);
     }
 
     public async Task<(IReadOnlyList<ConsultGenerationJobIndexEntry> Jobs, string? ContinuationToken)> ListAsync(
@@ -74,7 +80,7 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         string? nextToken = null;
 
         await foreach (var page in _index
-            .QueryAsync<ConsultGenerationJobIndexEntity>(filter, maxPerPage: limit, cancellationToken: cancellationToken)
+            .QueryAsync<ConsultGenerationJobRecordIndexEntity>(filter, maxPerPage: limit, cancellationToken: cancellationToken)
             .AsPages(decodedToken))
         {
             foreach (var entity in page.Values)
@@ -100,7 +106,7 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         // column for absence, and an account's job count is small.
         var due = new List<ConsultGenerationJobIndexEntry>();
         var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId} and CompletedAtUtc lt {completedBefore}");
-        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobIndexEntity>(filter, cancellationToken: cancellationToken))
+        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobRecordIndexEntity>(filter, cancellationToken: cancellationToken))
         {
             var entry = ToEntry(entity);
             if (TextRetentionSweep.IsDue(entry, completedBefore))
@@ -118,7 +124,7 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
 
         var jobs = new List<ConsultGenerationJobIndexEntry>();
         var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId}");
-        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobIndexEntity>(filter, cancellationToken: cancellationToken))
+        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobRecordIndexEntity>(filter, cancellationToken: cancellationToken))
         {
             jobs.Add(ToEntry(entity));
         }
@@ -165,7 +171,7 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         // absence tests (dropped stamp unset) can't run server-side.
         var due = new List<ConsultGenerationJobIndexEntry>();
         var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId} and CompletedAtUtc lt {completedBefore}");
-        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobIndexEntity>(filter, cancellationToken: cancellationToken))
+        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobRecordIndexEntity>(filter, cancellationToken: cancellationToken))
         {
             var entry = ToEntry(entity);
             if (TextRetentionSweep.IsInputsDue(entry, completedBefore))
@@ -202,34 +208,35 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         }
     }
 
-    private static ConsultGenerationJobIndexEntity ToEntity(ConsultGenerationJobIndexEntry entry)
+    internal static ConsultGenerationJobIndexEntity ToEntity(ConsultGenerationJobIndexEntry entry)
     {
-        return new ConsultGenerationJobIndexEntity
-        {
-            PartitionKey = entry.AppUserId,
-            RowKey = FormatRowKey(entry.CreatedAtUtc, entry.JobId),
-            JobId = entry.JobId,
-            Status = entry.Status,
-            CreatedAtUtc = entry.CreatedAtUtc,
-            StartedAtUtc = entry.StartedAtUtc,
-            CompletedAtUtc = entry.CompletedAtUtc,
-            TotalBlockCount = entry.TotalBlockCount,
-            CompletedBlockCount = entry.CompletedBlockCount,
-            FailedBlockCount = entry.FailedBlockCount,
-            Source = entry.Source,
-            ScheduledAtUtc = entry.ScheduledAtUtc,
-            FailedAtStart = entry.FailedAtStart,
-            TextDroppedAtUtc = entry.TextDroppedAtUtc,
-            DeliveryOutcome = entry.DeliveryOutcome,
-            DeliveredAtUtc = entry.DeliveredAtUtc,
-            Deciding = entry.Deciding,
-            DecisionFailureKind = entry.DecisionFailureKind,
-            InputsHeld = entry.InputsHeld,
-            InputsDroppedAtUtc = entry.InputsDroppedAtUtc
-        };
+        var entity = entry.RecordStorage is { } storage
+            ? new ConsultGenerationJobRecordIndexEntity { RecordStorage = storage }
+            : new ConsultGenerationJobIndexEntity();
+        entity.PartitionKey = entry.AppUserId;
+        entity.RowKey = FormatRowKey(entry.CreatedAtUtc, entry.JobId);
+        entity.JobId = entry.JobId;
+        entity.Status = entry.Status;
+        entity.CreatedAtUtc = entry.CreatedAtUtc;
+        entity.StartedAtUtc = entry.StartedAtUtc;
+        entity.CompletedAtUtc = entry.CompletedAtUtc;
+        entity.TotalBlockCount = entry.TotalBlockCount;
+        entity.CompletedBlockCount = entry.CompletedBlockCount;
+        entity.FailedBlockCount = entry.FailedBlockCount;
+        entity.Source = entry.Source;
+        entity.ScheduledAtUtc = entry.ScheduledAtUtc;
+        entity.FailedAtStart = entry.FailedAtStart;
+        entity.TextDroppedAtUtc = entry.TextDroppedAtUtc;
+        entity.DeliveryOutcome = entry.DeliveryOutcome;
+        entity.DeliveredAtUtc = entry.DeliveredAtUtc;
+        entity.Deciding = entry.Deciding;
+        entity.DecisionFailureKind = entry.DecisionFailureKind;
+        entity.InputsHeld = entry.InputsHeld;
+        entity.InputsDroppedAtUtc = entry.InputsDroppedAtUtc;
+        return entity;
     }
 
-    private static ConsultGenerationJobIndexEntry ToEntry(ConsultGenerationJobIndexEntity entity)
+    internal static ConsultGenerationJobIndexEntry ToEntry(ConsultGenerationJobRecordIndexEntity entity)
     {
         return new ConsultGenerationJobIndexEntry(
             entity.JobId,
@@ -250,7 +257,8 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.Deciding,
             entity.DecisionFailureKind,
             entity.InputsHeld,
-            entity.InputsDroppedAtUtc);
+            entity.InputsDroppedAtUtc,
+            entity.RecordStorage);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -318,9 +326,15 @@ public sealed record ConsultGenerationJobIndexEntry(
     // false is right — those jobs hold nothing, so the inputs leg never
     // signals them. The pointer itself never reaches the index.
     bool InputsHeld = false,
-    DateTimeOffset? InputsDroppedAtUtc = null);
+    DateTimeOffset? InputsDroppedAtUtc = null,
+    // #1506 (specVersion 31, area 09; final review F5): the job's record storage, written only for a job at storage 12 or
+    // later (its record rows and record.json exist); null for a 5–30 job, whose row stores no such property (a null
+    // property is never stored), so its stored row is as before. The retention sweep and account closure gate on it, so
+    // neither reads a job's entity, nor a record store, for a job without it. Additive column; rows from before read null.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? RecordStorage = null);
 
-internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
+internal class ConsultGenerationJobIndexEntity : ITableEntity
 {
     public string PartitionKey { get; set; } = string.Empty;
     public string RowKey { get; set; } = string.Empty;
@@ -344,4 +358,15 @@ internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
     public string? DecisionFailureKind { get; set; }
     public bool InputsHeld { get; set; }
     public DateTimeOffset? InputsDroppedAtUtc { get; set; }
+}
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; final review F5): the index row of a job at record storage 12 or later: the row as before
+/// and its <see cref="ConsultGenerationJobIndexEntry.RecordStorage"/>. A 5–30 job's row is written as
+/// <see cref="ConsultGenerationJobIndexEntity"/>, so its request and its stored properties are exactly as before this
+/// column; every row is read as this type, a row without the column reading <c>null</c>.
+/// </summary>
+internal sealed class ConsultGenerationJobRecordIndexEntity : ConsultGenerationJobIndexEntity
+{
+    public int? RecordStorage { get; set; }
 }

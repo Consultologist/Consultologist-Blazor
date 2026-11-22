@@ -178,6 +178,34 @@ public class RecordRetentionTests
         Assert.Empty(job.Blobs.Blobs.Names());
     }
 
+    [Fact]
+    public async Task ThePurgeOfA30Job_MakesTheCallsItMadeBefore31()
+    {
+        // #1506 (final review F5): through the host's own record drop, over the Durable client: a job whose index row has no
+        // record storage has its entity signalled DropText, its instance purged and its events deleted, as before 31, and
+        // nothing else: no entity read, no record store, no account read
+        var client = Substitute.For<DurableTaskClient>("test");
+        var entities = Substitute.For<DurableEntityClient>("test");
+        client.Entities.Returns(entities);
+        var rows = Substitute.For<IRecordRowStore>();
+        var blobs = Substitute.For<IRecordBlobStore>();
+        var accounts = Substitute.For<IAccountStore>();
+        var drop = new RecordTextDrop(new RecordSealers(rows, blobs, accounts, new CapturingLogger<RecordSealer>()), blobs, accounts);
+        var events = Substitute.For<IConsultGenerationJobEventStore>();
+        var legacy = Substitute.For<ILegacyJobEventDelete>();
+        var entry = new ConsultGenerationJobIndexEntry("job-30", User, ConsultGenerationJobStatuses.Completed, Now.AddDays(-9), null, Now.AddDays(-8), 1, 1, 0);
+
+        await new JobTextPurger(events, legacy, drop).PurgeAsync(client, entry.JobId, Now, CancellationToken.None, entry.RecordStorage);
+
+        Assert.Equal(["SignalEntityAsync"], entities.ReceivedCalls().Select(c => c.GetMethodInfo().Name));
+        Assert.Equal(["get_Entities", "PurgeInstanceAsync"], client.ReceivedCalls().Select(c => c.GetMethodInfo().Name).Distinct());
+        await events.Received(1).DeleteJobAsync("job-30", Arg.Any<CancellationToken>());
+        await legacy.Received(1).DeleteJobAsync("job-30", Arg.Any<CancellationToken>());
+        Assert.Empty(rows.ReceivedCalls());
+        Assert.Empty(blobs.ReceivedCalls());
+        Assert.Empty(accounts.ReceivedCalls());
+    }
+
     private static IReadOnlyList<string> TextBlobs(V31Job job) =>
         job.Blobs.Blobs.Names().Where(n => n.Name.Contains("/text/", StringComparison.Ordinal)).Select(n => n.Name).ToList();
 
@@ -199,7 +227,9 @@ public class RecordRetentionTests
             var accounts = Substitute.For<IAccountStore>();
             accounts.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<AccountSummary> { new(User, "Active") });
             var index = Substitute.For<IConsultGenerationJobIndexStore>();
-            var entry = new ConsultGenerationJobIndexEntry(V31Job.JobId, User, job.State.Status, Now.AddDays(-9), null, Now.AddDays(-8), 1, 1, 0);
+            // #1506 (final review F5): the index row as the entity writes it: its record storage for a storage-12 job only
+            var entry = new ConsultGenerationJobIndexEntry(V31Job.JobId, User, job.State.Status, Now.AddDays(-9), null, Now.AddDays(-8), 1, 1, 0,
+                RecordStorage: job.State.SchemaVersion >= RecordSealer.SealedFrom ? job.State.SchemaVersion : null);
             index.ListDueForTextDropAsync(User, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
                 .Returns(new List<ConsultGenerationJobIndexEntry> { entry });
             var responses = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();

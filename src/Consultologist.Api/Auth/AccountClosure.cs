@@ -108,14 +108,12 @@ public sealed class AccountClosure
         // way (entity Cancel, then terminate — terminate must precede purge),
         // and the streamed events go from both tables. Then the account's
         // whole prefix in every text container, kind-blind.
-        var recordJobs = new V31.DurableRecordJobs(client, _accounts);
         foreach (var job in jobs)
         {
-            // #1506: the job's storage version, read before anything is signalled to its entity. Record rows exist only for a
-            // storage-12 job; a job below it (or with no entity) never reaches the record table, which a host with 31 off
-            // has never created.
-            var holdsRecordRows = await recordJobs.ReadAsync(job.JobId, cancellationToken) is { } entityState
-                && entityState.SchemaVersion >= V31.RecordSealer.SealedFrom;
+            // #1506 (final review F5): record rows exist only for a storage-12 job, which its index row says
+            // (RecordStorage); a job without it never reaches the record table, which a host with 31 off has never
+            // created, and no job's entity is read for it.
+            var holdsRecordRows = job.RecordStorage >= V31.RecordSealer.SealedFrom;
 
             if (!ConsultGenerationJobEntity.IsTerminal(job.Status))
             {

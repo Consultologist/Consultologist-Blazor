@@ -17,7 +17,12 @@ namespace Consultologist.Api.Jobs;
 /// </summary>
 public interface IJobTextPurger
 {
-    Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken);
+    /// <remarks>
+    /// #1506 (final review F5): <paramref name="recordStorage"/> is the job's index row's
+    /// <see cref="ConsultGenerationJobIndexEntry.RecordStorage"/>; only a job at storage 12 or later has its record sealed and
+    /// its record text dropped, so a 5–30 job makes the calls it made before 31.
+    /// </remarks>
+    Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken, int? recordStorage = null);
 
     /// <summary>
     /// #548: the inputs clock fired alone — signal the entity to drop the
@@ -91,13 +96,15 @@ public sealed class JobTextPurger : IJobTextPurger
     /// <summary>The orchestration instance is the job id; the entity is its own instance and stays.</summary>
     public static string OrchestrationInstanceId(string jobId) => jobId;
 
-    public async Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken, int? recordStorage = null)
     {
         // #1506: a 31 job's record is sealed and its text/ blobs deleted FIRST (D13): a record must exist before its text
         // goes, and a failed seal fails this purge with the text kept, for the next pass. The purger, not the entity,
         // because sealing needs the Durable client and the entity cannot signal itself; the delete is idempotent, so a
-        // signal that then fails leaves a retry nothing to undo. A job below storage 12 does nothing here.
-        await _record.DropAsync(client, jobId, cancellationToken);
+        // signal that then fails leaves a retry nothing to undo. A job below storage 12 (its index row has no record
+        // storage, final review F5) reaches none of it: no entity read, no record store.
+        if (recordStorage >= V31.RecordSealer.SealedFrom)
+            await _record.DropAsync(client, jobId, cancellationToken);
 
         var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId);
         await client.Entities.SignalEntityAsync(entityId, nameof(ConsultGenerationJobEntity.DropText), new ConsultGenerationTextDrop(now), cancellation: cancellationToken);
@@ -266,7 +273,7 @@ public sealed class TextRetentionSweep
                 due++;
                 try
                 {
-                    await _purger.PurgeAsync(client, job.JobId, now, cancellationToken);
+                    await _purger.PurgeAsync(client, job.JobId, now, cancellationToken, job.RecordStorage);
                     dropped++;
                 }
                 catch (V31.RecordNotSealedException ex)

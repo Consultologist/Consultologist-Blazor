@@ -46,8 +46,8 @@ public class AccountClosureTests
             _closed, NullLogger<AccountClosure>.Instance);
     }
 
-    private static ConsultGenerationJobIndexEntry Job(string jobId, string status) =>
-        new(jobId, User, status, DateTimeOffset.UtcNow.AddDays(-1), null, null, 1, 0, 0);
+    private static ConsultGenerationJobIndexEntry Job(string jobId, string status, int? recordStorage = null) =>
+        new(jobId, User, status, DateTimeOffset.UtcNow.AddDays(-1), null, null, 1, 0, 0, RecordStorage: recordStorage);
 
     private void WithDisabledAccount(params ConsultGenerationJobIndexEntry[] jobs)
     {
@@ -117,45 +117,45 @@ public class AccountClosureTests
         });
     }
 
-    /// <summary>The job's entity as the closure reads it: at <paramref name="schemaVersion"/>, or none when null.</summary>
-    private void WithEntity(string jobId, int? schemaVersion)
-    {
-        _client.Entities.Returns(_entities);
-        _entities.GetEntityAsync<ConsultGenerationJobState>(
-                Arg.Is<EntityInstanceId>(id => id.Key == jobId), Arg.Any<CancellationToken>())
-            .Returns(schemaVersion is not { } version
-                ? null
-                : new EntityMetadata<ConsultGenerationJobState>(
-                    new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId),
-                    new ConsultGenerationJobState { JobId = jobId, SchemaVersion = version }));
-    }
-
     [Fact]
     public async Task ClosingAnAccount_RemovesItsRecordRows_OnlyForStorage12Jobs()
     {
-        WithDisabledAccount(Job("job-12", "Completed"), Job("job-live", "Running"), Job("job-11", "Completed"), Job("job-none", "Completed"));
-        var closure = CreateClosure();
-        WithEntity("job-12", 12);
-        WithEntity("job-live", 12);
-        WithEntity("job-11", 11);
-        WithEntity("job-none", null);
+        // #1506 (final review F5): the index row says which jobs hold record rows; no job's entity is read for it
+        WithDisabledAccount(Job("job-12", "Completed", 12), Job("job-live", "Running", 12), Job("job-11", "Completed"), Job("job-none", "Completed"));
+        _client.Entities.Returns(_entities);
 
-        await closure.CloseAsync(_client, User, Operator, CancellationToken.None);
+        await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
 
         foreach (var id in new[] { "job-12", "job-live" })
             await _recordRows.Received(1).DeleteJobAsync(id, Arg.Any<CancellationToken>());
-        // a job below 12, and a job with no entity, never reach the record table
+        // a 5–30 job never reaches the record table
         await _recordRows.DidNotReceive().DeleteJobAsync("job-11", Arg.Any<CancellationToken>());
         await _recordRows.DidNotReceive().DeleteJobAsync("job-none", Arg.Any<CancellationToken>());
-        // beside the events, before the account's blobs; and the entity is read before it is signalled "delete"
+        // beside the events, before the account's blobs
         Received.InOrder(() =>
         {
-            _entities.GetEntityAsync<ConsultGenerationJobState>(Arg.Is<EntityInstanceId>(id => id.Key == "job-12"), Arg.Any<CancellationToken>());
             _events.DeleteJobAsync("job-12", Arg.Any<CancellationToken>());
             _recordRows.DeleteJobAsync("job-12", Arg.Any<CancellationToken>());
             _outputsBlobs.DeleteAccountAsync(User, Arg.Any<CancellationToken>());
             _entities.SignalEntityAsync(Arg.Is<EntityInstanceId>(id => id.Key == "job-12"), "delete", cancellation: Arg.Any<CancellationToken>());
         });
+        // the calls the closure made before 31: no entity read, for any job
+        Assert.DoesNotContain(_entities.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(_entities.GetEntityAsync));
+    }
+
+    [Fact]
+    public async Task ClosingAnAccountOf30Jobs_MakesTheCallsItMadeBefore31()
+    {
+        // #1506 (final review F5): with no storage-12 job, the closure reads no entity and calls no record store
+        WithDisabledAccount(Job("job-1", "Completed"), Job("job-live", "Running"));
+        _client.Entities.Returns(_entities);
+
+        await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
+
+        Assert.Empty(_recordRows.ReceivedCalls());
+        Assert.Equal(
+            ["SignalEntityAsync", "SignalEntityAsync", "SignalEntityAsync", "CleanEntityStorageAsync"],
+            _entities.ReceivedCalls().Select(call => call.GetMethodInfo().Name));
     }
 
     [Fact]
@@ -163,10 +163,8 @@ public class AccountClosureTests
     {
         // the events' deletion is not caught: its failure stops the closure before anything of the account's is removed,
         // and the closure row (the claim) is not written, so a re-run starts again. The record rows match it.
-        WithDisabledAccount(Job("job-1", "Completed"), Job("job-2", "Completed"));
+        WithDisabledAccount(Job("job-1", "Completed", 12), Job("job-2", "Completed", 12));
         var closure = CreateClosure();
-        WithEntity("job-1", 12);
-        WithEntity("job-2", 12);
         var failing = true;
         _recordRows.DeleteJobAsync("job-1", Arg.Any<CancellationToken>())
             .Returns(_ => failing ? Task.FromException(new InvalidOperationException("storage")) : Task.CompletedTask);

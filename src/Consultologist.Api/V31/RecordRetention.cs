@@ -6,8 +6,9 @@ namespace Consultologist.Api.V31;
 /// <summary>
 /// #1506 (specVersion 31, area 09; part 08 § 11; D2, D10, D13): the record's share of the 7-day text drop. A 31 job's text rests in
 /// <c>{appUserId}/{jobId}/text/…</c> blobs; they go here, after the record is sealed and before the entity stamps
-/// <c>TextDroppedAtUtc</c>. The rows and <c>record.json</c> stay. A job below record storage 12 is not touched: its entity is
-/// read (the one thing known of it: one Durable entity read per purged job, 5–30 included) and no record store is called.
+/// <c>TextDroppedAtUtc</c>. The rows and <c>record.json</c> stay. #1506 (final review F5): the purger calls it only for a job
+/// whose index row has a record storage of 12 or later, so a 5–30 job's purge reads no entity and calls no record store;
+/// a job read here below storage 12 is still left untouched.
 /// </summary>
 public interface IRecordTextDrop
 {
