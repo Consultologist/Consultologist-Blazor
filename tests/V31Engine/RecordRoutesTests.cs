@@ -299,20 +299,43 @@ public class RecordRoutesTests
     }
 
     [Fact]
-    public async Task ARecordThatIsNotThere_IsAServerError_SaidPlainly()
+    public async Task TheRecord_IsServedAgain_AfterItsBlobWasDeleted()
     {
+        // #1506 (Task 15): the text account's 30-day lifecycle policy deleted record.json; the rows and the stamp remain
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var stored = await job.Blobs.ReadRecordAsync(V31Job.AccountKind, UserId, V31Job.JobId, CancellationToken.None);
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+        var routes = new Routes(job);
+
+        var response = await routes.RecordAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(stored, FakeHttp.TextOf(response));
+        Assert.Equal(job.State.RecordHash, Header(response, "X-Record-Hash"));
+        Assert.Equal(stored, await job.Blobs.ReadRecordAsync(V31Job.AccountKind, UserId, V31Job.JobId, CancellationToken.None));
+        Assert.Empty(routes.Seals);
+    }
+
+    [Fact]
+    public async Task ARecordThatCannotBeRestored_IsAServerError_SaidPlainly()
+    {
+        // the blob gone and a row that is not the sealed record's: never a body of nothing, never another document
         var job = V31Job.Of("nested-note");
         await V31Job.RunAsync(job.Context());
         var log = new CapturingLogger<RecordRoutes>();
-        // the blob gone (a stamp with no document): never a body of nothing
-        job.Blobs = new FakeRecordBlobStore();
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+        await job.Rows.WriteAsync(V31Job.JobId,
+            [new Consultologist.PackageFormat.V31.Run.RecordRow("decision", "decision:zz.extra", "{\"id\":\"decision:zz.extra\"}")],
+            CancellationToken.None);
 
         var response = await new Routes(job, log).RecordAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         Assert.Equal("The record isn't available yet. Try again.", ErrorOf(response));
         var warning = Assert.Single(log.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
-        Assert.Equal($"V31 record not available. JobId={V31Job.JobId}", warning.Message);
+        Assert.Equal($"V31 record not available. JobId={V31Job.JobId}, ExceptionType={typeof(InvalidOperationException).FullName}", warning.Message);
+        Assert.Null(await job.Blobs.ReadRecordAsync(V31Job.AccountKind, UserId, V31Job.JobId, CancellationToken.None));
     }
 
     // ----- CORS --------------------------------------------------------------------------------------------------------

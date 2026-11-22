@@ -25,6 +25,15 @@ public interface IRecordSealer
     /// whose hash is stamped.
     /// </summary>
     Task<SealedRecord?> EnsureSealedAsync(string jobId, CancellationToken ct);
+
+    /// <summary>
+    /// The sealed document's text (sealing the job first, as <see cref="EnsureSealedAsync"/>); null when the job is not a
+    /// terminal 31 job. #1506 (decided in the build): the document is a materialisation of the rows under the header, so a
+    /// stamped job whose <c>record.json</c> is gone (the text account's lifecycle policy) has it assembled again, written
+    /// back and served only when it hashes to the stamped <c>recordHash</c>; when it does not, nothing is written and the
+    /// fault (<see cref="InvalidOperationException"/>, no content) is logged with both hashes.
+    /// </summary>
+    Task<string?> ReadSealedAsync(string jobId, CancellationToken ct);
 }
 
 /// <summary>
@@ -58,13 +67,67 @@ public sealed class RecordSealer(IRecordJobs jobs, IRecordRowStore rows, IRecord
     /// <summary>Record storage 12: the first whose record is sealed.</summary>
     internal const int SealedFrom = 12;
 
+    public async Task<string?> ReadSealedAsync(string jobId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(jobId);
+        var job = await jobs.ReadAsync(jobId, ct);
+        if (!Sealable(job))
+            return null;
+
+        var seal = await SealAsync(jobId, job!, ct);
+        var accountKind = await jobs.AccountKindAsync(job!, ct);
+        if (await blobs.ReadRecordAsync(accountKind, job!.AppUserId, jobId, ct) is { } stored)
+            return stored;
+
+        // The document is a materialisation of the rows under the header (decided in the build, #1506): gone (the text
+        // account's lifecycle policy), it is assembled again, and kept only if it is the sealed record, byte for byte.
+        var rowsNow = await rows.ListAsync(jobId, ct);
+        string document;
+        try
+        {
+            document = RecordDocument.Assemble(job.ToRecordHeader(), rowsNow);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError("V31 record could not be restored. JobId={JobId}, ExceptionType={ExceptionType}", jobId, ex.GetType().FullName);
+            throw;
+        }
+
+        var hash = RecordDocument.Hash(document);
+        if (!string.Equals(hash, seal.RecordHash, StringComparison.Ordinal))
+        {
+            logger.LogError(
+                "V31 record could not be restored. JobId={JobId}, Expected={RecordHash}, Got={Hash}", jobId, seal.RecordHash, hash);
+            throw new InvalidOperationException("The record's rows no longer assemble into the sealed record.");
+        }
+
+        if (!await blobs.WriteRecordAsync(accountKind, job.AppUserId, jobId, document, ct))
+        {
+            // another reader restored it meanwhile: that one is served
+            return await blobs.ReadRecordAsync(accountKind, job.AppUserId, jobId, ct)
+                ?? throw new InvalidOperationException("The record's document was there to write over, then gone.");
+        }
+
+        logger.LogInformation(
+            "V31 record restored. JobId={JobId}, Bytes={Bytes}, RecordHash={RecordHash}",
+            jobId, Encoding.UTF8.GetByteCount(document), hash);
+        return document;
+    }
+
     public async Task<SealedRecord?> EnsureSealedAsync(string jobId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(jobId);
         var job = await jobs.ReadAsync(jobId, ct);
-        if (job == null || job.SchemaVersion < SealedFrom || !ConsultGenerationJobEntity.IsTerminal(job.Status))
-            return null;
+        return Sealable(job) ? await SealAsync(jobId, job!, ct) : null;
+    }
 
+    /// <summary>A job that exists, is at record storage 12 or above, and is terminal (<c>delivering</c> is not).</summary>
+    private static bool Sealable(ConsultGenerationJobState? job) =>
+        job != null && job.SchemaVersion >= SealedFrom && ConsultGenerationJobEntity.IsTerminal(job.Status);
+
+    /// <summary><see cref="EnsureSealedAsync"/> for a sealable job already read.</summary>
+    private async Task<SealedRecord> SealAsync(string jobId, ConsultGenerationJobState job, CancellationToken ct)
+    {
         if (job.RecordHash is { } stampedHash && job.RecordBytes is { } stampedBytes)
             return new SealedRecord(stampedHash, stampedBytes, (job.V31Progress?.Rows ?? 0) + (job.V31Progress?.Decisions ?? 0));
 

@@ -141,6 +141,9 @@ internal sealed class InMemoryRecordBlobs : IRecordBlobs
         return Task.CompletedTask;
     }
 
+    /// <summary>#1506 (Task 15): removes one blob, as the text account's lifecycle policy would; true when it was there.</summary>
+    public bool Remove(string container, string name) => _blobs.TryRemove((container, name), out _);
+
     /// <summary>Every (container, name) held, ordinally.</summary>
     public IReadOnlyList<(string Container, string Name)> Names() =>
         _blobs.Keys.OrderBy(k => k.Container, StringComparer.Ordinal).ThenBy(k => k.Name, StringComparer.Ordinal).ToList();
@@ -230,6 +233,10 @@ internal sealed class FakeRecordBlobStore : IRecordBlobStore
     }
 
     public InMemoryRecordBlobs Blobs { get; }
+
+    /// <summary>#1506 (Task 15): the job's <c>record.json</c> removed (the lifecycle policy's 30 days); true when it was there.</summary>
+    public bool RemoveRecord(string? accountKind, string appUserId, string jobId) =>
+        Blobs.Remove(Consultologist.Api.Jobs.JobOutputsBlobStore.ContainerFor(accountKind), BlobRecordStore.RecordName(appUserId, jobId));
 
     public Task WriteTextAsync(string? accountKind, string appUserId, string jobId, string key, string part, JsonObject text, CancellationToken ct) =>
         _store.WriteTextAsync(accountKind, appUserId, jobId, key, part, text, ct);

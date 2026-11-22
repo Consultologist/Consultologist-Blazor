@@ -406,6 +406,120 @@ public class RecordSealerTests
         await ConsultGenerationJobs.SealCancelledAsync(null, schemaVersion, V31Job.JobId, logger, CancellationToken.None);
     }
 
+    // ---- #1506 (Task 15): a sealed record whose document is gone is restored from its rows -------------------------------
+
+    [Fact]
+    public async Task AMissingDocument_IsRestoredFromItsRows()
+    {
+        var job = V31Job.Of("checked-note");
+        await V31Job.RunAsync(job.Context());
+        var original = await DocumentOf(job);
+        var stamp = (job.State.RecordHash, job.State.RecordBytes);
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+
+        var restored = await job.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None);
+
+        Assert.Equal(original, restored);
+        Assert.Equal(original, await DocumentOf(job));
+        Assert.Equal(stamp, (job.State.RecordHash, job.State.RecordBytes));
+        Assert.Single(job.RecordJobs.Stamps);
+        Assert.Equal(
+            $"V31 record restored. JobId={V31Job.JobId}, Bytes={stamp.RecordBytes}, RecordHash={stamp.RecordHash}",
+            Assert.Single(job.SealLog.Entries, e => e.Message.StartsWith("V31 record restored.", StringComparison.Ordinal)).Message);
+
+        // read again: the blob, as it is, and no second restore
+        Assert.Equal(original, await job.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None));
+        Assert.Single(job.SealLog.Entries, e => e.Message.StartsWith("V31 record restored.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ReadSealed_SealsAJobNotSealedYet_AndIsNullForOneThatCannotBe()
+    {
+        var job = V31Job.Of("nested-note");
+        job.Seal = _ => null;
+        await V31Job.RunAsync(job.Context());
+        Assert.Null(job.State.RecordHash);
+
+        var document = await job.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None);
+
+        Assert.Equal(await DocumentOf(job), document);
+        Assert.Equal(RecordDocument.Hash(document!), job.State.RecordHash);
+
+        var running = V31Job.Of("nested-note");
+        running.State.Status = ConsultGenerationJobStatuses.Delivering;
+        Assert.Null(await running.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None));
+        Assert.Equal(0, running.Blobs.Blobs.Calls);
+    }
+
+    [Fact]
+    public async Task ARestoredDocument_AfterTheTextDrop_StillHashesToTheStamp()
+    {
+        var job = V31Job.Of("checked-note");
+        await V31Job.RunAsync(job.Context());
+        var original = await DocumentOf(job);
+        var stamp = job.State.RecordHash;
+
+        // the sweep's text drop (its record share, then the entity's stamp and retention events), and the inputs' drop
+        await RecordTextDrop.DropAsync(job.Sealer, job.RecordJobs, job.Blobs, V31Job.JobId, CancellationToken.None);
+        await job.Entity.DropText(new ConsultGenerationTextDrop(new DateTimeOffset(V31Job.Now.AddDays(7), TimeSpan.Zero)));
+        await job.Entity.DropInputs(new ConsultGenerationInputsDrop(new DateTimeOffset(V31Job.Now.AddDays(7), TimeSpan.Zero)));
+        Assert.NotNull(job.State.TextDroppedAtUtc);
+        Assert.Contains(job.State.History, e => e.Kind == "retention");
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+
+        var restored = await job.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None);
+
+        Assert.Equal(original, restored);
+        Assert.Equal(stamp, RecordDocument.Hash(restored!));
+        Assert.Equal(stamp, job.State.RecordHash);
+    }
+
+    [Fact]
+    public async Task ARestore_ThatDoesNotHashToTheStamp_WritesNothing()
+    {
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var stamp = job.State.RecordHash!;
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+        const string content = "Margaret Okafor's tampered row (fictional)";
+        await job.Rows.WriteAsync(V31Job.JobId,
+            [new RecordRow("decision", "decision:zz.tampered", $"{{\"condition\":\"{content}\",\"id\":\"decision:zz.tampered\"}}")],
+            CancellationToken.None);
+        var tampered = RecordDocument.Hash(RecordDocument.Assemble(job.State.ToRecordHeader(), await job.Rows.ListAsync(V31Job.JobId, CancellationToken.None)));
+
+        var fault = await Assert.ThrowsAsync<InvalidOperationException>(() => job.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None));
+
+        Assert.DoesNotContain("Okafor", fault.Message, StringComparison.Ordinal);
+        Assert.False(HasRecordBlob(job));
+        Assert.Equal(stamp, job.State.RecordHash);
+        var error = Assert.Single(job.SealLog.Entries, e => e.Level == LogLevel.Error);
+        Assert.Equal($"V31 record could not be restored. JobId={V31Job.JobId}, Expected={stamp}, Got={tampered}", error.Message);
+        Assert.DoesNotContain("Okafor", job.SealLog.Everything, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TwoRestorers_AgreeOnOneDocument()
+    {
+        // both find the blob gone; the first restores it, the second's write finds it there and serves that one
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var original = await DocumentOf(job);
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+        var firstLog = new CapturingLogger<RecordSealer>();
+        var secondLog = new CapturingLogger<RecordSealer>();
+        var first = new RecordSealer(job.RecordJobs, job.Rows, new ReadsMissingOnce(job.Blobs), firstLog);
+        var second = new RecordSealer(job.RecordJobs, job.Rows, new ReadsMissingOnce(job.Blobs), secondLog);
+
+        var one = await first.ReadSealedAsync(V31Job.JobId, CancellationToken.None);
+        var other = await second.ReadSealedAsync(V31Job.JobId, CancellationToken.None);
+
+        Assert.Equal(original, one);
+        Assert.Equal(original, other);
+        Assert.Single(job.Blobs.Blobs.Names(), n => n.Name == BlobRecordStore.RecordName(UserId, V31Job.JobId));
+        Assert.Single(firstLog.Entries.Concat(secondLog.Entries), e => e.Message.StartsWith("V31 record restored.", StringComparison.Ordinal));
+        Assert.Single(job.RecordJobs.Stamps);
+    }
+
     /// <summary>Asserts <paramref name="job"/>'s record is sealed (the document is its header and rows; its hash and length on the entity) and gives the document.</summary>
     private static async Task<JsonNode> AssertSealedAsync(V31Job job)
     {
@@ -430,6 +544,35 @@ public class RecordSealerTests
 
     private static ConsultGenerationJobInitialize Initialize(int specVersion) => new(
         V31Job.JobId, UserId, Array.Empty<IReadOnlyDictionary<string, string>>(), "nested-note@1.0.0", PackageSpecVersion: specVersion);
+
+    /// <summary>A blob store whose first read of <c>record.json</c> finds nothing: a restorer that read before another wrote.</summary>
+    private sealed class ReadsMissingOnce(IRecordBlobStore inner) : IRecordBlobStore
+    {
+        private bool _read;
+
+        public Task WriteTextAsync(string? accountKind, string appUserId, string jobId, string key, string part, JsonObject text, CancellationToken ct) =>
+            inner.WriteTextAsync(accountKind, appUserId, jobId, key, part, text, ct);
+
+        public Task<JsonObject?> ReadTextAsync(string? accountKind, string appUserId, string jobId, string key, CancellationToken ct) =>
+            inner.ReadTextAsync(accountKind, appUserId, jobId, key, ct);
+
+        public Task DeleteTextAsync(string? accountKind, string appUserId, string jobId, CancellationToken ct) =>
+            inner.DeleteTextAsync(accountKind, appUserId, jobId, ct);
+
+        public Task<bool> WriteRecordAsync(string? accountKind, string appUserId, string jobId, string document, CancellationToken ct) =>
+            inner.WriteRecordAsync(accountKind, appUserId, jobId, document, ct);
+
+        public Task<string?> ReadRecordAsync(string? accountKind, string appUserId, string jobId, CancellationToken ct)
+        {
+            if (!_read)
+            {
+                _read = true;
+                return Task.FromResult<string?>(null);
+            }
+
+            return inner.ReadRecordAsync(accountKind, appUserId, jobId, ct);
+        }
+    }
 
     /// <summary>The sealer's view with every read showing no stamp: two sealers that never see each other's.</summary>
     private sealed class UnstampedJobs(EntityRecordJobs inner) : IRecordJobs

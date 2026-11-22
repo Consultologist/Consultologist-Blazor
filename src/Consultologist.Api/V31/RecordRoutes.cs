@@ -22,7 +22,8 @@ namespace Consultologist.Api.V31;
 /// for a key the job has no row for). Without <c>key</c>: <c>{ rows: [ { key, section, row } ] }</c>, every row in key
 /// order, decisions included, no text.</item>
 /// <item><c>GET ConsultGenerationJobs/{jobId}/Record</c>: the canonical record document's bytes as stored, sealing a terminal
-/// job that is not sealed yet (D13), with <c>X-Record-Hash</c>; 409 for a job not terminal.</item>
+/// job that is not sealed yet (D13), with <c>X-Record-Hash</c>; 409 for a job not terminal. A document the text account's
+/// lifecycle policy deleted is restored from the rows, checked against <c>recordHash</c> (<see cref="IRecordSealer.ReadSealedAsync"/>).</item>
 /// </list>
 /// Logs carry the job id only, never a key's text, a row or retained text.
 /// </summary>
@@ -105,7 +106,7 @@ public sealed class RecordRoutes(
         string jobId)
     {
         var cancellationToken = req.FunctionContext.CancellationToken;
-        var (refused, job, jobs) = await OpenAsync(req, client, jobId, cancellationToken);
+        var (refused, job, _) = await OpenAsync(req, client, jobId, cancellationToken);
         if (refused != null)
         {
             return refused;
@@ -117,14 +118,12 @@ public sealed class RecordRoutes(
             return await JsonAsync(req, HttpStatusCode.Conflict, new JsonObject { ["error"] = NotFinished }, cancellationToken);
         }
 
-        SealedRecord? sealedRecord;
+        // #1506 (Task 15): sealed if it is not yet; a document the lifecycle policy deleted is restored from the rows and
+        // checked against recordHash (a restore that does not hash to it is a fault, answered below)
         string? document;
         try
         {
-            sealedRecord = await sealers.For(client).EnsureSealedAsync(jobId, cancellationToken);
-            document = sealedRecord == null
-                ? null
-                : await blobs.ReadRecordAsync(await jobs!.AccountKindAsync(job, cancellationToken), job.AppUserId, jobId, cancellationToken);
+            document = await sealers.For(client).ReadSealedAsync(jobId, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -133,7 +132,7 @@ public sealed class RecordRoutes(
             return await JsonAsync(req, HttpStatusCode.InternalServerError, new JsonObject { ["error"] = NotAvailable }, cancellationToken);
         }
 
-        if (sealedRecord == null || document == null)
+        if (document == null)
         {
             logger.LogWarning("V31 record not available. JobId={JobId}", jobId);
             return await JsonAsync(req, HttpStatusCode.InternalServerError, new JsonObject { ["error"] = NotAvailable }, cancellationToken);
@@ -143,7 +142,7 @@ public sealed class RecordRoutes(
         ApplyCors(req, response);
         response.Headers.Add("Content-Type", "application/json");
         response.Headers.Add("Content-Disposition", $"attachment; filename=\"record-{jobId}.json\"");
-        response.Headers.Add("X-Record-Hash", sealedRecord.RecordHash);
+        response.Headers.Add("X-Record-Hash", Consultologist.PackageFormat.V31.Run.RecordDocument.Hash(document));
         await response.Body.WriteAsync(new UTF8Encoding(false).GetBytes(document), cancellationToken);
         return response;
     }
