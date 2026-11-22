@@ -430,10 +430,10 @@ public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? F
 - Modify: `docs/customizable-workflow/package-format-library.md` (a section "specVersion 31: checks, deliverables and delivery (preview)"), `docs/customizable-workflow/engine-v31.md` (delivery, the `delivering` state, the channels and what sets each up, the alerts and their settings, the pattern activity), `docs/README.md` if a link is missing
 - Content repo: `v31/conformance/README.md` (area 08's section: the A08 table, *Rules already said*, the cases added, `ChecksNotShipped` with reasons), `package-format-v31.md` chapter 6 where D1, D2 and D7 change what it says
 
-- [ ] **Step 1: Write** both guides from the code as built (every setting with its default; D10's flag that `emr` and `zip` have no channel yet).
-- [ ] **Step 2: Update** the content repo's README and chapter 6; run `python3 scripts/check-v31.py`; push; move the pin.
-- [ ] **Step 3: Run** `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~RefusalPackages|FullyQualifiedName~CompiledGolden|FullyQualifiedName~DialectGolden|FullyQualifiedName~V31Contract"`. Expected: PASS, the pinned suite equal to what the code gives.
-- [ ] **Step 4: Commit** `Docs (#1505): the guides say how a 31 job checks, composes and delivers`; push.
+- [x] **Step 1: Write** both guides from the code as built (every setting with its default; D10's flag that `emr` and `zip` have no channel yet).
+- [x] **Step 2: Update** the content repo's README and chapter 6; run `python3 scripts/check-v31.py`; push; move the pin.
+- [x] **Step 3: Run** `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~RefusalPackages|FullyQualifiedName~CompiledGolden|FullyQualifiedName~DialectGolden|FullyQualifiedName~V31Contract"`. Expected: PASS, the pinned suite equal to what the code gives.
+- [x] **Step 4: Commit** `Docs (#1505): the guides say how a 31 job checks, composes and delivers`; push.
 
 ## Addendum: the owner's rulings of 2026-11-22 (#1505, comment 4)
 
