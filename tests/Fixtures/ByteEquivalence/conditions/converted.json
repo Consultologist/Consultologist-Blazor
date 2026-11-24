@@ -1498,6 +1498,29 @@
       "notices": []
     },
     {
+      "id": "row.strip.input-field",
+      "logic": {
+        "blank": [
+          {
+            "var": "input.patient.value.name"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.patient.value.name"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [
+        {
+          "written": "trim(input.patient.value.name) = \"\"",
+          "printed": "blank(input.patient.value.name)"
+        }
+      ],
+      "notices": []
+    },
+    {
       "id": "row.starts-with",
       "logic": {
         "starts_with": [

@@ -3556,6 +3556,53 @@
       ]
     },
     {
+      "id": "row.strip.input-field",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.patient": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": ""
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {}
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": " "
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": "lorem"
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
       "id": "row.starts-with",
       "refused": null,
       "cases": [

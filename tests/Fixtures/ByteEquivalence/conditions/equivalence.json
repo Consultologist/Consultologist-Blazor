@@ -768,6 +768,36 @@
       ]
     },
     {
+      "id": "row.strip.input-field",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 3,
+      "listed": [
+        {
+          "case": 0,
+          "scope": {
+            "input.patient": "<absent>"
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "unruled"
+        },
+        {
+          "case": 2,
+          "scope": {
+            "input.patient": {}
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "unruled"
+        }
+      ]
+    },
+    {
       "id": "row.starts-with",
       "kind": "condition",
       "converted": true,
