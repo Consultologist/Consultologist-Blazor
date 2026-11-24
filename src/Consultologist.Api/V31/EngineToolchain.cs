@@ -37,12 +37,22 @@ public sealed class EngineToolchain(
         var outputContracts = LockCompiler.Member(LockCompiler.Member(lockDocument, "catalogues"), "outputContracts") is null
             ? null
             : _contracts.ResolvedRef;
-        var toolchain = Toolchain.Current(
-            packageFormat ?? string.Empty, _formats.ResolvedRef, $"{AgentsRegistry}@{_agents.Value.Version}", outputContracts);
+        var toolchain = Of(packageFormat, outputContracts);
 
         var ran = VersionsRan.Of(toolchain, lockDocument);
         if (packageFormat == null)
             ran["resolver"]!["packageFormat"] = null;
         return ran;
     }
+
+    /// <summary>
+    /// #1507 (area 10, D22): this process's toolchain with no output contracts catalogue, as the migration records it in a
+    /// migrated package's <c>lock.json</c> (<see cref="Consultologist.PackageFormat.Migration31Options.Toolchain"/>); the
+    /// package format empty when this build vendors no release.
+    /// </summary>
+    public Toolchain Current() =>
+        Of(EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat), outputContracts: null);
+
+    private Toolchain Of(string? packageFormat, string? outputContracts) => Toolchain.Current(
+        packageFormat ?? string.Empty, _formats.ResolvedRef, $"{AgentsRegistry}@{_agents.Value.Version}", outputContracts);
 }

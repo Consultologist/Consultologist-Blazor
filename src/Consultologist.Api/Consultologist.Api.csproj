@@ -74,6 +74,11 @@
     <None Include="..\..\external\consultologist-agents\agents\formats\*.json" Link="agents\formats\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- #1504 (D9): the 31 agents catalogue's bindings and agents (strictRejects), loaded and attested at startup. -->
     <None Include="..\..\external\consultologist-agents\agents\v31\*.json" Link="agents\v31\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- #1507 (area 10, D22): the 31 type registry (V31/PublishedTypeRegistry.cs), read on first use: the agents
+         catalogue's formats here, the package format's built-in formats and renderers below. -->
+    <None Include="..\..\external\consultologist-agents\agents\v31\formats\*.json" Link="agents\v31\formats\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\external\consultologist-package-format\v31\formats\*.json" Link="package-format\v31\formats\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\external\consultologist-package-format\v31\renderers\*" Link="package-format\v31\renderers\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- #449: the format registry version this engine was built against, so the
          deployed app can attest it beside its commit (GET /api/Public/Engine). -->
     <None Include="..\..\external\consultologist-package-format\spec-versions.json" Link="package-format\spec-versions.json" CopyToOutputDirectory="PreserveNewest" />
