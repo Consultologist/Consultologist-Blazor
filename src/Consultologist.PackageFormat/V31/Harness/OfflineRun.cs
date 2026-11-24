@@ -53,7 +53,8 @@ public sealed record OfflineResult(
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 3.1; part 07 § 8; D12): the offline, deterministic run of a compiled 31 package,
 /// which the migration's snapshot test, the byte-equivalence comparison and area 11's in-package tests run on. The start's
-/// inputs are built as the engine's start builds them (<see cref="RunInputsBuilder"/>; a refusal ends it there); then
+/// inputs are built as the engine's start builds them (<see cref="RunInputsBuilder"/>; a refusal ends it there, and so does
+/// a start no deliverable can exist for, A10-062); then
 /// <see cref="PlanRunner"/> runs the plan on <see cref="OfflineHost"/>, which calls the engine's own turns
 /// (<see cref="Templates.AgentTurn"/>, <see cref="Templates.RenderTurn"/>, <see cref="RuleTurn"/>) and serves each agent call
 /// its pinned or generated reply (<see cref="OfflineStubs"/>). Its clock is <see cref="OfflineRequest.StartedAtUtc"/> and
@@ -62,6 +63,12 @@ public sealed record OfflineResult(
 /// </summary>
 public static class OfflineRun
 {
+    /// <summary>
+    /// A10-062 (#1507, Task 15): the id of the start refusal when no deliverable can exist on the inputs
+    /// (<see cref="RunInputsBuilder.NoDeliverableCanExist"/>), whose sentence is <see cref="RunInputsBuilder.NoneApply"/>.
+    /// </summary>
+    public const string NoApplicableDeliverable = "A10-062";
+
     /// <summary>Runs <paramref name="plan"/> once on <paramref name="request"/>.</summary>
     public static async Task<OfflineResult> RunAsync(RunPlan plan, OfflineRequest request)
     {
@@ -73,6 +80,14 @@ public static class OfflineRun
         ArgumentNullException.ThrowIfNull(request.Outputs);
 
         var (inputs, refusals) = RunInputsBuilder.Build(plan, request.Inputs, request.RunFacts, request.Profile);
+
+        // #1507 (Task 15; R8, #1505): the engine's start refuses a job no deliverable can exist for, as a 30 start does.
+        if (inputs != null && RunInputsBuilder.NoDeliverableCanExist(plan, inputs))
+        {
+            refusals = [new SourceRefusal(NoApplicableDeliverable, RunInputsBuilder.NoneApply(plan), "")];
+            inputs = null;
+        }
+
         if (inputs == null)
         {
             return new OfflineResult(
