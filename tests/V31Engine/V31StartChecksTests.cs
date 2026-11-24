@@ -467,7 +467,7 @@ public class V31StartChecksTests
     /// <c>letrozole</c> and <c>letrozole_macro</c>, the macro file whose <c>if</c> reads <c>letrozole_macro</c>, and an agent
     /// placing it; with <paramref name="more"/> macros besides, each <c>(id, its if)</c>.
     /// </summary>
-    private static RunPlan Migrated(params (string Id, string If)[] more)
+    internal static RunPlan Migrated(params (string Id, string If)[] more)
     {
         var migrated = V31Migration.MigrateMacrosTests.WithLetrozole();
         var inputs = JsonNode.Parse(migrated.ManifestJson)!["inputs"]!;

@@ -74,10 +74,13 @@ public class MigrateLayoutTests
         // example-nested-note has no macros, snippets, checks, functions, renderers or tests at 30.
         var result = Migrated("example-nested-note");
 
-        foreach (var folder in new[] { "checks", "functions", "renderers", "snippets", "macros", "tests" })
+        foreach (var folder in new[] { "checks", "functions", "renderers", "snippets", "macros" })
         {
             Assert.Equal(Compact("""{ "description": null, "items": [] }"""), JsonOf(result, $"{folder}/index.json").ToJsonString());
         }
+
+        // With no hand edit, tests/ holds the migration's snapshot test (Task 14, part 10 § 4).
+        Assert.Equal(Compact("""{ "description": null, "items": ["migration_snapshot"] }"""), JsonOf(result, "tests/index.json").ToJsonString());
 
         Assert.Equal(Compact("""{ "description": null, "items": ["section_plan", "outline", "verdict"] }"""),
             JsonOf(result, "formats/index.json").ToJsonString());
