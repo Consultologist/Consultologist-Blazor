@@ -160,7 +160,7 @@ public class V31ContractsTests
     }
 
     /// <summary>The pinned schema of a file kind, with the schemas it refers to.</summary>
-    private static JsonSchema SchemaOf(string name)
+    internal static JsonSchema SchemaOf(string name)
     {
         List<AdditionalSchemaFile> files =
         [
