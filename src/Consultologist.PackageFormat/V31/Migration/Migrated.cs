@@ -81,7 +81,9 @@ internal sealed class Migrated
             var index = new JsonObject { ["description"] = null, ["items"] = new JsonArray() };
             if (folder == "deliverables")
             {
-                index["delivery"] = new JsonArray();
+                // #1507 (R8, ruled by the owner on #1507, 2026-11-22, 1): 30 emailed a job's documents as protected PDFs,
+                // or the link-only email, so the root folder delivers pdf, whose channel does the same.
+                index["delivery"] = new JsonArray("pdf");
                 index["bundle"] = null;
             }
 

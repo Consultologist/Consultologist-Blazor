@@ -45,6 +45,22 @@ public class MigrateDeliverablesTests
             .WithSnippet("echo", snippet, "markdown_block")
             .WithDeliverable(body));
 
+    [Theory]
+    [MemberData(nameof(MigratedPackagesTests.Packages), MemberType = typeof(MigratedPackagesTests))]
+    public void AMigratedPackage_DeliversPdf(string package)
+    {
+        // #1507 (R8, ruled by the owner on #1507, 2026-11-22, 1): 30 emailed a job's documents as password-protected PDFs,
+        // falling back to the link-only email, so the root deliverables folder delivers pdf; 30 has no destination folder,
+        // so the migration writes none: every deliverable is at the root.
+        var result = MigratedPackagesTests.Migrated(package);
+
+        var root = MigrateNodesTests.Json(result, "deliverables/index.json");
+        Assert.Equal("""["pdf"]""", root["delivery"]!.ToJsonString());
+        Assert.Null(root["bundle"]);
+        Assert.DoesNotContain(result.Files.Keys, path =>
+            path.StartsWith("deliverables/", StringComparison.Ordinal) && path.Count(c => c == '/') > 1);
+    }
+
     [Fact]
     public void ADeliverable_BecomesItsFile()
     {
@@ -60,8 +76,8 @@ public class MigrateDeliverablesTests
             """{"label":"Patient copy","kind":"rendered","description":null,"format":"markdown_block","if":{"===":[{"var":"input.audience.value"},"patient"]},"check":null,"whenEmpty":"release"}""",
             Header(gates, "deliverables/patient_copy.md"));
 
-        // The root delivery folder lists them in 30's order (part 06 § 8; no destination folder, as area 08's fixtures).
-        Assert.Equal("""{"description":null,"items":["note","record_copy","patient_copy","cover_letter"],"delivery":[],"bundle":null}""",
+        // The root delivery folder lists them in 30's order (part 06 § 8; no destination folder), delivering pdf (R8).
+        Assert.Equal("""{"description":null,"items":["note","record_copy","patient_copy","cover_letter"],"delivery":["pdf"],"bundle":null}""",
             MigrateNodesTests.Json(gates, "deliverables/index.json").ToJsonString());
 
         // Keys: each deliverable by its 30 key; a node of the same id keeps its own entry (composer-sources' plan).

@@ -6,7 +6,7 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.2 the deliverable rows, §§ 1.4, 1.10; part 06 §§ 6.1, 6.3 to 6.6, 7, 8,
 /// 10; D3, D4, D7, D8): the deliverables pass. Each 30 deliverable becomes <c>deliverables/&lt;id&gt;.md</c>, listed in
-/// <c>deliverables/index.json</c> in 30's order (the root folder: <c>delivery: []</c>, <c>bundle: null</c>, as the layout
+/// <c>deliverables/index.json</c> in 30's order (the root folder: <c>delivery: ["pdf"]</c> (R8), <c>bundle: null</c>, as the layout
 /// wrote it). Its header is part 06 § 6.1's: its label, <c>kind: rendered</c>, <c>description: null</c>,
 /// <c>format: markdown_block</c> (D8), its <c>if</c> converted (<see cref="Condition"/>), its <c>check</c> the gate's
 /// <c>check.&lt;id&gt;</c> or <c>null</c>, and <c>whenEmpty</c> from <see cref="Migration31Options.WhenEmpty"/>
