@@ -315,4 +315,59 @@ public class MigrateDeliverablesTests
         Assert.Equal(ids.Count, result.Files.Keys.Count(k => k.StartsWith("deliverables/", StringComparison.Ordinal) && k.EndsWith(".md", StringComparison.Ordinal)));
         Assert.Empty(refusals);
     }
+    /// <summary>
+    /// Part 05 § 8.3 (the macro's format follows its placers'), with R9: the macros <c>example-macros</c>' <c>summary</c>
+    /// places (in its prompt, or through the snippet <c>style</c>) take its format, <c>markdown_block</c> while
+    /// <c>consult_note</c> composes it, <c>plaintext</c> when only a prompt reads it.
+    /// </summary>
+    [Fact]
+    public void AMacroPlacedOnAComposedNode_TakesItsFormat()
+    {
+        string[] placedBySummary = ["preamble", "sign_off", "wrap_up", "house_style"];
+        var composed = MigrateNodesTests.Migrated("example-macros");
+        Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(composed, "nodes/summary.md").Header["format"]);
+        foreach (var macro in placedBySummary)
+            Assert.True("markdown_block" == (string?)MigrateNodesTests.Md(composed, $"macros/{macro}.md").Header["format"], $"{macro} is not markdown_block.");
+
+        // 30 refuses a node that feeds no deliverable, so the patient line's prompt reads the summary instead.
+        var uncomposed = MigrateNodesTests.Migrated("example-macros", root =>
+            root["deliverables"]![0]!["sources"]!.AsArray().Remove(root["deliverables"]![0]!["sources"]!.AsArray().Single(s => (string?)s == "node.summary")),
+            files => files["prompts/patient_line.md"] += "\n{{ node.summary.content }}\n");
+        Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(uncomposed, "nodes/summary.md").Header["format"]);
+        foreach (var macro in placedBySummary)
+            Assert.True("plaintext" == (string?)MigrateNodesTests.Md(uncomposed, $"macros/{macro}.md").Header["format"], $"{macro} is not plaintext.");
+    }
+
+    /// <summary>
+    /// D20 gives no union of composed and uncomposed prose: 30 composes only a top-level node (a source inside a flow is
+    /// refused, "name node.&lt;owner&gt;"), so a flow is composed with every leaf its <c>ret</c>s reach, or none is.
+    /// <c>composer-sources</c>' <c>tone_case</c> is one <c>markdown_block</c> while <c>tone_line</c> composes it, one
+    /// <c>plaintext</c> when only a prompt reads it, never an <c>anyOf</c>; both publish with no refusal but the package's two hand edits.
+    /// </summary>
+    [Fact]
+    public void AFlowOfComposedAndUncomposedProse_IsNotAUnion()
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var inside = JsonNode.Parse(json)!.AsObject();
+        inside["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "single")["sources"] = new JsonArray("node.formal_line");
+        var refused = WorkflowPackageMigration30To31.Migrate(inside.ToJsonString(), files, MigrationFixture.Options("composer-sources"));
+        Assert.False(refused.Succeeded);
+        Assert.Contains(refused.Refusals, r => r.StartsWith("At specVersion 30: ", StringComparison.Ordinal) && r.Contains("source node.formal_line runs inside", StringComparison.Ordinal));
+
+        var composed = MigrateNodesTests.Migrated("composer-sources");
+        // 30 refuses a node that feeds no deliverable, so the opening's prompt reads the case instead.
+        var uncomposed = MigrateNodesTests.Migrated("composer-sources", root =>
+            root["deliverables"]!.AsArray().Remove(root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "tone_line")),
+            files => files["prompts/opening.md"] += "\n{{ node.tone_case.content }}\n");
+        foreach (var (result, format) in new[] { (composed, "markdown_block"), (uncomposed, "plaintext") })
+        {
+            Assert.Equal(JsonValue.Create(format).ToJsonString(), MigrateNodesTests.Json(result, "nodes/tone_case/index.json")["format"]!.ToJsonString());
+            Assert.Equal(format, (string?)MigrateNodesTests.Md(result, "nodes/tone_case/formal_line.md").Header["format"]);
+            Assert.Equal(format, (string?)MigrateNodesTests.Md(result, "nodes/tone_case/plain_line.md").Header["format"]);
+            // The package's two hand edits (topic_tally's expression, draft_summary's body if) are refused at publish where
+            // they sit; nothing else is, the case and its leaves least of all.
+            Assert.All(result.HandEdits, e => Assert.Matches("^Hand edit needed in nodes/(topic_tally.md, expression|refine/draft_summary.md, body): ", e));
+            Assert.All(MigratedPackagesTests.Publish(result), r => Assert.True(r.Path is "nodes/topic_tally.md" or "nodes/refine/draft_summary.md", $"{r.Id} {r.Path}: {r.Sentence}"));
+        }
+    }
 }

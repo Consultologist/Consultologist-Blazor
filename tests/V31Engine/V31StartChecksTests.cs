@@ -479,17 +479,19 @@ public class V31StartChecksTests
             })
             .Listed("macros/index.json", "letrozole")
             .With("macros/letrozole.md", migrated.Files["macros/letrozole.md"]);
+        // The agent takes the migrated macro's format (markdown_block: summary is prose a deliverable composes, R9), and so do the others.
+        var format = V31Migration.MigrateMacrosTests.FormatOf(migrated.Files["macros/letrozole.md"]);
         var placements = "{{ macro.letrozole }}\n";
         foreach (var (id, condition) in more)
         {
             files.Listed("macros/index.json", id).With($"macros/{id}.md", SourceFixture.Md(
-                $"{{ \"label\": \"Macro {id}\", \"description\": null, \"if\": {condition}, \"format\": \"plaintext\", "
+                $"{{ \"label\": \"Macro {id}\", \"description\": null, \"if\": {condition}, \"format\": {format}, "
                 + $"\"instruction\": [\"Place {{{{ macro.{id}.content }}}} at the end of the plan.\"] }}",
                 "Reviewed with Margaret Okafor.\n"));
             placements += $"{{{{ macro.{id} }}}}\n";
         }
 
-        return RunFixture.Plan(V31Templates.TemplateFixture.WithAgent(files, "draft", "Draft the plan for Margaret Okafor.\n" + placements));
+        return RunFixture.Plan(V31Templates.TemplateFixture.WithAgent(files, "draft", "Draft the plan for Margaret Okafor.\n" + placements, format));
     }
 
     private static readonly IReadOnlyDictionary<string, JsonNode?> NothingSent = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);

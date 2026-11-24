@@ -137,12 +137,91 @@ public class MigrateNodesTests
     public void AnAgentsFormat_IsThePlainFormatOfTheSameShape(string at30, string at31) =>
         Assert.Equal(at31, PackageFormat.V31.Migration.Migrate.AgentFormat(at30));
 
+    /// <summary>
+    /// R9 (#1507, 2026-11-22T16:26Z, item 2) and D20 (accepted 2026-11-22T21:38Z): a 30 prose value a deliverable composes
+    /// is <c>markdown_block</c>, followed from each source through the flows' <c>ret</c>s to every leaf. In
+    /// <c>composer-sources</c>: a scalar source (<c>opening</c>, <c>closing</c>); a leaf inside a <c>for</c> and its
+    /// <c>if</c> (<c>topic_loop</c>), a <c>for</c> inside a <c>for</c> (<c>section_loop</c>), a <c>while</c>
+    /// (<c>refine</c>, whose leaf the judge's prompt also reads), an <c>if</c> (<c>plan_gate</c>) and a <c>case</c>'s
+    /// branches (<c>tone_case</c>). Each flow's format follows its leaves. An agent node with no format would be prose too
+    /// (<see cref="Migrate.AgentFormat"/>), but 30 refuses one since specVersion 26, so no package reaches the migration
+    /// with it: that refusal is pinned here.
+    /// </summary>
     [Fact]
-    public void Prose_IsPlaintext_InAMigratedNode()
+    public void ProseADeliverableComposes_IsMarkdownBlock()
     {
-        var (header, _) = Md(Migrated("example-nested-note"), "nodes/sections/paragraphs/draft_paragraph.md");
+        var result = Migrated("composer-sources");
 
-        Assert.Equal("plaintext", (string?)header["format"]);
+        foreach (var leaf in new[]
+        {
+            "nodes/opening.md", "nodes/closing.md", "nodes/topic_loop/topic_gate/draft_topic.md",
+            "nodes/section_loop/point_loop/draft_point.md", "nodes/refine/draft_summary.md", "nodes/plan_gate/draft_plan.md",
+            "nodes/tone_case/formal_line.md", "nodes/tone_case/plain_line.md",
+        })
+        {
+            Assert.True("markdown_block" == (string?)Md(result, leaf).Header["format"], $"{leaf} is not markdown_block.");
+        }
+
+        const string list = """{"type":"array","items":{"$ref":"markdown_block"}}""";
+        Assert.Equal(list, Json(result, "nodes/topic_loop/index.json")["format"]!.ToJsonString());
+        Assert.Equal("markdown_block", (string?)Json(result, "nodes/topic_loop/topic_gate/index.json")["format"]);
+        Assert.Equal(list, Json(result, "nodes/section_loop/point_loop/index.json")["format"]!.ToJsonString());
+        Assert.Equal("markdown_block", (string?)Json(result, "nodes/refine/index.json")["format"]);
+        Assert.Equal("markdown_block", (string?)Json(result, "nodes/plan_gate/index.json")["format"]);
+        Assert.Equal("markdown_block", (string?)Json(result, "nodes/tone_case/index.json")["format"]);
+        Assert.Equal("markdown_block", PackageFormat.V31.Migration.Migrate.AgentFormat(null, composed: true));
+        // The package's two hand edits are 30 constructs a format does not touch.
+        Assert.All(result.HandEdits, e => Assert.Matches("^Hand edit needed in nodes/(topic_tally.md, expression|refine/draft_summary.md, body): ", e));
+
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var root = JsonNode.Parse(json)!.AsObject();
+        Node(root, "closing").Remove("format");
+        var refused = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("composer-sources"));
+        Assert.False(refused.Succeeded);
+        Assert.Contains("At specVersion 30: Node 'closing' must declare a format at specVersion 26.", refused.Refusals);
+    }
+
+    /// <summary>R9: prose that only prompts read stays <c>plaintext</c> (<c>example-two-documents</c>' section drafts, in the loop's body but not its <c>ret</c>, read by the next prompt).</summary>
+    [Fact]
+    public void ProseOnlyPromptsRead_StaysPlaintext()
+    {
+        var result = Migrated("example-two-documents");
+
+        Assert.Equal("plaintext", (string?)Md(result, "nodes/standards/standard_section_draft.md").Header["format"]);
+        Assert.Equal("plaintext", (string?)Md(result, "nodes/standards/patient_section_draft.md").Header["format"]);
+        Assert.Equal("markdown_block", (string?)Md(result, "nodes/standards/section_instructions.md").Header["format"]); // the loop's ret
+        Assert.Equal("markdown_block", (string?)Md(result, "nodes/draft_patient_letter.md").Header["format"]);           // a source
+    }
+
+    /// <summary>
+    /// D20: only 30's prose (and an agent node with no format) changes. <c>agent_plaintext</c> was declared plain text by its
+    /// author, a <c>rendered</c> node and a <c>let</c> of <c>text</c> are 30's text: each stays <c>plaintext</c> though a
+    /// deliverable composes it (and is escaped there, part 06 § 6.4). 30's catalogue here has no <c>agent_plaintext</c>, so
+    /// the test gives it one, <c>prose</c>'s entry under that name.
+    /// </summary>
+    [Fact]
+    public void AgentPlaintext_ARenderedNode_AndATextLet_StayPlaintext_EvenWhenComposed()
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var root = JsonNode.Parse(json)!.AsObject();
+        Node(root, "opening")["format"] = "agent_plaintext";
+        var catalog = TestFormats.Catalog with
+        {
+            Formats = new Dictionary<string, WorkflowFormatCatalogFormat>(TestFormats.Catalog.Formats, StringComparer.Ordinal)
+            {
+                ["agent_plaintext"] = TestFormats.Catalog.Formats["prose"],
+            },
+        };
+        var sources = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("composer-sources") with { Formats30 = catalog });
+        Assert.True(sources.Succeeded, string.Join("\n", sources.Refusals));
+        Assert.Equal("plaintext", (string?)Md(sources, "nodes/opening.md").Header["format"]);       // deliverable single
+        Assert.Equal("markdown_block", (string?)Md(sources, "nodes/closing.md").Header["format"]);  // its prose neighbour in pair
+        Assert.Equal("plaintext", (string?)Md(sources, "nodes/topic_tally.md").Header["format"]);   // deliverable tally, a let of text
+
+        var constructs = Migrated("example-v12-constructs");
+        Assert.Equal("plaintext", (string?)Md(constructs, "nodes/patient_header.md").Header["format"]);                    // consult, a source
+        Assert.Equal("plaintext", (string?)Md(constructs, "nodes/standards_letter_body/letter_body.md").Header["format"]); // ack_letter, through a for
+        Assert.Equal("markdown_block", (string?)Md(constructs, "nodes/standards_section_instructions/section_instructions.md").Header["format"]);
     }
 
     [Fact]

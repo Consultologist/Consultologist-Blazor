@@ -55,7 +55,7 @@ public class MigratedPackagesTests
         return upload;
     }
 
-    private static IReadOnlyList<SourceRefusal> Publish(Migration31Result result) =>
+    internal static IReadOnlyList<SourceRefusal> Publish(Migration31Result result) =>
         CompiledPackage.Publish(Upload(result), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed).Refusals;
 
     private static string Explain(IReadOnlyList<SourceRefusal> refusals, Migration31Result result) =>

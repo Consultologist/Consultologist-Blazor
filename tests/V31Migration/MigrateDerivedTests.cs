@@ -93,7 +93,7 @@ public class MigrateDerivedTests
         var nested = MigratedPackagesTests.Migrated("example-nested-note");
         AssertExactly("""
             { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
-              "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "plaintext" } } },
+              "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "markdown_block" } } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "node.plan.value.sections",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -102,7 +102,7 @@ public class MigrateDerivedTests
             """, Json(nested, "nodes/sections/index.json"));
         AssertExactly("""
             { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
-              "format": { "type": "array", "items": { "$ref": "plaintext" } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "node.outline.value.points",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -111,7 +111,7 @@ public class MigrateDerivedTests
             """, Json(nested, "nodes/sections/paragraphs/index.json"));
         AssertExactly("""
             { "kind": "for", "producer": "computed", "label": "Sections — drafting each requested section by its kind", "description": null,
-              "format": { "type": "array", "items": { "$ref": "plaintext" } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "input.sections.value",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -122,7 +122,7 @@ public class MigrateDerivedTests
         // test/general has hand edits elsewhere (its parts' conditions, refused by the expressions): its flags are still derived.
         AssertExactly("""
             { "kind": "for", "producer": "computed", "label": "Standards", "description": null,
-              "format": { "type": "array", "items": { "$ref": "plaintext" } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "snippet.standards",
               "parallel": true, "maxParallel": null, "until": null, "max": null,

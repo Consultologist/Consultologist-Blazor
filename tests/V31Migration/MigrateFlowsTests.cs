@@ -36,7 +36,7 @@ public class MigrateFlowsTests
 
         AssertExample("""
             { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
-              "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "plaintext" } } },
+              "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "markdown_block" } } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "node.plan.value.sections",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -45,7 +45,7 @@ public class MigrateFlowsTests
             """, Json(result, "nodes/sections/index.json"), SourceShapes.FlowFor);
         AssertExample("""
             { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
-              "format": { "type": "array", "items": { "$ref": "plaintext" } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "node.outline.value.points",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -59,7 +59,7 @@ public class MigrateFlowsTests
     {
         AssertExample("""
             { "kind": "for", "producer": "computed", "label": "Sections — drafting each requested section by its kind", "description": null,
-              "format": { "type": "array", "items": { "$ref": "plaintext" } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "input.sections.value",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -73,7 +73,7 @@ public class MigrateFlowsTests
     {
         AssertExample("""
             { "kind": "for", "producer": "computed", "label": "Standards", "description": null,
-              "format": { "type": "array", "items": { "$ref": "plaintext" } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "snippet.standards",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -89,7 +89,7 @@ public class MigrateFlowsTests
         // Part 04 § 3.5; checkFirst, optional at 30, is written with 30's default.
         AssertExample("""
             { "kind": "while", "producer": "computed", "label": "Refining the summary", "description": null,
-              "format": "plaintext",
+              "format": "markdown_block",
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "while": { "!==": [ { "var": "node.judge.value.verdict" }, "good" ] },
               "max": 3, "until": null, "checkFirst": false,
@@ -104,7 +104,7 @@ public class MigrateFlowsTests
 
         AssertExample("""
             { "kind": "case", "producer": "computed", "label": "Routing a section by its kind", "description": null,
-              "format": "plaintext",
+              "format": "markdown_block",
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "case": "item.value.kind",
               "branches": [
@@ -115,7 +115,7 @@ public class MigrateFlowsTests
             """, Json(result, "nodes/sections_draft/route/index.json"), SourceShapes.FlowCase);
         AssertExample("""
             { "kind": "if", "producer": "computed", "label": "Narrative sections only", "description": null,
-              "format": "plaintext",
+              "format": "markdown_block",
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "if": { "===": [ { "var": "item.value.kind" }, "narrative" ] },
               "then": { "nodes": ["patient_summary"], "ret": "node.patient_summaries.narrative_only.patient_summary" },
@@ -123,7 +123,7 @@ public class MigrateFlowsTests
             """, Json(result, "nodes/patient_summaries/narrative_only/index.json"), SourceShapes.FlowIf);
         AssertExample("""
             { "kind": "if", "producer": "computed", "label": "Holding the billing section back unless asked", "description": null,
-              "format": "plaintext",
+              "format": "markdown_block",
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "if": { "or": [ { "!==": [ { "var": "item.id" }, "billing" ] },
                               { "===": [ { "var": "input.include_billing.value" }, true ] } ] },

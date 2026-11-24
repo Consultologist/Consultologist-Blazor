@@ -42,7 +42,10 @@ public class MigrateMacrosTests
         TemplateFixture.RefusalsOf(TemplateFixture.Package()
             .Listed("macros/index.json", id)
             .With($"macros/{id}.md", text)
-            .WithAgent("draft", $"Draft the plan for Margaret Okafor.\n{{{{ macro.{id} }}}}\n"));
+            .WithAgent("draft", $"Draft the plan for Margaret Okafor.\n{{{{ macro.{id} }}}}\n", FormatOf(text)));
+
+    /// <summary>The <c>format</c> a macro file's header holds, as JSON: the agent placing it takes the same (part 05 § 8.3's format match).</summary>
+    internal static string FormatOf(string macroFile) => JsonNode.Parse(FrontMatter.Split(macroFile)!.Header)!["format"]!.ToJsonString();
 
     /// <summary>
     /// The refusals of a 31 package with the macro <paramref name="macro"/> (<c>&lt;id&gt;</c>, or <c>&lt;folder&gt;/&lt;id&gt;</c>)
@@ -103,7 +106,7 @@ public class MigrateMacrosTests
 
         // Part 05 § 8.1's members in order; the instruction is 30's, an empty line, then 30's mechanics sentence (D5).
         Assert.Equal(
-            "{\"label\":\"House-style reminder\",\"description\":null,\"if\":null,\"format\":\"plaintext\",\"instruction\":["
+            "{\"label\":\"House-style reminder\",\"description\":null,\"if\":null,\"format\":\"markdown_block\",\"instruction\":["
             + "\"Where the summary departs from the house style above, the reminder goes as the last sentence; otherwise nothing.\",\"\","
             + JsonSerializer.Serialize(Mechanics("house_style"), Unescaped) + "]}",
             Header(result, "macros/house_style.md"));
@@ -123,13 +126,20 @@ public class MigrateMacrosTests
             """["counselling","house_style","silent_reminder","section_caveat","table_note","preamble","sign_off","wrap_up","header_line","followup_only","brief_plan","follow_up_reminder","notes"]""",
             MigrateNodesTests.Json(result, "macros/index.json")["items"]!.ToJsonString());
 
-        // The format is the placing agents' (part 05 § 8.3). Every 30 agent that places a macro is prose (plaintext); one
-        // returning Markdown makes the macros only it places Markdown (wrap_up), and so does one placing the snippet that
-        // places it (house_style, through style.md, which summary places).
+        // The format is the placing agents' (part 05 § 8.3). Every 30 agent that places a macro here is prose a deliverable
+        // composes, so markdown_block (R9), and so is every macro an agent places; the deliverable macros no agent places
+        // (hand edits, A10-002) keep plaintext. With the agents plain text, one returning Markdown makes the macros only it
+        // places Markdown (wrap_up), and so does one placing the snippet that places it (house_style, through style.md,
+        // which summary places).
+        string[] onlyOnADeliverable = ["header_line", "followup_only", "brief_plan", "follow_up_reminder"];
         Assert.All(result.Files.Where(f => f.Key.StartsWith("macros/", StringComparison.Ordinal) && f.Key.EndsWith(".md", StringComparison.Ordinal)),
-            f => Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, f.Key).Header["format"]));
+            f => Assert.Equal(
+                onlyOnADeliverable.Any(id => f.Key == $"macros/{id}.md") ? "plaintext" : "markdown_block",
+                (string?)MigrateNodesTests.Md(result, f.Key).Header["format"]));
         var m = TemplateRewriterTests.Working("example-macros");
         Migrate.Templates(m);
+        foreach (var (path, node) in m.Sources.Where(f => f.Key.StartsWith("nodes/", StringComparison.Ordinal) && f.Key.EndsWith(".md", StringComparison.Ordinal)))
+            node.Json["format"] = "plaintext";
         m.Sources["nodes/summary.md"].Json["format"] = "markdown_block";
         Migrate.Macros(m);
         Assert.Equal("markdown_block", (string?)m.Sources["macros/wrap_up.md"].Json["format"]);
@@ -168,7 +178,7 @@ public class MigrateMacrosTests
         var plan = RunFixture.Plan(TemplateFixture.Package()
             .Listed("macros/index.json", "house_style")
             .With("macros/house_style.md", migrated)
-            .WithAgent("draft", "House style:\n{{ macro.house_style }}\nEnd.\n"));
+            .WithAgent("draft", "House style:\n{{ macro.house_style }}\nEnd.\n", FormatOf(migrated)));
         var composed = BodyComposerTests.Composed(BodyComposerTests.Compose(plan, "node.draft", new JsonObject(), BodyComposerTests.Placed("macro.house_style")));
 
         Assert.Equal("House style:\n" + prompt30 + "\nEnd.\n", composed);
@@ -389,7 +399,7 @@ public class MigrateMacrosTests
 
         Assert.Equal("""{"description":null,"items":["red_flags","safety_net"],"if":null}""", MigrateNodesTests.Json(result, "macros/notes/index.json").ToJsonString());
         Assert.Equal(
-            "{\"label\":\"Red flags\",\"description\":null,\"if\":null,\"format\":\"plaintext\",\"instruction\":["
+            "{\"label\":\"Red flags\",\"description\":null,\"if\":null,\"format\":\"markdown_block\",\"instruction\":["
             + "\"If the draft reviews red flags, the red-flags line goes in the summary; otherwise nothing.\",\"\","
             + JsonSerializer.Serialize(Mechanics("notes.red_flags"), Unescaped) + "]}",
             Header(result, "macros/notes/red_flags.md"));
