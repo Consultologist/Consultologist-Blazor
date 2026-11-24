@@ -74,7 +74,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-008 | notice | `<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.` |
 | A10-009 | notice | ~~`Input '<id>', field '<field>' holds free text; consider a text format.`~~ Unused: 30's inputs have no data `string` (every text becomes `markdown_block`); a package format's free-text field is A10-021 (Task 6). |
 | A10-010 | notice | `Node '<id>' declared reproducible <true \| false> at 30; <true \| false> is written, as its reads give it.` (part 02 § 11's last bullet: only an agent node declares it at 30; Task 12) |
-| A10-011 | notice | `No snapshot test was written: hand edits remain.` |
+| A10-011 | notice | `No snapshot test was written: hand edits remain.` (part 10 § 4, D13: the last notice of a migration that says a hand edit; `tests/index.json` keeps `"items": []`; `MigrationSentences.NoSnapshotHandEditsRemain`; Task 14) |
 | A10-012 | refusal | `The package is at specVersion <n>; migration starts at 5.` |
 | A10-013 | notice | `Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.` |
 | A10-014 | notice | `<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes.` (part 10's own words; used only if `sentences.json` has no row for it) |
@@ -123,6 +123,8 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-057 | notice | `No document could be sent: <labels> <was \| were> not released.` (D19: the line of that email after the completed reply's opening; labels are package text; `MailDeliveryChannel.NoDocumentSent`; Task 22) |
 | A10-058 | notice | `Outstanding migration hand edits: not counted; <the type registry \| the accounts' active packages> could not be read.` (R11, D22, part 09 § 3.9: the weekly summary's hand-edits line when a pin, a stored package or the bundled 31 type registry could not be read: an error line, never a zero; `MigrationFigures.NotRead`; Task 23) |
 | A10-059 | notice | `Outstanding migration hand edits: <k> of the accounts' active packages could not be read and are not counted.` (R11, D22: the line after D22's when some pins or packages could not be read, each failing alone, or the line alone when none could be; counts only; `MigrationFigures.Lines`; Task 23 fix round 1) |
+| A10-060 | notice | `No snapshot test was written: tests/migration_snapshot.json would take the package past SourceBounds.<fileBytes \| totalBytes \| files>.` (part 07 § 8.4, part 01 § 7: a test file counts against `SourceBounds`; never a hand edit, the package publishes without it; `Snapshot` refuses with it; `MigrationSentences.SnapshotPastBound`; Task 14) |
+| A10-061 | notice | `No snapshot test was written: the migrated package <does not publish \| is refused at its run's start \| fails its offline run \| times out in its offline run \| cannot be run offline>.` (part 10 § 4, part 07 § 8.3, D13: a package with no hand edit whose snapshot run on D13's fictional request does not complete; never a hand edit, so Task 12's invariant is untouched; `Snapshot` refuses with it; `MigrationSentences.SnapshotNotRun`; Task 14. None of the seven packages says it) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 
@@ -552,11 +554,11 @@ Tasks 20 to 23 build #1507's last comment ("Apply them before the area's remaini
   ```
   `Snapshot` takes a 31 source, publishes it in memory, runs it and returns the same files with `tests/migration_snapshot.json` and `tests/index.json` listing it; a source that does not publish is a refusal with the checker's sentences.
 
-- [ ] **Step 1: Write the failing tests.** `TheSnapshot_FollowsTheGrammar` (the file validates against `test.schema.json`; `inputs` lists every input; `profile` exactly `needs.profile`; `run` exactly the plan's run facts; `outputs` one stub per agent row that ran, by row key; `expect.prompts` every agent row by `{ "hash" }`; `expect.deliverables` every deliverable by `{ "state", "hash" }`, or `{ "state": "skipped" }` alone). `TheSnapshot_PassesOnItsOwnPackage` (running the package again with the file's `inputs`, `profile`, `run` and `outputs` gives the hashes in `expect`). `ItIsWrittenByMigrate` (`tests/migration_snapshot.json` is in `Files` and `tests/index.json` lists `migration_snapshot`, for a package with no hand edit). `WithHandEdits_NoSnapshot_AndANotice` (A10-011; `tests/index.json` has `"items": []`). `TheSnapshot_HoldsNoLongText` (no `text` member under `expect`). `ItCountsAgainstSourceBounds` (the migrated package with its snapshot still passes intake; a package whose snapshot would pass `FileBytes` gets no snapshot and a notice numbered on).
-- [ ] **Step 2: Run; they fail.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run; green.** Regenerate `migrated/`; read three snapshots in full.
-- [ ] **Step 5: Commit and push.**
+- [x] **Step 1: Write the failing tests.** `TheSnapshot_FollowsTheGrammar` (the file validates against `test.schema.json`; `inputs` lists every input; `profile` exactly `needs.profile`; `run` exactly the plan's run facts; `outputs` one stub per agent row that ran, by row key; `expect.prompts` every agent row by `{ "hash" }`; `expect.deliverables` every deliverable by `{ "state", "hash" }`, or `{ "state": "skipped" }` alone). `TheSnapshot_PassesOnItsOwnPackage` (running the package again with the file's `inputs`, `profile`, `run` and `outputs` gives the hashes in `expect`). `ItIsWrittenByMigrate` (`tests/migration_snapshot.json` is in `Files` and `tests/index.json` lists `migration_snapshot`, for a package with no hand edit). `WithHandEdits_NoSnapshot_AndANotice` (A10-011; `tests/index.json` has `"items": []`). `TheSnapshot_HoldsNoLongText` (no `text` member under `expect`). `ItCountsAgainstSourceBounds` (the migrated package with its snapshot still passes intake; a package whose snapshot would pass `FileBytes` gets no snapshot and a notice numbered on).
+- [x] **Step 2: Run; they fail.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run; green.** Regenerate `migrated/`; read three snapshots in full.
+- [x] **Step 5: Commit and push.**
 
 ### Task 15: The comparison and the report
 
