@@ -36,8 +36,9 @@ public static class OperatorSummary
             .Append("Failures: ").Append(failures.ToString(CultureInfo.InvariantCulture)).Append('\n')
             .Append("p50 duration: ").Append(Minutes(NearestRank(durations, 50))).Append('\n')
             .Append("p90 duration: ").Append(Minutes(NearestRank(durations, 90))).Append('\n')
-            .Append("Largest record: ").Append(NotMeasured).Append('\n')
-            .Append(migration.Line).Append('\n');
+            .Append("Largest record: ").Append(NotMeasured).Append('\n');
+        foreach (var line in migration.Lines)
+            body.Append(line).Append('\n');
         return ("Consultologist weekly summary", body.ToString());
     }
 
@@ -122,13 +123,18 @@ public sealed class OperatorWeeklySummary(
         var migration = await _handEdits.CountAsync(listed, ct);
         var (subject, body) = OperatorSummary.Compose(jobs, migration);
         logger.LogInformation(
-            "Operator weekly summary. Jobs={Jobs}, Failures={Failures}, HandEdits={HandEdits}, HandEditPackages={HandEditPackages}, NotMigrating={NotMigrating}, MigrationUnread={MigrationUnread}",
+            "Operator weekly summary. Jobs={Jobs}, Failures={Failures}",
             jobs.Count,
-            jobs.Count(j => string.Equals(j.Status, ConsultGenerationJobStatuses.Failed, StringComparison.Ordinal)),
-            migration.HandEdits,
-            migration.Packages,
-            migration.DoNotMigrate,
-            migration.Unread);
+            jobs.Count(j => string.Equals(j.Status, ConsultGenerationJobStatuses.Failed, StringComparison.Ordinal)));
+        // the migration figures only as far as they were gathered: no zero for what was not read
+        if (migration.NotGathered is { } notGathered)
+            logger.LogInformation("Operator weekly summary: migration hand edits not counted. NotRead={NotRead}", notGathered);
+        if (migration.HandEdits is { } handEdits)
+            logger.LogInformation(
+                "Operator weekly summary: migration hand edits. HandEdits={HandEdits}, HandEditPackages={HandEditPackages}, NotMigrating={NotMigrating}",
+                handEdits, migration.Packages, migration.DoNotMigrate);
+        if (migration.NotCounted > 0)
+            logger.LogInformation("Operator weekly summary: active packages not read. NotCounted={NotCounted}", migration.NotCounted);
         await OperatorAlerts.MailAsync(mail, configuration, logger, "weekly-summary", subject, body, ct);
         return true;
     }
