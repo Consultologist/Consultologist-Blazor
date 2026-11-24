@@ -20,7 +20,7 @@ public class ExpectedDifferencesTests
     private static readonly string[] RuleIds =
     [
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
-        "refused-deliverable-withheld", "escaped-plain-text", "item-ids-from-one", "sent-format", "explicit-null-for-optional",
+        "refused-deliverable-withheld", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop", "sent-format", "explicit-null-for-optional",
         "macro-trailing-whitespace", "blank-conversion",
     ];
 
@@ -182,6 +182,28 @@ public class ExpectedDifferencesTests
     }
 
     [Fact]
+    public void PositionNamesFromTheLoop_ExplainsTheNameOfAnInputsItem()
+    {
+        // Part 04 § 2.7 (decided on #1392): an item named by its position is "<loop label> <n>" at 31, where 30 named an
+        // input loop's item by the input's label. composer-gates' loop problem_loop ("Problems") runs over the input problems
+        // ("Problem list"), with no itemLabel; its .content heads each item "## <name>".
+        const string Old = "Extract the clinical terms: ## Problem list 1\n\nStub one.\n\n## Problem list 2\n\nStub two.\n\nA closing line.";
+        const string New = "Extract the clinical terms: ## Problems 1\n\nStub one.\n\n## Problems 2\n\nStub two.\n\nA closing line.";
+        const string Heads = "## Problem list 1\n\nStub one.\n\n## Problem list 2\n\nStub two.";
+        Assert.StartsWith("position-names-from-the-loop: ", Explain(GatesContext(ComparedKind.Prompt, Old, New, "node.cover_note")));
+        Assert.StartsWith("position-names-from-the-loop: ", Explain(GatesContext(ComparedKind.Deliverable, Heads, Heads.Replace("Problem list", "Problems", StringComparison.Ordinal), "deliverable.note")));
+
+        // Near: the position differs too; the heading carries more than the name; the name stands outside a heading line; a
+        // word differs elsewhere; another loop's label; a package whose input loops' labels are the inputs' own.
+        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, Old, New.Replace("## Problems 2", "## Problems 3", StringComparison.Ordinal), "node.cover_note")));
+        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, Old.Replace("list 2", "list 2 (draft)", StringComparison.Ordinal), New.Replace("Problems 2", "Problems 2 (draft)", StringComparison.Ordinal), "node.cover_note")));
+        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, "See Problem list 1.", "See Problems 1.", "node.cover_note")));
+        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, Old, New.Replace("closing", "final", StringComparison.Ordinal), "node.cover_note")));
+        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, Old, New.Replace("Problems", "Points", StringComparison.Ordinal), "node.cover_note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "## Prior letters 1", "## Letters 1", "example-prior-letters", key31: "node.assessment")));
+    }
+
+    [Fact]
     public void SentFormat_ExplainsTheMigratedFormatAppendedToAPrompt()
     {
         // Part 10 § 1.8 only: every property required, an optional one nullable, in canonical order.
@@ -287,6 +309,11 @@ public class ExpectedDifferencesTests
 
     private static DifferenceContext LettersContext(string old, string now, string key30, string key31) =>
         Context(ComparedKind.Prompt, old, now, "example-prior-letters", key30: key30, key31: key31);
+
+    /// <summary>A context on composer-gates with its hand edits made (Task 16), so its own plan is read.</summary>
+    private static DifferenceContext GatesContext(ComparedKind kind, string old, string now, string key31) =>
+        new("composer-gates", "clinician-checks-pass", $"composer-gates/clinician-checks-pass#{key31}", kind, null, key31, old, now,
+            Capture("Completed", null), Run(RunState.Completed), EquivalenceFixture.Migrated("composer-gates"), EquivalenceFixture.Plan("composer-gates"));
 
     private static DifferenceContext MacroContext(Migration31Result migrated, string old, string now, OfflineRequest? request = null) =>
         Context(ComparedKind.Deliverable, old, now, "example-classifier-scope", "out-of-scope", migrated: migrated, key31: "deliverable.decline_letter", request: request);
