@@ -735,8 +735,9 @@ internal static class TemplateRewriter
                     return;
                 case ScriptUnaryExpression { Operator: ScriptUnaryOperator.Not, Right: { } right } not
                     when Flatten(DialectRules.Unwrap(right)) is { } chain && Skipped(chain, vars):
-                    // Part 04 § 2.6: 30's !e.skipped is the item's state at 31.
-                    sink.Add(Start(not), End(not), Wrapped($"{chain.Name}.state != \"skipped\"", wrap));
+                    // Part 04 § 2.6: 30's !e.skipped is the item's state at 31. 30's list held only the items that ran, so an
+                    // item a loop's until or max left not_run (in 31's .items) is not one either (#1507, Task 15).
+                    sink.Add(Start(not), End(not), Wrapped($"{chain.Name}.state == \"completed\"", wrap));
                     return;
                 case ScriptUnaryExpression unary:
                     Expr(unary.Right, vars, sink, true);
