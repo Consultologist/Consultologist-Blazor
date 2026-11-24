@@ -119,7 +119,8 @@ public sealed partial class ScopeTree
     /// The element of <paramref name="loop"/>'s <c>.items</c> (part 04 § 2.6; D14), an inline object schema:
     /// <c>item</c> (its <c>id</c>, and its <c>value</c> when the source is typed), <c>label</c>, <c>state</c>,
     /// <c>reason</c>, <c>value</c> and <c>content</c> (of the loop's element, nullable), and <c>nodes</c>, each body
-    /// node's <c>value</c>, <c>content</c> (nullable) and <c>state</c>.
+    /// node's <c>value</c>, <c>content</c> (nullable; an inner <c>for</c>'s is <c>markdown_block</c>, #1507 D23) and
+    /// <c>state</c>.
     /// </summary>
     private JsonObject Element(SourceFor loop)
     {
@@ -148,7 +149,7 @@ public sealed partial class ScopeTree
             if (FormatOf(node) is { } format)
             {
                 outputs["value"] = OrNull(format, formats);
-                outputs["content"] = OrNull(ContentOf(format, formats), formats);
+                outputs["content"] = OrNull(node is SourceFor ? LoopContent() : ContentOf(format, formats), formats);
             }
 
             outputs["state"] = Enum(States);

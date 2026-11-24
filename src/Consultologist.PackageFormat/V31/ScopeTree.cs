@@ -196,8 +196,8 @@ public sealed partial class ScopeTree
     /// <list type="bullet">
     /// <item><c>node.&lt;id&gt;</c>, <c>check.&lt;id&gt;</c>: the visible node (<see cref="ScopeFrame.Visible"/>), a
     /// <see cref="ScopeHeadKind.Format"/> head of two with its format, or a <see cref="ScopeHeadKind.Value"/> head of three
-    /// for <c>.state</c>, a loop's <c>.items</c> and <c>.stopped</c>, a while's <c>.stopped</c>, <c>.passes</c> and
-    /// <c>.history</c> (D14); a node hidden inside a loop is S04-039; inside a function, a check or a node outside it is
+    /// for <c>.state</c>, a loop's <c>.items</c>, <c>.stopped</c> and <c>.content</c> (<c>markdown_block</c>, #1507
+    /// D23), a while's <c>.stopped</c>, <c>.passes</c> and <c>.history</c> (D14); a node hidden inside a loop is S04-039; inside a function, a check or a node outside it is
     /// S04-051; anything else is <see cref="ScopeHeadKind.Unknown"/>.</item>
     /// <item><c>input.&lt;id&gt;</c> and <c>run.&lt;fact&gt;</c>: as <see cref="PackageScope"/> gives them; inside a
     /// function S04-050 and S04-051.</item>
@@ -314,6 +314,8 @@ public sealed partial class ScopeTree
         {
             ("state", _) => Head(ScopeHeadKind.Value, key, length, Enum(States), nullable),
             ("items", SourceFor loop) => Head(ScopeHeadKind.Value, key, length, FormatTypes.ListOf(Element(loop)), nullable),
+            // #1507 (D23): a for loop's .content is the standard rendering, markdown_block whatever its items' format
+            ("content", SourceFor) => Head(ScopeHeadKind.Value, key, length, LoopContent(), nullable),
             ("stopped", SourceFor) => Head(ScopeHeadKind.Value, key, length, Enum(["until", "bound", "end"]), nullable),
             ("stopped", SourceWhile) => Head(ScopeHeadKind.Value, key, length, Enum(["check", "until", "bound"]), nullable),
             ("passes", SourceWhile) => Head(ScopeHeadKind.Value, key, length, Integer(), nullable),
@@ -482,6 +484,13 @@ public sealed partial class ScopeTree
     /// <summary>What <c>.content</c> of a value of <paramref name="format"/> is (D10): a text format itself, otherwise plaintext.</summary>
     private static JsonNode ContentOf(JsonNode format, FormatSet formats) =>
         JsonValue.Create(FormatTypes.TextKind(format, formats) ?? "plaintext");
+
+    /// <summary>
+    /// #1507 (D23; part 04 § 2.5, part 05 § 5.3): what <c>.content</c> of a <c>for</c> loop is, whatever its items'
+    /// format: the standard rendering (<c>## &lt;item name&gt;</c>, the item's text, joined by blank lines) that keeps
+    /// 30's bytes, typed <c>markdown_block</c>. A <c>while</c>'s is its last pass's <c>ret</c>'s (§ 3), by D10.
+    /// </summary>
+    private static JsonNode LoopContent() => JsonValue.Create("markdown_block");
 
     private static JsonNode OrNull(JsonNode format, FormatSet formats) =>
         FormatTypes.UnionOf([Schema(format), new JsonObject { ["type"] = "null" }], formats)!;
