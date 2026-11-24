@@ -235,11 +235,12 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 ### 2.8 Examples (migrated)
 
 `example-nested-note`, `nodes/sections/index.json` and `nodes/sections/paragraphs/index.json`
-(the loop `parts` renamed `sections`, part 01):
+(the loop `parts` renamed `sections`, part 01). Each loop's leaves are 30 prose that a deliverable
+composes, so they are `markdown_block` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968); part 10 § 1.2):
 
 ```json
 { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
-  "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "plaintext" } } },
+  "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "markdown_block" } } },
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "node.plan.value.sections",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -249,7 +250,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 
 ```json
 { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
-  "format": { "type": "array", "items": { "$ref": "plaintext" } },
+  "format": { "type": "array", "items": { "$ref": "markdown_block" } },
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "node.outline.value.points",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -262,7 +263,7 @@ moved to the loop):
 
 ```json
 { "kind": "for", "producer": "computed", "label": "Sections — drafting each requested section by its kind", "description": null,
-  "format": { "type": "array", "items": { "$ref": "plaintext" } },
+  "format": { "type": "array", "items": { "$ref": "markdown_block" } },
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "input.sections.value",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -274,7 +275,7 @@ moved to the loop):
 
 ```json
 { "kind": "for", "producer": "computed", "label": "Standards", "description": null,
-  "format": { "type": "array", "items": { "$ref": "plaintext" } },
+  "format": { "type": "array", "items": { "$ref": "markdown_block" } },
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "snippet.standards",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
@@ -338,11 +339,12 @@ positional reads are refused, part 03 § 2.2).
 
 ### 3.5 Example (migrated)
 
-`example-nested-note`, `nodes/refine/index.json`, from `node.judge.value.verdict != "good"`:
+`example-nested-note`, `nodes/refine/index.json`, from `node.judge.value.verdict != "good"`
+(its `ret` is prose the deliverable composes, so `markdown_block`, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)):
 
 ```json
 { "kind": "while", "producer": "computed", "label": "Refining the summary", "description": null,
-  "format": "plaintext",
+  "format": "markdown_block",
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "while": { "!==": [ { "var": "node.judge.value.verdict" }, "good" ] },
   "max": 3, "until": null, "checkFirst": false,
@@ -448,12 +450,14 @@ With § 1's eight members, eleven members.
 sections were skipped. At 31 `route` keeps its shape and keys, and the migration writes the
 `omit` branch explicitly empty, so every value is listed and no `else` is needed
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868); part 10).
+Every branch returns 30 prose that a deliverable composes, so the formats are `markdown_block`
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968); part 10 § 1.2).
 
 `nodes/sections_draft/route/index.json`:
 
 ```json
 { "kind": "case", "producer": "computed", "label": "Routing a section by its kind", "description": null,
-  "format": "plaintext",
+  "format": "markdown_block",
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "case": "item.value.kind",
   "branches": [
@@ -470,7 +474,7 @@ nothing"*.
 
 ```json
 { "kind": "if", "producer": "computed", "label": "Narrative sections only", "description": null,
-  "format": "plaintext",
+  "format": "markdown_block",
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "if": { "===": [ { "var": "item.value.kind" }, "narrative" ] },
   "then": { "nodes": ["patient_summary"], "ret": "node.patient_summaries.narrative_only.patient_summary" },
@@ -481,7 +485,7 @@ nothing"*.
 
 ```json
 { "kind": "if", "producer": "computed", "label": "Holding the billing section back unless asked", "description": null,
-  "format": "plaintext",
+  "format": "markdown_block",
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "if": { "or": [ { "!==": [ { "var": "item.id" }, "billing" ] },
                   { "===": [ { "var": "input.include_billing.value" }, true ] } ] },

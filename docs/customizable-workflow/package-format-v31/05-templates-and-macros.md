@@ -792,7 +792,7 @@ text is recorded by hash under the node that placed it.
 | `concept_bullets`, `concept_context` are C#, piped the node: `node.x \| concept_bullets` | renderers are templates in `renderers/`, piped `.value`: `node.x.value \| renderer.concept_bullets` |
 | a snippet header holds `label`, which names folder items | a single snippet has `label`, `description`, `if` and `format`; a folder item's header is typed data, with no `if`; `itemLabel` names items |
 | `{{ snippet.x.content }}`, placed in prompts and deliverables | unchanged, now a placement (§ 2.6); also placed in parts' text and macro instructions, under the guard |
-| `prose`, and the `agent_*` formats | the plain format of the same shape (`plaintext`, `markdown_block`, `markdown_inline`); the node's `producer` says a model wrote it ([Part 02](02-types-and-inputs.md#13-producer)) |
+| `prose`, and the `agent_*` formats | the plain format of the same shape (`plaintext`, `markdown_block`, `markdown_inline`), `prose` a deliverable composes being `markdown_block` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968); [part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)); the node's `producer` says a model wrote it ([Part 02](02-types-and-inputs.md#13-producer)) |
 | a macro's `instruction` is one string, often "if …, otherwise nothing"; the prompt places `{{ macro.x.prompt }}` | `instruction` is lines saying only where, with the marker; `if` decides whether; `{{ macro.x }}` |
 | `at: before`, `after`, `append`, item-level placements, deliverable macros | removed: fixed text is a snippet read in the deliverable template |
 | optional at most once, required exactly once | triggered exactly once, untriggered never |
