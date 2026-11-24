@@ -493,6 +493,36 @@ public class MigrateDeliverablesTests
         Assert.Contains(MigratedPackagesTests.Publish(result), r => r.Id == "S02-015" && r.Path == gate);
     }
 
+    /// <summary>
+    /// D8, D23 (Task 24): a migrated deliverable over a <c>for</c> reads the loop's <c>.content</c>, which is 30's blocks
+    /// typed <c>markdown_block</c> (part 04 § 2.5, part 05 § 5.3), so the <c>markdown_block</c> deliverable writes it as it
+    /// is: composer-sources' <c>topics</c> (a for over an input), <c>sections</c> (a for over a node's list, with a for
+    /// inside) and <c>topics_then_opening</c> (a for, then prose) publish with no escape. composer-sources without its two
+    /// hand edits (<c>refine</c>, <c>topic_tally</c>), so publish refuses nothing.
+    /// </summary>
+    [Fact]
+    public void AMigratedLoopSource_ComposesAs30Did()
+    {
+        var (json, read) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var root = JsonNode.Parse(json)!.AsObject();
+        foreach (var id in new[] { "refine", "draft_summary", "judge", "topic_tally" })
+            root["nodes"]!.AsArray().Remove(MigrateNodesTests.Node(root, id));
+        foreach (var deliverable in root["deliverables"]!.AsArray().OfType<JsonObject>().Where(d => (string?)d["id"] is "summary" or "tally" or "summary_then_opening").ToList())
+            root["deliverables"]!.AsArray().Remove(deliverable);
+
+        var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), read, MigrationFixture.Options("composer-sources"));
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+        Assert.Empty(result.HandEdits);
+        var check = SourceCheck.Run(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes());
+        Assert.True(check.Refusals.Count == 0, string.Join("\n", check.Refusals.Select(r => $"{r.Id} {r.Path}: {r.Sentence}")));
+
+        foreach (var (id, loop) in new[] { ("topics", "topic_loop"), ("sections", "section_loop"), ("topics_then_opening", "topic_loop") })
+        {
+            Assert.StartsWith($"{{{{ node.{loop}.content }}}}", Template(result, id), StringComparison.Ordinal);
+            Assert.Empty(check.Templates!.Escapes($"deliverable.{id}"));
+        }
+    }
+
     /// <summary>The 30 node <paramref name="id"/> of <paramref name="root"/> made a plain-text leaf: a <c>let</c> of text, a <c>rendered</c> node or an <c>agent_plaintext</c> agent.</summary>
     private static void MakePlainLeaf(JsonObject root, Dictionary<string, string> files, string id, string kind)
     {

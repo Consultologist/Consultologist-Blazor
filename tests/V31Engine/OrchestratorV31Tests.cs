@@ -554,7 +554,7 @@ public class OrchestratorV31Tests
         // the letter reads nothing, so it is released before the plan's agent fails the job: it is recorded not sent
         var job = V31Job.Of(CheckedNote("checked-note, the letter fixed text", files => files.With(
             "deliverables/patient/patient_letter.md",
-            SourceFixture.Text(files, "deliverables/patient/patient_letter.md").Replace("{{ node.sections.content }}\n\n", "", StringComparison.Ordinal))));
+            SourceFixture.Text(files, "deliverables/patient/patient_letter.md").Replace("{{ for s in node.sections.value }}{{ s }}\n\n{{ end }}", "", StringComparison.Ordinal))));
         var stub = job.Agent;
         job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
         var context = job.Context();

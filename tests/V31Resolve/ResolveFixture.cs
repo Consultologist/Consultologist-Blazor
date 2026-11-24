@@ -365,7 +365,8 @@ internal static class ResolveFixture
     /// <c>.items</c>, and the check <c>proofread</c> gating the note: the note's <c>.content</c> is not blank and every
     /// section is covered. The note (<c>markdown_block</c>, in <c>deliverables/</c>, delivered to the EMR) and the
     /// ungated patient letter (<c>plaintext</c>, in <c>deliverables/patient</c>, delivered by email and PDF, held when
-    /// empty). Fictional (Margaret Okafor, Dr A. Sample).
+    /// empty; it writes the sections' texts, as the loop's <c>.content</c> is <c>markdown_block</c>, #1507 D23).
+    /// Fictional (Margaret Okafor, Dr A. Sample).
     /// </summary>
     public static Dictionary<string, byte[]> CheckedNote()
     {
@@ -411,7 +412,8 @@ internal static class ResolveFixture
             .With("deliverables/patient/index.json", Index(["patient_letter"], extra: ", \"delivery\": [\"email\", \"pdf\"], \"bundle\": null"))
             .With("deliverables/patient/patient_letter.md", Md(
                 Deliverable("Letter to the patient", Plain, "null", "hold"),
-                "Dear Margaret Okafor,\n\nThis is what we talked about at your visit.\n\n{{ node.sections.content }}\n\nDr A. Sample\n"));
+                "Dear Margaret Okafor,\n\nThis is what we talked about at your visit.\n\n"
+                + "{{ for s in node.sections.value }}{{ s }}\n\n{{ end }}Dr A. Sample\n"));
         return files;
     }
 

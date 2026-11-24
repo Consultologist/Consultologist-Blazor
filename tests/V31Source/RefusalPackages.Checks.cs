@@ -139,11 +139,15 @@ internal static partial class RefusalPackages
         WithSecondCheck("notes_covered").Edit(ConsultFile, "{{ node.standards.content }}\n",
             "{{ node.standards.content }}\n\n{{ check.notes_covered.value.message }}\n");
 
-    /// <summary><see cref="ResolveFixture.Functions"/> with the consult note <c>plaintext</c>, its heading the plain line <c>Sections</c>.</summary>
+    /// <summary>
+    /// <see cref="ResolveFixture.Functions"/> with the consult note <c>plaintext</c>, its heading the plain line
+    /// <c>Sections</c>, writing each section's text (the loop's <c>.content</c> is <c>markdown_block</c>, #1507 D23).
+    /// </summary>
     private static Dictionary<string, byte[]> PlainConsult() =>
         ResolveFixture.Functions()
             .Edit(ConsultFile, "\"format\": \"markdown_block\"", "\"format\": \"plaintext\"")
-            .Edit(ConsultFile, "## Sections\n", "Sections\n");
+            .Edit(ConsultFile, "## Sections\n", "Sections\n")
+            .Edit(ConsultFile, "{{ node.standards.content }}\n", "{{ for s in node.standards.value }}{{ s }}\n\n{{ end }}\n");
 
     /// <summary><see cref="ResolveFixture.Functions"/> with the consult note a <c>concept_list</c>, its body the draft's terms (D8).</summary>
     private static Dictionary<string, byte[]> TermsConsult() =>

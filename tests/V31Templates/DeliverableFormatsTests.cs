@@ -148,6 +148,68 @@ public class DeliverableFormatsTests
         Assert.Equal($"## Plan\n{MarkdownEscape.Escape(value)}\n\n", Composed(files, ("node.drafts.items", items)));
     }
 
+    /// <summary>
+    /// <see cref="SourceFixture.Minimal"/> with the list input <c>sections</c> (of <c>section_request</c>) and the loop
+    /// <c>drafts</c> over it, labelled by its title, whose body is the agent <c>draft</c> of format
+    /// <paramref name="itemFormat"/>; the deliverable <c>note</c> of <paramref name="format"/> is <paramref name="body"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> OverALoop(string format, string body, string itemFormat = "markdown_block") =>
+        ResolveFixture.WithFormats(Minimal(), "section_request")
+            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
+                "{ \"label\": \"Sections\", \"description\": null, "
+                + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
+            .With("nodes/index.json", Index(["plan", "drafts"]))
+            .With("nodes/drafts/index.json", Json(SourceFixture.Node("for", "Sections", ArrayOf($"\"{itemFormat}\""), false, true,
+                "\"in\": \"input.sections.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"draft\"], \"ret\": \"node.drafts.draft\"")))
+            .With("nodes/drafts/draft.md", Agent("Drafting a section", $"\"{itemFormat}\"", "Write the section '{{ item.value.title }}'.\n"))
+            .With(Note, Md(Deliverable("Consultation note", $"\"{format}\"", "null", "hold"), body));
+
+    [Theory]
+    [InlineData("markdown_block")]
+    [InlineData("plaintext")]
+    public async Task ALoopsContent_InAMarkdownDeliverable_IsNotEscaped(string itemFormat)
+    {
+        // #1507 (D23; part 04 § 2.5, part 05 § 5.3): a loop's .content is 30's bytes, a standard rendering typed
+        // markdown_block, whatever its items' format: written as it is, ## headers and the items' Markdown included.
+        var files = OverALoop("markdown_block", "{{ node.drafts.content }}\n", itemFormat);
+        Assert.Empty(Accepted(files).Templates!.Escapes(NoteKey));
+
+        var plan = RunFixture.Plan(files);
+        var replies = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["node.drafts.draft:1"] = "Margaret Okafor reports **three months** of fatigue.",
+            ["node.drafts.draft:2"] = "Repeat TSH in **six weeks** with Dr A. Sample.",
+        };
+        var host = new ComposingRunHost(plan, (call, _) => replies.TryGetValue(call.Key, out var reply) ? reply : RunFixture.StubReply(plan, call));
+        var inputs = PlanRunnerLeavesTests.Inputs();
+        var given = new Dictionary<string, JsonNode?>(inputs.Inputs, StringComparer.Ordinal)
+        {
+            ["sections"] = new JsonObject
+            {
+                ["value"] = new JsonArray(
+                    new JsonObject { ["title"] = "History", ["kind"] = "narrative" },
+                    new JsonObject { ["title"] = "Plan", ["kind"] = "narrative" }),
+                ["content"] = null,
+                ["title"] = null,
+            },
+        };
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(inputs with { Inputs = given }, FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(
+            "## History\n\nMargaret Okafor reports **three months** of fatigue.\n\n"
+            + "## Plan\n\nRepeat TSH in **six weeks** with Dr A. Sample.\n",
+            (string?)result.Values[NoteKey]!["content"]);
+    }
+
+    [Fact]
+    public void ALoopsContent_InAPlaintextDeliverable_IsRefused() =>
+        // part 06 § 6.4: a plain-text deliverable reads no Markdown, and a loop's .content is markdown_block (D23)
+        AssertRefusal(OverALoop("plaintext", "Dear Margaret Okafor,\n\n{{ node.drafts.content }}\n", "plaintext"),
+            "S06-021", "Deliverable 'note' is plaintext, and reads node.drafts.content (markdown_block) at line 3. Convert it in a node.");
+
     [Theory]
     [InlineData("{{ node.plan.value }}", "node.plan.value (section_plan)")]
     [InlineData("{{ input.sections.value }}", "input.sections.value (list<section_request>)")]

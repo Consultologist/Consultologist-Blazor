@@ -422,6 +422,7 @@ public class CheckRowTests
     /// <summary>
     /// <see cref="Gated"/> with one deliverable, <c>a</c>, reading the loop <c>drafts</c> over the list input <c>sections</c>,
     /// over <c>wanted</c>, a computed node that reads the plan, so the loop runs only once the plan is in, so its items open after the gate has settled.
+    /// <c>a</c> is <c>markdown_block</c>: a loop's <c>.content</c> is (#1507 D23), and a plain-text deliverable reads no Markdown.
     /// </summary>
     private static Dictionary<string, byte[]> GatedLoop() =>
         Consultologist.Api.Tests.V31Resolve.ResolveFixture.WithFormats(Gated(["a"], "true"), "section_request")
@@ -436,7 +437,7 @@ public class CheckRowTests
                 "\"in\": \"node.wanted.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
                 + "\"itemLabel\": \"title\", \"nodes\": [\"draft\"], \"ret\": \"node.drafts.draft\"")))
             .With("nodes/drafts/draft.md", Agent("Drafting a section", Plain, "Write the section '{{ item.value.title }}'.\n"))
-            .With("deliverables/a.md", Md(Deliverable("Letter a", Plain, "\"check.gate\"", "hold"), "{{ node.drafts.content }}\n"));
+            .With("deliverables/a.md", Md(Deliverable("Letter a", "\"markdown_block\"", "\"check.gate\"", "hold"), "{{ node.drafts.content }}\n"));
 
     internal static Dictionary<string, byte[]> Gated(string[] ids, string pass)
     {

@@ -105,6 +105,63 @@ public class ResolvedScopeTests
     }
 
     [Fact]
+    public void ALoopsContent_IsMarkdownBlock()
+    {
+        // #1507 (D23; part 04 § 2.5, part 05 § 5.3): a for loop's .content is the standard rendering (## <item name>, the
+        // item's text, joined by blank lines), typed markdown_block whatever its items' format: sections returns
+        // list<list<plaintext>>, paragraphs and standards list<plaintext>; read from outside, from inside another loop's
+        // body, and from the checks.
+        foreach (var (fixture, at, reference, key) in new (string, string, string, string)[]
+        {
+            ("nested", "root", "node.sections.content", "node.sections"),
+            ("nested", "node.sections.outline", "node.paragraphs.content", "node.sections.paragraphs"),
+            ("functions", "checks", "node.standards.content", "node.standards"),
+        })
+        {
+            var (package, types, tree) = ResolveFixture.Tree(Fixture(fixture));
+            var (frame, formats) = At(package, types, tree, at);
+
+            var resolved = tree.Resolve(ReferenceString.Parse(reference)!, frame, "Node 'x'", "nodes/x.md", true);
+
+            Assert.Equal((ScopeHeadKind.Value, key, 3, false),
+                (resolved.Kind, resolved.Key, resolved.Length, resolved.Nullable));
+            Assert.Equal("markdown_block", TypeStrings.Print(resolved.Format, formats));
+            Assert.Null(resolved.Refusal);
+        }
+    }
+
+    [Fact]
+    public void ALoopsContent_LeavesEveryOtherContentAsItWas()
+    {
+        // D23 changes a for loop's own .content only: an item's .content (the text of its ret), a while's .content (its
+        // last pass's ret, part 04 § 3) and an object-valued node's .content are typed as before (D10).
+        var (_, types, tree) = ResolveFixture.Tree(ResolveFixture.NestedNote());
+        var formats = types.Formats;
+
+        string Typed(string reference)
+        {
+            var resolved = tree.Resolve(ReferenceString.Parse(reference)!, tree.PackageRoot, "Node 'x'", "nodes/x.md", true);
+            Assert.Equal((ScopeHeadKind.Format, 2), (resolved.Kind, resolved.Length));
+            var read = FormatReads.Read(resolved.Format, ["content"], formats);
+            Assert.Equal(ReadFault.None, read.Fault);
+            return TypeStrings.Print(read.Format, formats);
+        }
+
+        Assert.Equal("plaintext", Typed("node.refine.content"));   // a while of plaintext
+        Assert.Equal("plaintext", Typed("node.plan.content"));     // an object (section_plan)
+
+        // an item's .content (the text of its ret, here the inner loop's list) and a leaf's, through .items: the text of
+        // their format, nullable; an inner for's .content through .items is its own, markdown_block, nullable
+        var items = tree.Resolve(ReferenceString.Parse("node.sections.items")!, tree.PackageRoot, "Node 'x'", "nodes/x.md", true);
+        var element = ExpressionChecker.ItemsOf(items.Format!, formats);
+        string Field(params string[] fields) =>
+            TypeStrings.Print(FormatReads.Read(element, ["value", .. fields], formats).Format, formats);
+        Assert.Equal("plaintext | null", Field("content"));
+        Assert.Equal("plaintext | null", Field("nodes", "outline", "content"));
+        Assert.Equal("markdown_block | null", Field("nodes", "paragraphs", "content"));
+    }
+
+    [Fact]
     public void AnInput_IsWhatPackageScopeGave()
     {
         var (package, _, tree) = ResolveFixture.Tree(ResolveFixture.NestedNote());
