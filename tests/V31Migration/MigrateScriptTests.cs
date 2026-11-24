@@ -239,6 +239,117 @@ public class MigrateScriptTests
     }
 
     [Fact]
+    public void TheSnapshot_LeavesThe31FoldersOwnDiagramAlone()
+    {
+        // A 31 folder may carry its own dag.mmd (area 13's); --snapshot neither reads nor deletes it.
+        const string package = "example-problem-list";
+        var edited = MigrationFixture.Edited(package);
+        const string diagram = "flowchart TD\n  plan --> sections\n";
+        var dir = FolderOf(edited.ManifestJson, edited.Files.Append(new("dag.mmd", diagram)).ToDictionary(StringComparer.Ordinal));
+        try
+        {
+            var (exit, output, error) = Run(dir, "--snapshot", "--write");
+
+            Assert.Equal(Migration31Script.Clean, exit);
+            Assert.Equal("", error);
+            Assert.DoesNotContain("dag.mmd", output, StringComparison.Ordinal);
+            var snapshot = WorkflowPackageMigration30To31.Snapshot(edited.ManifestJson, edited.Files, MigrationFixture.Options(package));
+            Assert.Equal(new SortedDictionary<string, string>(Expected(snapshot), StringComparer.Ordinal) { ["dag.mmd"] = diagram }, Contents(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AWriteThatFails_Exits2_AndDeletesNothing()
+    {
+        // The folder is made read-only: the first new file cannot be written, so no 30 file is deleted or rewritten.
+        if (OperatingSystem.IsWindows())
+            return;
+        var dir = CopyOf("example-nested-note");
+        var mode = File.GetUnixFileMode(dir);
+        try
+        {
+            var before = Contents(dir);
+            File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            if (CanWrite(dir))
+                return; // Run as root, the folder is writable anyway: there is no failure to see.
+
+            var (exit, _, error) = Run(dir, "--rename", "parts=sections", "--when-empty", "note=fail", "--write");
+
+            Assert.Equal(Migration31Script.Refused, exit);
+            Assert.StartsWith($"error: {dir} could not be written: ", error, StringComparison.Ordinal);
+            Assert.EndsWith("stopped part-way; restore the folder, then run again.", Lines(error)[^1], StringComparison.Ordinal);
+            File.SetUnixFileMode(dir, mode);
+            Assert.Equal(before, Contents(dir));
+        }
+        finally
+        {
+            File.SetUnixFileMode(dir, mode);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static bool CanWrite(string dir)
+    {
+        var probe = Path.Combine(dir, ".probe");
+        try
+        {
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    [Theory]
+    [InlineData("../outside.md")]
+    [InlineData("nodes/../../outside.md")]
+    [InlineData("/etc/outside.md")]
+    [InlineData("")]
+    public void APathThatLeavesTheFolder_IsFound(string path)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "package");
+
+        Assert.Equal(path, Migration31Script.OutsideOf(root, ["manifest.json", path, "nodes/index.json"]));
+    }
+
+    [Fact]
+    public void PathsInsideTheFolder_AreNotFound()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "package");
+
+        Assert.Null(Migration31Script.OutsideOf(root, ["manifest.json", "nodes/a/../index.json", "nodes/sections/outline.md"]));
+        Assert.Null(Migration31Script.OutsideOf(root + Path.DirectorySeparatorChar, ["manifest.json"]));
+        Assert.Equal("../package-other/x.md", Migration31Script.OutsideOf(root, ["../package-other/x.md"]));
+    }
+
+    [Fact]
+    public void TheFolderFormat_FillsTheOptions_AndTestGeneralGetsItsGolden()
+    {
+        // Part 01 § 3: test/general's snippet folder standards types its items with standard_section (ExampleChoices).
+        var dir = CopyOf("test/general");
+        try
+        {
+            var (exit, _, error) = Run(dir, "--when-empty", "consult=hold", "--folder-format", "standards=standard_section", "--write");
+
+            var migrated = MigratedPackagesTests.Migrated("test/general");
+            Assert.Equal(migrated.HandEdits.Count == 0 ? Migration31Script.Clean : Migration31Script.HandEditsLeft, exit);
+            Assert.Equal("", error);
+            Assert.Equal(Expected(migrated), Contents(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TheSnapshot_OfAFolderThatDoesNotPublish_Exits2_AndWritesNothing()
     {
         var migrated = MigratedPackagesTests.Migrated("example-macros");
@@ -263,17 +374,20 @@ public class MigrateScriptTests
     public void TheArguments_FillTheOptions_AndRepeat()
     {
         var (arguments, usage) = Migration31Script.Parse(
-            ["pkg", "--to", "31", "--rename", "parts=sections", "--when-empty", "note=fail", "--rename", "items=entries", "--when-empty", "letter=hold", "--write"]);
+            ["pkg", "--to", "31", "--rename", "parts=sections", "--when-empty", "note=fail", "--rename", "items=entries", "--when-empty", "letter=hold",
+             "--folder-format", "standards=standard_section", "--folder-format", "notes=note_item", "--write"]);
 
         Assert.Null(usage);
         Assert.True(arguments!.Write);
         Assert.False(arguments.Snapshot);
         Assert.Equal(new Dictionary<string, string> { ["parts"] = "sections", ["items"] = "entries" }, arguments.Renames);
         Assert.Equal(new Dictionary<string, string> { ["note"] = "fail", ["letter"] = "hold" }, arguments.WhenEmpty);
+        Assert.Equal(new Dictionary<string, string> { ["standards"] = "standard_section", ["notes"] = "note_item" }, arguments.FolderFormats);
 
         var options = arguments.Fill(BaseOptions());
         Assert.Same(arguments.Renames, options.Renames);
         Assert.Same(arguments.WhenEmpty, options.WhenEmpty);
+        Assert.Same(arguments.FolderFormats, options.FolderFormats);
 
         var (snapshot, none) = Migration31Script.Parse(["pkg", "--snapshot", "--to", "31"]);
         Assert.Null(none);
@@ -281,6 +395,7 @@ public class MigrateScriptTests
         Assert.False(snapshot.Write);
         Assert.Empty(snapshot.Renames);
         Assert.Empty(snapshot.WhenEmpty);
+        Assert.Empty(snapshot.FolderFormats);
     }
 
     [Theory]
@@ -294,6 +409,10 @@ public class MigrateScriptTests
     [InlineData("--when-empty", "note=fail", "--when-empty", "note=hold")]
     [InlineData("--snapshot", "--rename", "parts=sections")]
     [InlineData("--snapshot", "--when-empty", "note=fail")]
+    [InlineData("--folder-format")]
+    [InlineData("--folder-format", "standards")]
+    [InlineData("--folder-format", "standards=a", "--folder-format", "standards=b")]
+    [InlineData("--snapshot", "--folder-format", "standards=standard_section")]
     [InlineData("--dag")]
     public void AnArgumentThatDoesNotRead_IsAUsageError(params string[] args)
     {
@@ -306,7 +425,7 @@ public class MigrateScriptTests
     [Fact]
     public void ThePackageDirectory_IsNotAnOptionsValue()
     {
-        Assert.Equal("pkg", Migration31Script.PackageDirectory(["--rename", "parts=sections", "--to", "31", "pkg", "--when-empty", "note=fail"]));
+        Assert.Equal("pkg", Migration31Script.PackageDirectory(["--rename", "parts=sections", "--to", "31", "--folder-format", "a=b", "pkg", "--when-empty", "note=fail"]));
         Assert.Equal("pkg", Migration31Script.PackageDirectory(["pkg", "--to", "25"]));
         Assert.Null(Migration31Script.PackageDirectory(["--to", "31", "--write"]));
     }
@@ -321,6 +440,7 @@ public class MigrateScriptTests
 
         Assert.Contains(script, l => l.StartsWith("//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31", StringComparison.Ordinal));
         Assert.Contains(script, l => l.StartsWith("//", StringComparison.Ordinal) && l.Contains("--snapshot", StringComparison.Ordinal));
+        Assert.Contains(script, l => l.StartsWith("//", StringComparison.Ordinal) && l.Contains("--folder-format <folder>=<format>", StringComparison.Ordinal));
         Assert.Contains(script, l => l.Contains("Migration31Script.Run(", StringComparison.Ordinal));
     }
 }
