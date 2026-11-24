@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Drafting the request for information","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
+{"kind":"agent","producer":"generated","label":"Drafting the request for information","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
 ---
 You are writing a short letter to the referring clinician asking for the information the clinic needs before it can decide on a referral.
 

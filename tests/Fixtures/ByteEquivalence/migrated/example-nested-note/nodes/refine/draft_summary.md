@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Drafting the summary","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":{">":[{"var":"pass.number"},1]},"text":["","A reviewer asked for this revision of the previous draft:","{{ pass.previous.node.judge.value.feedback }}","","Previous draft:","{{ pass.previous.node.draft_summary.content }}",""]}},"ordered":false}
+{"kind":"agent","producer":"generated","label":"Drafting the summary","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":{">":[{"var":"pass.number"},1]},"text":["","A reviewer asked for this revision of the previous draft:","{{ pass.previous.node.judge.value.feedback }}","","Previous draft:","{{ pass.previous.node.draft_summary.content }}",""]}},"ordered":false}
 ---
 You are drafting the opening summary of a consultation note.
 

@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Drafting the progress note","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":{"===":[{"var":"input.include_billing.value"},true]},"text":["","Billing:","End the section with one further sentence stating that this was a follow-up encounter, and repeat the encounter date in that sentence exactly as it is written above.",""]}},"ordered":false}
+{"kind":"agent","producer":"generated","label":"Drafting the progress note","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":{"===":[{"var":"input.include_billing.value"},true]},"text":["","Billing:","End the section with one further sentence stating that this was a follow-up encounter, and repeat the encounter date in that sentence exactly as it is written above.",""]}},"ordered":false}
 ---
 You are drafting one section of a follow-up progress note.
 

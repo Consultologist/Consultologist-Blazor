@@ -2,7 +2,7 @@
   "kind": "if",
   "label": "Holding the billing section back unless asked",
   "description": null,
-  "format": "plaintext",
+  "format": "markdown_block",
   "reproducible": false,
   "producer": "computed",
   "modelDerived": true,

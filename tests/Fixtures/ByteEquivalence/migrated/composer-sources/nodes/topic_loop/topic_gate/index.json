@@ -2,7 +2,7 @@
   "kind": "if",
   "label": "Drafted topics only",
   "description": null,
-  "format": "plaintext",
+  "format": "markdown_block",
   "reproducible": false,
   "producer": "computed",
   "modelDerived": true,

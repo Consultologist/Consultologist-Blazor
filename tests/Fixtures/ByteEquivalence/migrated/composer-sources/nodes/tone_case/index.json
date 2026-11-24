@@ -2,7 +2,7 @@
   "kind": "case",
   "label": "A line in the chosen tone",
   "description": null,
-  "format": "plaintext",
+  "format": "markdown_block",
   "reproducible": false,
   "producer": "computed",
   "modelDerived": true,

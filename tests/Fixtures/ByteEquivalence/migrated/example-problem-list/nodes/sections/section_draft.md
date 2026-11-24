@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Drafting the section","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
+{"kind":"agent","producer":"generated","label":"Drafting the section","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
 ---
 You are tailoring a standing section of a consultation note to this consult.
 

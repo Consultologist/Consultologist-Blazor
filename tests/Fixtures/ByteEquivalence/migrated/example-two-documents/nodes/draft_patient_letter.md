@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Writing the patient letter","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":{"blank":[{"var":"input.prior_notes.content"}]},"text":["None were supplied. Write the letter from the sections and concepts alone."]},"when_2":{"if":{"!":[{"blank":[{"var":"input.prior_notes.content"}]}]},"text":["{{ input.prior_notes.content }}"]}},"ordered":false}
+{"kind":"agent","producer":"generated","label":"Writing the patient letter","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":{"blank":[{"var":"input.prior_notes.content"}]},"text":["None were supplied. Write the letter from the sections and concepts alone."]},"when_2":{"if":{"!":[{"blank":[{"var":"input.prior_notes.content"}]}]},"text":["{{ input.prior_notes.content }}"]}},"ordered":false}
 ---
 You are writing a short plain-language letter to the patient, summarizing the consult note that was just assembled.
 
