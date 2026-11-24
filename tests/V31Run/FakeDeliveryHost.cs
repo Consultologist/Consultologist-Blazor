@@ -5,7 +5,8 @@ namespace Consultologist.Api.Tests.V31Run;
 /// <summary>
 /// #1505 (specVersion 31, area 08; D10 to D12): a scripted <see cref="IDeliveryHost"/>. A send is named by its first
 /// document's deliverable and its kind (<see cref="DeliveryPlan.Key"/>), and its outcomes are scripted by that name as a
-/// sequence (each attempt takes the next, the last repeating); an unscripted send is sent. Each answer is given at once,
+/// sequence (each attempt takes the next, the last repeating); an unscripted send is sent (#1507, D19: a blocked job's
+/// link-only email with its reason, as the channels send it). Each answer is given at once,
 /// unless the name is held (<see cref="Hold"/>): its sends are then answered only by <see cref="Answer"/>. The clock is
 /// manual (<see cref="Advance"/>; <see cref="MoveClock"/> moves it without ending delays), and a delay ends when the clock passes it, or ends cancelled when its token is cancelled first
 /// (<see cref="OutstandingDelays"/> counts those still waiting), as <see cref="FakeRunHost"/>'s do.
@@ -61,7 +62,12 @@ internal sealed class FakeDeliveryHost : IDeliveryHost
         }
 
         if (!script.TryGetValue(name, out var outcomes))
-            return Task.FromResult(new DeliverySendOutcome(DeliverySendResult.Sent, null));
+        {
+            // #1507 (D19): an unscripted blocked job's send goes as the channels send it, the link-only email
+            return Task.FromResult(new DeliverySendOutcome(
+                DeliverySendResult.Sent, null, send.EveryDeliverableBlocked ? DeliveryPlan.EveryDeliverableBlocked : null));
+        }
+
         var count = served.GetValueOrDefault(name);
         served[name] = count + 1;
         return Task.FromResult(outcomes[Math.Min(count, outcomes.Length - 1)]);
