@@ -13,7 +13,7 @@ Output rule:
 Return only prose. No heading, no bullets, no commentary.
 
 Prior letters, as read:
-{{ for letter in node.letters.items }}{{ if letter.state != "skipped" }}{{ letter.content }}
+{{ for letter in node.letters.items }}{{ if letter.state == "completed" }}{{ letter.content }}
 
 {{ else }}{{ end }}{{ end }}
 Consult draft:

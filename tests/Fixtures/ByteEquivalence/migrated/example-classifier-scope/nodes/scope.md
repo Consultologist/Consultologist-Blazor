@@ -16,3 +16,6 @@ Decide from the referral alone. Do not infer facts it does not contain.
 
 Referral:
 {{ input.consult_draft.content }}
+
+
+Answer with exactly one of: in_scope, out_of_scope, needs_information.

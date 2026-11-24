@@ -27,7 +27,7 @@
   "expect": {
     "prompts": {
       "node.scope": {
-        "hash": "sha256:7a47556566b80676cd9e03b8afb4a4a95287f42729e05db5254585d13ff93b8d"
+        "hash": "sha256:bf0b139d9b309d1a0faae3c06f6136b49b5df5d8db2613b880901e317b089acc"
       },
       "node.plan_sections.plan_section:assessment": {
         "hash": "sha256:09fa628369f2fcfeae9efc57896be74472ad0f72d89b0d3edddf2c431b5b2f63"

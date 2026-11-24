@@ -12,3 +12,6 @@ Decide from the draft alone. A referral to another service, a test to be done, o
 
 Consult draft:
 {{ input.consult_draft.content }}
+
+
+Answer with exactly one of: yes, no.
