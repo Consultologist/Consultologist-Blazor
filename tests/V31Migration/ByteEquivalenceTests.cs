@@ -114,7 +114,7 @@ public class ByteEquivalenceTests
         var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(package, "default"), capture, migrated, plan);
         Assert.DoesNotContain(request.Outputs.Keys, k => k.Contains("ghost", StringComparison.Ordinal));
         var run = await OfflineRun.RunAsync(plan, request);
-        var texts = Equivalence.Compare(package, "default", capture, run, migrated, plan);
+        var texts = Equivalence.Compare(package, "default", capture, run, migrated, plan, request);
 
         var ghost = Assert.Single(texts, t => t.Site == "example-nested-note/default#prompts@30/ghost:1");
         Assert.Equal((CanonicalJson.HashText("Boo."), Equivalence.EmptyHash, false, false), (ghost.OldHash, ghost.NewHash, ghost.Equal, ghost.Expected));
@@ -389,8 +389,9 @@ internal static class EquivalenceFixture
             var migrated = Migrated(package);
             var plan = Plan(package);
             var capture = Capture(package, scenario);
-            var run = await OfflineRun.RunAsync(plan, Equivalence.RequestFor(Scenario(package, scenario), capture, migrated, plan));
-            return (capture, run, Equivalence.Compare(package, scenario, capture, run, migrated, plan));
+            var request = Equivalence.RequestFor(Scenario(package, scenario), capture, migrated, plan);
+            var run = await OfflineRun.RunAsync(plan, request);
+            return (capture, run, Equivalence.Compare(package, scenario, capture, run, migrated, plan, request));
         })).Value;
 
     /// <summary><c>migration-report.json</c> of <paramref name="package"/> over all its scenarios, in their order.</summary>

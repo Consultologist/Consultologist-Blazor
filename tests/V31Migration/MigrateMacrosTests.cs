@@ -290,7 +290,9 @@ public class MigrateMacrosTests
             """{"label":"Boilerplate disclaimer","description":null,"if":null,"format":"markdown_block"}""",
             Header(result, "snippets/boilerplate.md"));
         Assert.Equal("This note was drafted with software assistance and reviewed by the signing clinician.\n", MigrateNodesTests.Md(result, "snippets/boilerplate.md").Body);
-        Assert.Equal("End of note.\n", MigrateNodesTests.Md(result, "snippets/closing.md").Body);
+        // Task 15 fix round 1 (R5): closing, which only a deliverable reads, is written with 30's trailing trim; boilerplate,
+        // which a prompt reads as .content (the file whole at 30), keeps its final line ending.
+        Assert.Equal("End of note.", MigrateNodesTests.Md(result, "snippets/closing.md").Body);
         Assert.False(result.Files.ContainsKey("macros/boilerplate.md"));
         Assert.False(result.Files.ContainsKey("macros/closing.md"));
         Assert.Equal("""["sections","style","boilerplate","closing","kept_note"]""", MigrateNodesTests.Json(result, "snippets/index.json")["items"]!.ToJsonString());
@@ -302,7 +304,8 @@ public class MigrateMacrosTests
         // macro file, and the deliverables pass (Task 11) writes the snippet its deliverable reads beside it.
         var placed = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["prompts/summary.md"] += "{{ macro.kept_note.prompt }}\n");
         Assert.True(placed.Files.ContainsKey("macros/kept_note.md"));
-        Assert.Equal(MigrateNodesTests.Md(placed, "macros/kept_note.md").Body, MigrateNodesTests.Md(placed, "snippets/kept_note.md").Body);
+        // The snippet only the deliverable reads has 30's trailing trim (Task 15 fix round 1, R5); the macro keeps its body whole.
+        Assert.Equal(MigrateNodesTests.Md(placed, "macros/kept_note.md").Body.TrimEnd(), MigrateNodesTests.Md(placed, "snippets/kept_note.md").Body);
 
         // A macro body's fixed-text read of a macro that becomes a snippet reads the snippet.
         var echo = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["macros/followup_only.md"] += "{{ macro.closing.content }}\n");
@@ -311,7 +314,7 @@ public class MigrateMacrosTests
         // One of a macro that stays a macro (new_visit_note has an if) has no 31 form: a hand edit (A10-040) on the 31 file
         // that holds it, composer-macros' visit_echo, itself a snippet, written as macro.<id>.fixed_text, which 31 refuses.
         var echoes = MigrateNodesTests.Migrated("composer-macros");
-        Assert.Equal("New-visit note as this macro reads it: [{{ macro.new_visit_note.fixed_text }}]\n", MigrateNodesTests.Md(echoes, "snippets/visit_echo.md").Body);
+        Assert.Equal("New-visit note as this macro reads it: [{{ macro.new_visit_note.fixed_text }}]", MigrateNodesTests.Md(echoes, "snippets/visit_echo.md").Body);
         AssertHandEdit(echoes, "snippets/visit_echo.md", "body", "A10-040",
             "macro 'new_visit_note' is read as fixed text at line 1, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.");
         var written = LineWith(MigrateNodesTests.Md(echoes, "snippets/visit_echo.md").Body, "fixed_text");

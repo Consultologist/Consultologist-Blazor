@@ -160,7 +160,8 @@ internal static class V31Contract
     /// and A10-061: why a migrated package carries no snapshot test, part 10 § 4, part 07 § 8.4, D13, Task 14; A10-014: the
     /// migration report's worst-case note, part 10 § 3.2, D14; A10-062: the offline run's start refused because no
     /// deliverable can exist, in the 30 and 31 starts' words, R8; A10-063: the report's notice that each deliverable is
-    /// delivered in a message of its own, R8, Task 15).
+    /// delivered in a message of its own, R8, Task 15; A10-064: a classifier's with values, written at the end of its
+    /// prompt, D16, Task 15 fix round 1).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -226,6 +227,7 @@ internal static class V31Contract
         ["A10-061"] = "No snapshot test was written: the migrated package <does not publish: <sentences> | is refused at its run's start | fails its offline run | times out in its offline run | cannot be run offline>.",
         ["A10-062"] = "No document applies to these inputs. <documents>",
         ["A10-063"] = "Each deliverable is now delivered by pdf in a message of its own, where 30 sent one message for the job.",
+        ["A10-064"] = "Node '<id>' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.",
     };
 
     private static string RepoRoot()

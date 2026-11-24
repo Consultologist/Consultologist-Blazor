@@ -158,7 +158,9 @@ public class MigrateDeliverablesTests
         // A deliverable's own if does not make its macros conditional (review_summary's letterhead).
         Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content }}", Template(result, "review_summary"));
         Assert.Equal("{{ node.section_loop.content }}", Template(result, "sections_note"));
-        Assert.Equal("Riverside Clinic (fictional)\n", MigrateNodesTests.Md(result, "snippets/letterhead.md").Body);
+        // Task 15 fix round 1 (R5, D4): a snippet only deliverables read keeps 30's bytes, its trailing white space trimmed
+        // as 30's composer trimmed a placed macro (ConsultMacroExpander's TrimEnd()), where 31 reads a snippet whole.
+        Assert.Equal("Riverside Clinic (fictional)", MigrateNodesTests.Md(result, "snippets/letterhead.md").Body);
         Assert.DoesNotContain(result.HandEdits, e => e.Contains("deliverables/both.md", StringComparison.Ordinal) || e.Contains("deliverables/prepended.md", StringComparison.Ordinal));
 
         // A snippet read in a deliverable is one 31 accepts.
@@ -170,7 +172,7 @@ public class MigrateDeliverablesTests
         Assert.Contains("\n\n{{ snippet.kept_note.content }}\n\n", Template(placed, "consult_note"), StringComparison.Ordinal);
         Assert.True(placed.Files.ContainsKey("macros/kept_note.md"));
         Assert.Equal("""{"label":"Kept note","description":null,"if":null,"format":"markdown_block"}""", Header(placed, "snippets/kept_note.md"));
-        Assert.Equal(MigrateNodesTests.Md(placed, "macros/kept_note.md").Body, MigrateNodesTests.Md(placed, "snippets/kept_note.md").Body);
+        Assert.Equal(MigrateNodesTests.Md(placed, "macros/kept_note.md").Body.TrimEnd(), MigrateNodesTests.Md(placed, "snippets/kept_note.md").Body);
         Assert.Single(MigrateNodesTests.Json(placed, "snippets/index.json")["items"]!.AsArray(), i => (string?)i == "kept_note");
     }
 
@@ -282,7 +284,10 @@ public class MigrateDeliverablesTests
         var warned = MigrateNodesTests.Migrated("example-macros-warnings", _ => { }, files => files["prompts/summary.md"] += "{{ macro.kept_note.prompt }}\n");
         var onMacro = Assert.Single(warned.HandEdits, e => e.StartsWith("Hand edit needed in macros/kept_note.md, body: ", StringComparison.Ordinal));
         Assert.Single(warned.HandEdits, e => e == onMacro.Replace("macros/kept_note.md", "snippets/kept_note.md", StringComparison.Ordinal));
-        Assert.Equal(MigrateNodesTests.Md(warned, "macros/kept_note.md").Body, MigrateNodesTests.Md(warned, "snippets/kept_note.md").Body);
+        // The copy only a deliverable reads is the macro's body with 30's trailing trim (Task 15 fix round 1, R5); the
+        // macro file keeps it whole (31 drops its one final line ending).
+        Assert.Equal(MigrateNodesTests.Md(warned, "macros/kept_note.md").Body.TrimEnd(), MigrateNodesTests.Md(warned, "snippets/kept_note.md").Body);
+        Assert.NotEqual(MigrateNodesTests.Md(warned, "macros/kept_note.md").Body, MigrateNodesTests.Md(warned, "snippets/kept_note.md").Body);
 
         // A snippet that already has the macro's id keeps it; the copy takes <id>_snippet, said with A10-048.
         var taken = MigrateNodesTests.Migrated("example-macros",
@@ -294,7 +299,7 @@ public class MigrateDeliverablesTests
             });
         Assert.Contains("\n\n{{ snippet.kept_note_snippet.content }}\n\n", Template(taken, "consult_note"), StringComparison.Ordinal);
         Assert.Equal("A snippet of Dr A. Sample's own.\n", MigrateNodesTests.Md(taken, "snippets/kept_note.md").Body);
-        Assert.Equal(MigrateNodesTests.Md(taken, "macros/kept_note.md").Body, MigrateNodesTests.Md(taken, "snippets/kept_note_snippet.md").Body);
+        Assert.Equal(MigrateNodesTests.Md(taken, "macros/kept_note.md").Body.TrimEnd(), MigrateNodesTests.Md(taken, "snippets/kept_note_snippet.md").Body);
         var notice = "Macro 'kept_note' is read on deliverables as the snippet 'kept_note_snippet': a snippet 'kept_note' already exists.";
         Assert.Contains(notice, taken.Notices);
         V31Contract.AssertSentence(new SourceRefusal("A10-048", notice, ""));

@@ -91,7 +91,7 @@ public class MigrateNodesTests
             + Consultologist.Api.Workflow.ClassificationOutputContract.Trailer(["in_scope", "out_of_scope", "needs_information"]),
             body,
             StringComparison.Ordinal);
-        Assert.Contains("Node 'scope' declared with at 30, which 31 has no member for; it was dropped.", result.Notices);
+        Assert.Contains("Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.", result.Notices);
 
         // Only a classifier's: a prose node's prompt is 30's text.
         Assert.DoesNotContain("Answer with exactly one of", Md(result, "nodes/plan_sections/plan_section.md").Body, StringComparison.Ordinal);
@@ -296,15 +296,39 @@ public class MigrateNodesTests
     }
 
     [Fact]
-    public void AClassifiersWith_IsDroppedWithANotice()
+    public void AClassifiersWith_IsWrittenInItsPrompt_WithANotice()
     {
+        // D16: 31 has no with; the values are written at the end of the prompt (Task 15), and A10-064 says so, not A10-030.
         var result = Migrated("example-classifier-scope");
 
         var (header, _) = Md(result, "nodes/scope.md");
         Assert.False(header.ContainsKey("with"));
-        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; it was dropped.";
+        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.";
         Assert.Contains(notice, result.Notices);
-        V31Contract.AssertSentence(new SourceRefusal("A10-030", notice, ""));
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("Node 'scope' declared with at 30", StringComparison.Ordinal) && n.EndsWith("it was dropped.", StringComparison.Ordinal));
+        V31Contract.AssertSentence(new SourceRefusal("A10-064", notice, ""));
+    }
+
+    /// <summary>
+    /// #1507 (Task 15 fix round 1; Task 12's invariant): a classifier's values are written into its prompt as plain text,
+    /// which the dialect never reads as template, because 30 holds every value to snake_case: a value holding <c>{{</c> or a
+    /// line ending never reaches the pass, the package being refused at 30 (A10-017), so nothing is written.
+    /// </summary>
+    [Theory]
+    [InlineData("in_{{ scope }}")]
+    [InlineData("in\nscope")]
+    public void AClassifiersValues_ThatAreNotText_NeverReachThePrompt(string value)
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-classifier-scope");
+        var root = JsonNode.Parse(json)!.AsObject();
+        Node(root, "scope")["with"]!["values"] = new JsonArray(value, "in_scope", "out_of_scope", "needs_information");
+
+        var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("example-classifier-scope"));
+
+        Assert.False(result.Succeeded);
+        var refusal = Assert.Single(result.Refusals, r => r.Contains("must be snake_case", StringComparison.Ordinal));
+        Assert.StartsWith("At specVersion 30: ", refusal, StringComparison.Ordinal);
+        Assert.DoesNotContain(result.Files.Keys, k => k.StartsWith("nodes/", StringComparison.Ordinal));
     }
 
     [Fact]
