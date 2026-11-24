@@ -2190,8 +2190,12 @@ on a deliverable's text. A null argument is `ArgumentNullException`.
 deliverable has one send per kind of its `delivery`; a folder with `bundle: "zip"` has one send per kind for all its
 released deliverables, at the place of its first, and each deliverable still gets its own row. A deliverable that is
 not released, one with `delivery: []`, and a bundle folder with nothing released have none. #1507 (D19, ruled by the
-owner): a job that released nothing, with a deliverable blocked or held, has one send per mail kind (`email`, `pdf`)
-those list, `EveryDeliverableBlocked: true`, carrying each by its label with no text: the link-only email. A job that failed
+owner, and the controller's ruling on Task 22's review): a job that released nothing, with a deliverable blocked or
+held that a mail kind (`email`, `pdf`) delivers, has one send for the job, `EveryDeliverableBlocked: true`, of `email`
+when one of them lists it, else `pdf`, carrying each by its label with no text: the link-only email. The runner records
+a row for each mail kind each document lists (`DeliveryPlan.MailKindsOf`) from that send; a `failed` or `not sent`
+row's reason names its own kind. `Sends(outcomes, blockedEmail: false)` and `RunAsync(outcomes, blockedEmail: false)`
+leave the send out (an orchestration started before #1507's build). A job that failed
 delivers nothing: `DeliveryPlan.NotSentJobFailed` gives each destination of each released deliverable a row `not sent`
 with S06-038, `not sent: the job failed`.
 

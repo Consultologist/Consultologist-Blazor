@@ -375,9 +375,11 @@ already has:
 
 **`emr` and `zip` have no channel yet.** No account can set them up, so each destination is recorded *not sent: EMR
 isn't set up for this account* or *…Zip…* (S08-006), final at once and never retried. The mapping's home in the
-account is still to design (#1505 D10, flagged for the owner; #1408 item 9). A folder asking `["email", "pdf"]` for
-an account with an address and no document password gets one row `sent` and one `not sent`, and nothing is retried
-for the second (#1507 R8: a folder asking `["pdf"]` sends the link-only email instead, `sent`).
+account is still to design (#1505 D10, flagged for the owner; #1408 item 9). A folder asking `["email", "emr"]` for
+an account with an address gets one row `sent` and one `not sent`, and nothing is retried for the second. A folder
+asking `["email", "pdf"]` for an account with an address and no document password gets two rows `sent`: the `email`
+one as asked, the `pdf` one the link-only email, its attempt `sent link-only` and its reason `no document password`
+(#1507 R8).
 
 **The settings are read at the start (#1507 R8, D18).** As a 5–30 job does (#518: *"a choice changed mid-run does not
 change what was promised"*), the delivery address and `delivery.emailPdf` are read once, when the job starts: the
@@ -389,12 +391,16 @@ orchestration's history. An orchestration started before this build has no `Deli
 its channels read the address and `delivery.emailPdf` at the attempt, as area 08's build did.
 
 **Every deliverable blocked (#1507 D19, ruled by the owner on #1507, 2026-11-22T21:38Z).** A job that completes having
-released nothing, with a deliverable blocked or held, enters `delivering` and sends 30's link-only message, one per
-mail kind those deliverables list (`DeliveryPlan.Sends`, `DeliverySend.EveryDeliverableBlocked`): the completed reply
+released nothing, with a deliverable blocked or held that a mail kind (`email`, `pdf`) delivers, enters `delivering`
+and sends 30's link-only message once for the job (`DeliveryPlan.Sends`, `DeliverySend.EveryDeliverableBlocked`; by
+the `email` channel when one of them lists `email`, else by `pdf`): the completed reply
 with *"No document could be sent: <labels> <was | were> not released."* (A10-057) after its opening, the History link,
-nothing attached and no password needed. Its send carries each document's label and no text. Each such destination's
-row is `sent`, its attempt `sent link-only`, its reason `every deliverable blocked`; the deliverable's own `delivery`
-stays `[]`, and the canonical record gathers the row under it.
+nothing attached and no password needed. Its send carries each document's label and no text. Each `email` or `pdf`
+destination each of them lists gets a row from that one send (a `failed` or `not sent` one naming its own kind):
+`sent`, its attempt `sent link-only`, its reason `every deliverable blocked`; the deliverable's own `delivery` stays
+`[]`, and the canonical record gathers the row under it. Only an orchestration this build started sends it: one
+started before (no `Delivery` in its input) replays the calls it made then, and never entered `delivering` for such a
+job (`DeliveryRunner.RunAsync(outcomes, blockedEmail)`).
 
 **Bundles (#1505 D11).** A folder with `bundle: "zip"` makes one send per kind for all its released deliverables, in
 plan order, and each deliverable still gets its own delivery row with the send's result. A folder with nothing

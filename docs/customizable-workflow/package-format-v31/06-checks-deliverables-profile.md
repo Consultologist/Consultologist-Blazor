@@ -600,10 +600,11 @@ deliverables/
   The delivery address and the account's choice to be emailed are read once, when the job starts, as at 30 ("a
   choice changed mid-run does not change what was promised"); the password is read at the attempt.
 - **A job whose every deliverable is blocked still sends the link-only email** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369)),
-  as 30's reply did: a job that completes having released nothing, with a deliverable blocked or held, sends one
-  link-only message per mail kind (`email`, `pdf`) those deliverables list, saying that no document could be sent,
-  with the History link. It holds no clinical text: the documents' labels only (package text). Each such destination
-  is `sent`, its attempt *sent link-only* and its reason *every deliverable blocked*.
+  as 30's reply did: a job that completes having released nothing, with a deliverable blocked or held that `email`
+  or `pdf` delivers, sends one link-only message, saying that no document could be sent, with the History link. It
+  holds no clinical text: the documents' labels only (package text). Each `email` or `pdf` destination those
+  deliverables list is recorded from that one message: `sent`, its attempt *sent link-only* and its reason *every
+  deliverable blocked*.
 - **`emr`, `zip` and the account's kind-to-endpoint section are Milestone 40**
   ([#1443](https://github.com/Consultologist/Consultologist-Blazor/issues/1443), [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)):
   until then no account can set them up, and each such destination is *not sent: EMR isn't set up for this account*
