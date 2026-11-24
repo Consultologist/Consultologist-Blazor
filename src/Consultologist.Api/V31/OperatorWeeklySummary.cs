@@ -12,18 +12,23 @@ namespace Consultologist.Api.V31;
 
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 09 § 3.9; D14): the weekly summary's message: the jobs, the failures, the p50 and p90
-/// of the durations (nearest rank, over the jobs that have one), and the two lines areas 09 and 10 fill. Counts and minutes
-/// only.
+/// of the durations (nearest rank, over the jobs that have one), and the two lines areas 09 and 10 fill: the largest
+/// record (area 11's, #1508, not measured in this build) and #1507's (area 10; R11, D22) outstanding migration hand edits.
+/// Counts and minutes only.
 /// </summary>
 public static class OperatorSummary
 {
     /// <summary>D14: what the lines this build cannot measure read.</summary>
     public const string NotMeasured = "not measured in this build";
 
-    /// <summary>The summary of <paramref name="jobs"/>, each its status and its duration (null when it has none): subject and body.</summary>
-    public static (string Subject, string Body) Compose(IReadOnlyList<(string Status, TimeSpan? Duration)> jobs)
+    /// <summary>
+    /// The summary of <paramref name="jobs"/>, each its status and its duration (null when it has none), and of
+    /// <paramref name="migration"/>, the hand-edits line's figures: subject and body.
+    /// </summary>
+    public static (string Subject, string Body) Compose(IReadOnlyList<(string Status, TimeSpan? Duration)> jobs, MigrationFigures migration)
     {
         ArgumentNullException.ThrowIfNull(jobs);
+        ArgumentNullException.ThrowIfNull(migration);
         var durations = jobs.Where(j => j.Duration != null).Select(j => j.Duration!.Value).Order().ToList();
         var failures = jobs.Count(j => string.Equals(j.Status, ConsultGenerationJobStatuses.Failed, StringComparison.Ordinal));
         var body = new StringBuilder()
@@ -32,7 +37,7 @@ public static class OperatorSummary
             .Append("p50 duration: ").Append(Minutes(NearestRank(durations, 50))).Append('\n')
             .Append("p90 duration: ").Append(Minutes(NearestRank(durations, 90))).Append('\n')
             .Append("Largest record: ").Append(NotMeasured).Append('\n')
-            .Append("Outstanding migration hand edits: ").Append(NotMeasured).Append('\n');
+            .Append(migration.Line).Append('\n');
         return ("Consultologist weekly summary", body.ToString());
     }
 
@@ -62,16 +67,21 @@ public static class OperatorSummary
 /// (<see cref="SpecVersionAdmission.Runs31"/>). The week's jobs are every account's (<see cref="IAccountStore.ListAsync"/>,
 /// the accounts the operator surfaces read) jobs in the job index that ended in the 7 days before the run, each its status
 /// and its duration from its start to its end. The summary is logged as counts and mailed as alerts are
-/// (<see cref="OperatorAlerts"/>: to <c>Operators__AlertAddress</c> from the mailbox, else only logged).
+/// (<see cref="OperatorAlerts"/>: to <c>Operators__AlertAddress</c> from the mailbox, else only logged). #1507 (area 10;
+/// R11, D22): the hand-edits line is the same accounts' active packages migrated (<see cref="OutstandingHandEdits"/>), in
+/// this function, never in an orchestration; what it cannot read is its error line, never an exception out of the summary.
 /// </summary>
 public sealed class OperatorWeeklySummary(
     SpecVersionAdmission admission,
     IAccountStore accounts,
     IConsultGenerationJobIndexStore index,
+    OutstandingHandEdits handEdits,
     IGraphMailClient mail,
     IConfiguration configuration,
     ILogger<OperatorWeeklySummary> logger)
 {
+    private readonly OutstandingHandEdits _handEdits = handEdits ?? throw new ArgumentNullException(nameof(handEdits));
+
     /// <summary>The schedule's setting: a flat name, since a <c>%…%</c> binding expression cannot resolve a <c>__</c> key.</summary>
     public const string ScheduleSetting = "OperatorWeeklySummarySchedule";
 
@@ -87,7 +97,8 @@ public sealed class OperatorWeeklySummary(
 
         var from = now.AddDays(-7);
         var jobs = new List<(string Status, TimeSpan? Duration)>();
-        foreach (var account in await accounts.ListAsync(ct))
+        var listed = await accounts.ListAsync(ct);
+        foreach (var account in listed)
         {
             IReadOnlyList<ConsultGenerationJobIndexEntry> entries;
             try
@@ -108,11 +119,16 @@ public sealed class OperatorWeeklySummary(
             }
         }
 
-        var (subject, body) = OperatorSummary.Compose(jobs);
+        var migration = await _handEdits.CountAsync(listed, ct);
+        var (subject, body) = OperatorSummary.Compose(jobs, migration);
         logger.LogInformation(
-            "Operator weekly summary. Jobs={Jobs}, Failures={Failures}",
+            "Operator weekly summary. Jobs={Jobs}, Failures={Failures}, HandEdits={HandEdits}, HandEditPackages={HandEditPackages}, NotMigrating={NotMigrating}, MigrationUnread={MigrationUnread}",
             jobs.Count,
-            jobs.Count(j => string.Equals(j.Status, ConsultGenerationJobStatuses.Failed, StringComparison.Ordinal)));
+            jobs.Count(j => string.Equals(j.Status, ConsultGenerationJobStatuses.Failed, StringComparison.Ordinal)),
+            migration.HandEdits,
+            migration.Packages,
+            migration.DoNotMigrate,
+            migration.Unread);
         await OperatorAlerts.MailAsync(mail, configuration, logger, "weekly-summary", subject, body, ct);
         return true;
     }

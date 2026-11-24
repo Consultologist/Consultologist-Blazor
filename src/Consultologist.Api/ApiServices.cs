@@ -203,6 +203,11 @@ public static class ApiServices
         // #1505 (part 09 § 3.9; D14): alerts for the operator, logged and mailed from the mailbox to Operators__AlertAddress when
         // both are set (alert-operator-v31's); the weekly summary's function reads the job index on its own schedule.
         services.AddSingleton<Consultologist.Api.V31.IOperatorAlerts, Consultologist.Api.V31.OperatorAlerts>();
+        // #1507 (area 10; R11, D22): the summary's hand-edits line migrates each account's active package as stored (the
+        // store's raw read), against the bundled 31 type registry, read on first use (area 11's publish path reuses it).
+        services.AddSingleton<IWorkflowPackageSources>(sp => sp.GetRequiredService<WorkflowPackageStore>());
+        services.AddSingleton(_ => new Consultologist.Api.V31.PublishedTypeRegistry());
+        services.AddSingleton<Consultologist.Api.V31.OutstandingHandEdits>();
         // #1503 (part 09 § 3.6; D9): the drain before a deploy — its state on the text account (drain/ in the job outputs'
         // container), read on every call; both starters park behind it; Admin/Drain, Admin/Resume and GET Admin/Drain drive it.
         services.AddSingleton<IDrainBlobs, TextDrainBlobs>();
