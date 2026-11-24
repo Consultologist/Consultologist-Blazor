@@ -388,7 +388,7 @@ public class MigrateDeliverablesTests
     /// <c>plain_line</c> made one. 30 refuses a deliverable that names such a flow as its source (its branches disagree; "a
     /// deliverable composes prose"). Read only by a prompt, the flow composes nothing, its prose leaf stays <c>plaintext</c>
     /// and its format is the one <c>plaintext</c>; publish refuses nothing but the package's two hand edits. A loop or a
-    /// while over such a flow is <see cref="AComposedLoopOrWhileOverMixedBranches_IsAHandEdit"/>.
+    /// while over such a flow is <see cref="MixedBranches_UnderAFor_KeepTheirUnion_UnderAWhile_AreAHandEdit"/>.
     /// </summary>
     [Theory]
     [InlineData("let")]
@@ -424,13 +424,16 @@ public class MigrateDeliverablesTests
     }
 
     /// <summary>
-    /// R9, D20 (fix round 2 of Task 21): 30 does accept a deliverable composing a <c>for</c> or a <c>while</c> whose
-    /// <c>ret</c> is an <c>if</c> mixing 30 prose with a <c>let</c> of text, a <c>rendered</c> node or <c>agent_plaintext</c>
-    /// (only a flow named as a source is held to one format). The <c>if</c> would be <c>markdown_block | plaintext</c>, a
-    /// union the <c>markdown_block</c> deliverable escapes as one string, the prose's Markdown with it, so it is a hand edit
-    /// (A10-053): the <c>if</c> is written <c>markdown_block</c>, which publish refuses against the union its branches give
-    /// (S02-015), and the loop or while keeps the format derived from the branches. composer-sources without its two hand
-    /// edits (<c>refine</c>, <c>topic_tally</c>), so the edit is the package's only one.
+    /// R9, D20 (fix round 2 of Task 21), D23 (Task 24's fix round 1): 30 does accept a deliverable composing a <c>for</c>
+    /// or a <c>while</c> whose <c>ret</c> is an <c>if</c> mixing 30 prose with a <c>let</c> of text, a <c>rendered</c> node
+    /// or <c>agent_plaintext</c> (only a flow named as a source is held to one format). The <c>if</c> is
+    /// <c>markdown_block | plaintext</c>. Under a <c>for</c> the deliverable reads the loop's <c>.content</c>, the standard
+    /// rendering typed <c>markdown_block</c>, which is never escaped: the union is written as derived, with no hand edit,
+    /// publish refuses nothing and the read lists no escape, so 30's bytes are kept. Under a <c>while</c> the deliverable
+    /// reads its last pass's <c>ret</c>'s <c>.content</c>, the union, which it would escape as one string, the prose's
+    /// Markdown with it, so it is a hand edit (A10-053): the <c>if</c> is written <c>markdown_block</c>, which publish
+    /// refuses against the union its branches give (S02-015), and the while keeps the format derived from the branches.
+    /// composer-sources without its two hand edits (<c>refine</c>, <c>topic_tally</c>), so the edit is the package's only one.
     /// </summary>
     [Theory]
     [InlineData("for", "let")]
@@ -439,7 +442,7 @@ public class MigrateDeliverablesTests
     [InlineData("while", "let")]
     [InlineData("while", "rendered")]
     [InlineData("while", "agent_plaintext")]
-    public void AComposedLoopOrWhileOverMixedBranches_IsAHandEdit(string shape, string kind)
+    public void MixedBranches_UnderAFor_KeepTheirUnion_UnderAWhile_AreAHandEdit(string shape, string kind)
     {
         var (json, read) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
         var root = JsonNode.Parse(json)!.AsObject();
@@ -483,10 +486,23 @@ public class MigrateDeliverablesTests
         const string union = """{"anyOf":[{"$ref":"markdown_block"},{"$ref":"plaintext"}]}""";
         Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(result, prose).Header["format"]);
         Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, gate.Replace("index.json", "left_out.md", StringComparison.Ordinal)).Header["format"]);
-        Assert.Equal("\"markdown_block\"", MigrateNodesTests.Json(result, gate)["format"]!.ToJsonString());
         Assert.Equal(shape == "for" ? $$"""{"type":"array","items":{{union}}}""" : union, MigrateNodesTests.Json(result, flow)["format"]!.ToJsonString());
 
-        var reason = $"the if '{(shape == "for" ? "topic_gate" : "redo_gate")}' that a deliverable composes returns Markdown from one branch and plain text from another, "
+        if (shape == "for")
+        {
+            // under a for: the union as derived, no hand edit, nothing refused, and no escape on the loop's read
+            Assert.Equal(union, MigrateNodesTests.Json(result, gate)["format"]!.ToJsonString());
+            Assert.Empty(result.HandEdits);
+            var check = SourceCheck.Run(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes());
+            Assert.True(check.Refusals.Count == 0, string.Join("\n", check.Refusals.Select(r => $"{r.Id} {r.Path}: {r.Sentence}")));
+            Assert.Empty(MigratedPackagesTests.Publish(result));
+            Assert.StartsWith("{{ node.topic_loop.content }}", Template(result, "topics"), StringComparison.Ordinal);
+            Assert.Empty(check.Templates!.Escapes("deliverable.topics"));
+            return;
+        }
+
+        Assert.Equal("\"markdown_block\"", MigrateNodesTests.Json(result, gate)["format"]!.ToJsonString());
+        var reason = $"the if 'redo_gate' that a deliverable composes returns Markdown from one branch and plain text from another, "
             + "which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";
         AssertHandEdit(result, gate, "format", "A10-053", reason);
         Assert.Single(result.HandEdits);
