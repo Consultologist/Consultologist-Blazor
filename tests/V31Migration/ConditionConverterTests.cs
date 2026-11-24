@@ -50,7 +50,7 @@ public class ConditionConverterTests
     }
 
     [Fact]
-    public void TheRowsOf2_2_AreFortyOne() => Assert.Equal(41, RowIds().Count);
+    public void TheRowsOf2_2_AreFortyTwo() => Assert.Equal(42, RowIds().Count);
 
     [Theory]
     [MemberData(nameof(RowIds))]
@@ -67,6 +67,7 @@ public class ConditionConverterTests
     [InlineData("row.downcase", """{"===":[{"lower":[{"var":"input.reason.content"}]},"breathlessness"]}""")]
     [InlineData("row.strip.input", """{"===":[{"trim":[{"var":"input.reason.content"}]},""]}""")]
     [InlineData("row.strip.node", """{"===":[{"trim":[{"var":"node.summary.content"}]},""]}""")]
+    [InlineData("row.strip.input-field", """{"===":[{"trim":[{"var":"input.patient.value.name"}]},""]}""")]
     [InlineData("row.starts-with", """{"starts_with":[{"var":"input.reason.content"},"Breath"]}""")]
     [InlineData("row.ends-with", """{"ends_with":[{"var":"input.reason.content"},"ness"]}""")]
     [InlineData("row.contains", """{"in":["less",{"var":"input.reason.content"}]}""")]
@@ -323,6 +324,16 @@ public class ConditionConverterTests
         Assert.Equal("\"\" = trim(node.summary.content)", listed.Written);
         Assert.Equal("blank(node.summary.content)", listed.Printed);
         Assert.Equal(["node.summary.content"], listed.Reads);
+
+        // Only a text input read whole (input.<id>.content) read "" at 30 when not given: a field of an object input is
+        // null at 30 when it or its object is absent (an unsupplied object input is an empty object), which 30's
+        // comparison holds false and blank holds true (row.strip.input-field#0 and #2), so that conversion is listed too.
+        var field = Convert("row.strip.input-field");
+        Assert.Equal("""{"blank":[{"var":"input.patient.value.name"}]}""", CanonicalJson.Write(field.Logic));
+        var fieldListed = Assert.Single(field.TrimBlanks);
+        Assert.Equal("blank(input.patient.value.name)", fieldListed.Printed);
+        Assert.Equal(["input.patient.value.name"], fieldListed.Reads);
+        Assert.Empty(Convert("row.strip.input").TrimBlanks);
 
         // Any other literal is still text compared with a literal (S03-002).
         Assert.Null(literal.Logic);

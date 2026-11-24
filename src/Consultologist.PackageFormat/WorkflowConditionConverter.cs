@@ -141,9 +141,10 @@ public sealed record ConversionResult(JsonNode? Logic, string? ResultFormat, IRe
     /// <summary>
     /// #1507 (part 05 § 7; part 10 § 2.2's <c>string.strip</c> row): each <c>trim(x) == ""</c> (or <c>!=</c>) on a text
     /// written <c>blank(x)</c> (or <c>!blank(x)</c>) whose <c>x</c> can be null at 31 where 30 read text (a node that did
-    /// not run): <see cref="BlankConversion.Written"/> the 30 comparison as the printer shows it, <c>Printed</c> the 31 one.
-    /// What the migration lists (A10-050). A comparison of an input, which 30 read as <c>""</c> when not given, answers as
-    /// 30's did and is not listed.
+    /// not run, a field of an object input left out): <see cref="BlankConversion.Written"/> the 30 comparison as the printer shows it, <c>Printed</c> the 31 one.
+    /// What the migration lists (A10-050); its answer for a null <c>x</c> differs from 30's, which no ruling covers
+    /// (unruled, for the owner). A text input read whole, which 30 read as <c>""</c> when not given, answers as 30's did
+    /// and is not listed; a field of an object input is.
     /// </summary>
     public IReadOnlyList<BlankConversion> TrimBlanks { get; init; } = [];
 

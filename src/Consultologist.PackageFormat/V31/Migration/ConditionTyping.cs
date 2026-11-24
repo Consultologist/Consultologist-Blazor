@@ -189,9 +189,10 @@ internal static class ConditionTyping
     /// <summary>
     /// Part 05 § 7 (the migrated <c>test/general</c>'s part <c>if</c>; part 10 § 2.2's <c>string.strip</c> row): a
     /// <c>trim(x)</c> compared by <c>===</c> or <c>!==</c> with <c>""</c>, either side, for a text <c>x</c>, is
-    /// <c>{ "blank": [x] }</c> or <c>{ "!": [{ "blank": [x] }] }</c>; null for anything else. 30 read an input not given as
-    /// <c>""</c> and a folder item's text is always valued, so those answer as 30 did; an <c>x</c> that can be null
-    /// otherwise (a node that did not run, whose text 30 compared as not empty) is listed in <paramref name="trims"/>.
+    /// <c>{ "blank": [x] }</c> or <c>{ "!": [{ "blank": [x] }] }</c>; null for anything else. 30 read a text input not given
+    /// as <c>""</c> and a folder item's text is always valued, so those answer as 30 did; an <c>x</c> that can be null
+    /// otherwise (a node that did not run, a field of an object input left out), which 30 compared as not empty, is listed
+    /// in <paramref name="trims"/>: an unruled difference, for the owner.
     /// </summary>
     private static JsonNode? TrimIsEmpty(string name, JsonNode? operands, ExpressionSite operand, Scope scope, FormatSet formats, List<BlankConversion> trims)
     {
@@ -213,13 +214,22 @@ internal static class ConditionTyping
         var blank = new JsonObject { ["blank"] = new JsonArray(x) };
         JsonNode result = name == "===" ? blank : new JsonObject { ["!"] = new JsonArray(blank) };
         var reads = JsonLogicShape.Paths(x);
-        if ((type.Nullable || FormatTypes.IsNullable(format, formats)) && reads.Any(r => !r.StartsWith("input.", StringComparison.Ordinal)))
+        if ((type.Nullable || FormatTypes.IsNullable(format, formats)) && !IsTextInputReadWhole(x))
         {
             trims.Add(new BlankConversion(JsonLogicPrinter.Print(new JsonObject { [name] = pair.DeepClone() }), JsonLogicPrinter.Print(result), reads));
         }
 
         return result;
     }
+
+    /// <summary>
+    /// Whether <paramref name="x"/> is a text input read whole (<c>{ "var": "input.&lt;id&gt;.content" }</c> or
+    /// <c>.value</c>): the one read 30 gave <c>""</c> when not given (part 10 § 2.3). A field of an object input is not
+    /// one: an unsupplied object input is an empty object at 30, so its field read null there.
+    /// </summary>
+    private static bool IsTextInputReadWhole(JsonNode x) =>
+        x is JsonObject { Count: 1 } read && read["var"] is JsonValue path && path.TryGetValue<string>(out var text)
+        && text.Split('.') is ["input", { Length: > 0 }, "content" or "value"];
 
     /// <summary>
     /// #1507 (part 10 § 2.1): who a converted rule reads, at 31, as <see cref="IExpressionScope"/> heads:

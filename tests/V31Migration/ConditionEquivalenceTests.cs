@@ -52,13 +52,14 @@ public class ConditionEquivalenceTests
     /// not given and reads <c>null</c> (part 03 § 6.1), <c>size</c> of <c>null</c> is <c>null</c> and <c>===</c> compares
     /// <c>null</c> with 0 as a value (part 03 § 6.2): <c>false</c>. No ruling covers it; the package expression of the same
     /// shape (<c>example-structured-intake.notes_index.if</c>, <c>&gt; 2</c>) agrees on every case.
-    /// <c>row.strip.node#0</c>: <c>(x | string.strip) == ""</c>, written <c>blank(x)</c> (part 05 § 7), with <c>x</c> null:
-    /// a node with no output. 30's comparison is <c>false</c> on a null
+    /// <c>row.strip.node#0</c>, <c>row.strip.input-field#0</c> and <c>#2</c>: <c>(x | string.strip) == ""</c>, written
+    /// <c>blank(x)</c> (part 05 § 7), with <c>x</c> null: a node with no output, a field of an object input left out or the
+    /// object absent (an unsupplied object input is an empty object at 30). 30's comparison is <c>false</c> on a null
     /// text, 31's <c>blank(null)</c> is <c>true</c>. No ruling covers it; the migration lists each such conversion
     /// (A10-050), and no public package's condition has that shape (its <c>strip == ""</c> reads are a text input whole
     /// and a folder item's text, which agree).
     /// </remarks>
-    private static readonly string[] UnruledDifferences = ["row.size.member#0", "row.strip.node#0"];
+    private static readonly string[] UnruledDifferences = ["row.size.member#0", "row.strip.node#0", "row.strip.input-field#0", "row.strip.input-field#2"];
 
     [Fact]
     public void EveryConvertedExpression_AnswersAs30Does()

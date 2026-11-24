@@ -31,10 +31,10 @@ internal static class MigrationSentences
     }
 
     /// <summary>
-    /// A10-050 (part 05 § 7; #1507, Task 12 fix round 1's ruling): in <paramref name="file"/>'s <paramref name="member"/>,
+    /// A10-050 (part 05 § 7; #1507, Task 12 fix rounds 1 and 2; the difference is unruled): in <paramref name="file"/>'s <paramref name="member"/>,
     /// the comparison of a trimmed text with <c>""</c> (<see cref="BlankConversion.Written"/>, as the printer shows it)
     /// became <c>blank(x)</c> or <c>not blank(x)</c> (<see cref="BlankConversion.Printed"/>); 30 compared a null text (a node
-    /// that did not run) as not empty, so the rule now holds, or no longer holds, when <c>x</c> is null. The wording
+    /// that did not run, a field of an object input left out) as not empty, so the rule now holds, or no longer holds, when <c>x</c> is null. The wording
     /// follows A10-008 and A10-027.
     /// </summary>
     public static string TrimBecameBlank(string file, string member, BlankConversion trim)

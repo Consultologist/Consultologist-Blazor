@@ -340,9 +340,9 @@ public class MigrateNodesTests
     [InlineData("(input.consult_draft | string.strip) == \"\"", """{"blank":[{"var":"input.consult_draft.content"}]}""", null)]
     public void ATrimComparedWithEmptyText_IsBlank_AndListedWhenItCanBeNull(string condition, string logic, string? notice)
     {
-        // Part 05 § 7 and Task 12 fix round 1's ruling: a trimmed text compared with "" is blank. A node that did not run
-        // (plan_gate, an if whose test failed) is null at 31, which blank holds, where 30 compared it as not empty: said
-        // (A10-050) and listed beside A10-008. An input not given read "" at 30, so its form answers as before, unsaid.
+        // Part 05 § 7: a trimmed text compared with "" is blank. A node that did not run (plan_gate, an if whose test
+        // failed) is null at 31, which blank holds, where 30 compared it as not empty: an unruled difference, said (A10-050)
+        // and listed beside A10-008. A text input not given read "" at 30, so its form answers as before, unsaid.
         var result = Migrated("composer-sources", root =>
             root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "single")["if"] = condition);
 
@@ -354,6 +354,26 @@ public class MigrateNodesTests
             return;
         }
 
+        Assert.Equal(notice, Assert.Single(result.Report.BlankConversions));
+        Assert.Contains(notice, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-050", notice, ""));
+    }
+
+    [Fact]
+    public void ATrimmedFieldOfAnInput_ComparedWithEmptyText_IsListed()
+    {
+        // Only a text input read whole read "" at 30 when not given. A field of an object input is null at 30 when it or
+        // its object is absent (an unsupplied object input is an empty object), where 30's comparison is false and
+        // blank(null) is true: said (A10-050), an unruled difference for the owner.
+        var result = Migrated("example-structured-intake", root =>
+        {
+            var patient = root["inputs"]!.AsArray().OfType<JsonObject>().Single(i => (string?)i["id"] == "patient");
+            patient["fields"]!.AsArray().Add(new JsonObject { ["id"] = "name", ["label"] = "Name", ["type"] = "text" });
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "note")["if"] = "(input.patient.name | string.strip) == \"\"";
+        });
+
+        Assert.Equal("""{"blank":[{"var":"input.patient.value.name"}]}""", Md(result, "deliverables/note.md").Header["if"]!.ToJsonString());
+        const string notice = "deliverables/note.md, if: 'trim(input.patient.value.name) = \"\"' became blank(input.patient.value.name); it now also holds when input.patient.value.name is null.";
         Assert.Equal(notice, Assert.Single(result.Report.BlankConversions));
         Assert.Contains(notice, result.Notices);
         V31Contract.AssertSentence(new SourceRefusal("A10-050", notice, ""));
