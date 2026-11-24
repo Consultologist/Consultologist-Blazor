@@ -155,7 +155,8 @@ internal static class V31Contract
     /// an input's, that holds a line ending, part 02 § 5, R10, D21; A10-053: a composed if or case whose branches mix
     /// Markdown and plain text, R9, D20; A10-054 to A10-056: why a delivery went as the link-only email, the delivery row's
     /// reason, part 06 § 8, R8, D17, D19; A10-057: the link-only email's line when every deliverable is blocked, D19; A10-058:
-    /// the weekly summary's hand-edits line when its figures could not be read, part 09 § 3.9, R11, D22).
+    /// the weekly summary's hand-edits line when its figures could not be read, part 09 § 3.9, R11, D22; A10-059: the line
+    /// after it counting the accounts' active packages that could not be read, R11, D22, Task 23 fix round 1).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -214,6 +215,7 @@ internal static class V31Contract
         ["A10-056"] = "every deliverable blocked",
         ["A10-057"] = "No document could be sent: <labels> <was | were> not released.",
         ["A10-058"] = "Outstanding migration hand edits: not counted; <the type registry | the accounts' active packages> could not be read.",
+        ["A10-059"] = "Outstanding migration hand edits: <k> of the accounts' active packages could not be read and are not counted.",
     };
 
     private static string RepoRoot()

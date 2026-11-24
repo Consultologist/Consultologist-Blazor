@@ -128,8 +128,7 @@ public class OperatorWeeklySummaryTests
         Assert.True(expectedHandEdits > 0);
         Assert.Empty(Migrate("general").HandEdits);
         var body = SentBody(mail);
-        Assert.EndsWith($"Outstanding migration hand edits: {expectedHandEdits} in 1 packages; 0 packages do not migrate\n", body, StringComparison.Ordinal);
-        Assert.Equal("Outstanding migration hand edits: 2 in 1 packages; 0 packages do not migrate\n", body[body.IndexOf("Outstanding", StringComparison.Ordinal)..]);
+        Assert.EndsWith($"Largest record: not measured in this build\nOutstanding migration hand edits: {expectedHandEdits} in 1 packages; 0 packages do not migrate\n", body, StringComparison.Ordinal);
 
         // the line carries counts only: no package, no account, no notice
         Assert.DoesNotContain("composer", body, StringComparison.Ordinal);
@@ -154,12 +153,51 @@ public class OperatorWeeklySummaryTests
 
         Assert.True(await Summary(accounts, pins, sources, mail: mail).RunOnceAsync(Now, CancellationToken.None));
 
-        Assert.EndsWith("Outstanding migration hand edits: 2 in 1 packages; 2 packages do not migrate\n", SentBody(mail), StringComparison.Ordinal);
+        Assert.EndsWith(
+            $"Largest record: not measured in this build\nOutstanding migration hand edits: {Migrate("composer-sources").HandEdits.Count} in 1 packages; 2 packages do not migrate\n",
+            SentBody(mail),
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("pin")]
+    [InlineData("package")]
+    public async Task OneUnreadablePinOrPackage_IsNotCounted_TheOthersAre(string failing)
+    {
+        // a stale or broken pin, or a package the store cannot read, is a normal state: it fails alone, the others are
+        // counted on D22's line, and A10-059 says how many were not
+        var (accounts, pins) = Accounts(("user-1", "composer-sources@v2026.11.1"), ("user-2", "general@latest"), ("user-3", "acct-0123456789ab-stale@v2026.10.1"));
+        var sources = Substitute.For<IWorkflowPackageSources>();
+        Source(sources, "composer-sources@v2026.11.1", Fixture("composer-sources", "composer-sources@v2026.11.1"));
+        Source(sources, "general@latest", Fixture("general", "general@v2026.11.3"));
+        if (failing == "pin")
+        {
+            pins.ResolvePinAsync("user-3", Arg.Any<CancellationToken>()).Returns<WorkflowPackageRef>(_ => throw new InvalidOperationException("table down"));
+        }
+        else
+        {
+            sources.ReadSourceAsync(new WorkflowPackageRef("acct-0123456789ab-stale", "v2026.10.1"), Arg.Any<CancellationToken>())
+                .Returns<WorkflowPackageSource>(_ => throw new InvalidOperationException("blob down"));
+        }
+
+        var mail = Substitute.For<IGraphMailClient>();
+        Assert.True(await Summary(accounts, pins, sources, mail: mail).RunOnceAsync(Now, CancellationToken.None));
+
+        var body = SentBody(mail);
+        const string notCounted = "Outstanding migration hand edits: 1 of the accounts' active packages could not be read and are not counted.";
+        Assert.EndsWith(
+            $"Outstanding migration hand edits: {Migrate("composer-sources").HandEdits.Count} in 1 packages; 0 packages do not migrate\n{notCounted}\n",
+            body,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("table down", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("blob down", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("stale", body, StringComparison.Ordinal);
+        V31Contract.AssertSentence(new SourceRefusal("A10-059", notCounted, ""));
     }
 
     [Theory]
     [InlineData("pins")]
-    [InlineData("sources")]
+    [InlineData("packages")]
     [InlineData("registry")]
     public async Task WhenThePackagesCannotBeRead_TheLineSaysSo_NeverZero(string failing)
     {
@@ -171,10 +209,10 @@ public class OperatorWeeklySummaryTests
         switch (failing)
         {
             case "pins":
-                pins.ResolvePinAsync("user-2", Arg.Any<CancellationToken>()).Returns<WorkflowPackageRef>(_ => throw new InvalidOperationException("table down"));
+                pins.ResolvePinAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<WorkflowPackageRef>(_ => throw new InvalidOperationException("table down"));
                 break;
-            case "sources":
-                sources.ReadSourceAsync(new WorkflowPackageRef("general", "latest"), Arg.Any<CancellationToken>())
+            case "packages":
+                sources.ReadSourceAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
                     .Returns<WorkflowPackageSource>(_ => throw new InvalidOperationException("blob down"));
                 break;
             default:
@@ -185,15 +223,35 @@ public class OperatorWeeklySummaryTests
         var mail = Substitute.For<IGraphMailClient>();
         Assert.True(await Summary(accounts, pins, sources, registry, mail: mail).RunOnceAsync(Now, CancellationToken.None));
 
+        // every read failing: no D22 line with zeros, the error line alone; the registry unread: A10-058 alone
         var body = SentBody(mail);
-        var line = failing == "registry"
-            ? "Outstanding migration hand edits: not counted; the type registry could not be read.\n"
-            : "Outstanding migration hand edits: not counted; the accounts' active packages could not be read.\n";
-        Assert.EndsWith(line, body, StringComparison.Ordinal);
+        var (id, line) = failing == "registry"
+            ? ("A10-058", "Outstanding migration hand edits: not counted; the type registry could not be read.")
+            : ("A10-059", "Outstanding migration hand edits: 2 of the accounts' active packages could not be read and are not counted.");
+        Assert.EndsWith("Largest record: not measured in this build\n" + line + "\n", body, StringComparison.Ordinal);
         Assert.DoesNotContain(" in 0 packages", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("do not migrate", body, StringComparison.Ordinal);
         Assert.DoesNotContain("table down", body, StringComparison.Ordinal);
         Assert.DoesNotContain("blob down", body, StringComparison.Ordinal);
-        V31Contract.AssertSentence(new SourceRefusal("A10-058", line.TrimEnd('\n'), ""));
+        V31Contract.AssertSentence(new SourceRefusal(id, line, ""));
+    }
+
+    [Fact]
+    public void WhenNothingCanBeGathered_A10_058_StandsAlone()
+    {
+        var line = "Outstanding migration hand edits: not counted; the accounts' active packages could not be read.";
+        Assert.Equal([line], MigrationFigures.NotRead(MigrationFigures.ThePackages).Lines);
+        V31Contract.AssertSentence(new SourceRefusal("A10-058", line, ""));
+
+        // nothing unread has no figure: not a zero
+        var none = MigrationFigures.NotRead(MigrationFigures.TheRegistry);
+        Assert.Null(none.HandEdits);
+        Assert.Null(none.Packages);
+        Assert.Null(none.DoNotMigrate);
+        Assert.Equal(0, none.NotCounted);
+        var noneRead = MigrationFigures.NoneRead(3);
+        Assert.Null(noneRead.HandEdits);
+        Assert.Equal(["Outstanding migration hand edits: 3 of the accounts' active packages could not be read and are not counted."], noneRead.Lines);
     }
 
     [Fact]
@@ -214,7 +272,7 @@ public class OperatorWeeklySummaryTests
     public void TheLargestRecordLine_IsUnchanged()
     {
         // area 11's line (#1508): this area fills only the hand-edits line
-        foreach (var figures in new[] { MigrationFigures.Counted(2, 1, 0), MigrationFigures.NotRead(MigrationFigures.ThePackages), MigrationFigures.NotRead(MigrationFigures.TheRegistry) })
+        foreach (var figures in new[] { MigrationFigures.Counted(2, 1, 0), MigrationFigures.Counted(2, 1, 0, 1), MigrationFigures.NoneRead(1), MigrationFigures.NotRead(MigrationFigures.ThePackages), MigrationFigures.NotRead(MigrationFigures.TheRegistry) })
         {
             var body = OperatorSummary.Compose([("Completed", TimeSpan.FromMinutes(1))], figures).Body;
             Assert.Contains("\nLargest record: not measured in this build\nOutstanding migration hand edits: ", body, StringComparison.Ordinal);
