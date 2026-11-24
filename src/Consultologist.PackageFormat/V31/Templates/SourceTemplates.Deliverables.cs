@@ -90,7 +90,7 @@ public static partial class SourceTemplates
                 if (write.Format is not { } format)
                     continue;
                 var fix = FormatTypes.Shape(format, formats) is FormatShape.Object or FormatShape.List ? "Use a renderer or a node"
-                    : name == "plaintext" && FormatTypes.TextKind(format, formats) is "markdown_block" or "markdown_inline" ? "Convert it in a node"
+                    : name == "plaintext" && TextKindOf(format, formats) is "markdown_block" or "markdown_inline" ? "Convert it in a node"
                     : null;
                 if (fix is not null)
                 {
@@ -136,20 +136,43 @@ public static partial class SourceTemplates
                     continue;
                 }
 
-                if (!write.Rendered && write.Format is { } format && Escaped(format, formats))
+                if (!write.Rendered && Escaped(write.Format, formats))
                     escapes.Add((self, at));
             }
         }
 
-        /// <summary>D7: whether a value of <paramref name="format"/> is escaped where it enters Markdown: plain text and data (a string, an enum, a date, a number, a boolean, a union of them); never Markdown, an object, a list or <c>null</c>.</summary>
-        private static bool Escaped(JsonNode format, FormatSet formats) =>
-            FormatTypes.Shape(format, formats) switch
+        /// <summary>
+        /// D7: whether a value of <paramref name="format"/> is escaped where it enters Markdown: plain text and data (a string,
+        /// an enum, a date, a number, a boolean). #1507, 2026-11-22 (2), 3 (R10): formats fail closed, so every output is
+        /// escaped as a string unless its format is known to be Markdown (<c>markdown_block</c> or <c>markdown_inline</c>, alone
+        /// or with <c>null</c>), an object or a list (which S06-021 refuses) or <c>null</c> (which writes nothing): a union, a
+        /// format that cannot be read, and an output that cannot be typed (<paramref name="format"/> <c>null</c>: an interpolated
+        /// string) are escaped.
+        /// </summary>
+        private static bool Escaped(JsonNode? format, FormatSet formats) =>
+            format is null || FormatTypes.Shape(format, formats) switch
             {
-                FormatShape.Text => FormatTypes.TextKind(format, formats) == "plaintext",
-                FormatShape.String or FormatShape.Enum or FormatShape.Date or FormatShape.Number or FormatShape.Integer
-                    or FormatShape.Boolean or FormatShape.Union => true,
-                _ => false,
+                FormatShape.Text => TextKindOf(format, formats) is not ("markdown_block" or "markdown_inline"),
+                FormatShape.Object or FormatShape.List or FormatShape.Null => false,
+                _ => true,
             };
+
+        /// <summary>
+        /// R10: the text kind of <paramref name="format"/> as <see cref="FormatTypes.Shape"/> reads a text: a text format's, or,
+        /// for a union of one text format and <c>null</c> (<c>plaintext | null</c>, an item's <c>.content</c>), that format's;
+        /// <c>null</c> when it cannot be said. <see cref="FormatTypes.TextKind"/> does not see through the union.
+        /// </summary>
+        private static string? TextKindOf(JsonNode? format, FormatSet formats)
+        {
+            if (FormatTypes.TextKind(format, formats) is { } kind)
+                return kind;
+            if (FormatTypes.Shape(format, formats) != FormatShape.Text)
+                return null;
+            var (schema, defs) = FormatTypes.Follow(format, FormatTypes.Defs(format), formats);
+            return (schema?["anyOf"] as JsonArray)?
+                .Select(member => FormatTypes.KindOf(FormatTypes.Follow(member, defs, formats).Schema))
+                .FirstOrDefault(found => found != null);
+        }
 
         /// <summary>
         /// D8: <paramref name="body"/> is of <see cref="OneValueRead"/>'s form, and its one write's format is
@@ -166,17 +189,23 @@ public static partial class SourceTemplates
 
         /// <summary>
         /// S06-022 (D9) for each line of a <c>plaintext</c> deliverable's own text whose first non-space character, outside
-        /// a tag, is <c>#</c>, <c>-</c>, <c>*</c> or <c>&gt;</c>, or that holds two <c>**</c> outside its tags (raw blocks
-        /// and comments are text here, as they are no tags); quoted trimmed, cut to 40 characters.
+        /// a tag and past the tags that write nothing (R10), is <c>#</c>, <c>-</c>, <c>*</c> or <c>&gt;</c>, or that holds two
+        /// <c>**</c> outside its tags (raw blocks and comments are text here, as they are no tags); quoted trimmed, cut to 40
+        /// characters.
         /// </summary>
         private void MarkdownLines(TemplateSyntax syntax, SourceDeliverable deliverable)
         {
             var text = syntax.Text;
             var inTag = new bool[text.Length];
+            var outputs = syntax.Outputs.Select(o => o.Tag.Start).ToHashSet();
+            var silent = new Dictionary<int, int>();
             foreach (var tag in syntax.Tags)
             {
-                for (var i = Math.Clamp(tag.Start, 0, text.Length); i < Math.Clamp(tag.End, 0, text.Length); i++)
+                var (from, to) = (Math.Clamp(tag.Start, 0, text.Length), Math.Clamp(tag.End, 0, text.Length));
+                for (var i = from; i < to; i++)
                     inTag[i] = true;
+                if (!outputs.Contains(tag.Start) && to > from)
+                    silent[from] = to;
             }
 
             var (start, line) = (0, 1);
@@ -185,7 +214,7 @@ public static partial class SourceTemplates
                 var end = text.IndexOf('\n', start);
                 if (end < 0)
                     end = text.Length;
-                if (WritesMarkdown(text, inTag, start, end))
+                if (WritesMarkdown(text, inTag, silent, start, end))
                 {
                     var quoted = text[start..end].Trim();
                     Refusals.Add(DeliverableSentences.WritesMarkdown(
@@ -216,12 +245,26 @@ public static partial class SourceTemplates
             return quoted[..length];
         }
 
-        /// <summary>Whether the line <c>[start, end)</c> of <paramref name="text"/> writes Markdown by D9.</summary>
-        private static bool WritesMarkdown(string text, bool[] inTag, int start, int end)
+        /// <summary>
+        /// Whether the line <c>[start, end)</c> of <paramref name="text"/> writes Markdown by D9. R10: the line's first
+        /// character is found past spaces, tabs and the tags that write nothing (<paramref name="silent"/>: each one's start to
+        /// its end; an <c>if</c>, its <c>else</c> and <c>end</c>, a <c>for</c>), so a marker an <c>if</c> opens
+        /// (<c>{{ if x }}# Heading</c>) is the line's; an output's value stands before what follows it, so a tag that writes a
+        /// value at the line's start is no marker.
+        /// </summary>
+        private static bool WritesMarkdown(string text, bool[] inTag, Dictionary<int, int> silent, int start, int end)
         {
             var first = start;
-            while (first < end && text[first] is ' ' or '\t')
-                first++;
+            while (first < end)
+            {
+                if (text[first] is ' ' or '\t')
+                    first++;
+                else if (silent.TryGetValue(first, out var after))
+                    first = after;
+                else
+                    break;
+            }
+
             if (first < end && !inTag[first] && MarkdownStarts.Contains(text[first], StringComparison.Ordinal))
                 return true;
 
