@@ -63,8 +63,17 @@ public class DeliverV31ActivityTests
             new DeliverySendOutcome(DeliverySendResult.Sent, null),
             new DeliverySendOutcome(DeliverySendResult.NotSetUp, null),
             new DeliverySendOutcome(DeliverySendResult.Failed, "too-large"),
+            new DeliverySendOutcome(DeliverySendResult.Sent, null, DeliveryPlan.NoDocumentPassword),
         })
             Assert.Equal(outcome, FakeOrchestrationContext.RoundTrip<DeliverySendOutcome>(outcome));
+
+        // #1507 (D18, D19): the start's delivery settings and a blocked job's send cross as they were made; an outcome or a
+        // send written before they existed reads them as their defaults
+        var blocked = input with { Send = input.Send with { EveryDeliverableBlocked = true }, Delivery = new V31DeliverySettings("dr.sample@example.com", false) };
+        var again = FakeOrchestrationContext.RoundTrip<DeliverV31Input>(blocked);
+        Assert.Equal((true, blocked.Delivery), (again.Send.EveryDeliverableBlocked, again.Delivery));
+        Assert.Null(JsonSerializer.Deserialize<DeliverySendOutcome>("""{"Result":0,"ErrorKind":null}""")!.LinkOnly);
+        Assert.False(JsonSerializer.Deserialize<DeliverySend>("""{"Kind":"pdf","Bundle":null,"Folder":"","Documents":[],"Attempt":1}""")!.EveryDeliverableBlocked);
     }
 
     private static DeliverV31Input Input(string kind) => new("job-31-0001", "user-1", new DeliverySend(kind, null, "",

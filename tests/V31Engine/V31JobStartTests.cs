@@ -203,6 +203,27 @@ public class V31JobStartTests
         Assert.Equal(pair.ResolveHash, state.ResolveHash);
     }
 
+    [Theory]
+    [InlineData("dr.sample@example.com", true)]
+    [InlineData("dr.sample@example.com", false)]
+    [InlineData(null, true)]
+    public async Task TheDeliverySettings_AreReadAtTheStart(string? address, bool emailRequested)
+    {
+        // #1507 (R8, D18): the delivery address and delivery.emailPdf, as the start's origin read them (#518), travel in the
+        // orchestration's input; the document password does not (it is read at the attempt)
+        var start = new Start(preview: "31");
+        var packageRef = start.Put("nested-note");
+
+        var outcome = await start.RunAsync(
+            new ConsultGenerationRequest(null, RefText(packageRef), Inputs: Text(Draft)),
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, ReplyToAddress: address, EmailRequested: emailRequested));
+
+        Assert.Null(outcome.Error);
+        var input = Assert.IsType<ConsultGenerationOrchestrationInputV31>(Assert.Single(start.Scheduled).Input);
+        Assert.Equal(new V31DeliverySettings(address, emailRequested), input.Delivery);
+        Assert.DoesNotContain("Password", JsonSerializer.Serialize(input), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task ALoadRefusal_IsARecordedStartFailure()
     {
@@ -1101,7 +1122,10 @@ public class V31JobStartTests
             RunAsync(new ConsultGenerationRequest(null, RefText(packageRef), Inputs: inputs));
 
         public Task<ConsultGenerationJobStartOutcome> RunAsync(ConsultGenerationRequest request) =>
-            _starter.StartAsync(Client, request, "user-1", new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+            RunAsync(request, new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App));
+
+        public Task<ConsultGenerationJobStartOutcome> RunAsync(ConsultGenerationRequest request, ConsultGenerationJobOrigin origin) =>
+            _starter.StartAsync(Client, request, "user-1", origin, CancellationToken.None);
     }
 
     /// <summary>The 31 store, its calls counted.</summary>
