@@ -659,6 +659,11 @@ resolution: callers use it to tell a rule's read from a reference string.
 
 - `.state` is `string {completed, skipped, not_run}`.
 - A `for`'s `.stopped` is `string {until, bound, end}`; a `while`'s is `string {check, until, bound}`.
+- A `for`'s `.content` is `markdown_block` whatever its items' format (part 04 § 2.5, part 05 § 5.3; #1507's
+  D23): the standard rendering keeps 30's bytes, so a Markdown deliverable writes it unescaped and a plain-text
+  one refuses it (S06-021). So is an inner `for`'s `.content` read through `.items` (`nodes.<id>.content`,
+  nullable). Every other `.content` is D10's: a text format's own text, else `plaintext`. That covers a
+  `while`'s (its last pass's `ret`), an item's in `.items`, and an object-valued node's.
 - `.passes` and `pass.number` are `integer`; `pass.previous.number` is a nullable `integer`.
 - `.history` and `pass.history` are lists, read only through `size`.
 - `item.id` is `string`. `item.value` is the element of the loop's source (`ScopeTree.Source`, below).
