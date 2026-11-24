@@ -14,8 +14,9 @@ namespace Consultologist.PackageFormat.V31.Migration;
 internal static partial class Migrate
 {
     /// <summary>
-    /// The nodes pass: the tree and the leaves a deliverable composes (<see cref="ComposedLeaves"/>, R9), then every node's key, read and place (<see cref="PlaceNodes"/>), the cases' branches
-    /// (<see cref="CaseBranches"/>, after which what is always valued is known), then each top-level node in 30's order
+    /// The nodes pass: the tree and the leaves a deliverable composes (<see cref="ComposedLeaves"/>, R9), then every
+    /// node's key, read and place (<see cref="PlaceNodes"/>), the cases' branches (<see cref="CaseBranches"/>, after
+    /// which what is always valued is known), then each top-level node in 30's order
     /// (listed in <c>nodes/index.json</c>), each flow's children inside it; then each single snippet's <c>if</c>.
     /// </summary>
     public static void Nodes(Migrated m)
