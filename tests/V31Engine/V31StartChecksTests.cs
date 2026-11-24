@@ -23,7 +23,7 @@ public class V31StartChecksTests
 
     private static readonly IReadOnlyDictionary<string, string?> NoProfile = new Dictionary<string, string?>(StringComparer.Ordinal);
 
-    private const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
+    internal const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
 
     [Fact]
     public void AMissingRequiredInput_IsRefused()
@@ -405,7 +405,7 @@ public class V31StartChecksTests
         fields.ToDictionary(f => f.Field, f => f.Value, StringComparer.Ordinal);
 
     /// <summary>Every required input supplied, valid; every optional one left out.</summary>
-    private static Dictionary<string, JsonNode?> Valid() => new(StringComparer.Ordinal)
+    internal static Dictionary<string, JsonNode?> Valid() => new(StringComparer.Ordinal)
     {
         ["consult_draft"] = Draft,
         ["sections"] = JsonNode.Parse("""[{"title":"History","kind":"narrative"}]"""),
@@ -417,7 +417,7 @@ public class V31StartChecksTests
     /// <c>string</c>), <c>dose</c> (an optional enum of numbers, R4) and <c>kind</c> (an optional labelled choice), and with
     /// <paramref name="needs"/> as its <c>needs.profile</c> and <paramref name="facts"/> as its <c>run</c>.
     /// </summary>
-    private static RunPlan Plan(string[]? needs = null, string[]? facts = null, string? deliverableIf = null, bool headline = false)
+    internal static RunPlan Plan(string[]? needs = null, string[]? facts = null, string? deliverableIf = null, bool headline = false)
     {
         var pair = CompiledGoldenTests.Published(CompiledGoldenTests.Cases().Single(c => c.Name == "conditional"));
         var document = JsonNode.Parse(pair.Resolve)!.AsObject();
