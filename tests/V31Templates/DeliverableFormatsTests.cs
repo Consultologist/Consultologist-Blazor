@@ -1,6 +1,9 @@
+using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 using static Consultologist.Api.Tests.V31Templates.TemplateFixture;
@@ -29,7 +32,7 @@ public class DeliverableFormatsTests
     /// </summary>
     private static Dictionary<string, byte[]> Base() =>
         ResolveFixture.WithFormats(Package(), "section_plan", "outline", "verdict", "section_request", "standard_section")
-            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = System.Text.Json.Nodes.JsonNode.Parse(
+            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
                 "{ \"label\": \"Sections\", \"description\": null, "
                 + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
             .WithAgent("summary", "Summarise the plan for Margaret Okafor.\n\n{{ node.plan.content }}\n")
@@ -102,6 +105,47 @@ public class DeliverableFormatsTests
             .WithSnippet("sign_off", "Dr A. Sample, {{ node.summary.content }}\n"));
 
         Assert.Equal([("snippet.closing", "1:17"), (null, "3:1")], check.Templates!.Escapes(NoteKey));
+    }
+
+    /// <summary>
+    /// <paramref name="files"/> published and loaded as the engine loads them, and the deliverable composed as the run
+    /// composes it over the data <paramref name="paths"/> give; its text, asserted composed.
+    /// </summary>
+    private static string Composed(Dictionary<string, byte[]> files, params (string Path, JsonNode? Value)[] paths)
+    {
+        var outcome = RenderTurn.Render(RunFixture.Plan(files), new RenderCall(NoteKey, NoteKey, null, BodyComposerTests.Scope(paths), 100_000));
+        Assert.True(outcome.Failure == null, outcome.Failure);
+        Assert.NotNull(outcome.Text);
+        return outcome.Text!;
+    }
+
+    [Theory]
+    [InlineData("# not a heading")]
+    [InlineData("**x**")]
+    public void AnUntypedRead_InAMarkdownDeliverable_IsEscapedAsAString(string value)
+    {
+        // #1507, 2026-11-22 (2), 3 (R10): formats fail closed. An output publish cannot type (an interpolated string: its
+        // format is null) is escaped as the string it writes; before, it was neither judged nor escaped, so model text
+        // could write Markdown into the document (part 06 § 6.4).
+        var files = WithNote("markdown_block", "## Plan\n\n{{ $\"{node.summary.content}\" }}\n");
+
+        Assert.Equal([(null, "3:1")], Accepted(files).Templates!.Escapes(NoteKey));
+        Assert.Equal($"## Plan\n\n{MarkdownEscape.Escape(value)}\n", Composed(files, ("node.summary.content", value)));
+    }
+
+    [Theory]
+    [InlineData("# not a heading")]
+    [InlineData("**x**")]
+    public void AUnionRead_InAMarkdownDeliverable_IsEscapedAsAString(string value)
+    {
+        // R10: a union is escaped as a string, a nullable plain text (plaintext | null, an item's .content) as any plain
+        // text; before, the union's text kind was not seen through, and it was written as Markdown.
+        var files = WithNote("markdown_block", "## Plan\n{{ for d in node.drafts.items }}{{ d.content }}\n{{ end }}")
+            .WithLoop("drafts", "node.plan.value.sections", "draft", "Draft the section {{ item.value.title }}.\n");
+
+        Assert.Equal([(null, "2:33")], Accepted(files).Templates!.Escapes(NoteKey));
+        var items = new JsonArray(new JsonObject { ["content"] = value }, new JsonObject { ["content"] = null });
+        Assert.Equal($"## Plan\n{MarkdownEscape.Escape(value)}\n\n", Composed(files, ("node.drafts.items", items)));
     }
 
     [Theory]
@@ -188,6 +232,34 @@ public class DeliverableFormatsTests
     public void APlaintextDeliverable_WritingAHeading_IsRefused(string line, string quoted) =>
         AssertRefusal(WithNote("plaintext", $"Dear Margaret Okafor,\n\nYour plan:\n{line}\n{{{{ node.summary.content }}}}\n"),
             "S06-022", $"Deliverable 'note' is plaintext, and line 4 writes Markdown ('{quoted}').");
+
+    [Theory]
+    [InlineData("# Heading")]
+    [InlineData("- item")]
+    [InlineData("* star")]
+    [InlineData("> quote")]
+    [InlineData("a **b** c")]
+    [InlineData(" # Heading")]
+    public void ABlockMarkerOpenedByAnIf_IsRefused(string marker)
+    {
+        // R10: D9 sees through the tags that write nothing (an if, its else and end, a for) to the line's first character,
+        // so a marker an if opens is S06-022, as the bare line is. The line is quoted as written, trimmed.
+        var line = $"{{{{ if for.first }}}}{marker}{{{{ end }}}}";
+        AssertRefusal(WithNote("plaintext", $"Dear Margaret Okafor,\n\n{{{{ for s in node.plan.value.sections }}}}\n{line}\n{{{{ end }}}}\n"),
+            "S06-022", $"Deliverable 'note' is plaintext, and line 4 writes Markdown ('{line.Trim()}').");
+    }
+
+    [Theory]
+    [InlineData("{{ s.title }}# 1")]
+    [InlineData("{{ if for.first }}{{ s.title }}- 1{{ end }}")]
+    [InlineData("{{ if for.first }}Title{{ end }}")]
+    public void ATagWritingAValue_AtTheLinesStart_IsNoMarker(string line)
+    {
+        // R10: what an output writes stands before the character after it, so that character does not start the line.
+        var check = Accepted(WithNote("plaintext", $"Dear Margaret Okafor,\n\n{{{{ for s in node.plan.value.sections }}}}\n{line}\n{{{{ end }}}}\n"));
+
+        Assert.Empty(check.Templates!.Escapes(NoteKey));
+    }
 
     // ---- an object format ---------------------------------------------------------------------
 
