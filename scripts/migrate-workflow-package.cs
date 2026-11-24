@@ -15,7 +15,7 @@
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 28 [--write] # #1286: the 27 → 28 rewrite (WorkflowPackageMigration27To28; every file renamed to its id)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 29 [--write] # #1307: the 28 → 29 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 30 [--write] # #1347: the 29 → 30 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
-//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] [--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]...
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] [--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]... [--folder-format <folder>=<format>]...
 //                                                                                                # #1507: the 30 → 31 migration (WorkflowPackageMigration30To31; a package from 5 to 29 raised to 30 in the same run)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 --snapshot [--write]
 //                                                                                                # #1507: a 31 package's snapshot test, once its hand edits are made (tests/migration_snapshot.json)
@@ -43,12 +43,15 @@
 // --to 31 (#1507, part 10 §§ 1.1, 1.4) is the library's Migration31Script: the
 // dry run prints the notices and the file plan; --write leaves the folder holding
 // exactly the 31 files (manifest.json and the nine folders; 30's prompts/, flat
-// macros and dag.mmd deleted: 31's dag.mmd is not this script's). --rename and
-// --when-empty choose a reserved id's 31 id and a deliverable's whenEmpty (the
-// default is release). Its exits are part 10's: 0 migrated cleanly (or the
+// macros and dag.mmd deleted: 31's dag.mmd is not this script's; --snapshot
+// leaves a 31 folder's own dag.mmd alone). --rename, --when-empty and
+// --folder-format choose a reserved id's 31 id, a deliverable's whenEmpty (the
+// default is release) and a snippet folder's item format (the default is
+// <folder>_item). The write puts new and changed files first and deletes last.
+// Its exits are part 10's: 0 migrated cleanly (or the
 // snapshot test written); 1 "written; hand edits remain"; 2 refused, writing
-// nothing (an unreadable manifest, a version below 5, any refusal), or usage or
-// environment.
+// nothing (an unreadable manifest, a version below 5, any refusal, a path that
+// would leave the folder), or usage or environment (a write that fails part-way).
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
