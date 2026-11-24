@@ -121,6 +121,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-055 | reason | `attachments over the budget` (R8, D17, part 06 § 8: the same, for a `pdf` send whose attachments passed the 5–30 reply's 2 MiB budget, the set dropped whole; `DeliveryPlan.OverTheBudget`; Task 22) |
 | A10-056 | reason | `every deliverable blocked` (D19, the owner's words on #1507, 2026-11-22T21:38Z: the row's `reason` for the link-only email of a job that released nothing, with a deliverable blocked or held; `DeliveryPlan.EveryDeliverableBlocked`; Task 22) |
 | A10-057 | notice | `No document could be sent: <labels> <was \| were> not released.` (D19: the line of that email after the completed reply's opening; labels are package text; `MailDeliveryChannel.NoDocumentSent`; Task 22) |
+| A10-058 | notice | `Outstanding migration hand edits: not counted; <the type registry \| the accounts' active packages> could not be read.` (R11, D22, part 09 § 3.9: the weekly summary's hand-edits line when a pin, a stored package or the bundled 31 type registry could not be read: an error line, never a zero; `MigrationFigures.NotRead`; Task 23) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 
@@ -494,11 +495,13 @@ Tasks 20 to 23 build #1507's last comment ("Apply them before the area's remaini
 
 **Files:** `src/Consultologist.Api/V31/OperatorWeeklySummary.cs` (`Compose`, `RunOnceAsync`); whatever reads an account's active packages (`WorkflowPackageStore`) and the published types in the Api; `tests/V31Engine/OperatorWeeklySummaryTests.cs`; `engine-v31.md`.
 
-- [ ] **Step 1: Write the failing tests.** `TheMigrationLine_CountsHandEditsOfPackagesBelow31` (two account packages at 30, one with hand edits, one clean, and one at 31: the line is D22's, counting only the first two). `APackageThatDoesNotMigrate_IsCountedApart`. `WhenThePackagesCannotBeRead_TheLineSaysSo_NeverZero`. `TheLargestRecordLine_IsUnchanged` (area 11's). The line carries only counts: no package text, no value (*Global Constraints*).
-- [ ] **Step 2: Run; they fail.**
-- [ ] **Step 3: Implement.** `Compose` takes the migration figures as a parameter; `RunOnceAsync` gathers them, one package's failure never failing the summary. If the Api cannot build `Migration31Options` (the registry, the toolchain, 30's catalogue) where the summary runs, stop and report BLOCKED with what is missing.
-- [ ] **Step 4: Run** the solution's tests (not E2E): green.
-- [ ] **Step 5: Commit** (`Api (#1507): …`) and push.
+- [x] **Step 1: Write the failing tests.** `TheMigrationLine_CountsHandEditsOfPackagesBelow31` (two account packages at 30, one with hand edits, one clean, and one at 31: the line is D22's, counting only the first two). `APackageThatDoesNotMigrate_IsCountedApart`. `WhenThePackagesCannotBeRead_TheLineSaysSo_NeverZero`. `TheLargestRecordLine_IsUnchanged` (area 11's). The line carries only counts: no package text, no value (*Global Constraints*).
+- [x] **Step 2: Run; they fail.**
+- [x] **Step 3: Implement.** `Compose` takes the migration figures as a parameter; `RunOnceAsync` gathers them, one package's failure never failing the summary. If the Api cannot build `Migration31Options` (the registry, the toolchain, 30's catalogue) where the summary runs, stop and report BLOCKED with what is missing.
+- [x] **Step 4: Run** the solution's tests (not E2E): green.
+- [x] **Step 5: Commit** (`Api (#1507): …`) and push.
+
+  *Recorded in the build:* the Api could not build `Migration31Options` where the summary runs (no type registry in its output); the controller ruled to bundle it. `Consultologist.Api.csproj` copies the package format's `v31/formats/*.json` and `v31/renderers/*` (to `package-format/v31/`) and the agents catalogue's `v31/formats/*.json` (to `agents/v31/formats/`): 16 files, 6,834 bytes. `PublishedTypeRegistry` (`V31/`) reads them once, on first use, by `TypeRegistry.Read`, a failure not kept; area 11's publish path reuses it; `PublishedTypeRegistryTests` holds the build output's copy equal to `V31Contract.PublishedTypes()`. The raw manifest: the store kept only the parsed model, so `IWorkflowPackageSources.ReadSourceAsync` (on `WorkflowPackageStore`) returns the stored `manifest.json` text and, at a version the 5–30 load takes, `SourceFiles` and the load's formats catalogue (31, below 5, or a version that does not read: the text alone). `OutstandingHandEdits` gathers the figures: each account's pin (`IWorkflowPackagePinResolver`), each distinct package read once, each below 31 migrated in memory; `<p>` is the packages with at least one hand edit; a refusal or a throw from `Migrate` is one of `<q>`; a pin, a package read or the registry (or the toolchain) that fails is A10-058. `EngineToolchain.Current()` gives the toolchain without an output contracts catalogue. D22's words are used as written, so one package reads `1 packages`.
 
 ### Task 13: The offline run
 

@@ -547,9 +547,21 @@ NCRONTAB value, for example `0 0 7 * * 1`. **Unset, the function is disabled** a
 text retention timer is. It reads nothing unless the engine runs 31 (`WorkflowPackages__PreviewSpecVersions`
 admits it), even with the schedule set. It lists every account's jobs from the job index that ended in the 7 days
 before the run, at every version, and mails `Jobs`, `Failures`, the p50 and p90 of the durations (nearest rank) and
-two lines areas 09 and 10 fill: `Largest record` and `Outstanding migration hand edits` read *not measured in this
-build* (the record's size per job is logged when it is sealed, below, for the gate to read; the summary does not
-read it yet). With no alert address it is only logged, as counts.
+two lines areas 09 and 10 fill. `Largest record` reads *not measured in this build* (area 11's, #1508; the record's
+size per job is logged when it is sealed, below, for the gate to read; the summary does not read it yet). With no
+alert address it is only logged, as counts.
+
+**The migration line** (#1507, R11, D22; `OutstandingHandEdits`) is computed by the summary itself, in its timer
+function, never in an orchestration. Each account's active package is the one a consult would run (the pin
+resolver, as the pin health report reads it). Each distinct package is read once as stored
+(`IWorkflowPackageSources.ReadSourceAsync`: the stored `manifest.json` text and, below 31, the files the load gathers),
+and a package below 31 is migrated in memory by `WorkflowPackageMigration30To31.Migrate` against the bundled 31 type
+registry (`PublishedTypeRegistry`, read on first use from `package-format/v31/` and `agents/v31/` in the app's
+output), nothing written. The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
+migrate`: `<n>` the hand-edit notices summed, `<p>` the packages with at least one, `<q>` the packages the migration
+refused or failed on. A package at 31 is not counted. When a pin, a package or the registry cannot be read, the line
+is A10-058, `Outstanding migration hand edits: not counted; <the type registry | the accounts' active packages> could
+not be read.`, never a zero, and the summary still goes out. The line carries counts only.
 
 ## The engine-fault log (A08-006)
 
