@@ -197,7 +197,9 @@ public sealed class V31JobStarter(
             timeZone,
             request.ScheduledAtUtc,
             DrainAware: true,
-            accountKind);
+            accountKind,
+            // #1507 (R8, D18): the address and delivery.emailPdf as this start read them (#518), never the password
+            new V31DeliverySettings(origin.ReplyToAddress, origin.EmailRequested));
 
         // Part 09 § 3.6 (D9): during a drain the job is held and initialised as above, and waits, parked; the door still answers with its id.
         if (await EngineDrainJobs.ParkIfDrainingAsync(drain, client, jobId, nameof(ConsultGenerationOrchestratorV31), orchestrationInput, accountKind, logger, cancellationToken))

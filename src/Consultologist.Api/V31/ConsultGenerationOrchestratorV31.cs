@@ -18,7 +18,9 @@ namespace Consultologist.Api.V31;
 /// <paramref name="RunFactsBase"/> holds the run facts only the start knows (<c>id</c>, <c>engine</c>), by name;
 /// <see cref="V31StartChecks.RunFacts"/> adds the rest. <paramref name="DrainAware"/> marks an orchestration started by a build that
 /// drains (D9). <paramref name="AccountKind"/> picks the held inputs' container, and the outputs container at completion, as a
-/// 5–30 job's does.
+/// 5–30 job's does. #1507 (area 10; R8, D18): <paramref name="Delivery"/> is the delivery address and <c>delivery.emailPdf</c>
+/// as the start read them, which every delivery attempt uses; trailing and optional, so an orchestration started before it
+/// replays with <c>null</c> and its channels read the settings at the attempt, as that build did.
 /// </summary>
 public sealed record ConsultGenerationOrchestrationInputV31(
     string JobId,
@@ -34,7 +36,17 @@ public sealed record ConsultGenerationOrchestrationInputV31(
     string? TimeZone,
     DateTimeOffset? ScheduledAtUtc,
     bool DrainAware,
-    string? AccountKind);
+    string? AccountKind,
+    V31DeliverySettings? Delivery = null);
+
+/// <summary>
+/// #1507 (specVersion 31, area 10; R8, ruled by the owner on #1507, 2026-11-22; D18): what a 31 job delivers to, read once at
+/// its start as a 5–30 job reads it (#518: "a choice changed mid-run does not change what was promised"): the address of the
+/// job's origin (<see cref="ConsultGenerationJobOrigin.ReplyToAddress"/>: the account's verified delivery address, or the email
+/// door's sender) and whether the account asked to be emailed (<see cref="ConsultGenerationJobOrigin.EmailRequested"/>, from
+/// <c>delivery.emailPdf</c>). The document password is not here: it is read at the attempt, so no secret enters a history.
+/// </summary>
+public sealed record V31DeliverySettings(string? Address, bool EmailRequested);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 §§ 1.2 step 6, 3.1, 3.2, 3.4; part 04 § 7.7; D7, D12): a 31 job's orchestration.
@@ -232,8 +244,10 @@ public sealed class ConsultGenerationOrchestratorV31
     /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8; R2, R3): a job that succeeded with something to send
     /// enters <see cref="ConsultGenerationJobStatuses.Delivering"/> and delivers its released deliverables
     /// (<see cref="DeliveryRunner"/> inline, its sends <see cref="ConsultGenerationActivityNames.DeliverV31"/> and its waits
-    /// durable timers, <see cref="DurableDeliveryHost"/>; its rows on the entity). A job with nothing to send (every
-    /// deliverable held, skipped, blocked, or delivered nowhere) never enters it. However delivery goes, the job is then
+    /// durable timers, <see cref="DurableDeliveryHost"/>; its rows on the entity). #1507 (D19, ruled by the owner on #1507,
+    /// 2026-11-22T21:38Z): a job that released nothing but blocked or held a deliverable a mail kind delivers sends the
+    /// link-only email (<see cref="DeliveryPlan.Sends"/>). A job with nothing to send (every deliverable skipped, or
+    /// delivered nowhere) never enters it. However delivery goes, the job is then
     /// Completed: a destination that failed is a row, not the job's failure.
     /// </summary>
     private static async Task DeliverAsync(
