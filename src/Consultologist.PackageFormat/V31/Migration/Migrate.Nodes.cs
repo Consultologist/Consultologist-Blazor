@@ -23,7 +23,9 @@ internal static partial class Migrate
     {
         ArgumentNullException.ThrowIfNull(m);
         var tree = new NodeTree(m.Manifest30.Nodes ?? []);
-        tree.Composed.UnionWith(ComposedNodes(m, tree));
+        var (composed, direct) = ComposedNodes(m, tree);
+        tree.Composed.UnionWith(composed);
+        tree.ComposedDirect.UnionWith(direct);
         var cases = new Dictionary<string, CaseShape>(StringComparer.Ordinal);
         PlaceNodes(m, tree, cases);
         foreach (var (id, shape) in CaseBranches(m, tree))

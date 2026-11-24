@@ -351,8 +351,9 @@ internal static class MigrationSentences
 
     /// <summary>
     /// A10-053 (R9, D20; part 06 § 6.4): a reason: the <paramref name="kind"/> node <paramref name="flow"/> a deliverable
-    /// composes returns 30 prose (<c>markdown_block</c>) from one branch and plain text from another, a union a
-    /// <c>markdown_block</c> deliverable escapes as a string, the Markdown with it.
+    /// composes through no <c>for</c> returns 30 prose (<c>markdown_block</c>) from one branch and plain text from another,
+    /// a union a <c>markdown_block</c> deliverable escapes as a string, the Markdown with it (under a <c>for</c> the
+    /// deliverable reads the loop's <c>.content</c>, which is never escaped: no hand edit, D23).
     /// </summary>
     public static string ComposedBranchesMix(string kind, string flow) =>
         $"the {kind} '{flow}' that a deliverable composes returns Markdown from one branch and plain text from another, which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";

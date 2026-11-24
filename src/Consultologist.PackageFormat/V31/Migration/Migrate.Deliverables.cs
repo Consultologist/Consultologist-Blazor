@@ -95,28 +95,35 @@ internal static partial class Migrate
     /// 30 deliverable's <c>sources</c> (read as <see cref="SourceRead"/> reads them) is followed through flows: a source that
     /// is a flow gives itself and every node its <c>ret</c> chain reaches (a loop's or a while's <c>ret</c>, an <c>if</c>'s
     /// <c>then</c> and <c>else</c>, a <c>case</c>'s branches and <c>else</c>). Which leaves change format is
-    /// <see cref="AgentFormat"/>'s to say; a composed <c>if</c> or <c>case</c> whose branches then mix Markdown and plain text
-    /// is <see cref="WriteFlow"/>'s hand edit (A10-053). Computed before the nodes pass works out any format.
+    /// <see cref="AgentFormat"/>'s to say. <c>Direct</c> holds those reached through no <c>for</c>: a deliverable reads a
+    /// <c>for</c> as its <c>.content</c>, the standard rendering typed <c>markdown_block</c> (D23), so what lies under a
+    /// <c>for</c> is never escaped by the read; a composed <c>if</c> or <c>case</c> in <c>Direct</c> whose branches mix
+    /// Markdown and plain text is <see cref="WriteFlow"/>'s hand edit (A10-053, Task 24's fix round 1). Computed before the
+    /// nodes pass works out any format.
     /// </summary>
-    private static HashSet<string> ComposedNodes(Migrated m, NodeTree tree)
+    private static (HashSet<string> All, HashSet<string> Direct) ComposedNodes(Migrated m, NodeTree tree)
     {
         var composed = new HashSet<string>(StringComparer.Ordinal);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var pending = new Stack<string>();
+        var direct = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<(string, bool)>();
+        var pending = new Stack<(string Id, bool UnderFor)>();
         foreach (var deliverable in m.Manifest30.EffectiveDeliverables)
         {
             foreach (var source in deliverable.Sources ?? [])
             {
                 if (source is not null)
-                    pending.Push(source.StartsWith("node.", StringComparison.Ordinal) ? source["node.".Length..] : source);
+                    pending.Push((source.StartsWith("node.", StringComparison.Ordinal) ? source["node.".Length..] : source, false));
             }
         }
 
-        while (pending.TryPop(out var id))
+        while (pending.TryPop(out var next))
         {
-            if (!seen.Add(id) || !tree.ById.TryGetValue(id, out var node))
+            var (id, underFor) = next;
+            if (!seen.Add((id, underFor)) || !tree.ById.TryGetValue(id, out var node))
                 continue;
             composed.Add(id);
+            if (!underFor)
+                direct.Add(id);
             if (!WorkflowImpliedPaths.IsFlow(node))
                 continue;
 
@@ -126,14 +133,15 @@ internal static partial class Migrate
                 { If: not null } => [node.Then?.Ret, node.Else?.Ret],
                 _ => [.. (node.Branches ?? []).Select(b => b.Ret), node.Else?.Ret],
             };
+            var below = underFor || node.For is not null;
             foreach (var ret in rets)
             {
                 if (RetId(ret) is { } child)
-                    pending.Push(child);
+                    pending.Push((child, below));
             }
         }
 
-        return composed;
+        return (composed, direct);
     }
 
     /// <summary>

@@ -33,6 +33,12 @@ internal static partial class Migrate
         /// <summary>The nodes a deliverable composes, its sources and every node their <c>ret</c>s reach (R9, D20): filled by <see cref="ComposedNodes"/> before any format is worked out.</summary>
         public HashSet<string> Composed { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// The part of <see cref="Composed"/> a deliverable reaches through no <c>for</c> (a <c>for</c> itself included):
+        /// what its read may escape, as a loop's <c>.content</c> is <c>markdown_block</c> (D23; Task 24's fix round 1).
+        /// </summary>
+        public HashSet<string> ComposedDirect { get; } = new(StringComparer.Ordinal);
+
         public Dictionary<string, WorkflowNodeSpec> ById { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, string> Owner { get; } = new(StringComparer.Ordinal);
@@ -372,8 +378,10 @@ internal static partial class Migrate
         // R9, D20: a composed if or case whose branches return 30 prose (markdown_block) and plain text (a let of text, a
         // rendered node, agent_plaintext) would be the union of both, which a markdown_block deliverable escapes as a string,
         // 30's Markdown with it. No 31 format keeps both, so it is a hand edit (A10-053), written markdown_block, which the
-        // checker refuses against the union its branches give (S02-015).
-        if (kind is "if" or "case" && tree.Composed.Contains(id) && MixesMarkdownAndPlainText(m, m.NodeReads[id].Format))
+        // checker refuses against the union its branches give (S02-015). Only where a deliverable reaches it through no for
+        // (D23, Task 24's fix round 1): under a for the deliverable reads the loop's .content, markdown_block and never
+        // escaped, so the union is written as derived and 30's bytes are kept.
+        if (kind is "if" or "case" && tree.ComposedDirect.Contains(id) && MixesMarkdownAndPlainText(m, m.NodeReads[id].Format))
         {
             header["format"] = "markdown_block";
             m.HandEdit(file, "format", MigrationSentences.ComposedBranchesMix(kind, id));
