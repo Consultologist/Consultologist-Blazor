@@ -559,9 +559,12 @@ and a package below 31 is migrated in memory by `WorkflowPackageMigration30To31.
 registry (`PublishedTypeRegistry`, read on first use from `package-format/v31/` and `agents/v31/` in the app's
 output), nothing written. The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
 migrate`: `<n>` the hand-edit notices summed, `<p>` the packages with at least one, `<q>` the packages the migration
-refused or failed on. A package at 31 is not counted. When a pin, a package or the registry cannot be read, the line
-is A10-058, `Outstanding migration hand edits: not counted; <the type registry | the accounts' active packages> could
-not be read.`, never a zero, and the summary still goes out. The line carries counts only.
+refused or failed on. A package at 31 is not counted. A pin or a package that cannot be read fails alone (a stale
+pin is a normal state): the rest are counted on that line, and A10-059 follows it, `Outstanding migration hand edits:
+<k> of the accounts' active packages could not be read and are not counted.`; when none could be read, A10-059
+stands alone, never a line of zeros. When the registry cannot be read while a package is below 31, A10-058 stands
+alone: `Outstanding migration hand edits: not counted; the type registry could not be read.` The summary still goes
+out, and the lines and the log carry counts only, none for what was not read.
 
 ## The engine-fault log (A08-006)
 
