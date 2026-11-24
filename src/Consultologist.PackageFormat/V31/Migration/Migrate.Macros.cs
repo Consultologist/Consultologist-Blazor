@@ -268,8 +268,8 @@ internal static partial class Migrate
     /// Part 05 § 8.3's format match: the text format of the agents that place the macro (its body is inserted verbatim, so
     /// it takes theirs), each placement through a snippet body counted as the agents whose 30 prompts place that snippet
     /// (or its folder): <c>markdown_inline</c> when one is inline (a block macro is refused there), <c>markdown_block</c>
-    /// when every one is, else <c>plaintext</c> (30's prose nodes are plain text; a plain macro in a Markdown node is
-    /// escaped). A snippet placed only by another snippet reaches no agent here: 30's agents are all prose, so that leaves
+    /// when every one is, else <c>plaintext</c> (30's prose nodes are plain text unless a deliverable composes them,
+    /// R9; a plain macro in a Markdown node is escaped). A snippet placed only by another snippet reaches no agent here: 30's agents are all prose, so that leaves
     /// the format they would give.
     /// </summary>
     private static string MacroFormat(Migrated m, string key)

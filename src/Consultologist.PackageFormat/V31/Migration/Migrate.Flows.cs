@@ -30,6 +30,9 @@ internal static partial class Migrate
             Top = [.. ById.Keys.Where(id => !Owner.ContainsKey(id))];
         }
 
+        /// <summary>The leaves a deliverable composes (R9, D20): filled by <see cref="ComposedLeaves"/> before any format is worked out.</summary>
+        public HashSet<string> Composed { get; } = new(StringComparer.Ordinal);
+
         public Dictionary<string, WorkflowNodeSpec> ById { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, string> Owner { get; } = new(StringComparer.Ordinal);
@@ -127,7 +130,7 @@ internal static partial class Migrate
         JsonNode format;
         if (!WorkflowImpliedPaths.IsFlow(node))
         {
-            format = IsCheck(m, node) ? JsonValue.Create("check_result") : LeafFormat(m, node);
+            format = IsCheck(m, node) ? JsonValue.Create("check_result") : LeafFormat(m, node, tree.Composed.Contains(id));
         }
         else if (depth > SourceBounds.JsonDepth)
         {

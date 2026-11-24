@@ -14,7 +14,7 @@ namespace Consultologist.PackageFormat.V31.Migration;
 internal static partial class Migrate
 {
     /// <summary>
-    /// The nodes pass: the tree, then every node's key, read and place (<see cref="PlaceNodes"/>), the cases' branches
+    /// The nodes pass: the tree and the leaves a deliverable composes (<see cref="ComposedLeaves"/>, R9), then every node's key, read and place (<see cref="PlaceNodes"/>), the cases' branches
     /// (<see cref="CaseBranches"/>, after which what is always valued is known), then each top-level node in 30's order
     /// (listed in <c>nodes/index.json</c>), each flow's children inside it; then each single snippet's <c>if</c>.
     /// </summary>
@@ -22,6 +22,7 @@ internal static partial class Migrate
     {
         ArgumentNullException.ThrowIfNull(m);
         var tree = new NodeTree(m.Manifest30.Nodes ?? []);
+        tree.Composed.UnionWith(ComposedLeaves(m, tree));
         var cases = new Dictionary<string, CaseShape>(StringComparer.Ordinal);
         PlaceNodes(m, tree, cases);
         foreach (var (id, shape) in CaseBranches(m, tree))
@@ -136,27 +137,31 @@ internal static partial class Migrate
     /// <summary>
     /// A leaf's 31 format (part 02 § 11, part 10 § 1.2): a <c>let</c>'s from its <c>type</c> (<c>text</c> is
     /// <c>plaintext</c>; <c>number</c>, <c>boolean</c> and a format id are kept); a <c>rendered</c> node's
-    /// <c>plaintext</c>, the text 30 rendered; an agent's the plain format of the same shape (<c>prose</c> and
-    /// <c>agent_plaintext</c> are <c>plaintext</c>, <c>agent_markdown_block</c> and <c>agent_markdown_inline</c> their
-    /// markdown formats); <c>classification</c>, <c>concept_list</c> and package formats keep their names.
+    /// <c>plaintext</c>, the text 30 rendered; an agent's the plain format of the same shape (<see cref="AgentFormat"/>),
+    /// prose a deliverable composes being <c>markdown_block</c> (R9: <paramref name="composed"/>, D20).
     /// </summary>
-    private static JsonNode LeafFormat(Migrated m, WorkflowNodeSpec node)
+    private static JsonNode LeafFormat(Migrated m, WorkflowNodeSpec node, bool composed)
     {
         if (node.Let is not null)
             return JsonValue.Create(node.Type == WorkflowLetAt30.Text ? "plaintext" : node.Type ?? "plaintext");
         if (LeafKind(m, node) == "rendered")
             return JsonValue.Create("plaintext");
-        return JsonValue.Create(AgentFormat(node.Format));
+        return JsonValue.Create(AgentFormat(node.Format, composed));
     }
 
     /// <summary>
     /// Part 02 § 11's format row: an agent node's 30 format as 31 names it, the plain format of the same shape (<c>prose</c>
     /// and <c>agent_plaintext</c> are <c>plaintext</c>, <c>agent_markdown_block</c> and <c>agent_markdown_inline</c> their
-    /// markdown formats); any other (<c>classification</c>, <c>concept_list</c>, a package format) keeps its name.
+    /// markdown formats); any other (<c>classification</c>, <c>concept_list</c>, a package format) keeps its name. R9
+    /// (#1507, 2026-11-22T16:26Z, item 2; D20, accepted 2026-11-22T21:38Z; part 10 § 1.2): <c>prose</c> (and no format,
+    /// which is prose) that a deliverable composes (<paramref name="composed"/>) is <c>markdown_block</c>, since 30's
+    /// composer kept its Markdown and a <c>markdown_block</c> deliverable escapes a plain-text read; <c>agent_plaintext</c>,
+    /// declared plain text by its author, stays <c>plaintext</c>.
     /// </summary>
-    internal static string AgentFormat(string? format) => format switch
+    internal static string AgentFormat(string? format, bool composed = false) => format switch
     {
-        "prose" or "agent_plaintext" or null => "plaintext",
+        "prose" or null => composed ? "markdown_block" : "plaintext",
+        "agent_plaintext" => "plaintext",
         "agent_markdown_block" => "markdown_block",
         "agent_markdown_inline" => "markdown_inline",
         var kept => kept,

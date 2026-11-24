@@ -91,6 +91,53 @@ internal static partial class Migrate
     }
 
     /// <summary>
+    /// R9 (#1507, 2026-11-22T16:26Z, item 2) and D20 (accepted 2026-11-22T21:38Z): the leaves a deliverable composes. Each
+    /// 30 deliverable's <c>sources</c> (read as <see cref="SourceRead"/> reads them) is followed through flows: a source that
+    /// is a flow gives every leaf its <c>ret</c> chain reaches (a loop's or a while's <c>ret</c>, an <c>if</c>'s
+    /// <c>then</c> and <c>else</c>, a <c>case</c>'s branches and <c>else</c>); a leaf is itself. Which of them changes
+    /// format is <see cref="AgentFormat"/>'s to say. Computed before the nodes pass works out any format.
+    /// </summary>
+    private static HashSet<string> ComposedLeaves(Migrated m, NodeTree tree)
+    {
+        var leaves = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<string>();
+        foreach (var deliverable in m.Manifest30.EffectiveDeliverables)
+        {
+            foreach (var source in deliverable.Sources ?? [])
+            {
+                if (source is not null)
+                    pending.Push(source.StartsWith("node.", StringComparison.Ordinal) ? source["node.".Length..] : source);
+            }
+        }
+
+        while (pending.TryPop(out var id))
+        {
+            if (!seen.Add(id) || !tree.ById.TryGetValue(id, out var node))
+                continue;
+            if (!WorkflowImpliedPaths.IsFlow(node))
+            {
+                leaves.Add(id);
+                continue;
+            }
+
+            IEnumerable<string?> rets = node switch
+            {
+                { For: not null } or { While: not null } => [node.Ret],
+                { If: not null } => [node.Then?.Ret, node.Else?.Ret],
+                _ => [.. (node.Branches ?? []).Select(b => b.Ret), node.Else?.Ret],
+            };
+            foreach (var ret in rets)
+            {
+                if (RetId(ret) is { } child)
+                    pending.Push(child);
+            }
+        }
+
+        return leaves;
+    }
+
+    /// <summary>
     /// D3, D4 (part 05 § 10; part 06 § 6.3: a deliverable reads no <c>macro.*</c>): one deliverable macro at its place. With
     /// no condition anywhere it is a snippet read: the snippet the macros pass made of it, or, when the macro stays one
     /// because a prompt or a node also places it, a snippet written here from its body (<see cref="SnippetCopy"/>). With a
