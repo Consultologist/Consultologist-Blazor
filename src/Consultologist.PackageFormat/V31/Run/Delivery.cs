@@ -145,16 +145,19 @@ public static class DeliveryPlan
     /// kind of its <c>delivery</c>; for a folder with <c>bundle: "zip"</c>, one per kind for all its released deliverables,
     /// at the place of its first (D11). A deliverable not released, or with <c>delivery: []</c>, has none; so has a bundle
     /// folder with nothing released. #1507 (area 10; D19, ruled by the owner on #1507, 2026-11-22T21:38Z): a job that
-    /// released nothing, with a deliverable blocked or held, still sends 30's link-only email: one send per mail kind
-    /// (<c>email</c>, <c>pdf</c>) any of those lists, carrying each that lists it, in plan order, by its label and with no
-    /// text (<see cref="DeliverySend.EveryDeliverableBlocked"/>).
+    /// released nothing, with a deliverable blocked or held that a mail kind (<c>email</c>, <c>pdf</c>) delivers, still sends
+    /// 30's link-only email, once per job (the controller's ruling on Task 22's review): one send, of <c>email</c> when any of
+    /// those lists it, else <c>pdf</c>, carrying each of them, in plan order, by its label and with no text
+    /// (<see cref="DeliverySend.EveryDeliverableBlocked"/>); each mail destination each lists gets a row from that one send
+    /// (<see cref="MailKindsOf"/>). <paramref name="blockedEmail"/> <c>false</c> leaves that send out: an orchestration
+    /// started before #1507's build replays the sends it made then.
     /// </summary>
-    public static IReadOnlyList<DeliverySend> Sends(IReadOnlyList<DeliverableOutcome> outcomes)
+    public static IReadOnlyList<DeliverySend> Sends(IReadOnlyList<DeliverableOutcome> outcomes, bool blockedEmail = true)
     {
         ArgumentNullException.ThrowIfNull(outcomes);
         var released = outcomes.Where(o => o is { State: DeliverableState.Released }).ToList();
         if (released.Count == 0)
-            return Blocked(outcomes);
+            return blockedEmail ? Blocked(outcomes) : [];
         var sends = new List<DeliverySend>();
         var bundled = new HashSet<string>(StringComparer.Ordinal);
         foreach (var outcome in released)
@@ -220,23 +223,22 @@ public static class DeliveryPlan
     /// <summary>D13: a destination unsent after its attempts or when the window closed.</summary>
     internal static string FailedKind(string kind) => $"failed: {kind}";
 
-    /// <summary>D19: the link-only sends of a job that released nothing, its blocked and held deliverables by label only.</summary>
+    /// <summary>D19: the one link-only send of a job that released nothing, its blocked and held deliverables by label only.</summary>
     private static IReadOnlyList<DeliverySend> Blocked(IReadOnlyList<DeliverableOutcome> outcomes)
     {
-        var withheld = outcomes.Where(o => o.State is DeliverableState.Blocked or DeliverableState.Held).ToList();
-        var sends = new List<DeliverySend>();
-        foreach (var kind in MailKinds)
-        {
-            var documents = withheld
-                .Where(o => KindsOf(o).Contains(kind, StringComparer.Ordinal))
-                .Select(o => new DeliveryDocument(o.Key, o.Label, o.Format, ""))
-                .ToList();
-            if (documents.Count > 0)
-                sends.Add(new DeliverySend(kind, null, "", documents, 1, EveryDeliverableBlocked: true));
-        }
-
-        return sends;
+        var withheld = outcomes
+            .Where(o => o.State is DeliverableState.Blocked or DeliverableState.Held && MailKindsOf(o).Count > 0)
+            .ToList();
+        if (withheld.Count == 0)
+            return [];
+        var kind = MailKinds.First(k => withheld.Any(o => MailKindsOf(o).Contains(k, StringComparer.Ordinal)));
+        var documents = withheld.Select(o => new DeliveryDocument(o.Key, o.Label, o.Format, "")).ToList();
+        return [new DeliverySend(kind, null, "", documents, 1, EveryDeliverableBlocked: true)];
     }
+
+    /// <summary>D19: the mail kinds (<c>email</c>, <c>pdf</c>) <paramref name="outcome"/>'s <c>delivery</c> lists, in <see cref="Kinds"/> order.</summary>
+    internal static IReadOnlyList<string> MailKindsOf(DeliverableOutcome outcome) =>
+        KindsOf(outcome).Where(k => MailKinds.Contains(k, StringComparer.Ordinal)).ToList();
 
     private static bool IsBundled(DeliverableOutcome outcome) => string.Equals(outcome.Bundle, "zip", StringComparison.Ordinal);
 
