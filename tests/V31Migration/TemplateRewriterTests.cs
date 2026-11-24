@@ -141,7 +141,7 @@ public class TemplateRewriterTests
 
         // Part 04 § 2.6: the items, a body node through .nodes, and the state for 30's skipped.
         Assert.Equal(
-            "{{ for s in node.sections.items }}{{ if s.state != \"skipped\" }}{{ s.nodes.outline.content }}: {{ s.content }}{{ else }}{{ end }}{{ end }}\n",
+            "{{ for s in node.sections.items }}{{ if s.state == \"completed\" }}{{ s.nodes.outline.content }}: {{ s.content }}{{ else }}{{ end }}{{ end }}\n",
             rewritten.Text);
         Assert.Empty(rewritten.HandEdits);
 
@@ -165,7 +165,7 @@ public class TemplateRewriterTests
             """,
             Body(MigrateNodesTests.Migrated("example-conditional-sections"), "nodes/coverage.md"));
         Assert.Contains(
-            "Prior letters, as read:\n{{ for letter in node.letters.items }}{{ if letter.state != \"skipped\" }}{{ letter.content }}\n\n{{ else }}{{ end }}{{ end }}\nConsult draft:",
+            "Prior letters, as read:\n{{ for letter in node.letters.items }}{{ if letter.state == \"completed\" }}{{ letter.content }}\n\n{{ else }}{{ end }}{{ end }}\nConsult draft:",
             Body(MigrateNodesTests.Migrated("example-prior-letters"), "nodes/assessment.md"),
             StringComparison.Ordinal);
     }

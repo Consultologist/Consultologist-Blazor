@@ -157,7 +157,10 @@ internal static class V31Contract
     /// reason, part 06 § 8, R8, D17, D19; A10-057: the link-only email's line when every deliverable is blocked, D19; A10-058:
     /// the weekly summary's hand-edits line when its figures could not be read, part 09 § 3.9, R11, D22; A10-059: the line
     /// after it counting the accounts' active packages that could not be read, R11, D22, Task 23 fix round 1; A10-011, A10-060
-    /// and A10-061: why a migrated package carries no snapshot test, part 10 § 4, part 07 § 8.4, D13, Task 14).
+    /// and A10-061: why a migrated package carries no snapshot test, part 10 § 4, part 07 § 8.4, D13, Task 14; A10-014: the
+    /// migration report's worst-case note, part 10 § 3.2, D14; A10-062: the offline run's start refused because no
+    /// deliverable can exist, in the 30 and 31 starts' words, R8; A10-063: the report's notice that each deliverable is
+    /// delivered in a message of its own, R8, Task 15).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -173,6 +176,7 @@ internal static class V31Contract
         ["A10-011"] = "No snapshot test was written: hand edits remain.",
         ["A10-012"] = "The package is at specVersion <n>; migration starts at 5.",
         ["A10-013"] = "Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.",
+        ["A10-014"] = "<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes.",
         ["A10-015"] = "The package is already at specVersion <n>.",
         ["A10-016"] = "The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.",
         ["A10-017"] = "At specVersion <n>: <refusal>",
@@ -220,6 +224,8 @@ internal static class V31Contract
         ["A10-059"] = "Outstanding migration hand edits: <k> of the accounts' active packages could not be read and are not counted.",
         ["A10-060"] = "No snapshot test was written: tests/migration_snapshot.json would take the package past SourceBounds.<fileBytes | totalBytes | files>.",
         ["A10-061"] = "No snapshot test was written: the migrated package <does not publish: <sentences> | is refused at its run's start | fails its offline run | times out in its offline run | cannot be run offline>.",
+        ["A10-062"] = "No document applies to these inputs. <documents>",
+        ["A10-063"] = "Each deliverable is now delivered by pdf in a message of its own, where 30 sent one message for the job.",
     };
 
     private static string RepoRoot()

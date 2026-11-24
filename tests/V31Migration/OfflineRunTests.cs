@@ -73,6 +73,36 @@ public class OfflineRunTests
         }
     }
 
+    /// <summary>
+    /// #1507 (Task 15; R8, #1505): a start no deliverable can exist for is refused offline as the engine's start refuses it
+    /// (<see cref="RunInputsBuilder.NoDeliverableCanExist"/>, moved from <c>V31StartChecks</c>), with A10-062 and the
+    /// words the engine's start gives (<c>ConsultGenerationJobStarter.NoneApplyDetail</c>); nothing runs, and every output
+    /// given is unused. A deliverable that can exist starts as before.
+    /// </summary>
+    [Fact]
+    public async Task AStartNoDeliverableCanExistFor_IsRefusedOffline_AsTheEnginesStartIs()
+    {
+        var plan = V31StartChecksTests.Plan(deliverableIf: """{ "===": [{ "var": "input.code.value" }, "XYZ-9"] }""");
+        var outputs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.draft"] = "Stub." };
+        var request = new OfflineRequest(V31StartChecksTests.Valid(), NoProfile, new JsonObject(), outputs, Start);
+
+        var refused = await OfflineRun.RunAsync(plan, request);
+
+        Assert.Null(refused.State);
+        var refusal = Assert.Single(refused.StartRefusals);
+        Assert.Equal(OfflineRun.NoApplicableDeliverable, refusal.Id);
+        Assert.Equal(
+            Consultologist.Api.Jobs.ConsultGenerationJobStarter.NoneApplyDetail(V31StartChecks.NotProduced(plan)),
+            refusal.Sentence);
+        V31Contract.AssertSentence(refusal);
+        Assert.Empty(refused.Prompts);
+        Assert.Equal(["node.draft"], refused.UnusedOutputs);
+
+        var holds = await OfflineRun.RunAsync(V31StartChecksTests.Plan(deliverableIf: """{ "===": [{ "var": "input.code.value" }, "ABC-1"] }"""), request);
+        Assert.NotNull(holds.State);
+        Assert.Empty(holds.StartRefusals);
+    }
+
     // ---- the same texts as the composing host ----------------------------------------------------------------
 
     [Fact]

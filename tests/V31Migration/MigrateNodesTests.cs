@@ -75,6 +75,28 @@ public class MigrateNodesTests
             header.Select(m => m.Key));
     }
 
+    /// <summary>
+    /// #1507 (Task 15; D16, part 10 § 3.1): 30's engine appended its classifier trailer to the rendered prompt
+    /// (<c>ClassificationOutputContract.Trailer</c>, the <c>with</c> values in order); 31 drops <c>with</c> (A10-030) and
+    /// appends nothing, so the migration writes the trailer at the end of the body, and the prompt keeps 30's bytes.
+    /// </summary>
+    [Fact]
+    public void AClassifiersPrompt_Ends_WithThe30Trailer()
+    {
+        var result = Migrated("example-classifier-scope");
+
+        var (_, body) = Md(result, "nodes/scope.md");
+        Assert.EndsWith(
+            "{{ input.consult_draft.content }}\n"
+            + Consultologist.Api.Workflow.ClassificationOutputContract.Trailer(["in_scope", "out_of_scope", "needs_information"]),
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains("Node 'scope' declared with at 30, which 31 has no member for; it was dropped.", result.Notices);
+
+        // Only a classifier's: a prose node's prompt is 30's text.
+        Assert.DoesNotContain("Answer with exactly one of", Md(result, "nodes/plan_sections/plan_section.md").Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void TheRenderedFormat_IsARenderedNode_OfATextFormat_ItsTemplateKept()
     {
