@@ -4,7 +4,7 @@
     "Format 'problem_list', field 'problems.name' holds free text; consider a text format.",
     "Format 'problem_list', field 'problems.detail' holds free text; consider a text format.",
     "Hand edit needed in snippets/sections/follow_up_plan.md, if: a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.",
-    "Node 'follow_up' declared with at 30, which 31 has no member for; it was dropped.",
+    "Node 'follow_up' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.",
     "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [

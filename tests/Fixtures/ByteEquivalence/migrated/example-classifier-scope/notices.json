@@ -1,6 +1,6 @@
 {
   "notices": [
-    "Node 'scope' declared with at 30, which 31 has no member for; it was dropped."
+    "Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them."
   ],
   "handEdits": [],
   "refusals": []
