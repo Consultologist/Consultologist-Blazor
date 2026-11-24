@@ -101,8 +101,8 @@ public static class ExpectedDifferences
             Bytes = ItemIds,
         },
         new("position-names-from-the-loop",
-            "part 04 § 2.7 (decided on #1392: an item with no name of its own is named by its loop's label and its 1-based position, where 30 named an input loop's item by the input's label); part 10 § 3.2",
-            "an item of a loop over an input's list that is named by its position takes the loop's label at 31, where 30 gave it the input's label")
+            "part 04 § 2.7 (decided on #1392: with itemLabel null an item is named by its loop's label and its 1-based position, where 30 named an input loop's item by the input's label); part 10 § 3.2",
+            "an item of a loop over an input's list with no itemLabel is named by the loop's label and its position at 31, where 30 gave it the input's label")
         {
             Bytes = PositionNames,
         },
@@ -423,9 +423,11 @@ public static class ExpectedDifferences
     /// <summary>
     /// Part 04 § 2.7: in any compared text but the status, the heading <c>## &lt;loop label&gt; &lt;n&gt;</c> (<c>n</c>
     /// digits, ending its line; a template may place the loop's <c>.content</c> after text on its first line) that a loop over
-    /// an input's list writes in its <c>.content</c> for an item named by its position, where the loop's label is not the
-    /// input's, put back as 30 wrote it, <c>## &lt;input label&gt; &lt;n&gt;</c>. The position is the same at both (30's
-    /// position names count from 1 too); nothing else on the line, and no other line, is touched.
+    /// an input's list with <c>itemLabel: null</c> writes in its <c>.content</c>, every item of it named by its position, where
+    /// the loop's label is not the input's, put back as 30 wrote it, <c>## &lt;input label&gt; &lt;n&gt;</c>. The position is
+    /// the same at both (30's position names count from 1 too); nothing else on the line, and no other line, is touched. A loop
+    /// with an <c>itemLabel</c> is not read: its position name is only the fallback for an item whose name is empty, which the
+    /// text alone cannot tell from a name that reads so, so that fallback is left unexplained.
     /// </summary>
     private static (string Old, string New)? PositionNames(DifferenceContext c, string old, string now)
     {
@@ -435,7 +437,7 @@ public static class ExpectedDifferences
         var names = new List<(string Loop, string Input)>();
         foreach (var entry in c.Plan.Entries.Values.OrderBy(e => e.Order))
         {
-            if (entry.Kind != PlanKind.For || SourceLayout.Text(entry.Json["in"]) is not { } source
+            if (entry.Kind != PlanKind.For || entry.Json["itemLabel"] is not null || SourceLayout.Text(entry.Json["in"]) is not { } source
                 || !source.StartsWith("input.", StringComparison.Ordinal) || !source.EndsWith(".value", StringComparison.Ordinal))
                 continue;
             var id = source["input.".Length..^".value".Length];
