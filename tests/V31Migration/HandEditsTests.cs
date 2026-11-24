@@ -83,14 +83,14 @@ public class HandEditsTests
         }
     }
 
+    /// <summary>The packages whose edits are not made (<see cref="NotEdited"/>).</summary>
+    public static TheoryData<string> NotEditedPackages() => new(NotEdited.Keys.Order(StringComparer.Ordinal));
+
     [Theory]
-    [MemberData(nameof(Packages))]
+    [MemberData(nameof(NotEditedPackages))]
     public void APackageNotEdited_StaysRefused(string package)
     {
         // An edit not made leaves its notice's construct where the checker refuses it, so the package is not compared.
-        if (!NotEdited.ContainsKey(package))
-            return;
-
         Assert.NotEmpty(MigratedPackagesTests.Publish(MigrationFixture.Edited(package)));
     }
 
@@ -156,6 +156,20 @@ public class HandEditsTests
             var text = ByteEquivalenceFixtures.ReadText(readme);
             Assert.All(edited, f => Assert.True(text.Contains($"`{f}`", StringComparison.Ordinal), $"{f} is edited, but the README does not name it."));
         }
+    }
+
+    [Fact]
+    public void AMovedNode_IsComparedThroughItsKeys()
+    {
+        // example-problem-list's edit moves section_draft under the if node applies (part 04 § 5.4); its keys.json lays the
+        // move over the migration's keys, so 30's section_draft:<item> maps to the moved row and back, and no text of the
+        // report is left under a 30 key the migration does not know.
+        var edited = MigrationFixture.Edited("example-problem-list");
+        var plan = EquivalenceFixture.Plan("example-problem-list");
+        Assert.Equal("node.sections.section_draft", MigratedPackagesTests.Migrated("example-problem-list").Keys["section_draft"]);
+        Assert.Equal("node.sections.applies.section_draft:follow_up_plan", KeyMap.To31("section_draft:follow_up_plan", edited, plan));
+        Assert.Equal("section_draft:overview", KeyMap.To30("node.sections.applies.section_draft:overview", edited, plan));
+        Assert.DoesNotContain(EquivalenceFixture.Report("example-problem-list").GetAwaiter().GetResult().Texts, t => t.Site.Contains("@30/", StringComparison.Ordinal));
     }
 
     [Theory]
