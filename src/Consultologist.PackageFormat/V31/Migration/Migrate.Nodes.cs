@@ -86,21 +86,27 @@ internal static partial class Migrate
 
         // D16: a member 31 has no counterpart for is dropped with a notice: a node's with (a classifier's values); a
         // computed or rendered node's onInvalid and failIfEmpty (only an agent node has them at 31).
+        var trailer = kind == "computed" ? "" : ClassifierTrailer(node, kind);
         if (node.With is { Count: > 0 })
-            m.Notice(MigrationSentences.MemberDropped(id, "with"));
+            m.Notice(trailer.Length > 0
+                ? MigrationSentences.ValuesInPrompt(id)
+                : MigrationSentences.MemberDropped(id, "with"));
         if (kind != "agent" && node.OnInvalid is not null)
             m.Notice(MigrationSentences.MemberDropped(id, "onInvalid"));
         if (kind != "agent" && node.FailIfEmpty is not null)
             m.Notice(MigrationSentences.MemberDropped(id, "failIfEmpty"));
 
-        m.Put(file, header, kind == "computed" ? "" : PromptOf(m, node) + ClassifierTrailer(node, kind));
+        m.Put(file, header, kind == "computed" ? "" : PromptOf(m, node) + trailer);
     }
 
     /// <summary>
-    /// #1507 (Task 15; part 10 § 3.1; D16): what 30's engine appended to a classifier's rendered prompt, its <c>with</c>
-    /// values in declared order (<c>ClassificationOutputContract.Trailer</c>: a blank line, then <c>Answer with exactly one
-    /// of: &lt;values joined by ", "&gt;.</c>), written at the end of the 31 body as package text: 31 drops <c>with</c>
-    /// (A10-030) and appends nothing, so the model is told the values as at 30 and the prompt keeps 30's bytes.
+    /// #1507 (Task 15 and its fix round 1; part 10 § 3.1; D16): what 30's engine appended to a classifier's rendered prompt,
+    /// its <c>with</c> values in declared order (<c>ClassificationOutputContract.Trailer</c>: a blank line, then <c>Answer
+    /// with exactly one of: &lt;values joined by ", "&gt;.</c>), written at the end of the 31 body as package text: 31 has no
+    /// <c>with</c> and appends nothing, so the model is told the values as at 30 and the prompt keeps 30's bytes (A10-064).
+    /// A value is written only when it is a 30 id (snake_case, as 30's validator holds every classifier value, so it holds no
+    /// brace, no <c>%</c> and no line ending, and the dialect reads it as text); a package whose values are not is refused at
+    /// 30 before this pass (A10-017), and should one reach it, nothing is written and A10-030 says the values were dropped.
     /// <c>""</c> for any other node.
     /// </summary>
     private static string ClassifierTrailer(WorkflowNodeSpec node, string kind)
@@ -108,7 +114,9 @@ internal static partial class Migrate
         if (kind != "agent" || node.Format != "classification" || node.With?.GetValueOrDefault("values") is not JsonArray values)
             return "";
         var names = values.Select(SourceLayout.Text).ToList();
-        return names.Count == 0 || names.Any(n => n is null) ? "" : $"\n\nAnswer with exactly one of: {string.Join(", ", names)}.";
+        if (names.Count == 0 || names.Any(n => n is null || !WorkflowDeclaredIds.IsValid(n)))
+            return "";
+        return $"\n\nAnswer with exactly one of: {string.Join(", ", names)}.";
     }
 
     /// <summary>A 30 node's prompt text (its <c>prompt</c>, or the file its id implies), as 30 holds it; <c>""</c> when it has none. Task 9 rewrites it.</summary>

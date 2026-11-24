@@ -134,6 +134,19 @@ internal static partial class Migrate
     }
 
     /// <summary>
+    /// #1507 (Task 15 fix round 1; D4, R5): the body of a snippet written from a 30 macro. 30 placed a deliverable macro with
+    /// all its trailing white space trimmed (<c>ConsultMacroExpander</c>'s <c>TrimEnd()</c>), and a snippet is read whole at
+    /// 31 (part 05 § 8.6 drops a final line ending from a macro's body only), so a snippet only deliverables read is written
+    /// with that white space taken off, and keeps 30's bytes. One a 30 prompt also read as <c>.content</c> (which 30 read with
+    /// its file's trailing line ending) is written whole: the two reads cannot both keep 30's bytes, and the comparison says so.
+    /// </summary>
+    internal static string SnippetBody(Migrated m, WorkflowMacroSpec macro, bool readAsContent)
+    {
+        var body = MacroBody(m, macro.File);
+        return readAsContent ? body : body.TrimEnd();
+    }
+
+    /// <summary>
     /// D4 (part 05 § 10): a macro that is fixed text (no condition anywhere, placed only bare on deliverables or read as
     /// <c>.content</c>) is the single snippet <c>snippets/&lt;id&gt;.md</c>: its label, <c>description: null</c>,
     /// <c>if: null</c>, <c>format: "markdown_block"</c> (as the layout writes every 30 snippet) and its body. The templates
@@ -147,7 +160,7 @@ internal static partial class Migrate
             ["description"] = null,
             ["if"] = null,
             ["format"] = "markdown_block",
-        }, MacroBody(m, macro.File));
+        }, SnippetBody(m, macro, readAsContent: m.Walk30.Templates.Any(t => t.References.MacroContents.Contains(macro.Id))));
         m.MacroBodyFiles.Add($"snippets/{macro.Id}.md");
         m.Items("snippets").Add(macro.Id);
     }

@@ -206,7 +206,7 @@ internal static partial class Migrate
             ["description"] = null,
             ["if"] = null,
             ["format"] = "markdown_block",
-        }, MacroBody(m, macro.File));
+        }, SnippetBody(m, macro, readAsContent: false));
         m.MacroBodyFiles.Add(path);
         m.Items("snippets").Add(chosen);
 
