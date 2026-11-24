@@ -246,7 +246,8 @@ public sealed class ConsultGenerationOrchestratorV31
     /// (<see cref="DeliveryRunner"/> inline, its sends <see cref="ConsultGenerationActivityNames.DeliverV31"/> and its waits
     /// durable timers, <see cref="DurableDeliveryHost"/>; its rows on the entity). #1507 (D19, ruled by the owner on #1507,
     /// 2026-11-22T21:38Z): a job that released nothing but blocked or held a deliverable a mail kind delivers sends the
-    /// link-only email (<see cref="DeliveryPlan.Sends"/>). A job with nothing to send (every deliverable skipped, or
+    /// link-only email (<see cref="DeliveryPlan.Sends"/>), once, when this build started the orchestration (its input has
+    /// <see cref="ConsultGenerationOrchestrationInputV31.Delivery"/>). A job with nothing to send (every deliverable skipped, or
     /// delivered nowhere) never enters it. However delivery goes, the job is then
     /// Completed: a destination that failed is a row, not the job's failure.
     /// </summary>
@@ -254,12 +255,16 @@ public sealed class ConsultGenerationOrchestratorV31
         TaskOrchestrationContext context, EntityInstanceId entityId, ConsultGenerationOrchestrationInputV31 input, RunLimits limits,
         StoredRunRecorder recorder, IReadOnlyList<DeliverableOutcome> outcomes, ILogger logger)
     {
-        if (DeliveryPlan.Sends(outcomes).Count == 0)
+        // #1507 (D19; Task 22 fix round 1): the link-only email of a job that released nothing is sent only by an
+        // orchestration this build started (its input carries the start's Delivery); one started before replays the
+        // entity calls and activities it made then, which had no such send.
+        var blockedEmail = input.Delivery != null;
+        if (DeliveryPlan.Sends(outcomes, blockedEmail).Count == 0)
             return;
 
         await context.Entities.CallEntityAsync(entityId, nameof(ConsultGenerationJobEntity.MarkDelivering));
         context.SetCustomStatus(new { status = ConsultGenerationJobStatuses.Delivering });
-        var delivered = await new DeliveryRunner(limits, new DurableDeliveryHost(context, input), recorder).RunAsync(outcomes);
+        var delivered = await new DeliveryRunner(limits, new DurableDeliveryHost(context, input), recorder).RunAsync(outcomes, blockedEmail);
         logger.LogInformation(
             "ConsultGenerationOrchestratorV31 delivered. JobId={JobId}, Rows={Rows}, Failed={Failed}",
             input.JobId, delivered.Rows.Count, delivered.Failed);
