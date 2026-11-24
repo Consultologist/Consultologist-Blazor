@@ -4,6 +4,8 @@
     "consult_note",
     "progress_note"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

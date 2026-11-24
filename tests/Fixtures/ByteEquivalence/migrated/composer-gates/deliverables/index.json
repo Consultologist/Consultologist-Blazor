@@ -6,6 +6,8 @@
     "patient_copy",
     "cover_letter"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

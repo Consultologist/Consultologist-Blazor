@@ -13,6 +13,8 @@
     "echoes",
     "signed_only"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

@@ -3,6 +3,8 @@
   "items": [
     "consult"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

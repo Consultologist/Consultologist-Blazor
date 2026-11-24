@@ -7,6 +7,8 @@
     "notes_digest",
     "notes_index"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

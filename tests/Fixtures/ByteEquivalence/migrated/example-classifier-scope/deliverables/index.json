@@ -5,6 +5,8 @@
     "decline_letter",
     "information_request"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

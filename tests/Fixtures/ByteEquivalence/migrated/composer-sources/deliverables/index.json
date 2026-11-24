@@ -12,6 +12,8 @@
     "summary_then_opening",
     "topics_then_opening"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

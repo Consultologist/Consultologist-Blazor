@@ -4,6 +4,8 @@
     "consult",
     "ack_letter"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }

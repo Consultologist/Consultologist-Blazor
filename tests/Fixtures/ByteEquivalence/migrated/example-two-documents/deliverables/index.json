@@ -4,6 +4,8 @@
     "consult_note",
     "patient_letter"
   ],
-  "delivery": [],
+  "delivery": [
+    "pdf"
+  ],
   "bundle": null
 }
