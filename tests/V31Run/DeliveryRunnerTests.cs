@@ -347,36 +347,35 @@ public class DeliveryRunnerTests
     [Fact]
     public async Task AJobWhoseEveryDeliverableIsBlocked_SendsTheLinkOnlyEmail()
     {
-        // D19, ruled: nothing released, and a deliverable blocked or held: one link-only send per mail kind those list,
-        // carrying their labels and never their text; an emr-only one and a skipped one are not in it.
+        // D19, ruled, and the controller's ruling on Task 22's review: nothing released, and a deliverable blocked or held:
+        // one link-only send for the job (email, as one of them lists it), carrying their labels and never their text; each
+        // mail destination each lists gets a row from that send. An emr-only one and a skipped one are not in it.
         IReadOnlyList<DeliverableOutcome> outcomes =
         [
             Outcome("deliverable.note", ["pdf"], DeliverableState.Blocked),
             Outcome("deliverable.kept", ["pdf"], DeliverableState.Skipped),
             Outcome("deliverable.emr_copy", ["emr"], DeliverableState.Blocked),
-            Outcome("deliverable.patient.patient_letter", ["email", "pdf"], DeliverableState.Held, folder: "patient"),
+            Outcome("deliverable.patient.patient_letter", ["email", "pdf", "emr"], DeliverableState.Held, folder: "patient"),
         ];
 
-        var sends = DeliveryPlan.Sends(outcomes);
+        var send = Assert.Single(DeliveryPlan.Sends(outcomes));
 
-        Assert.Equal(["email", "pdf"], sends.Select(s => s.Kind));
-        Assert.All(sends, s => Assert.Equal((true, null, "", 1), (s.EveryDeliverableBlocked, s.Bundle, s.Folder, s.Attempt)));
-        Assert.Equal(["deliverable.patient.patient_letter"], sends[0].Documents.Select(d => d.Deliverable));
-        Assert.Equal(["deliverable.note", "deliverable.patient.patient_letter"], sends[1].Documents.Select(d => d.Deliverable));
-        Assert.All(sends.SelectMany(s => s.Documents), d =>
+        Assert.Equal(("email", true, null, "", 1), (send.Kind, send.EveryDeliverableBlocked, send.Bundle, send.Folder, send.Attempt));
+        Assert.Equal(["deliverable.note", "deliverable.patient.patient_letter"], send.Documents.Select(d => d.Deliverable));
+        Assert.All(send.Documents, d =>
         {
             Assert.Equal($"Label of {d.Deliverable}", d.Label);
             Assert.Equal("", d.Text);
         });
 
-        var host = new FakeDeliveryHost()
-            .Script("delivery:deliverable.patient.patient_letter/email", new DeliverySendOutcome(DeliverySendResult.Sent, null, DeliveryPlan.EveryDeliverableBlocked))
-            .Script("delivery:deliverable.note/pdf", new DeliverySendOutcome(DeliverySendResult.Sent, null, DeliveryPlan.EveryDeliverableBlocked));
+        var host = new FakeDeliveryHost();
         var (result, recorder) = await RunAsync(new RunLimits(), host, outcomes);
 
+        Assert.Single(host.Sends);
         Assert.Equal(
-            ["delivery:deliverable.patient.patient_letter/email", "delivery:deliverable.note/pdf", "delivery:deliverable.patient.patient_letter/pdf"],
+            ["delivery:deliverable.note/pdf", "delivery:deliverable.patient.patient_letter/email", "delivery:deliverable.patient.patient_letter/pdf"],
             result.Rows.Select(r => r.Key));
+        Assert.Equal(["pdf", "email", "pdf"], result.Rows.Select(r => r.Kind));
         Assert.All(result.Rows, r =>
         {
             Assert.Equal(("sent", "every deliverable blocked", FakeDeliveryHost.Start), (r.Result, r.Reason, r.AtUtc));
@@ -386,10 +385,26 @@ public class DeliveryRunnerTests
         });
         Assert.Equal(result.Rows, recorder.Deliveries);
 
+        // pdf only: the send is pdf's
+        Assert.Equal("pdf", Assert.Single(DeliveryPlan.Sends([outcomes[0]])).Kind);
+
+        // the one send not going: each row says it in its own kind
+        var failing = new FakeDeliveryHost().Script("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.NotSetUp, null));
+        var (notSent, _) = await RunAsync(new RunLimits(), failing, outcomes);
+        Assert.Equal(
+            ["not sent: PDF isn't set up for this account", "not sent: Email isn't set up for this account", "not sent: PDF isn't set up for this account"],
+            notSent.Rows.Select(r => r.Reason));
+
         // a job with one deliverable released sends that one only, as before; one with nothing blocked or held sends nothing
         Assert.Equal(["delivery:deliverable.letter/pdf"], DeliveryPlan.Sends([.. outcomes, Outcome("deliverable.letter", ["pdf"])]).Select(FakeDeliveryHost.NameOf));
         Assert.All(DeliveryPlan.Sends([.. outcomes, Outcome("deliverable.letter", ["pdf"])]), s => Assert.False(s.EveryDeliverableBlocked));
         Assert.Empty(DeliveryPlan.Sends([Outcome("deliverable.kept", ["pdf"], DeliverableState.Skipped), Outcome("deliverable.emr_copy", ["emr"], DeliverableState.Blocked)]));
+
+        // an orchestration started before this build (no Delivery in its input) replays without it: no send, no row
+        Assert.Empty(DeliveryPlan.Sends(outcomes, blockedEmail: false));
+        var (old, oldRecorder) = await RunAsync(new RunLimits(), new FakeDeliveryHost(), outcomes, blockedEmail: false);
+        Assert.Empty(old.Rows);
+        Assert.Empty(oldRecorder.Deliveries);
     }
 
     /// <summary>
@@ -433,10 +448,10 @@ public class DeliveryRunnerTests
         new(key, $"Label of {key}", "plaintext", folder, state, null, null, Letter, CanonicalJson.HashText(Letter), delivery, bundle);
 
     private static async Task<(DeliveryResult Result, ListRecorder Recorder)> RunAsync(
-        RunLimits limits, FakeDeliveryHost host, IReadOnlyList<DeliverableOutcome> outcomes)
+        RunLimits limits, FakeDeliveryHost host, IReadOnlyList<DeliverableOutcome> outcomes, bool blockedEmail = true)
     {
         var recorder = new ListRecorder();
-        var result = await FakeDeliveryHost.Drive(() => new DeliveryRunner(limits, host, recorder).RunAsync(outcomes));
+        var result = await FakeDeliveryHost.Drive(() => new DeliveryRunner(limits, host, recorder).RunAsync(outcomes, blockedEmail));
         return (result, recorder);
     }
 }

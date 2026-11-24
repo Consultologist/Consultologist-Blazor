@@ -178,6 +178,14 @@ public class DeliveryChannelsTests
         Assert.Contains("The consult documents were too large to send by email — open them in History.", body, StringComparison.Ordinal);
         Assert.DoesNotContain("Okafor", body, StringComparison.Ordinal);
         Assert.Null(attachments);
+
+        // the migrated case: one deliverable, one PDF, over the budget, falls back the same way
+        _sent.Clear();
+        Assert.Equal(new DeliverySendOutcome(DeliverySendResult.Sent, null, "attachments over the budget"),
+            await Pdf(budget: 1024).SendAsync(Input("pdf", AtStart), CancellationToken.None));
+        var single = Assert.Single(_sent);
+        Assert.Equal(EmailIntakeReply.Compose("https://app.example.com", JobId, "Completed", [], omittedForSize: true), (single.Subject, single.Body));
+        Assert.Null(single.Attachments);
     }
 
     [Fact]
