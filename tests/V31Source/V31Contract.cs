@@ -219,7 +219,7 @@ internal static class V31Contract
         ["A10-058"] = "Outstanding migration hand edits: not counted; <the type registry | the accounts' active packages> could not be read.",
         ["A10-059"] = "Outstanding migration hand edits: <k> of the accounts' active packages could not be read and are not counted.",
         ["A10-060"] = "No snapshot test was written: tests/migration_snapshot.json would take the package past SourceBounds.<fileBytes | totalBytes | files>.",
-        ["A10-061"] = "No snapshot test was written: the migrated package <does not publish | is refused at its run's start | fails its offline run | times out in its offline run | cannot be run offline>.",
+        ["A10-061"] = "No snapshot test was written: the migrated package <does not publish: <sentences> | is refused at its run's start | fails its offline run | times out in its offline run | cannot be run offline>.",
     };
 
     private static string RepoRoot()

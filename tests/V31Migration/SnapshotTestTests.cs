@@ -136,7 +136,12 @@ public class SnapshotTestTests
         Assert.Equal(["migration_snapshot"], JsonNode.Parse(result.Files[IndexFile])!["items"]!.AsArray().Select(i => (string?)i));
         Assert.DoesNotContain(result.Notices, n => n.StartsWith("No snapshot test was written", StringComparison.Ordinal));
 
-        // Snapshot on the migrated source without its test writes the same bytes.
+        // Snapshot on the migrated source writes the same bytes, whether it carries its snapshot (written anew) or not.
+        var carried = WorkflowPackageMigration30To31.Snapshot(result.ManifestJson, result.Files, MigrationFixture.Options(package));
+        Assert.True(carried.Succeeded, string.Join("\n", carried.Refusals));
+        Assert.Equal(result.Files.Keys.Order(StringComparer.Ordinal), carried.Files.Keys.Order(StringComparer.Ordinal));
+        Assert.All(result.Files, f => Assert.True(f.Value == carried.Files[f.Key], f.Key));
+
         var files = new Dictionary<string, string>(result.Files, StringComparer.Ordinal);
         files.Remove(SnapshotTest.File);
         files[IndexFile] = "{\n  \"description\": null,\n  \"items\": []\n}\n";
@@ -145,6 +150,47 @@ public class SnapshotTestTests
         Assert.Equal(result.Files[SnapshotTest.File], again.Files[SnapshotTest.File]);
         Assert.Equal(result.Files[IndexFile], again.Files[IndexFile]);
         Assert.Equal(result.Files.Keys.Order(StringComparer.Ordinal), again.Files.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Snapshot_WritesItsTestAnew_AndLeavesAnAuthorsOwnTestsAlone()
+    {
+        // An operator's new snapshot of an edited package: the old snapshot and its listing are replaced, an author's own
+        // test (listed before it, with its index's description) is kept, bytes and order.
+        const string package = "example-nested-note";
+        var result = MigratedPackagesTests.Migrated(package);
+        var files = new Dictionary<string, string>(result.Files, StringComparer.Ordinal)
+        {
+            ["tests/own_case.json"] = "{\n  \"description\": null,\n  \"inputs\": {},\n  \"profile\": {},\n  \"run\": {},\n  \"outputs\": {},\n  \"expect\": {}\n}\n",
+            [IndexFile] = "{\n  \"description\": [\n    \"An author's tests.\"\n  ],\n  \"items\": [\n    \"own_case\",\n    \"migration_snapshot\"\n  ]\n}\n",
+            [SnapshotTest.File] = "{ \"description\": null, \"inputs\": {}, \"profile\": {}, \"run\": {}, \"outputs\": {}, \"expect\": {} }\n",
+        };
+
+        var snapshot = WorkflowPackageMigration30To31.Snapshot(result.ManifestJson, files, MigrationFixture.Options(package));
+
+        Assert.True(snapshot.Succeeded, string.Join("\n", snapshot.Refusals));
+        Assert.Equal(result.Files[SnapshotTest.File], snapshot.Files[SnapshotTest.File]);
+        Assert.Equal(files["tests/own_case.json"], snapshot.Files["tests/own_case.json"]);
+        Assert.Equal(files[IndexFile], snapshot.Files[IndexFile]);
+    }
+
+    [Fact]
+    public void WithTheSnapshotOff_NothingIsPublishedOrSaid()
+    {
+        // Migration31Options.WriteSnapshot false (the weekly summary): no snapshot, no A10-011/060/061, items [].
+        foreach (var package in new[] { "example-nested-note", "example-macros" })
+        {
+            var (manifestJson, source) = Consultologist.Api.Tests.ByteEquivalence.ByteEquivalenceFixtures.ReadPackage(package);
+            var off = WorkflowPackageMigration30To31.Migrate(manifestJson, source, MigrationFixture.Options(package) with { WriteSnapshot = false });
+            var on = MigratedPackagesTests.Migrated(package);
+
+            Assert.DoesNotContain(SnapshotTest.File, off.Files.Keys);
+            Assert.Empty(JsonNode.Parse(off.Files[IndexFile])!["items"]!.AsArray());
+            Assert.DoesNotContain(off.Notices, n => n.StartsWith("No snapshot test was written", StringComparison.Ordinal));
+            Assert.Equal(on.Notices.Where(n => !n.StartsWith("No snapshot test was written", StringComparison.Ordinal)), off.Notices);
+            Assert.Equal(on.HandEdits, off.HandEdits);
+            Assert.All(off.Files, f => Assert.True(f.Key == IndexFile || f.Value == on.Files[f.Key], f.Key));
+        }
     }
 
     [Theory]
@@ -211,6 +257,70 @@ public class SnapshotTestTests
         // Snapshot, asked for it, refuses with the same sentence.
         var snapshot = WorkflowPackageMigration30To31.Snapshot(result.ManifestJson, result.Files, MigrationFixture.Options("example-two-documents"), snapshotFileBytes: 64);
         Assert.Equal([notice], snapshot.Refusals);
+    }
+
+    [Fact]
+    public void ASourceThatDoesNotPublish_SaysA10061_WithTheCheckersSentences()
+    {
+        // Task 12's invariant broken (no hand edit, yet Publish refuses): Migrate's notice carries the checker's sentences.
+        var result = MigratedPackagesTests.Migrated("example-macros");
+        var sentences = MigratedPackagesTests.Publish(result).Select(r => r.Sentence).ToList();
+        Assert.NotEmpty(sentences);
+
+        var (files, why, unpublished) = WorkflowPackageMigration30To31.WithSnapshot(
+            result.ManifestJson, result.Files, MigrationFixture.Options("example-macros"), SourceBounds.FileBytes);
+
+        Assert.Null(files);
+        Assert.Equal(sentences, unpublished);
+        Assert.Equal("No snapshot test was written: the migrated package does not publish: " + string.Join(" ", sentences) + ".", why);
+        V31Contract.AssertSentence(new SourceRefusal("A10-061", why!, ""));
+    }
+
+    [Fact]
+    public void AFaultOnTheWay_SaysA10061_CannotBeRunOffline_NeverThrows()
+    {
+        var result = MigratedPackagesTests.Migrated("example-nested-note");
+        var broken = MigrationFixture.Options("example-nested-note") with { Toolchain = null! };
+
+        var (files, why, unpublished) = WorkflowPackageMigration30To31.WithSnapshot(result.ManifestJson, result.Files, broken, SourceBounds.FileBytes);
+
+        Assert.Null(files);
+        Assert.Null(unpublished);
+        Assert.Equal("No snapshot test was written: the migrated package cannot be run offline.", why);
+        V31Contract.AssertSentence(new SourceRefusal("A10-061", why!, ""));
+    }
+
+    [Fact]
+    public async Task ARunThatDoesNotComplete_SaysA10061_ByHowItEnded()
+    {
+        var none = new Dictionary<string, string>(StringComparer.Ordinal);
+        var noUpload = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+        // A start that refuses the request (a required input not given).
+        var refusedPlan = V31Engine.V31StartChecksTests.Plan();
+        var refusedRequest = SnapshotTest.Fictional(refusedPlan) with { Inputs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal) };
+        var refused = await OfflineRun.RunAsync(refusedPlan, refusedRequest);
+        Assert.Null(refused.State);
+        var (_, startWhy) = WorkflowPackageMigration30To31.Written(none, noUpload, refusedPlan, refusedRequest, refused, SourceBounds.FileBytes);
+        Assert.Equal("No snapshot test was written: the migrated package is refused at its run's start.", startWhy);
+
+        // A run that fails: a markdown_inline reply holding a line ending fails its node (D21).
+        var failingPlan = Consultologist.Api.Tests.V31Run.RunFixture.Plan(OfflineRunTests.Formats());
+        var failingRequest = SnapshotTest.Fictional(failingPlan) with
+        {
+            Outputs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.inline"] = "Two lines\nof stub text." },
+        };
+        var failed = await OfflineRun.RunAsync(failingPlan, failingRequest);
+        Assert.Equal(RunState.Failed, failed.State);
+        var (_, failedWhy) = WorkflowPackageMigration30To31.Written(none, noUpload, failingPlan, failingRequest, failed, SourceBounds.FileBytes);
+        Assert.Equal("No snapshot test was written: the migrated package fails its offline run.", failedWhy);
+
+        // TimedOut cannot be reached offline (the clock never moves, Task 13 decision 1): the form is held on a result that says it.
+        var (_, timedOutWhy) = WorkflowPackageMigration30To31.Written(none, noUpload, failingPlan, failingRequest, failed with { State = RunState.TimedOut }, SourceBounds.FileBytes);
+        Assert.Equal("No snapshot test was written: the migrated package times out in its offline run.", timedOutWhy);
+
+        foreach (var why in new[] { startWhy, failedWhy, timedOutWhy })
+            V31Contract.AssertSentence(new SourceRefusal("A10-061", why!, ""));
     }
 
     [Fact]

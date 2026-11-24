@@ -336,7 +336,7 @@ public class OfflineRunTests
     /// A package with an agent per format the stubs must fit: plaintext, markdown_block, markdown_inline, judgement,
     /// classification, concept_list, an object with nullable properties, a labelled oneOf and a date.
     /// </summary>
-    private static Dictionary<string, byte[]> Formats()
+    internal static Dictionary<string, byte[]> Formats()
     {
         return TemplateFixture.Package()
             .WithAgent("plain", "Write a line for Margaret Okafor.\n")
