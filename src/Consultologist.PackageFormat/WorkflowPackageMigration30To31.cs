@@ -220,9 +220,9 @@ public static class WorkflowPackageMigration30To31
         if (compiled is null)
             return (null, false, publishRefusals.Select(r => r.Sentence).ToList());
 
-        var (plan, planRefusal) = V31.Run.RunPlan.Build(compiled.Resolve, compiled.ResolveHash, compiled.LockHash, null);
+        var (plan, _) = V31.Run.RunPlan.Build(compiled.Resolve, compiled.ResolveHash, compiled.LockHash, null);
         if (plan is null)
-            return (null, true, [planRefusal?.Sentence ?? MigrationSentences.SnapshotNotRun("cannot be run offline")]);
+            return (null, true, [MigrationSentences.SnapshotNotRun("cannot be run offline")]);
 
         var request = V31.Harness.SnapshotTest.Fictional(plan);
         V31.Harness.OfflineResult run;
