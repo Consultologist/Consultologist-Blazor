@@ -358,6 +358,25 @@ internal static class MigrationSentences
     public static string ComposedBranchesMix(string kind, string flow) =>
         $"the {kind} '{flow}' that a deliverable composes returns Markdown from one branch and plain text from another, which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";
 
+    /// <summary>A10-011 (part 10 § 4, D13): a notice: the package has hand edits, so no snapshot test was written.</summary>
+    public const string NoSnapshotHandEditsRemain = "No snapshot test was written: hand edits remain.";
+
+    /// <summary>
+    /// A10-060 (part 07 § 8.4, part 01 § 7; D13): a notice: the snapshot test would take the package past
+    /// <c>SourceBounds.&lt;bound&gt;</c> (<paramref name="bound"/>: <c>fileBytes</c>, <c>totalBytes</c> or <c>files</c>), so
+    /// it was not written. Never a hand edit: the package publishes without it.
+    /// </summary>
+    public static string SnapshotPastBound(string bound) =>
+        $"No snapshot test was written: tests/migration_snapshot.json would take the package past SourceBounds.{bound}.";
+
+    /// <summary>
+    /// A10-061 (part 10 § 4, part 07 § 8.3; D13): a notice: the migrated package's offline run on the snapshot's fictional
+    /// request did not complete (<paramref name="how"/>: <c>does not publish</c>, <c>is refused at its run's start</c>,
+    /// <c>fails its offline run</c>, <c>times out in its offline run</c>, <c>cannot be run offline</c>), so no snapshot was
+    /// written. Never a hand edit; it names no value.
+    /// </summary>
+    public static string SnapshotNotRun(string how) => $"No snapshot test was written: the migrated package {how}.";
+
     /// <summary>A10-041 (part 05 § 8.3, § 8.7): a reason: a 30 macro's body places macro <paramref name="placed"/> (its <c>.prompt</c>), which no 31 macro body does.</summary>
     public static string BodyPlacesMacro(string placed) =>
         $"the body places macro '{placed}', which a 31 macro body cannot; place it in the prompt instead.";
