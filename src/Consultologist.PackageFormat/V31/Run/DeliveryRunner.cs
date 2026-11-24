@@ -10,7 +10,8 @@ public sealed record DeliveryResult(IReadOnlyList<DeliveryRow> Rows, int Failed)
 /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8; D10 to D13): the deterministic runner of delivery at the end
 /// of a job that succeeded. It makes the first attempt of every send of <see cref="DeliveryPlan.Sends"/> at once, in their
 /// order, then waits, by <see cref="Task.WhenAny(IEnumerable{Task})"/> over what is in flight and the window's timer, for one
-/// to finish. A send that is sent is final; one whose kind is not set up is final at once, <c>not sent</c> with S08-006, and
+/// to finish. A send that is sent is final (#1507, D17: one that went as the link-only email is <c>sent</c>, its attempt
+/// <c>sent link-only</c> and its row's reason why); one whose kind is not set up is final at once, <c>not sent</c> with S08-006, and
 /// never retried; one that failed is retried after 2 minutes, doubling after, each wait cut to the time the window has left,
 /// until it has made <see cref="RunLimits.DeliveryAttempts"/> attempts. No attempt starts once
 /// <see cref="RunLimits.DeliveryMinutes"/> have passed from the start of delivering; what is unsent then (its send in
@@ -183,8 +184,11 @@ public sealed class DeliveryRunner
             switch (outcome?.Result)
             {
                 case DeliverySendResult.Sent:
-                    destination.Attempts.Add(new DeliveryAttempt(flight.AtUtc, DeliveryPlan.Sent));
+                    // #1507 (D17, D19): the link-only email is sent; its attempt says so, and the row's reason says why.
+                    destination.Attempts.Add(new DeliveryAttempt(
+                        flight.AtUtc, outcome?.LinkOnly == null ? DeliveryPlan.Sent : DeliveryPlan.SentLinkOnly));
                     destination.Result = DeliveryPlan.Sent;
+                    destination.Reason = outcome?.LinkOnly;
                     destination.AtUtc = flight.AtUtc;
                     return;
 

@@ -9,9 +9,13 @@ public sealed record DeliveryDocument(string Deliverable, string Label, string F
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 06 § 8; D11): one send: one kind, for one deliverable, or for every released
 /// deliverable of a bundle folder (<paramref name="Bundle"/> <c>zip</c>), in plan order. <paramref name="Folder"/> is
-/// <c>""</c> for <c>deliverables/</c>, else the folder's id; <paramref name="Attempt"/> counts from 1.
+/// <c>""</c> for <c>deliverables/</c>, else the folder's id; <paramref name="Attempt"/> counts from 1. #1507 (area 10; D19,
+/// ruled by the owner on #1507, 2026-11-22T21:38Z): <paramref name="EveryDeliverableBlocked"/> marks the link-only email of a
+/// job that released nothing, its documents the blocked and held ones, each with its label and no text. Trailing and
+/// optional, so a send written before it reads <c>false</c>.
 /// </summary>
-public sealed record DeliverySend(string Kind, string? Bundle, string Folder, IReadOnlyList<DeliveryDocument> Documents, int Attempt);
+public sealed record DeliverySend(
+    string Kind, string? Bundle, string Folder, IReadOnlyList<DeliveryDocument> Documents, int Attempt, bool EveryDeliverableBlocked = false);
 
 /// <summary>#1505 (specVersion 31, area 08; D10, D12): how one attempt of a send ended.</summary>
 public enum DeliverySendResult
@@ -28,9 +32,13 @@ public enum DeliverySendResult
 
 /// <summary>
 /// #1505 (specVersion 31, area 08): what one attempt of a send gave: its result and, for a failure, the error's kind
-/// (<c>"timeout"</c>, <c>"error"</c>, <c>"unreachable"</c>), never its content.
+/// (<c>"timeout"</c>, <c>"error"</c>, <c>"unreachable"</c>), never its content. #1507 (area 10; R8, D17, D19):
+/// <paramref name="LinkOnly"/> is, for a send that went out as the link-only email in place of what was asked, why
+/// (<see cref="DeliveryPlan.NoDocumentPassword"/>, <see cref="DeliveryPlan.OverTheBudget"/> or
+/// <see cref="DeliveryPlan.EveryDeliverableBlocked"/>); <c>null</c> otherwise. Trailing and optional, so an outcome in a
+/// history written before it reads <c>null</c>.
 /// </summary>
-public sealed record DeliverySendOutcome(DeliverySendResult Result, string? ErrorKind);
+public sealed record DeliverySendOutcome(DeliverySendResult Result, string? ErrorKind, string? LinkOnly = null);
 
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 09 § 3.8): everything outside delivery that <see cref="DeliveryRunner"/> talks to:
@@ -57,14 +65,18 @@ public interface IDeliveryHost
     Task DelayAsync(TimeSpan wait, CancellationToken cancel);
 }
 
-/// <summary>#1505 (specVersion 31, area 08; part 08 § 10): one attempt on a destination: when it started, and <c>sent</c> or <c>failed: &lt;error kind&gt;</c>.</summary>
+/// <summary>
+/// #1505 (specVersion 31, area 08; part 08 § 10): one attempt on a destination: when it started, and <c>sent</c> or
+/// <c>failed: &lt;error kind&gt;</c>; #1507 (D17): <c>sent link-only</c> for the link-only email.
+/// </summary>
 public sealed record DeliveryAttempt(DateTime AtUtc, string Outcome);
 
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 08 § 10; D13): one destination's delivery row. <paramref name="Key"/> is
 /// <c>delivery:&lt;deliverable key&gt;/&lt;kind&gt;</c>; <paramref name="Result"/> is <c>sent</c>, <c>not sent</c> or
 /// <c>failed</c>; <paramref name="Reason"/> S08-006's sentence for a kind not set up, <c>not sent: the job failed</c>,
-/// <c>failed: &lt;kind&gt;</c>, or <c>null</c> when sent; <paramref name="AtUtc"/> the time of the attempt that sent it
+/// <c>failed: &lt;kind&gt;</c>, #1507 (D17, D19) why a send went as the link-only email (A10-054 to A10-056), or <c>null</c>
+/// when sent as asked; <paramref name="AtUtc"/> the time of the attempt that sent it
 /// (<c>null</c> otherwise); <paramref name="Attempts"/> each attempt made, in order.
 /// </summary>
 public sealed record DeliveryRow(
@@ -132,12 +144,17 @@ public static class DeliveryPlan
     /// The first attempt of every send, in plan order then <see cref="Kinds"/> order: for a released deliverable, one per
     /// kind of its <c>delivery</c>; for a folder with <c>bundle: "zip"</c>, one per kind for all its released deliverables,
     /// at the place of its first (D11). A deliverable not released, or with <c>delivery: []</c>, has none; so has a bundle
-    /// folder with nothing released.
+    /// folder with nothing released. #1507 (area 10; D19, ruled by the owner on #1507, 2026-11-22T21:38Z): a job that
+    /// released nothing, with a deliverable blocked or held, still sends 30's link-only email: one send per mail kind
+    /// (<c>email</c>, <c>pdf</c>) any of those lists, carrying each that lists it, in plan order, by its label and with no
+    /// text (<see cref="DeliverySend.EveryDeliverableBlocked"/>).
     /// </summary>
     public static IReadOnlyList<DeliverySend> Sends(IReadOnlyList<DeliverableOutcome> outcomes)
     {
         ArgumentNullException.ThrowIfNull(outcomes);
         var released = outcomes.Where(o => o is { State: DeliverableState.Released }).ToList();
+        if (released.Count == 0)
+            return Blocked(outcomes);
         var sends = new List<DeliverySend>();
         var bundled = new HashSet<string>(StringComparer.Ordinal);
         foreach (var outcome in released)
@@ -179,6 +196,21 @@ public static class DeliveryPlan
     internal const string NotSent = "not sent";
     internal const string Failed = "failed";
 
+    /// <summary>#1507 (area 10; R8, D17): the attempt's outcome word for a send that went as the link-only email.</summary>
+    internal const string SentLinkOnly = "sent link-only";
+
+    /// <summary>#1507 (R8, D17) A10-054: a <c>pdf</c> send with no document password went as the link-only email, as 30's reply did.</summary>
+    internal const string NoDocumentPassword = "no document password";
+
+    /// <summary>#1507 (R8, D17) A10-055: a <c>pdf</c> send whose attachments passed the budget went as the link-only email, as 30's reply did.</summary>
+    internal const string OverTheBudget = "attachments over the budget";
+
+    /// <summary>#1507 (D19, ruled by the owner on #1507, 2026-11-22T21:38Z) A10-056: the link-only email of a job that released nothing.</summary>
+    internal const string EveryDeliverableBlocked = "every deliverable blocked";
+
+    /// <summary>The mail kinds, in <see cref="Kinds"/> order: those whose channel can send the link-only email.</summary>
+    private static readonly string[] MailKinds = ["email", "pdf"];
+
     /// <summary>S06-038: a released deliverable of a job that failed.</summary>
     internal const string JobFailed = "not sent: the job failed";
 
@@ -187,6 +219,24 @@ public static class DeliveryPlan
 
     /// <summary>D13: a destination unsent after its attempts or when the window closed.</summary>
     internal static string FailedKind(string kind) => $"failed: {kind}";
+
+    /// <summary>D19: the link-only sends of a job that released nothing, its blocked and held deliverables by label only.</summary>
+    private static IReadOnlyList<DeliverySend> Blocked(IReadOnlyList<DeliverableOutcome> outcomes)
+    {
+        var withheld = outcomes.Where(o => o.State is DeliverableState.Blocked or DeliverableState.Held).ToList();
+        var sends = new List<DeliverySend>();
+        foreach (var kind in MailKinds)
+        {
+            var documents = withheld
+                .Where(o => KindsOf(o).Contains(kind, StringComparer.Ordinal))
+                .Select(o => new DeliveryDocument(o.Key, o.Label, o.Format, ""))
+                .ToList();
+            if (documents.Count > 0)
+                sends.Add(new DeliverySend(kind, null, "", documents, 1, EveryDeliverableBlocked: true));
+        }
+
+        return sends;
+    }
 
     private static bool IsBundled(DeliverableOutcome outcome) => string.Equals(outcome.Bundle, "zip", StringComparison.Ordinal);
 
