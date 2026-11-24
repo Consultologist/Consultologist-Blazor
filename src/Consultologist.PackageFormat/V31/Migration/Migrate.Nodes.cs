@@ -93,7 +93,22 @@ internal static partial class Migrate
         if (kind != "agent" && node.FailIfEmpty is not null)
             m.Notice(MigrationSentences.MemberDropped(id, "failIfEmpty"));
 
-        m.Put(file, header, kind == "computed" ? "" : PromptOf(m, node));
+        m.Put(file, header, kind == "computed" ? "" : PromptOf(m, node) + ClassifierTrailer(node, kind));
+    }
+
+    /// <summary>
+    /// #1507 (Task 15; part 10 § 3.1; D16): what 30's engine appended to a classifier's rendered prompt, its <c>with</c>
+    /// values in declared order (<c>ClassificationOutputContract.Trailer</c>: a blank line, then <c>Answer with exactly one
+    /// of: &lt;values joined by ", "&gt;.</c>), written at the end of the 31 body as package text: 31 drops <c>with</c>
+    /// (A10-030) and appends nothing, so the model is told the values as at 30 and the prompt keeps 30's bytes.
+    /// <c>""</c> for any other node.
+    /// </summary>
+    private static string ClassifierTrailer(WorkflowNodeSpec node, string kind)
+    {
+        if (kind != "agent" || node.Format != "classification" || node.With?.GetValueOrDefault("values") is not JsonArray values)
+            return "";
+        var names = values.Select(SourceLayout.Text).ToList();
+        return names.Count == 0 || names.Any(n => n is null) ? "" : $"\n\nAnswer with exactly one of: {string.Join(", ", names)}.";
     }
 
     /// <summary>A 30 node's prompt text (its <c>prompt</c>, or the file its id implies), as 30 holds it; <c>""</c> when it has none. Task 9 rewrites it.</summary>
