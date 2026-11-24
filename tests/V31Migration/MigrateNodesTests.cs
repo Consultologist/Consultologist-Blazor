@@ -181,6 +181,21 @@ public class MigrateNodesTests
         Assert.Contains("At specVersion 30: Node 'closing' must declare a format at specVersion 26.", refused.Refusals);
     }
 
+    /// <summary>
+    /// <paramref name="package"/>'s options with a 30 catalogue that also has <c>agent_plaintext</c> (prose's entry under that
+    /// name): 30's catalogue here has none.
+    /// </summary>
+    internal static Migration31Options WithAgentPlaintext(string package) => MigrationFixture.Options(package) with
+    {
+        Formats30 = TestFormats.Catalog with
+        {
+            Formats = new Dictionary<string, WorkflowFormatCatalogFormat>(TestFormats.Catalog.Formats, StringComparer.Ordinal)
+            {
+                ["agent_plaintext"] = TestFormats.Catalog.Formats["prose"],
+            },
+        },
+    };
+
     /// <summary>R9: prose that only prompts read stays <c>plaintext</c> (<c>example-two-documents</c>' section drafts, in the loop's body but not its <c>ret</c>, read by the next prompt).</summary>
     [Fact]
     public void ProseOnlyPromptsRead_StaysPlaintext()
@@ -205,14 +220,7 @@ public class MigrateNodesTests
         var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
         var root = JsonNode.Parse(json)!.AsObject();
         Node(root, "opening")["format"] = "agent_plaintext";
-        var catalog = TestFormats.Catalog with
-        {
-            Formats = new Dictionary<string, WorkflowFormatCatalogFormat>(TestFormats.Catalog.Formats, StringComparer.Ordinal)
-            {
-                ["agent_plaintext"] = TestFormats.Catalog.Formats["prose"],
-            },
-        };
-        var sources = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("composer-sources") with { Formats30 = catalog });
+        var sources = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, WithAgentPlaintext("composer-sources"));
         Assert.True(sources.Succeeded, string.Join("\n", sources.Refusals));
         Assert.Equal("plaintext", (string?)Md(sources, "nodes/opening.md").Header["format"]);       // deliverable single
         Assert.Equal("markdown_block", (string?)Md(sources, "nodes/closing.md").Header["format"]);  // its prose neighbour in pair

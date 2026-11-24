@@ -152,7 +152,8 @@ internal static class V31Contract
     /// A10-046: a check inside a node flow, the checks pass, part 06 §§ 1, 3; A10-010: a 30 reproducible claim the derived-flags
     /// pass did not write, part 02 § 11; A10-049: flags derived without a hand-edited body, D15; A10-050: a trim compared with
     /// "" that became blank and answers otherwise for a null text, part 05 § 7, an unruled difference listed for the owner; A10-051: a macro placed in a snippet folder's item, part 05 § 6.2, A07-012; A10-052: a markdown_inline value, a reply or
-    /// an input's, that holds a line ending, part 02 § 5, R10, D21).
+    /// an input's, that holds a line ending, part 02 § 5, R10, D21; A10-053: a composed if or case whose branches mix
+    /// Markdown and plain text, R9, D20).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -205,6 +206,7 @@ internal static class V31Contract
         ["A10-050"] = "<file>, <member>: '<comparison>' became <rule>; it now <also holds | no longer holds> when <path> is null.",
         ["A10-051"] = "macro '<id>' is placed at line <n>, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.",
         ["A10-052"] = "<Node '<id>' gave a reply | Input '<id>' was given a value> that isn't <format>: markdown_inline text sits inside a line and holds no line ending.",
+        ["A10-053"] = "the <if | case> '<id>' that a deliverable composes returns Markdown from one branch and plain text from another, which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.",
     };
 
     private static string RepoRoot()

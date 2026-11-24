@@ -381,66 +381,141 @@ public class MigrateDeliverablesTests
             Assert.All(MigratedPackagesTests.Publish(result), r => Assert.True(r.Path is "nodes/topic_tally.md" or "nodes/refine/draft_summary.md", $"{r.Id} {r.Path}: {r.Sentence}"));
         }
     }
+
     /// <summary>
-    /// D20 with a flow whose leaves mix 30 prose with a <c>let</c> of <c>text</c> or a <c>rendered</c> node (both stay
-    /// <c>plaintext</c>): composer-sources' <c>tone_case</c> with <c>plain_line</c> made one. 30 refuses a deliverable that
-    /// composes such a flow (its branches disagree; "a deliverable composes prose"), so no composed flow can be the union
-    /// <c>markdown_block | plaintext</c>. Read only by a prompt, the flow composes nothing, its prose leaf stays
-    /// <c>plaintext</c> and its format is the one <c>plaintext</c>; publish refuses nothing but the package's two hand edits.
+    /// D20 with an <c>if</c> or <c>case</c> whose leaves mix 30 prose with a <c>let</c> of <c>text</c>, a <c>rendered</c>
+    /// node or <c>agent_plaintext</c> (each stays <c>plaintext</c>): composer-sources' <c>tone_case</c> with
+    /// <c>plain_line</c> made one. 30 refuses a deliverable that names such a flow as its source (its branches disagree; "a
+    /// deliverable composes prose"). Read only by a prompt, the flow composes nothing, its prose leaf stays <c>plaintext</c>
+    /// and its format is the one <c>plaintext</c>; publish refuses nothing but the package's two hand edits. A loop or a
+    /// while over such a flow is <see cref="AComposedLoopOrWhileOverMixedBranches_IsAHandEdit"/>.
     /// </summary>
     [Theory]
     [InlineData("let")]
     [InlineData("rendered")]
+    [InlineData("agent_plaintext")]
     public void AFlowMixingProseWithALetOrARenderedLeaf_IsNeverAUnion(string kind)
     {
-        void Node(JsonObject root)
-        {
-            var line = MigrateNodesTests.Node(root, "plain_line");
-            if (kind == "let")
-            {
-                line.Remove("format");
-                line["let"] = "\"A plain line.\"";
-                line["type"] = "text";
-                line["onInvalid"] = "fail";
-            }
-            else
-            {
-                line["format"] = "rendered";
-            }
-        }
-
-        void Files(Dictionary<string, string> files)
-        {
-            if (kind == "let")
-                files.Remove("prompts/plain_line.md");
-            else
-                files["prompts/plain_line.md"] = "A plain line for {{ input.consult_draft }}.\n";
-        }
-
         var (json, read) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var options = MigrateNodesTests.WithAgentPlaintext("composer-sources");
+
         var composedRoot = JsonNode.Parse(json)!.AsObject();
         var composedFiles = new Dictionary<string, string>(read, StringComparer.Ordinal);
-        Node(composedRoot);
-        Files(composedFiles);
-        var refused = WorkflowPackageMigration30To31.Migrate(composedRoot.ToJsonString(), composedFiles, MigrationFixture.Options("composer-sources"));
+        MakePlainLeaf(composedRoot, composedFiles, "plain_line", kind);
+        var refused = WorkflowPackageMigration30To31.Migrate(composedRoot.ToJsonString(), composedFiles, options);
         Assert.False(refused.Succeeded);
-        Assert.Contains("At specVersion 30: Deliverable 'tone_line' source node.tone_case returns 'text'; a deliverable composes prose.", refused.Refusals);
+        Assert.Contains(refused.Refusals, r => r.StartsWith("At specVersion 30: Deliverable 'tone_line' source node.tone_case returns ", StringComparison.Ordinal)
+            && r.EndsWith("; a deliverable composes prose.", StringComparison.Ordinal));
 
-        var promptOnly = MigrateNodesTests.Migrated("composer-sources", root =>
-            {
-                root["deliverables"]!.AsArray().Remove(root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "tone_line"));
-                Node(root);
-            },
-            files =>
-            {
-                Files(files);
-                files["prompts/opening.md"] += "\n{{ node.tone_case.content }}\n";
-            });
+        var root = JsonNode.Parse(json)!.AsObject();
+        var files = new Dictionary<string, string>(read, StringComparer.Ordinal);
+        MakePlainLeaf(root, files, "plain_line", kind);
+        root["deliverables"]!.AsArray().Remove(root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "tone_line"));
+        files["prompts/opening.md"] += "\n{{ node.tone_case.content }}\n";
+        var promptOnly = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, options);
+        Assert.True(promptOnly.Succeeded, string.Join("\n", promptOnly.Refusals));
+
         Assert.Equal("\"plaintext\"", MigrateNodesTests.Json(promptOnly, "nodes/tone_case/index.json")["format"]!.ToJsonString());
         Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(promptOnly, "nodes/tone_case/formal_line.md").Header["format"]);
         Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(promptOnly, "nodes/tone_case/plain_line.md").Header["format"]);
-        Assert.Equal(kind == "let" ? "computed" : "rendered", (string?)MigrateNodesTests.Md(promptOnly, "nodes/tone_case/plain_line.md").Header["kind"]);
+        Assert.Equal(KindOf(kind), (string?)MigrateNodesTests.Md(promptOnly, "nodes/tone_case/plain_line.md").Header["kind"]);
         Assert.All(promptOnly.HandEdits, e => Assert.Matches("^Hand edit needed in nodes/(topic_tally.md, expression|refine/draft_summary.md, body): ", e));
         Assert.All(MigratedPackagesTests.Publish(promptOnly), r => Assert.True(r.Path is "nodes/topic_tally.md" or "nodes/refine/draft_summary.md", $"{r.Id} {r.Path}: {r.Sentence}"));
     }
+
+    /// <summary>
+    /// R9, D20 (fix round 2 of Task 21): 30 does accept a deliverable composing a <c>for</c> or a <c>while</c> whose
+    /// <c>ret</c> is an <c>if</c> mixing 30 prose with a <c>let</c> of text, a <c>rendered</c> node or <c>agent_plaintext</c>
+    /// (only a flow named as a source is held to one format). The <c>if</c> would be <c>markdown_block | plaintext</c>, a
+    /// union the <c>markdown_block</c> deliverable escapes as one string, the prose's Markdown with it, so it is a hand edit
+    /// (A10-053): the <c>if</c> is written <c>markdown_block</c>, which publish refuses against the union its branches give
+    /// (S02-015), and the loop or while keeps the format derived from the branches. composer-sources without its two hand
+    /// edits (<c>refine</c>, <c>topic_tally</c>), so the edit is the package's only one.
+    /// </summary>
+    [Theory]
+    [InlineData("for", "let")]
+    [InlineData("for", "rendered")]
+    [InlineData("for", "agent_plaintext")]
+    [InlineData("while", "let")]
+    [InlineData("while", "rendered")]
+    [InlineData("while", "agent_plaintext")]
+    public void AComposedLoopOrWhileOverMixedBranches_IsAHandEdit(string shape, string kind)
+    {
+        var (json, read) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var root = JsonNode.Parse(json)!.AsObject();
+        var files = new Dictionary<string, string>(read, StringComparer.Ordinal);
+        foreach (var id in new[] { "refine", "draft_summary", "judge", "topic_tally" })
+            root["nodes"]!.AsArray().Remove(MigrateNodesTests.Node(root, id));
+        foreach (var deliverable in root["deliverables"]!.AsArray().OfType<JsonObject>().Where(d => (string?)d["id"] is "summary" or "tally" or "summary_then_opening").ToList())
+            root["deliverables"]!.AsArray().Remove(deliverable);
+
+        string gate, flow, prose;
+        root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "left_out", ["label"] = "A left-out line" });
+        MakePlainLeaf(root, files, "left_out", kind);
+        if (shape == "for")
+        {
+            // topic_loop's if gains an else returning the plain-text leaf.
+            MigrateNodesTests.Node(root, "topic_gate")["else"] = new JsonObject { ["nodes"] = new JsonArray("left_out"), ["ret"] = "node.left_out" };
+            (gate, flow, prose) = ("nodes/topic_loop/topic_gate/index.json", "nodes/topic_loop/index.json", "nodes/topic_loop/topic_gate/draft_topic.md");
+        }
+        else
+        {
+            root["nodes"]!.AsArray().Add(new JsonObject
+            {
+                ["id"] = "redo", ["label"] = "Redoing the line", ["while"] = "input.redraft == true", ["checkFirst"] = true, ["max"] = 2,
+                ["nodes"] = new JsonArray("redo_gate"), ["ret"] = "node.redo_gate",
+            });
+            root["nodes"]!.AsArray().Add(new JsonObject
+            {
+                ["id"] = "redo_gate", ["label"] = "Drafted or left out", ["if"] = "input.include_plan == true",
+                ["then"] = new JsonObject { ["nodes"] = new JsonArray("redo_line"), ["ret"] = "node.redo_line" },
+                ["else"] = new JsonObject { ["nodes"] = new JsonArray("left_out"), ["ret"] = "node.left_out" },
+            });
+            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "redo_line", ["label"] = "Redrafting the line", ["format"] = "prose" });
+            files["prompts/redo_line.md"] = "Write one line from this draft.\n{{ input.consult_draft }}\nTopics so far: {{ node.topic_loop.content }}\n";
+            root["deliverables"]!.AsArray().Add(new JsonObject { ["id"] = "redo", ["label"] = "A while over an if", ["sources"] = new JsonArray("node.redo") });
+            (gate, flow, prose) = ("nodes/redo/redo_gate/index.json", "nodes/redo/index.json", "nodes/redo/redo_gate/redo_line.md");
+        }
+
+        var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrateNodesTests.WithAgentPlaintext("composer-sources"));
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+
+        const string union = """{"anyOf":[{"$ref":"markdown_block"},{"$ref":"plaintext"}]}""";
+        Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(result, prose).Header["format"]);
+        Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, gate.Replace("index.json", "left_out.md", StringComparison.Ordinal)).Header["format"]);
+        Assert.Equal("\"markdown_block\"", MigrateNodesTests.Json(result, gate)["format"]!.ToJsonString());
+        Assert.Equal(shape == "for" ? $$"""{"type":"array","items":{{union}}}""" : union, MigrateNodesTests.Json(result, flow)["format"]!.ToJsonString());
+
+        var reason = $"the if '{(shape == "for" ? "topic_gate" : "redo_gate")}' that a deliverable composes returns Markdown from one branch and plain text from another, "
+            + "which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";
+        AssertHandEdit(result, gate, "format", "A10-053", reason);
+        Assert.Single(result.HandEdits);
+        Assert.Contains(MigratedPackagesTests.Publish(result), r => r.Id == "S02-015" && r.Path == gate);
+    }
+
+    /// <summary>The 30 node <paramref name="id"/> of <paramref name="root"/> made a plain-text leaf: a <c>let</c> of text, a <c>rendered</c> node or an <c>agent_plaintext</c> agent.</summary>
+    private static void MakePlainLeaf(JsonObject root, Dictionary<string, string> files, string id, string kind)
+    {
+        var leaf = MigrateNodesTests.Node(root, id);
+        leaf.Remove("format");
+        switch (kind)
+        {
+            case "let":
+                leaf["let"] = "\"A plain line.\"";
+                leaf["type"] = "text";
+                leaf["onInvalid"] = "fail";
+                files.Remove($"prompts/{id}.md");
+                break;
+            case "rendered":
+                leaf["format"] = "rendered";
+                files[$"prompts/{id}.md"] = "A plain line for {{ input.consult_draft }}.\n";
+                break;
+            default:
+                leaf["format"] = "agent_plaintext";
+                files[$"prompts/{id}.md"] = "Write one plain line from this draft.\n{{ input.consult_draft }}\n";
+                break;
+        }
+    }
+
+    private static string KindOf(string kind) => kind switch { "let" => "computed", "rendered" => "rendered", _ => "agent" };
 }
