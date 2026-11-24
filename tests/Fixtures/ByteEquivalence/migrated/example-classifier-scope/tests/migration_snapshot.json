@@ -1,0 +1,57 @@
+{
+  "description": [
+    "The migration's snapshot (part 10 § 4): the migrated package run offline on fictional inputs and generated replies,",
+    "its prompts and deliverables pinned by hash."
+  ],
+  "inputs": {
+    "consult_draft": "Stub reply for input.consult_draft (2796a5cc)."
+  },
+  "profile": {
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "run": {
+    "date": {
+      "value": "2026-11-16",
+      "timeZone": "America/Toronto"
+    }
+  },
+  "outputs": {
+    "node.letter_decline_letter.decline_letter:letter": "Stub reply for node.letter_decline_letter.decline_letter:letter (40282e24).",
+    "node.letter_information_request.information_request:letter": "Stub reply for node.letter_information_request.information_request:letter (c07db743).",
+    "node.plan_sections.plan_section:assessment": "Stub reply for node.plan_sections.plan_section:assessment (65b86ba0).",
+    "node.plan_sections.plan_section:plan": "Stub reply for node.plan_sections.plan_section:plan (075fe66d).",
+    "node.scope": {
+      "value": "stub 775aa725"
+    }
+  },
+  "expect": {
+    "prompts": {
+      "node.scope": {
+        "hash": "sha256:7a47556566b80676cd9e03b8afb4a4a95287f42729e05db5254585d13ff93b8d"
+      },
+      "node.plan_sections.plan_section:assessment": {
+        "hash": "sha256:09fa628369f2fcfeae9efc57896be74472ad0f72d89b0d3edddf2c431b5b2f63"
+      },
+      "node.plan_sections.plan_section:plan": {
+        "hash": "sha256:6f394c72e01defcba4210fb994759de086ad2529e9900b2b14feedd10d513c2b"
+      },
+      "node.letter_information_request.information_request:letter": {
+        "hash": "sha256:6f7f81191b8c10c463f82a6c57e1f99a0f951ab62e1c140918092d2ebfe4f6ca"
+      },
+      "node.letter_decline_letter.decline_letter:letter": {
+        "hash": "sha256:338e832a0c6a92457953ce0d642279786e2e87d6bdc6afa1b7b4ad4409ebeb12"
+      }
+    },
+    "deliverables": {
+      "deliverable.plan": {
+        "state": "skipped"
+      },
+      "deliverable.decline_letter": {
+        "state": "skipped"
+      },
+      "deliverable.information_request": {
+        "state": "skipped"
+      }
+    }
+  }
+}

@@ -1,4 +1,6 @@
 {
   "description": null,
-  "items": []
+  "items": [
+    "migration_snapshot"
+  ]
 }

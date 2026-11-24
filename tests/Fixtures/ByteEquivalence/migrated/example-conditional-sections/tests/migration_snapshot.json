@@ -1,0 +1,69 @@
+{
+  "description": [
+    "The migration's snapshot (part 10 § 4): the migrated package run offline on fictional inputs and generated replies,",
+    "its prompts and deliverables pinned by hash."
+  ],
+  "inputs": {
+    "consult_draft": "Stub reply for input.consult_draft (2796a5cc).",
+    "sections": [
+      {
+        "kind": "table",
+        "notes": "stub 40b28b61",
+        "title": "stub e7da7e8e"
+      },
+      {
+        "kind": "omit",
+        "notes": "stub 2ceb336a",
+        "title": "stub 00687065"
+      },
+      {
+        "kind": "table",
+        "notes": "stub 45289448",
+        "title": "stub 63cd8bb4"
+      }
+    ],
+    "include_billing": true
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.coverage": "Stub reply for node.coverage (cbde57de).",
+    "node.sections_draft.route.table_draft:1": "Stub reply for node.sections_draft.route.table_draft:1 (6da516ab).",
+    "node.sections_draft.route.table_draft:3": "Stub reply for node.sections_draft.route.table_draft:3 (fefd4978).",
+    "node.standing_sections.applies.standing_draft:billing": "Stub reply for node.standing_sections.applies.standing_draft:billing (b7f5b22b).",
+    "node.standing_sections.applies.standing_draft:follow_up": "Stub reply for node.standing_sections.applies.standing_draft:follow_up (d7b6efd6).",
+    "node.standing_sections.applies.standing_draft:safety_netting": "Stub reply for node.standing_sections.applies.standing_draft:safety_netting (7c629c75)."
+  },
+  "expect": {
+    "prompts": {
+      "node.sections_draft.route.table_draft:1": {
+        "hash": "sha256:41580b0ec73471ef8fb1e8b60911cb6160674fd4b9d7a73ef040080fc56f5d15"
+      },
+      "node.sections_draft.route.table_draft:3": {
+        "hash": "sha256:5653c09bbc1431dadd4bc10d4dd0509f1ceef8fcc7a3b02a0e418ed33479ff6e"
+      },
+      "node.standing_sections.applies.standing_draft:safety_netting": {
+        "hash": "sha256:fdea5bbef04c5ef72a10e0942a3b77e1d019c9138276ef4988513dc9ab6aa4aa"
+      },
+      "node.standing_sections.applies.standing_draft:follow_up": {
+        "hash": "sha256:fc209c90e24d367b6b482b3902f4f3ed76a9d9597a8c3de75b812e3c80e777cc"
+      },
+      "node.standing_sections.applies.standing_draft:billing": {
+        "hash": "sha256:98e67fe999565bfddc3291105d8b283c56ba5c6d79b18f04cba8cad30e20f91f"
+      },
+      "node.coverage": {
+        "hash": "sha256:1035a74b4ef41bc77a5d21979b522e04959f75003c774737ed49615ef1afd026"
+      }
+    },
+    "deliverables": {
+      "deliverable.consult_note": {
+        "state": "released",
+        "hash": "sha256:6321dffcfbe248ac3476bd6eb57b4c82f573861f8bc4383710c53b7c1cd6ba78"
+      },
+      "deliverable.patient_summary": {
+        "state": "released",
+        "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  }
+}

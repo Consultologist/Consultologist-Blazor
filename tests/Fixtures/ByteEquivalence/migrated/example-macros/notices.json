@@ -13,7 +13,8 @@
     "Hand edit needed in deliverables/consult_note.md, body: macro 'header_line' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/consult_note.md, body: macro 'followup_only' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/consult_note.md, body: macro 'brief_plan' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
-    "Hand edit needed in deliverables/consult_note.md, body: macro 'follow_up_reminder' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template."
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'follow_up_reminder' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [
     "Hand edit needed in macros/header_line.md, body: the template uses case at line 1, which the 31 dialect doesn't have; rewrite it.",

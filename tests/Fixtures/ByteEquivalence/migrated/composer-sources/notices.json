@@ -10,7 +10,8 @@
     "Hand edit needed in nodes/refine/draft_summary.md, body: the body's if at line 1 does more than choose text to show; write it as parts with their own if.",
     "nodes/refine/draft_summary.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "nodes/refine/index.json: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
-    "nodes/refine/judge.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made."
+    "nodes/refine/judge.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [
     "Hand edit needed in nodes/topic_tally.md, expression: The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand. The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.size, which has no JSON Logic form at 31: rewrite it by hand.",

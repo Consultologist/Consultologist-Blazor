@@ -13,7 +13,8 @@
     "Hand edit needed in deliverables/gated.md, body: macro 'review_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/optional.md, body: macro 'followup_offer' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/optional.md, body: macro 'leaflet_offer' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
-    "Hand edit needed in deliverables/echoes.md, body: macro 'quoted_review' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template."
+    "Hand edit needed in deliverables/echoes.md, body: macro 'quoted_review' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [
     "Hand edit needed in snippets/review_leaflet.md, body: the body's if at line 1 decides what a macro body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.",

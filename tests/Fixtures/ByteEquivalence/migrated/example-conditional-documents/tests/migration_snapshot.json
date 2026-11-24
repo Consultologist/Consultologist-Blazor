@@ -1,0 +1,45 @@
+{
+  "description": [
+    "The migration's snapshot (part 10 § 4): the migrated package run offline on fictional inputs and generated replies,",
+    "its prompts and deliverables pinned by hash."
+  ],
+  "inputs": {
+    "consult_draft": "Stub reply for input.consult_draft (2796a5cc).",
+    "seen_on": "2026-06-21",
+    "encounter_kind": "new_patient",
+    "include_billing": true
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.sections_consult_note_section.consult_note_section:assessment": "Stub reply for node.sections_consult_note_section.consult_note_section:assessment (7c030a84).",
+    "node.sections_consult_note_section.consult_note_section:plan": "Stub reply for node.sections_consult_note_section.consult_note_section:plan (7c849527).",
+    "node.sections_progress_note_section.progress_note_section:assessment": "Stub reply for node.sections_progress_note_section.progress_note_section:assessment (d06f1604).",
+    "node.sections_progress_note_section.progress_note_section:plan": "Stub reply for node.sections_progress_note_section.progress_note_section:plan (22b7c876)."
+  },
+  "expect": {
+    "prompts": {
+      "node.sections_consult_note_section.consult_note_section:assessment": {
+        "hash": "sha256:f6f2c974699375314654ce86b9de0807609e2fbc7e8d19494fb594ce316b9592"
+      },
+      "node.sections_consult_note_section.consult_note_section:plan": {
+        "hash": "sha256:02d4a0fa915eede8e563130e76df68ab4853a852e4d4096fb86f69e922342fbe"
+      },
+      "node.sections_progress_note_section.progress_note_section:assessment": {
+        "hash": "sha256:d15db53c29241272b37eb4791a07e09e89a6eba2136f81f57cbad223e4e5db6b"
+      },
+      "node.sections_progress_note_section.progress_note_section:plan": {
+        "hash": "sha256:8a4bd431332098f4b1a1979aa5ada7111867c0b9ea4575cfc8b88c2e62a589e7"
+      }
+    },
+    "deliverables": {
+      "deliverable.consult_note": {
+        "state": "released",
+        "hash": "sha256:9c16d41a98e015fb559abf5b0dfcb96d9e153d1c6b4325a67681e2137dd7ed74"
+      },
+      "deliverable.progress_note": {
+        "state": "skipped"
+      }
+    }
+  }
+}
