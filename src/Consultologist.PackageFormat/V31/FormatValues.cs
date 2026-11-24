@@ -106,8 +106,9 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
             return result;
         }
 
+        // A held copy that cannot be compiled says so as any format does, never as a line ending.
         var held = ValidateAsWritten(value, oneLine);
-        return held.Valid
+        return held.Valid || ReferenceEquals(held.Faults, BadFormat)
             ? held
             : new FormatValueResult(false, held.Faults
                 .Select(f => f with { Keyword = FormatValueResult.LineEndingKeyword })
@@ -181,7 +182,6 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
     /// <summary><see cref="ValidateExpanded"/> against <paramref name="schema"/> as written, compiled once per process.</summary>
     private static FormatValueResult ValidateAsWritten(JsonNode? value, JsonNode schema)
     {
-
         if (schema is JsonValue boolean && boolean.GetValueKind() is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
         {
             return boolean.GetValueKind() == System.Text.Json.JsonValueKind.True ? new FormatValueResult(true, []) : new FormatValueResult(false, BadFormat);
