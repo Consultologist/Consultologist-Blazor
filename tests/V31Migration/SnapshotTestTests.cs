@@ -229,6 +229,25 @@ public class SnapshotTestTests
     }
 
     [Fact]
+    public async Task AnOfferedMacrosMarker_IsInTheOutputs_AndTheSnapshotPassesAgain()
+    {
+        // D12: the offline run appends an offered macro's marker to a reply; outputs hold the reply as served, so a run
+        // from the file serves it unchanged (the marker is not appended twice) and gives the same hashes.
+        var plan = V31Engine.V31StartChecksTests.Migrated(("reviewed", "true"));
+        var request = SnapshotTest.Fictional(plan);
+        var first = await OfflineRun.RunAsync(plan, request);
+        var snapshot = SnapshotTest.Write(plan, request, first);
+
+        var draft = (string?)snapshot["outputs"]!["node.draft"];
+        Assert.Contains("{{ macro.reviewed", draft, StringComparison.Ordinal);
+        Assert.DoesNotContain("macro.letrozole", draft, StringComparison.Ordinal); // its choice is left unset
+
+        var again = await OfflineRun.RunAsync(plan, SnapshotTest.Request(snapshot));
+        Assert.Equal(RunState.Completed, again.State);
+        Assert.Equal(snapshot.ToJsonString(), SnapshotTest.Write(plan, SnapshotTest.Request(snapshot), again).ToJsonString());
+    }
+
+    [Fact]
     public void Fictional_GivesExactlyTheProfileAndRunFactsThePlanReads()
     {
         var plan = V31Engine.V31StartChecksTests.Plan(needs: ["signature", "name"], facts: ["run.date", "run.package", "run.id", "run.engine"]);
