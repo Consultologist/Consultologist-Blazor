@@ -14,7 +14,7 @@ namespace Consultologist.PackageFormat.V31.Migration;
 internal static partial class Migrate
 {
     /// <summary>
-    /// The nodes pass: the tree and the leaves a deliverable composes (<see cref="ComposedLeaves"/>, R9), then every
+    /// The nodes pass: the tree and the nodes a deliverable composes (<see cref="ComposedNodes"/>, R9), then every
     /// node's key, read and place (<see cref="PlaceNodes"/>), the cases' branches (<see cref="CaseBranches"/>, after
     /// which what is always valued is known), then each top-level node in 30's order
     /// (listed in <c>nodes/index.json</c>), each flow's children inside it; then each single snippet's <c>if</c>.
@@ -23,7 +23,7 @@ internal static partial class Migrate
     {
         ArgumentNullException.ThrowIfNull(m);
         var tree = new NodeTree(m.Manifest30.Nodes ?? []);
-        tree.Composed.UnionWith(ComposedLeaves(m, tree));
+        tree.Composed.UnionWith(ComposedNodes(m, tree));
         var cases = new Dictionary<string, CaseShape>(StringComparer.Ordinal);
         PlaceNodes(m, tree, cases);
         foreach (var (id, shape) in CaseBranches(m, tree))

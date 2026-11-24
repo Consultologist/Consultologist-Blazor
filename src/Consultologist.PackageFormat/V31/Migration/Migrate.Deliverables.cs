@@ -91,15 +91,16 @@ internal static partial class Migrate
     }
 
     /// <summary>
-    /// R9 (#1507, 2026-11-22T16:26Z, item 2) and D20 (accepted 2026-11-22T21:38Z): the leaves a deliverable composes. Each
+    /// R9 (#1507, 2026-11-22T16:26Z, item 2) and D20 (accepted 2026-11-22T21:38Z): the nodes a deliverable composes. Each
     /// 30 deliverable's <c>sources</c> (read as <see cref="SourceRead"/> reads them) is followed through flows: a source that
-    /// is a flow gives every leaf its <c>ret</c> chain reaches (a loop's or a while's <c>ret</c>, an <c>if</c>'s
-    /// <c>then</c> and <c>else</c>, a <c>case</c>'s branches and <c>else</c>); a leaf is itself. Which of them changes
-    /// format is <see cref="AgentFormat"/>'s to say. Computed before the nodes pass works out any format.
+    /// is a flow gives itself and every node its <c>ret</c> chain reaches (a loop's or a while's <c>ret</c>, an <c>if</c>'s
+    /// <c>then</c> and <c>else</c>, a <c>case</c>'s branches and <c>else</c>). Which leaves change format is
+    /// <see cref="AgentFormat"/>'s to say; a composed <c>if</c> or <c>case</c> whose branches then mix Markdown and plain text
+    /// is <see cref="WriteFlow"/>'s hand edit (A10-053). Computed before the nodes pass works out any format.
     /// </summary>
-    private static HashSet<string> ComposedLeaves(Migrated m, NodeTree tree)
+    private static HashSet<string> ComposedNodes(Migrated m, NodeTree tree)
     {
-        var leaves = new HashSet<string>(StringComparer.Ordinal);
+        var composed = new HashSet<string>(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var pending = new Stack<string>();
         foreach (var deliverable in m.Manifest30.EffectiveDeliverables)
@@ -115,11 +116,9 @@ internal static partial class Migrate
         {
             if (!seen.Add(id) || !tree.ById.TryGetValue(id, out var node))
                 continue;
+            composed.Add(id);
             if (!WorkflowImpliedPaths.IsFlow(node))
-            {
-                leaves.Add(id);
                 continue;
-            }
 
             IEnumerable<string?> rets = node switch
             {
@@ -134,7 +133,7 @@ internal static partial class Migrate
             }
         }
 
-        return leaves;
+        return composed;
     }
 
     /// <summary>

@@ -349,6 +349,14 @@ internal static class MigrationSentences
     public static string FolderItemPlacesMacro(string macro, int line) =>
         string.Create(CultureInfo.InvariantCulture, $"macro '{macro}' is placed at line {line}, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.");
 
+    /// <summary>
+    /// A10-053 (R9, D20; part 06 § 6.4): a reason: the <paramref name="kind"/> node <paramref name="flow"/> a deliverable
+    /// composes returns 30 prose (<c>markdown_block</c>) from one branch and plain text from another, a union a
+    /// <c>markdown_block</c> deliverable escapes as a string, the Markdown with it.
+    /// </summary>
+    public static string ComposedBranchesMix(string kind, string flow) =>
+        $"the {kind} '{flow}' that a deliverable composes returns Markdown from one branch and plain text from another, which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";
+
     /// <summary>A10-041 (part 05 § 8.3, § 8.7): a reason: a 30 macro's body places macro <paramref name="placed"/> (its <c>.prompt</c>), which no 31 macro body does.</summary>
     public static string BodyPlacesMacro(string placed) =>
         $"the body places macro '{placed}', which a 31 macro body cannot; place it in the prompt instead.";

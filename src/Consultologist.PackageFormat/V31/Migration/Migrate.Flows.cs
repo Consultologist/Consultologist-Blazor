@@ -30,7 +30,7 @@ internal static partial class Migrate
             Top = [.. ById.Keys.Where(id => !Owner.ContainsKey(id))];
         }
 
-        /// <summary>The leaves a deliverable composes (R9, D20): filled by <see cref="ComposedLeaves"/> before any format is worked out.</summary>
+        /// <summary>The nodes a deliverable composes, its sources and every node their <c>ret</c>s reach (R9, D20): filled by <see cref="ComposedNodes"/> before any format is worked out.</summary>
         public HashSet<string> Composed { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, WorkflowNodeSpec> ById { get; } = new(StringComparer.Ordinal);
@@ -162,6 +162,16 @@ internal static partial class Migrate
 
         formats[id] = format;
         return format;
+    }
+
+    /// <summary>Whether <paramref name="format"/> is a union holding both a <c>markdown_block</c> and a <c>plaintext</c> member (R9's mixed branches).</summary>
+    private static bool MixesMarkdownAndPlainText(Migrated m, JsonNode format)
+    {
+        if (format is not JsonObject { } union || union["anyOf"] is not JsonArray members)
+            return false;
+        var set = FormatSet.ForPackage(m.Options.Registry, m.PackageFormats());
+        var kinds = members.Select(member => FormatTypes.TextKind(member, set)).ToList();
+        return kinds.Contains("markdown_block") && kinds.Contains("plaintext");
     }
 
     /// <summary>The id a 30 <c>ret</c> (<c>node.&lt;id&gt;</c>) names, or null.</summary>
@@ -358,6 +368,16 @@ internal static partial class Migrate
             ["runDependent"] = false,
             ["profileCarrying"] = false,
         };
+
+        // R9, D20: a composed if or case whose branches return 30 prose (markdown_block) and plain text (a let of text, a
+        // rendered node, agent_plaintext) would be the union of both, which a markdown_block deliverable escapes as a string,
+        // 30's Markdown with it. No 31 format keeps both, so it is a hand edit (A10-053), written markdown_block, which the
+        // checker refuses against the union its branches give (S02-015).
+        if (kind is "if" or "case" && tree.Composed.Contains(id) && MixesMarkdownAndPlainText(m, m.NodeReads[id].Format))
+        {
+            header["format"] = "markdown_block";
+            m.HandEdit(file, "format", MigrationSentences.ComposedBranchesMix(kind, id));
+        }
 
         var key = m.Keys[id];
         string? Ret(string? ret) => RetId(ret) is { } child ? (m.Keys.TryGetValue(child, out var full) ? full : $"{key}.{child}") : ret;
