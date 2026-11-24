@@ -106,7 +106,8 @@ public sealed class MigrationFigures
 /// store of migration reports exists until area 11's publish path). Each account's active package is the one a consult
 /// would run (<see cref="IWorkflowPackagePinResolver"/>, as <see cref="PinHealthReporter"/> reads it); each distinct
 /// package is read once as stored (<see cref="IWorkflowPackageSources"/>) and, when it is below 31, migrated by
-/// <see cref="WorkflowPackageMigration30To31.Migrate"/> in memory, nothing written: its hand-edit notices are summed, and a
+/// <see cref="WorkflowPackageMigration30To31.Migrate"/> in memory, nothing written and no snapshot test made
+/// (<see cref="Migration31Options.WriteSnapshot"/> false): its hand-edit notices are summed, and a
 /// refusal, or a throw, counts it among the packages that do not migrate. A package at 31 or past it is not migrated. The
 /// type registry (<see cref="PublishedTypeRegistry"/>) is read only when a package is migrated. A pin or a package that
 /// cannot be read fails alone: it is counted as not counted (A10-059) and the rest are counted. A registry or toolchain
@@ -195,7 +196,8 @@ public sealed class OutstandingHandEdits(
         {
             ct.ThrowIfCancellationRequested();
             var options = new Migration31Options(
-                types, current, source.Formats ?? _formats, schema => _contracts.TryResolveContract(schema, out var id) ? id : null);
+                types, current, source.Formats ?? _formats, schema => _contracts.TryResolveContract(schema, out var id) ? id : null,
+                WriteSnapshot: false);
             try
             {
                 var result = WorkflowPackageMigration30To31.Migrate(source.ManifestJson, source.Files, options);
