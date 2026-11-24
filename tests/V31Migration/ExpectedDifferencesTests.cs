@@ -201,6 +201,11 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, Old, New.Replace("closing", "final", StringComparison.Ordinal), "node.cover_note")));
         Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, Old, New.Replace("Problems", "Points", StringComparison.Ordinal), "node.cover_note")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "## Prior letters 1", "## Letters 1", "example-prior-letters", key31: "node.assessment")));
+
+        // Near: a loop with an itemLabel (composer-sources' topic_loop, "Topics" over "Requested topics", itemLabel title)
+        // names its items by the field; its position name is only the fallback for an empty one, which is not explained.
+        Assert.Null(ExpectedDifferences.Explain(EditedContext("composer-sources", "item-names-and-bounds", ComparedKind.Deliverable,
+            "## History\n\nStub.\n\n## Requested topics 4\n\nStub four.", "## History\n\nStub.\n\n## Topics 4\n\nStub four.", "deliverable.topics")));
     }
 
     [Fact]
@@ -312,8 +317,12 @@ public class ExpectedDifferencesTests
 
     /// <summary>A context on composer-gates with its hand edits made (Task 16), so its own plan is read.</summary>
     private static DifferenceContext GatesContext(ComparedKind kind, string old, string now, string key31) =>
-        new("composer-gates", "clinician-checks-pass", $"composer-gates/clinician-checks-pass#{key31}", kind, null, key31, old, now,
-            Capture("Completed", null), Run(RunState.Completed), EquivalenceFixture.Migrated("composer-gates"), EquivalenceFixture.Plan("composer-gates"));
+        EditedContext("composer-gates", "clinician-checks-pass", kind, old, now, key31);
+
+    /// <summary>A context on a package with its hand edits made (Task 16), so its own plan is read.</summary>
+    private static DifferenceContext EditedContext(string package, string scenario, ComparedKind kind, string old, string now, string key31) =>
+        new(package, scenario, $"{package}/{scenario}#{key31}", kind, null, key31, old, now,
+            Capture("Completed", null), Run(RunState.Completed), EquivalenceFixture.Migrated(package), EquivalenceFixture.Plan(package));
 
     private static DifferenceContext MacroContext(Migration31Result migrated, string old, string now, OfflineRequest? request = null) =>
         Context(ComparedKind.Deliverable, old, now, "example-classifier-scope", "out-of-scope", migrated: migrated, key31: "deliverable.decline_letter", request: request);
