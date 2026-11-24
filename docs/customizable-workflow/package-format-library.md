@@ -2189,14 +2189,18 @@ on a deliverable's text. A null argument is `ArgumentNullException`.
 `DeliveryPlan.Kinds` order (`email`, `pdf`, `emr`, `zip`), not the order the folder wrote them in (D11). A released
 deliverable has one send per kind of its `delivery`; a folder with `bundle: "zip"` has one send per kind for all its
 released deliverables, at the place of its first, and each deliverable still gets its own row. A deliverable that is
-not released, one with `delivery: []`, and a bundle folder with nothing released have none. A job that failed
+not released, one with `delivery: []`, and a bundle folder with nothing released have none. #1507 (D19, ruled by the
+owner): a job that released nothing, with a deliverable blocked or held, has one send per mail kind (`email`, `pdf`)
+those list, `EveryDeliverableBlocked: true`, carrying each by its label with no text: the link-only email. A job that failed
 delivers nothing: `DeliveryPlan.NotSentJobFailed` gives each destination of each released deliverable a row `not sent`
 with S06-038, `not sent: the job failed`.
 
 **The rules (D12).** The runner makes the first attempt of every send at once, then waits (`Task.WhenAny` over what is
 in flight and the window's timer) for one to finish.
 
-- A send that is `Sent` is final. A kind the account has not set up (`NotSetUp`) is final at once, `not sent` with
+- A send that is `Sent` is final. #1507 (D17, D19): one whose outcome has `LinkOnly` (it went as the link-only email:
+  `no document password`, `attachments over the budget`, `every deliverable blocked`) is `sent`, its attempt
+  `sent link-only` and its row's `Reason` the `LinkOnly` sentence. A kind the account has not set up (`NotSetUp`) is final at once, `not sent` with
   S08-006, `not sent: <Kind> isn't set up for this account` (`<Kind>` is `Email`, `PDF`, `EMR` or `Zip`), and never
   retried. Its row has no attempts and no time.
 - A send that failed is retried after 2 minutes, doubling after, each wait cut to the time the window has left, until
@@ -2209,9 +2213,9 @@ in flight and the window's timer) for one to finish.
   starts no attempt. Only a send still in flight when the window's timer ends is `failed`, and its attempt is
   recorded `failed: window`.
 - A row is `delivery:<deliverable key>/<kind>` (D13); `Result` is `sent`, `not sent` or `failed`; `Reason` is
-  S08-006's sentence, `not sent: the job failed`, `failed: <kind>` or `null` when sent; `AtUtc` is the start of
-  the attempt that sent it (null otherwise); `Attempts` each attempt with its start and `sent` or `failed: <error
-  kind>`. `DeliveryResult.Failed` counts failed rows, so a failed bundle counts once per deliverable.
+  S08-006's sentence, `not sent: the job failed`, `failed: <kind>`, a link-only send's reason (A10-054 to A10-056), or
+  `null` when sent as asked; `AtUtc` is the start of the attempt that sent it (null otherwise); `Attempts` each attempt
+  with its start and `sent`, `sent link-only` or `failed: <error kind>`. `DeliveryResult.Failed` counts failed rows, so a failed bundle counts once per deliverable.
 - Every row is recorded (`IRunRecorder.DeliveryAsync`), in the fixed order, once every result is final or the
   window has closed. No timer is left outstanding.
 

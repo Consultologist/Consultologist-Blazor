@@ -67,6 +67,7 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | a `terms_subset` check node | a file in `checks/`, `kind: computed`, `format: check_result`, `failWith` a literal; every reader of `node.x` rewritten to `check.x` | [06](06-checks-deliverables-profile.md) |
 | deliverables with `sources`, composed by the engine | a file in `deliverables/` whose generated template **reproduces today's composer bytes**, with `whenEmpty` chosen as § 1.10 says | [06](06-checks-deliverables-profile.md) |
 | the deliverable header's signature | `{{ profile.signature }}` in the template | [06](06-checks-deliverables-profile.md) |
+| 30's completion reply: the documents as password-protected PDFs, or the link-only email | **the root deliverables folder → `delivery: ["pdf"]`**, `bundle: null`, and no destination folder: the `pdf` kind sends the same message and falls back to the link-only email as 30 did (part 06 § 8; [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)) | [06](06-checks-deliverables-profile.md) |
 | built-in renderers in C# (`concept_bullets`, `concept_context`) | **built-in Scriban renderers in the registry**, versioned and locked, their ids reserved; piped as `\| renderer.concept_bullets` | [05](05-templates-and-macros.md) |
 | whitespace forms #1412 refuses, `-` on a tag | rewritten to the accepted forms | [05](05-templates-and-macros.md) |
 | simple `{{ if }}…{{ end }}` blocks in prompts | lifted into parts | [05](05-templates-and-macros.md) |
@@ -405,6 +406,9 @@ conversion**.
   - **A macro body's trailing whitespace:** 31 drops exactly one final line ending (part 05 § 8.6), 30 trims all trailing
     whitespace (`TrimEnd()`); each body whose text differs is listed, naming this ruling ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647), 1).
   - **Plain text escaped into a Markdown deliverable** (part 06 § 6.4): unescaping the 31 text gives 30's bytes.
+  - **One message per deliverable, where 30 sent one per job** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968), 1): a migrated package delivers each
+    deliverable by `pdf` in its own message. No compared text carries it, so the report says it in its `notices`. A job whose
+    every deliverable is blocked still sends the link-only email, as 30's reply did: a 30 behaviour kept, not a difference ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369)).
 
   Rulings 2, 4 and 5 of the same list ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)) are not differences of the comparison: a failed loop item still
   fails the job (2, 31 keeps 30), a `while` with `checkFirst` reading its own body is refused at publish (4), and a numeric

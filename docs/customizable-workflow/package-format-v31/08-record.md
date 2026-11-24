@@ -608,7 +608,11 @@ template's provenance ([decided](https://github.com/Consultologist/Consultologis
 `delivery:<deliverable>/<destination>`, and is the one place a result is recorded. Its members are
 `{ key: string, deliverable: string, kind: string, result: "sent" \| "not sent" \| "failed", reason: string \| null, atUtc: string \| null, attempts: array of { atUtc: string, outcome: string } }`:
 `key` is its own key, `deliverable` the deliverable key it belongs to (the canonical document gathers
-it under that deliverable's `deliveries`, § 1.2), and `outcome` an attempt's result word.
+it under that deliverable's `deliveries`, § 1.2), and `outcome` an attempt's result word: `sent`, `failed: <error kind>`,
+or `sent link-only` for the link-only email, whose row is `sent` with its `reason` saying why (*no document
+password*, *attachments over the budget*, *every deliverable blocked*; part 06 § 8, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)).
+A job that completes having released nothing, with a deliverable blocked or held, writes a row for each `email` or
+`pdf` destination of each of them, for that email ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369)).
 The results are written once the job has succeeded: *not sent: EMR isn't set up for this account*,
 *not sent: the job failed*; `failed` after the attempts ran out or the delivery window closed
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677), part 09 § 3.8), each attempt in `attempts`. The canonical record gathers the

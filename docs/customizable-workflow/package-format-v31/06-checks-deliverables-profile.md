@@ -593,6 +593,21 @@ deliverables/
   The job doesn't fail, and the document stays in History.
 - **A bundle holds released deliverables only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): a held, skipped, failed or
   blocked one is left out, and History lists what was left out and why.
+- **`pdf` keeps 30's promise** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)): it sends the message
+  with each document as a password-protected PDF; with no document password, or attachments over the message budget
+  (2 MiB, the set dropped whole), it sends the link-only email instead, as 30's reply did. That destination is `sent`,
+  its attempt *sent link-only* and its reason *no document password* or *attachments over the budget* (part 08 § 10).
+  The delivery address and the account's choice to be emailed are read once, when the job starts, as at 30 ("a
+  choice changed mid-run does not change what was promised"); the password is read at the attempt.
+- **A job whose every deliverable is blocked still sends the link-only email** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369)),
+  as 30's reply did: a job that completes having released nothing, with a deliverable blocked or held, sends one
+  link-only message per mail kind (`email`, `pdf`) those deliverables list, saying that no document could be sent,
+  with the History link. It holds no clinical text: the documents' labels only (package text). Each such destination
+  is `sent`, its attempt *sent link-only* and its reason *every deliverable blocked*.
+- **`emr`, `zip` and the account's kind-to-endpoint section are Milestone 40**
+  ([#1443](https://github.com/Consultologist/Consultologist-Blazor/issues/1443), [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)):
+  until then no account can set them up, and each such destination is *not sent: EMR isn't set up for this account*
+  (or *…Zip…*).
 - `description` and `items` follow every folder's `index.json` ([Part 01](01-files-and-scopes.md));
   #1406's examples show only `delivery` and `bundle`.
 

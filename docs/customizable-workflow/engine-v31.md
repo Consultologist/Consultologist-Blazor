@@ -332,8 +332,10 @@ and hashes of the two texts. #1506: both activities write the text only they hol
 ## Delivery
 
 *Part 06 § 8 and part 09 § 3.8, with #1505's decisions D10 to D13.* A job whose run completed delivers its
-**released** deliverables to the destinations their folders list in `delivery`. A job with nothing to send (every
-deliverable held, skipped, blocked, or delivered nowhere) never enters delivery. A job that failed delivers nothing,
+**released** deliverables to the destinations their folders list in `delivery`. A job that released nothing, with a
+deliverable blocked or held that a mail kind (`email`, `pdf`) delivers, still sends the link-only email, as 30's reply
+did (#1507 D19, ruled by the owner, below). A job with nothing to send (every deliverable skipped, or delivered nowhere,
+or blocked or held with no mail kind) never enters delivery. A job that failed delivers nothing,
 and records each destination of each released deliverable *not sent: the job failed* (S06-038).
 
 **The `delivering` status.** `ConsultGenerationJobStatuses.Delivering` (`"delivering"`) is set from `running` only,
@@ -366,8 +368,8 @@ already has:
 
 | Kind | Set up when | What it sends |
 |---|---|---|
-| `email` | the mailbox is configured (`EmailIntake__MailboxAddress` and `EmailIntake__AppBaseUrl`), the account has `delivery.address`, and `delivery.emailPdf` is not `false` | today's link-only message (the 5–30 reply's `EmailIntakeReply.Compose`: boilerplate and the History link), nothing attached. A bundle's one message names each document by label |
-| `pdf` | `email` is set up and the account has a `delivery.documentPassword` | the same message with the deliverable as a password-protected PDF (`ConsultDocumentPdf`). A bundle's is one `.zip` holding each PDF. Attachments past the 5–30 reply's budget (2 MiB) fail the attempt `too-large` |
+| `email` | the mailbox is configured (`EmailIntake__MailboxAddress` and `EmailIntake__AppBaseUrl`), the job's start had a delivery address, and `delivery.emailPdf` was not `false` at the start | today's link-only message (the 5–30 reply's `EmailIntakeReply.Compose`: boilerplate and the History link), nothing attached. A bundle's one message names each document by label |
+| `pdf` | `email` is set up | the same message with the deliverable as a password-protected PDF (`ConsultDocumentPdf`). A bundle's is one `.zip` holding each PDF. With no `delivery.documentPassword`, or attachments past the 5–30 reply's budget (2 MiB), the 5–30 reply's link-only message for that case instead, nothing attached: `sent`, its attempt `sent link-only` (#1507 R8, D17) |
 | `emr` | **never, in this build** | nothing: no write-back exists |
 | `zip` | **never, in this build** | nothing: no protected archive exists |
 
@@ -375,8 +377,24 @@ already has:
 isn't set up for this account* or *…Zip…* (S08-006), final at once and never retried. The mapping's home in the
 account is still to design (#1505 D10, flagged for the owner; #1408 item 9). A folder asking `["email", "pdf"]` for
 an account with an address and no document password gets one row `sent` and one `not sent`, and nothing is retried
-for the second. The settings are read at the attempt, inside the activity, so a replay reads the stored outcome and a
-retry can see a setting changed between attempts.
+for the second (#1507 R8: a folder asking `["pdf"]` sends the link-only email instead, `sent`).
+
+**The settings are read at the start (#1507 R8, D18).** As a 5–30 job does (#518: *"a choice changed mid-run does not
+change what was promised"*), the delivery address and `delivery.emailPdf` are read once, when the job starts: the
+starter carries its origin's `ReplyToAddress` (the account's verified delivery address, or the email door's sender) and
+`EmailRequested` in the orchestration's input (`ConsultGenerationOrchestrationInputV31.Delivery`, a
+`V31DeliverySettings`), and every attempt, retries included, uses them (`DeliverV31Input.Delivery`). The document
+password is read at the attempt, inside the activity, as the 5–30 reply reads it at reply time, so no secret enters the
+orchestration's history. An orchestration started before this build has no `Delivery` (the member is optional), and
+its channels read the address and `delivery.emailPdf` at the attempt, as area 08's build did.
+
+**Every deliverable blocked (#1507 D19, ruled by the owner on #1507, 2026-11-22T21:38Z).** A job that completes having
+released nothing, with a deliverable blocked or held, enters `delivering` and sends 30's link-only message, one per
+mail kind those deliverables list (`DeliveryPlan.Sends`, `DeliverySend.EveryDeliverableBlocked`): the completed reply
+with *"No document could be sent: <labels> <was | were> not released."* (A10-057) after its opening, the History link,
+nothing attached and no password needed. Its send carries each document's label and no text. Each such destination's
+row is `sent`, its attempt `sent link-only`, its reason `every deliverable blocked`; the deliverable's own `delivery`
+stays `[]`, and the canonical record gathers the row under it.
 
 **Bundles (#1505 D11).** A folder with `bundle: "zip"` makes one send per kind for all its released deliverables, in
 plan order, and each deliverable still gets its own delivery row with the send's result. A folder with nothing
@@ -384,8 +402,10 @@ released sends nothing.
 
 **The rows (#1505 D13).** A delivery row's key is `delivery:<deliverable key>/<kind>`. Its `reason` is S08-006's
 sentence for a kind not set up, `not sent: the job failed` for a failed job, `failed: <kind>` after the attempts or
-the window, and `null` when sent. A row records each attempt with its start time and `sent` or
-`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `StoredRunRecorder`
+the window, why a `sent` row went as the link-only email (#1507 D17, D19: `no document password`, `attachments over
+the budget`, `every deliverable blocked`, A10-054 to A10-056), and `null` for any other `sent`. A row records each
+attempt with its start time and `sent`, `sent link-only` or `failed: <error kind>`, where the error kind is
+`unreachable`, `error` or `window` (`too-large` is no longer given: a set over the budget is sent link-only). `StoredRunRecorder`
 counts the rows on the entity as `delivery:sent`, `delivery:not sent` and `delivery:failed`, apart from the run's row
 states, so a failed delivery is never counted as a failed run row, and stores them with the record's rows.
 
