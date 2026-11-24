@@ -365,6 +365,11 @@ internal static class MigrationSentences
     public static string ComposedBranchesMix(string kind, string flow) =>
         $"the {kind} '{flow}' that a deliverable composes returns Markdown from one branch and plain text from another, which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";
 
+    /// <summary>
+    /// S10-001 (part 10 § 1.4): the script's word when it wrote the migrated package and hand edits remain (its exit 1).
+    /// </summary>
+    public const string WrittenHandEditsRemain = "written; hand edits remain";
+
     /// <summary>A10-011 (part 10 § 4, D13): a notice: the package has hand edits, so no snapshot test was written.</summary>
     public const string NoSnapshotHandEditsRemain = "No snapshot test was written: hand edits remain.";
 
