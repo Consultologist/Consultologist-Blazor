@@ -246,6 +246,38 @@ public class DialectGoldenTests
     }
 
     [Fact]
+    public void TheExport_RecomputesAKeptVectorsEscaped()
+    {
+        // #1507, 2026-11-22 (2), 3 (R10): a vector the export keeps (another area's) is exported with its escaped computed
+        // by MarkdownEscape.Escape, never as written, so a stale one cannot reach the freeze.
+        var root = Path.Combine(Path.GetTempPath(), "v31-merge-" + Guid.NewGuid().ToString("N"));
+        var conformance = Path.Combine(root, "v31", "conformance");
+        try
+        {
+            Directory.CreateDirectory(conformance);
+            File.Copy(Path.Combine(V31Contract.ConformanceFolder(DialectGoldensExport.DialectGoldens), "..", "index.json"), Path.Combine(conformance, "index.json"));
+            const string plain = "# Kept by another area, for Dr A. Sample";
+            DialectGoldensExport.Write(Path.Combine(conformance, DialectGoldensExport.EscapeVectors), new Dictionary<string, byte[]>(StringComparer.Ordinal)
+            {
+                ["vectors.json"] = Utf8NoBom.GetBytes(new JsonArray(new JsonObject { ["plain"] = plain, ["escaped"] = "stale" }).ToJsonString()),
+            });
+
+            DialectGoldensExport.ExportTo(root);
+
+            var vectors = JsonNode.Parse(File.ReadAllBytes(Path.Combine(conformance, DialectGoldensExport.EscapeVectors, "vectors.json")))!.AsArray();
+            var kept = Assert.Single(vectors, v => (string?)v!["plain"] == plain)!;
+            Assert.Equal(["plain", "escaped"], kept.AsObject().Select(m => m.Key));
+            Assert.Equal(MarkdownEscape.Escape(plain), (string?)kept["escaped"]);
+            Assert.All(vectors, v => Assert.Equal(MarkdownEscape.Escape((string)v!["plain"]!), (string?)v["escaped"]));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void EveryDialectCase_HoldsItsFiles()
     {
         var files = DialectGoldensExport.Files(DialectGoldensExport.DialectGoldens);
