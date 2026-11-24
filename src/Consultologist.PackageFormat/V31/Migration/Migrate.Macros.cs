@@ -46,6 +46,7 @@ internal static partial class Migrate
             var header = m.Resolved30.Headers.GetValueOrDefault(macro.File);
             m.Put(macro.File, MacroHeader(m, macro.Id, macro.File, macro.Label ?? header?.Label, header, macro.Optional, macro.Default, macro.Instruction, byTheEngine, disagreeing),
                 MacroBody(m, macro.File));
+            m.MacroBodyFiles.Add(macro.File);
             m.Items("macros").Add(macro.Id);
         }
     }
@@ -127,6 +128,7 @@ internal static partial class Migrate
             var written = $"macros/{folder.Id}/{item}.md";
             var header = m.Resolved30.Headers.GetValueOrDefault(path30);
             m.Put(written, MacroHeader(m, $"{folder.Id}/{item}", written, header?.Label, header, null, null, null, byTheEngine, disagreeing), MacroBody(m, path30));
+            m.MacroBodyFiles.Add(written);
             m.Items($"macros/{folder.Id}").Add(item);
         }
     }
@@ -146,6 +148,7 @@ internal static partial class Migrate
             ["if"] = null,
             ["format"] = "markdown_block",
         }, MacroBody(m, macro.File));
+        m.MacroBodyFiles.Add($"snippets/{macro.Id}.md");
         m.Items("snippets").Add(macro.Id);
     }
 

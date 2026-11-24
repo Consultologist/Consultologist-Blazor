@@ -207,6 +207,7 @@ internal static partial class Migrate
             ["if"] = null,
             ["format"] = "markdown_block",
         }, MacroBody(m, macro.File));
+        m.MacroBodyFiles.Add(path);
         m.Items("snippets").Add(chosen);
 
         var said = $"Hand edit needed in {macro.File}, body: ";

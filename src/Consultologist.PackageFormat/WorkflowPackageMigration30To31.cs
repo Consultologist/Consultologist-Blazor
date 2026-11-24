@@ -58,6 +58,13 @@ public sealed record Migration31Result(
     /// keep an entry each).
     /// </summary>
     public IReadOnlyDictionary<string, string> Keys { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1507 (Task 15; R5, part 05 § 8.6): the 31 files, in ordinal order, whose body is a 30 macro's body: a macro, a macro
+    /// folder's item, and a macro written as a snippet (D4). 30 trimmed all trailing white space where it placed one; 31
+    /// keeps its own rule, so the byte-equivalence comparison reads these to explain the difference.
+    /// </summary>
+    public IReadOnlyList<string> MacroBodies { get; init; } = [];
 }
 
 /// <summary>

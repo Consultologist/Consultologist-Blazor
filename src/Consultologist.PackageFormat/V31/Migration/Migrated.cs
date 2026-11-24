@@ -130,6 +130,12 @@ internal sealed class Migrated
     /// </summary>
     public Dictionary<string, string> NodeIds30 { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// #1507 (Task 15; R5): every 31 file whose body is a 30 macro's body (a macro, a folder's macro, a macro written as a
+    /// snippet, D4), whose trailing white space 30 trimmed where it placed it (<see cref="Migration31Result.MacroBodies"/>).
+    /// </summary>
+    public SortedSet<string> MacroBodyFiles { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Each deliverable the renames pass renamed, its 31 id to its id in the package as given (as <see cref="NodeIds30"/>).</summary>
     public Dictionary<string, string> DeliverableIds30 { get; } = new(StringComparer.Ordinal);
 
@@ -394,6 +400,7 @@ internal sealed class Migrated
             HandEdits = _handEdits.ToList(),
             Report = new MigrationNotes(Renames.ToList(), MacroInputs.ToList(), BlankConversions.ToList(), Suggestions.ToList(), Reproducible.ToList()),
             Keys = keys,
+            MacroBodies = MacroBodyFiles.Where(Sources.ContainsKey).ToList(),
         };
     }
 }
