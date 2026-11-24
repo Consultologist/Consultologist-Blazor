@@ -30,7 +30,8 @@ public enum ComparedKind
 /// #1507 (part 10 § 3.2): one difference, as <see cref="ExpectedDifferences.Explain"/> judges it: where it is
 /// (<paramref name="Package"/>, <paramref name="Scenario"/>, <paramref name="Site"/>, <paramref name="Kind"/>, the 30 key and
 /// the 31 key, each <c>null</c> for a side that lacks the text), both texts (<c>null</c> for a side that lacks it; a status is
-/// its word), and the whole of both runs: the 30 capture, the 31 offline run, the migration and the plan it ran.
+/// its word), and the whole of both runs: the 30 capture, the 31 offline run, the migration and the plan it ran, and the
+/// request the 31 run was given (<c>null</c> when the caller did not pass it: a rule that reads it then explains nothing).
 /// </summary>
 public sealed record DifferenceContext(
     string Package,
@@ -44,7 +45,8 @@ public sealed record DifferenceContext(
     JsonObject Capture30,
     OfflineResult Run31,
     Migration31Result Migrated,
-    RunPlan Plan);
+    RunPlan Plan,
+    OfflineRequest? Request = null);
 
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 §§ 3.1, 3.2; D10 to D12; the fixture README's "What area 10 does with the
@@ -161,10 +163,12 @@ public static class ByteEquivalence
     /// <c>#prompts@30/</c>, <c>#renders@30/</c> or <c>#deliverables@30/</c> (Review Focus 5: reported, not dropped). A
     /// deliverable's text is 30's <c>composed</c> text and 31's text when it was not withheld: a 31 deliverable its check
     /// refused (<see cref="DeliverableState.Blocked"/>) is never delivered, as 30's refused (<c>failed</c>) row holds no text
-    /// (R4, ruling 3). A deliverable neither side has text for is not a compared text.
+    /// (R4, ruling 3). A deliverable neither side has text for is not a compared text. <paramref name="request31"/>, the request
+    /// the 31 run was given, is passed to the rules (R4 item 6 reads the inputs supplied).
     /// </summary>
     public static IReadOnlyList<ComparedText> Compare(
-        string package, string scenario, JsonObject capture30, OfflineResult run31, Migration31Result migrated, RunPlan plan)
+        string package, string scenario, JsonObject capture30, OfflineResult run31, Migration31Result migrated, RunPlan plan,
+        OfflineRequest? request31 = null)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(scenario);
@@ -183,7 +187,7 @@ public static class ByteEquivalence
             if (!equal)
             {
                 explanation = ExpectedDifferences.Explain(new DifferenceContext(
-                    package, scenario, at + site, kind, key30, key31, old?.Text, now?.Text, capture30, run31, migrated, plan));
+                    package, scenario, at + site, kind, key30, key31, old?.Text, now?.Text, capture30, run31, migrated, plan, request31));
             }
 
             texts.Add(new ComparedText(at + site, old?.Hash ?? EmptyHash, now?.Hash ?? EmptyHash, equal, explanation != null, explanation));
