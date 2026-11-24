@@ -57,35 +57,10 @@ public static class V31StartChecks
     /// <paramref name="inputs"/>, so the start is refused as a 30 start is (<c>NoApplicableDeliverable</c>): the plan has a
     /// deliverable, every deliverable has an <c>if</c>, each reads only <c>input.*</c> and the run facts
     /// <paramref name="inputs"/> gives, and each decides false or <c>null</c> on them. An <c>if</c> that reads anything else
-    /// (a node, a run fact the start does not know), or that fails, is left to the run.
+    /// (a node, a run fact the start does not know), or that fails, is left to the run. #1507 (area 10, Task 15): decided in
+    /// the library by <see cref="RunInputsBuilder.NoDeliverableCanExist"/>, so the offline run refuses alike.
     /// </summary>
-    public static bool NoDeliverableCanExist(RunPlan plan, RunInputs inputs)
-    {
-        ArgumentNullException.ThrowIfNull(plan);
-        ArgumentNullException.ThrowIfNull(inputs);
-
-        var deliverables = Deliverables(plan);
-        if (deliverables.Count == 0)
-            return false;
-
-        var scope = new RunScope(inputs);
-        var top = RunFrame.Top(plan);
-        foreach (var deliverable in deliverables)
-        {
-            if (deliverable.If is not { } rule)
-                return false;
-
-            var paths = JsonLogicShape.Paths(deliverable.Json["if"]);
-            if (!paths.All(path => KnownAtStart(path, inputs)))
-                return false;
-
-            var decision = rule.Decide(scope.Data(deliverable, top, paths));
-            if (decision.Failure != null || decision.Result)
-                return false;
-        }
-
-        return true;
-    }
+    public static bool NoDeliverableCanExist(RunPlan plan, RunInputs inputs) => RunInputsBuilder.NoDeliverableCanExist(plan, inputs);
 
     /// <summary>
     /// #1505 (R8): the deliverables of <paramref name="plan"/> in <c>graph.order</c>, each by key and label with the reason it
@@ -96,22 +71,8 @@ public static class V31StartChecks
     public static IReadOnlyList<ConsultSkippedDocument> NotProduced(RunPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        return Deliverables(plan)
-            .Select(d => new ConsultSkippedDocument(d.Key, SourceLayout.Text(d.Json["label"]) ?? d.Id, JsonLogicPrinter.Reason("skipped", d.Json["if"], false)))
-            .ToList();
+        return RunInputsBuilder.NotProduced(plan).Select(d => new ConsultSkippedDocument(d.Key, d.Label, d.Reason)).ToList();
     }
-
-    private static List<PlanEntry> Deliverables(RunPlan plan) =>
-        plan.Entries.Values.Where(e => e.Kind == PlanKind.Deliverable).OrderBy(e => e.Order).ToList();
-
-    /// <summary>Whether <paramref name="path"/> is known at the start: an input's, or a run fact <paramref name="inputs"/> holds.</summary>
-    private static bool KnownAtStart(string path, RunInputs inputs) =>
-        path.Split('.') switch
-        {
-            ["input", _, ..] => true,
-            ["run", var fact, ..] => inputs.RunFacts.ContainsKey(fact),
-            _ => false,
-        };
 
     /// <summary>
     /// The account's refusals for <paramref name="plan"/>: <see cref="RequiresCheck.Profile"/>'s for each field
@@ -145,66 +106,20 @@ public static class V31StartChecks
         RunInputsBuilder.Build(plan, supplied, runFacts, profile);
 
     /// <summary>A10-043 (#1507; part 10 § 1.3, R7): a <c>MacroChoices</c> entry names no macro of the package.</summary>
-    public static string ChoiceNamesNoMacro(string id) => $"MacroChoices names '{id}', which is not a macro of the package.";
+    public static string ChoiceNamesNoMacro(string id) => RunInputsBuilder.ChoiceNamesNoMacro(id);
 
     /// <summary>A10-044 (#1507; part 10 § 1.3, R7): a <c>MacroChoices</c> entry names a macro whose <c>if</c> reads no boolean input, or several.</summary>
-    public static string ChoiceReadsNoOneInput(string id) =>
-        $"MacroChoices names macro '{id}', whose if does not read exactly one boolean input; send the input in Inputs instead.";
+    public static string ChoiceReadsNoOneInput(string id) => RunInputsBuilder.ChoiceReadsNoOneInput(id);
 
     /// <summary>
-    /// #1507 (specVersion 31, area 10; ruled by the owner on #1507, 2026-11-22, 3; part 10 § 1.3; part 05 § 8.2: a per-run
-    /// choice is an optional boolean input the macro's <c>if</c> reads): <paramref name="supplied"/> with the request's
-    /// <paramref name="choices"/> (<c>MacroChoices</c>) read in, for <see cref="Inputs"/> to check. An entry
-    /// <c>&lt;id&gt;: &lt;bool&gt;</c> is keyed by a macro's id, as at 30: it is the value of the one boolean input that
-    /// macro's <c>if</c> reads (the plan's <c>macro.&lt;id&gt;</c> entry in <c>resolve.json</c>, the <c>input.*</c> paths of
-    /// its <c>if</c>), exactly as if the request had sent that input; the input may have another id (a migrated
-    /// <c>letrozole</c>'s is <c>letrozole_macro</c> when an input <c>letrozole</c> exists, which the entry leaves alone). An id
-    /// that names no macro is A10-043; a macro whose <c>if</c> reads no boolean input, or more than one, is A10-044; an input
-    /// the request also sent (as a value other than <c>null</c>) with a different value is A07-016. Each names an id alone,
-    /// never a value; entries are read in ordinal order of their ids.
+    /// #1507 (specVersion 31, area 10; ruled by the owner on #1507, 2026-11-22, 3; part 10 § 1.3): <paramref name="supplied"/>
+    /// with the request's <paramref name="choices"/> (<c>MacroChoices</c>) read in, for <see cref="Inputs"/> to check
+    /// (A10-043, A10-044, A07-016). #1507 (area 10, Task 15): built in the library by <see cref="RunInputsBuilder.Choices"/>,
+    /// so the byte-equivalence comparison reads a scenario's choices alike.
     /// </summary>
     public static (IReadOnlyDictionary<string, JsonNode?> Supplied, IReadOnlyList<SourceRefusal> Refusals) Choices(
-        RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, IReadOnlyDictionary<string, bool>? choices)
-    {
-        ArgumentNullException.ThrowIfNull(plan);
-        ArgumentNullException.ThrowIfNull(supplied);
-
-        var merged = new Dictionary<string, JsonNode?>(supplied, StringComparer.Ordinal);
-        var refusals = new List<SourceRefusal>();
-        var macros = plan.Document["macros"] as JsonObject;
-        foreach (var (id, choice) in (choices ?? new Dictionary<string, bool>()).OrderBy(c => c.Key, StringComparer.Ordinal))
-        {
-            if (macros?[$"macro.{id}"] is not JsonObject macro)
-            {
-                refusals.Add(new SourceRefusal("A10-043", ChoiceNamesNoMacro(id), ""));
-                continue;
-            }
-
-            var read = JsonLogicShape.Paths(macro["if"])
-                .Select(path => path.Split('.'))
-                .Where(path => path is ["input", _, ..])
-                .Select(path => path[1])
-                .Where(input => plan.Inputs.TryGetValue(input, out var declared) && IsBoolean(plan, declared["format"]))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-            if (read is not [var input])
-            {
-                refusals.Add(new SourceRefusal("A10-044", ChoiceReadsNoOneInput(id), ""));
-                continue;
-            }
-
-            if (supplied.GetValueOrDefault(input) is { } sent)
-            {
-                if (!JsonNode.DeepEquals(sent, JsonValue.Create(choice)))
-                    refusals.Add(new SourceRefusal("A07-016", $"Input '{input}' is given one value in Inputs and another in MacroChoices; send it once.", ""));
-                continue;
-            }
-
-            merged[input] = JsonValue.Create(choice);
-        }
-
-        return (merged, refusals);
-    }
+        RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, IReadOnlyDictionary<string, bool>? choices) =>
+        RunInputsBuilder.Choices(plan, supplied, choices);
 
     /// <summary>
     /// The run facts of <paramref name="plan"/> that follow from the plan and the start, by name with <c>run.</c> dropped
@@ -277,8 +192,4 @@ public static class V31StartChecks
         !string.IsNullOrWhiteSpace(timeZone)
         && TimeZoneInfo.TryFindSystemTimeZoneById(timeZone, out var zone)
         && zone.HasIanaId;
-
-    /// <summary>Whether <paramref name="format"/>, expanded against <paramref name="plan"/>'s bundle, is a boolean (part 05 § 8.2).</summary>
-    private static bool IsBoolean(RunPlan plan, JsonNode? format) =>
-        plan.Formats.Expand(format) is JsonObject expanded && SourceLayout.Text(expanded["type"]) == "boolean";
 }
