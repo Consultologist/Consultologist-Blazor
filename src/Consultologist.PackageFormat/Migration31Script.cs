@@ -11,19 +11,22 @@ namespace Consultologist.PackageFormat;
 /// <paramref name="Write"/> (<c>--write</c>: apply the plan; without it a dry run), <paramref name="Snapshot"/>
 /// (<c>--snapshot</c>: write the snapshot test of a 31 folder whose hand edits are made), <paramref name="Renames"/>
 /// (<c>--rename &lt;old&gt;=&lt;new&gt;</c>, repeatable: a reserved 30 id to its hand-chosen 31 id) and
-/// <paramref name="WhenEmpty"/> (<c>--when-empty &lt;deliverable&gt;=&lt;value&gt;</c>, repeatable).
+/// <paramref name="WhenEmpty"/> (<c>--when-empty &lt;deliverable&gt;=&lt;value&gt;</c>, repeatable) and
+/// <paramref name="FolderFormats"/> (<c>--folder-format &lt;folder&gt;=&lt;format&gt;</c>, repeatable: the package format a
+/// snippet folder's items' headers are values of; part 01 § 3).
 /// </summary>
 public sealed record Migration31Arguments(
     bool Write,
     bool Snapshot,
     IReadOnlyDictionary<string, string> Renames,
-    IReadOnlyDictionary<string, string> WhenEmpty)
+    IReadOnlyDictionary<string, string> WhenEmpty,
+    IReadOnlyDictionary<string, string> FolderFormats)
 {
-    /// <summary><paramref name="options"/> with <see cref="Renames"/> and <see cref="WhenEmpty"/> in place of its own.</summary>
+    /// <summary><paramref name="options"/> with <see cref="Renames"/>, <see cref="WhenEmpty"/> and <see cref="FolderFormats"/> in place of its own.</summary>
     public Migration31Options Fill(Migration31Options options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return options with { Renames = Renames, WhenEmpty = WhenEmpty };
+        return options with { Renames = Renames, WhenEmpty = WhenEmpty, FolderFormats = FolderFormats };
     }
 }
 
@@ -58,13 +61,14 @@ public static class Migration31Script
     /// <summary>The usage line of <c>--to 31</c>.</summary>
     public const string Usage =
         "usage: dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] "
-        + "[--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]... | <package-dir> --to 31 --snapshot [--write]";
+        + "[--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]... [--folder-format <folder>=<format>]... "
+        + "| <package-dir> --to 31 --snapshot [--write]";
 
     /// <summary>The <c>whenEmpty</c> values a deliverable takes (part 06).</summary>
     private static readonly string[] WhenEmptyValues = ["release", "hold", "fail"];
 
     /// <summary>The options that take a value.</summary>
-    private static readonly string[] Valued = ["--to", "--rename", "--when-empty"];
+    private static readonly string[] Valued = ["--to", "--rename", "--when-empty", "--folder-format"];
 
     private const string Manifest = "manifest.json";
 
@@ -90,9 +94,9 @@ public static class Migration31Script
     /// <summary>
     /// The <c>--to 31</c> arguments of <paramref name="args"/> (the package directory and <c>--to</c>'s value are the
     /// script's), or <c>null</c> and why they do not read: an unknown option, a second package directory, a
-    /// <c>--rename</c> or <c>--when-empty</c> without <c>&lt;key&gt;=&lt;value&gt;</c> or naming its key twice, a
-    /// <c>whenEmpty</c> that is not <c>release</c>, <c>hold</c> or <c>fail</c>, or <c>--snapshot</c> with either (a snapshot
-    /// reads a 31 package, which nothing renames).
+    /// <c>--rename</c>, <c>--when-empty</c> or <c>--folder-format</c> without <c>&lt;key&gt;=&lt;value&gt;</c> or naming
+    /// its key twice, a <c>whenEmpty</c> that is not <c>release</c>, <c>hold</c> or <c>fail</c>, or <c>--snapshot</c> with
+    /// any of the three (a snapshot reads a 31 package, which they do not shape).
     /// </summary>
     public static (Migration31Arguments? Arguments, string? Usage) Parse(IReadOnlyList<string> args)
     {
@@ -101,6 +105,7 @@ public static class Migration31Script
         var snapshot = false;
         var renames = new Dictionary<string, string>(StringComparer.Ordinal);
         var whenEmpty = new Dictionary<string, string>(StringComparer.Ordinal);
+        var folderFormats = new Dictionary<string, string>(StringComparer.Ordinal);
         var directories = 0;
 
         for (var i = 0; i < args.Count; i++)
@@ -117,8 +122,8 @@ public static class Migration31Script
                 case "--to":
                     i++;
                     break;
-                case "--rename" or "--when-empty":
-                    var into = arg == "--rename" ? renames : whenEmpty;
+                case "--rename" or "--when-empty" or "--folder-format":
+                    var into = arg switch { "--rename" => renames, "--when-empty" => whenEmpty, _ => folderFormats };
                     if (i + 1 >= args.Count || !TryPair(args[++i], out var key, out var value))
                         return (null, $"{arg} takes <key>=<value>.");
                     if (!into.TryAdd(key, value))
@@ -135,10 +140,10 @@ public static class Migration31Script
             }
         }
 
-        if (snapshot && (renames.Count > 0 || whenEmpty.Count > 0))
-            return (null, "--snapshot reads a 31 package: --rename and --when-empty choose how a 30 package migrates.");
+        if (snapshot && (renames.Count > 0 || whenEmpty.Count > 0 || folderFormats.Count > 0))
+            return (null, "--snapshot reads a 31 package: --rename, --when-empty and --folder-format choose how a 30 package migrates.");
 
-        return (new Migration31Arguments(write, snapshot, renames, whenEmpty), null);
+        return (new Migration31Arguments(write, snapshot, renames, whenEmpty, folderFormats), null);
     }
 
     private static bool TryPair(string text, out string key, out string value)
@@ -151,7 +156,7 @@ public static class Migration31Script
 
     /// <summary>
     /// Runs <paramref name="arguments"/> on the package folder <paramref name="folder"/> with <paramref name="options"/>
-    /// (its <c>Renames</c> and <c>WhenEmpty</c> replaced by the arguments'), writing notices, the plan and the summary to
+    /// (its <c>Renames</c>, <c>WhenEmpty</c> and <c>FolderFormats</c> replaced by the arguments'), writing notices, the plan and the summary to
     /// <paramref name="output"/> and refusals to <paramref name="error"/>; returns the exit code.
     /// </summary>
     public static int Run(string folder, Migration31Arguments arguments, Migration31Options options, TextWriter output, TextWriter error)
@@ -182,10 +187,13 @@ public static class Migration31Script
             return Refused;
         }
 
-        // The diagram is a view, not read; at 31 it is not written here, so a 30 one is deleted.
+        // The diagram is a view, not read. A migration does not write one at 31, so a 30 one is deleted; a snapshot leaves
+        // a 31 folder's own diagram alone.
         var files = before
             .Where(f => f.Key is not (Manifest or Diagram))
             .ToDictionary(f => f.Key, f => f.Value, StringComparer.Ordinal);
+        if (arguments.Snapshot)
+            before.Remove(Diagram);
         var label = Label(manifestJson, root);
         var what = arguments.Snapshot ? "the snapshot test" : "the migration to specVersion 31";
         var result = arguments.Snapshot
@@ -204,6 +212,13 @@ public static class Migration31Script
         }
 
         var after = new Dictionary<string, string>(result.Files, StringComparer.Ordinal) { [Manifest] = result.ManifestJson };
+        if (OutsideOf(root, after.Keys) is { } outside)
+        {
+            error.WriteLine($"error: {outside} would be written outside {root}.");
+            error.WriteLine($"{label}: {what} refused; nothing written.");
+            return Refused;
+        }
+
         var deleted = before.Keys.Where(p => !after.ContainsKey(p)).Order(StringComparer.Ordinal).ToList();
         var added = after.Keys.Where(p => !before.ContainsKey(p)).Order(StringComparer.Ordinal).ToList();
         var rewritten = after.Where(f => before.TryGetValue(f.Key, out var was) && !string.Equals(was, f.Value, StringComparison.Ordinal))
@@ -215,7 +230,20 @@ public static class Migration31Script
             output.WriteLine(NoDiagram);
 
         if (arguments.Write)
-            Apply(root, before, after, deleted);
+        {
+            try
+            {
+                Apply(root, before, after, deleted);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The new and changed files are written first and the deletes come last, so a failure loses no 30 file the
+                // plan did not rewrite; the folder may still hold part of the plan.
+                error.WriteLine($"error: {root} could not be written: {ex.Message}");
+                error.WriteLine($"{label}: {what} stopped part-way; restore the folder, then run again.");
+                return Refused;
+            }
+        }
 
         var plan = string.Create(CultureInfo.InvariantCulture, $"{added.Count} added, {rewritten.Count} rewritten, {deleted.Count} deleted");
         var outcome = !arguments.Write ? " (dry run; pass --write to apply)"
@@ -242,20 +270,39 @@ public static class Migration31Script
         return files;
     }
 
-    /// <summary>The plan applied: <paramref name="deleted"/> removed, new and changed files written, folders left empty removed.</summary>
+    /// <summary>
+    /// The first of <paramref name="paths"/> (package-relative, forward-slash) that does not name a file inside
+    /// <paramref name="root"/>: rooted, or leaving it through <c>..</c>; <c>null</c> when every one stays inside.
+    /// </summary>
+    internal static string? OutsideOf(string root, IEnumerable<string> paths)
+    {
+        var inside = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) + Path.DirectorySeparatorChar;
+        return paths.Order(StringComparer.Ordinal).FirstOrDefault(path =>
+            path.Length == 0
+            || Path.IsPathRooted(path)
+            || !Path.GetFullPath(Path.Combine([inside, .. path.Split('/')])).StartsWith(inside, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The plan applied: new files written, then changed ones (<c>manifest.json</c> last), then <paramref name="deleted"/>
+    /// removed and folders left empty removed, so a write that fails part-way has deleted nothing.
+    /// </summary>
     private static void Apply(string root, Dictionary<string, string> before, Dictionary<string, string> after, IReadOnlyList<string> deleted)
     {
-        foreach (var path in deleted)
-            File.Delete(Path.Combine([root, .. path.Split('/')]));
-
-        foreach (var (path, text) in after.OrderBy(f => f.Key, StringComparer.Ordinal))
+        var writes = after
+            .Where(f => !before.TryGetValue(f.Key, out var was) || !string.Equals(was, f.Value, StringComparison.Ordinal))
+            .OrderBy(f => before.ContainsKey(f.Key))
+            .ThenBy(f => f.Key == Manifest)
+            .ThenBy(f => f.Key, StringComparer.Ordinal);
+        foreach (var (path, text) in writes)
         {
-            if (before.TryGetValue(path, out var was) && string.Equals(was, text, StringComparison.Ordinal))
-                continue;
             var full = Path.Combine([root, .. path.Split('/')]);
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
             File.WriteAllBytes(full, Utf8.GetBytes(text));
         }
+
+        foreach (var path in deleted)
+            File.Delete(Path.Combine([root, .. path.Split('/')]));
 
         foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length))
         {
