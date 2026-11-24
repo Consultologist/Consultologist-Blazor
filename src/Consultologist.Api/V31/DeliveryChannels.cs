@@ -94,10 +94,7 @@ internal abstract class MailDeliveryChannel(
             var message = input.Send.EveryDeliverableBlocked
                 ? Blocked(input, appBaseUrl)
                 : await ComposeAsync(input, appBaseUrl, ct);
-            if (message.Outcome is { } outcome)
-                return outcome;
-
-            await mail.SendMailAsync(mailbox, address, message.Subject!, message.Body!, ct, message.Attachments);
+            await mail.SendMailAsync(mailbox, address, message.Subject, message.Body, ct, message.Attachments);
             return new DeliverySendOutcome(DeliverySendResult.Sent, null, message.LinkOnly);
         }
         catch (Exception ex)
@@ -138,7 +135,7 @@ internal abstract class MailDeliveryChannel(
         return (address, DeliveryAddress.EmailPdfOf(emailPdf) != false);
     }
 
-    /// <summary>The message of <paramref name="input"/>'s send, or the outcome that ends the attempt before it is sent.</summary>
+    /// <summary>The message of <paramref name="input"/>'s send.</summary>
     protected abstract Task<Message> ComposeAsync(DeliverV31Input input, string appBaseUrl, CancellationToken ct);
 
     /// <summary>The kind is not set up for this account.</summary>
@@ -152,11 +149,11 @@ internal abstract class MailDeliveryChannel(
         deliverable.StartsWith("deliverable.", StringComparison.Ordinal) ? deliverable["deliverable.".Length..] : deliverable;
 
     /// <summary>
-    /// A message to send, or (with <see cref="Outcome"/> set) none, the attempt ending so. #1507 (D17, D19):
+    /// A message to send (#1507, R8: every attempt that is set up sends one). #1507 (D17, D19):
     /// <see cref="LinkOnly"/> says why a message is the link-only email in place of what was asked.
     /// </summary>
     protected sealed record Message(
-        string? Subject, string? Body, IReadOnlyList<GraphMailAttachment>? Attachments, DeliverySendOutcome? Outcome = null, string? LinkOnly = null);
+        string Subject, string Body, IReadOnlyList<GraphMailAttachment>? Attachments, string? LinkOnly = null);
 }
 
 /// <summary>
