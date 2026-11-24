@@ -151,7 +151,8 @@ internal static class V31Contract
     /// macro with a condition, one naming no single macro, a snippet copy's id, the deliverables pass, part 10 § 1.4, D3, D4;
     /// A10-046: a check inside a node flow, the checks pass, part 06 §§ 1, 3; A10-010: a 30 reproducible claim the derived-flags
     /// pass did not write, part 02 § 11; A10-049: flags derived without a hand-edited body, D15; A10-050: a trim compared with
-    /// "" that became blank and answers otherwise for a null text, part 05 § 7, an unruled difference listed for the owner; A10-051: a macro placed in a snippet folder's item, part 05 § 6.2, A07-012).
+    /// "" that became blank and answers otherwise for a null text, part 05 § 7, an unruled difference listed for the owner; A10-051: a macro placed in a snippet folder's item, part 05 § 6.2, A07-012; A10-052: a markdown_inline value, a reply or
+    /// an input's, that holds a line ending, part 02 § 5, R10, D21).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -203,6 +204,7 @@ internal static class V31Contract
         ["A10-049"] = "<file>: <flags> <is | are> written false without the bodies that need a hand edit; check <it | them> once the edits are made.",
         ["A10-050"] = "<file>, <member>: '<comparison>' became <rule>; it now <also holds | no longer holds> when <path> is null.",
         ["A10-051"] = "macro '<id>' is placed at line <n>, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.",
+        ["A10-052"] = "<Node '<id>' gave a reply | Input '<id>' was given a value> that isn't <format>: markdown_inline text sits inside a line and holds no line ending.",
     };
 
     private static string RepoRoot()

@@ -194,6 +194,36 @@ public class PlanRunnerAgentsTests
         Assert.True(result.State == state, result.Sentence);
     }
 
+    [Theory]
+    [InlineData("Seen by **Dr A. Sample** in clinic.", null)]
+    [InlineData("Seen by **Dr A. Sample**\nin clinic.", "Node 'plan' gave a reply that isn't markdown_inline: markdown_inline text sits inside a line and holds no line ending.")]
+    [InlineData("Seen by **Dr A. Sample**\r\nin clinic.", "Node 'plan' gave a reply that isn't markdown_inline: markdown_inline text sits inside a line and holds no line ending.")]
+    [InlineData("Seen by **Dr A. Sample**\r", "Node 'plan' gave a reply that isn't markdown_inline: markdown_inline text sits inside a line and holds no line ending.")]
+    public async Task AMarkdownInlineValue_IsOneLine(string reply, string? sentence)
+    {
+        // #1507, 2026-11-22 (2), 3 (R10) and D21: a markdown_inline value holds no line ending (part 02 § 5: it sits inside
+        // a line). A reply that holds one does not fit its format: asked again under retry, then the node fails with A10-052.
+        var plan = RunFixture.Plan(Planned(format: "\"markdown_inline\""), StubTemplates.Empty());
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true).Reply("node.plan", reply), recorder)
+            .RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        if (sentence is null)
+        {
+            Assert.Equal(RunState.Completed, result.State);
+            Assert.Equal(reply, (string?)result.Values["node.plan"]!["value"]);
+            return;
+        }
+
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal(sentence, result.Sentence);
+        V31Contract.AssertSentence(new SourceRefusal("A10-052", result.Sentence!, ""));
+        Assert.Equal(new JsonObject { ["reason"] = sentence, ["action"] = "retry", ["attempts"] = 2 }.ToJsonString(),
+            recorder.Row("node.plan").Detail["invalid"]!.ToJsonString());
+        Assert.DoesNotContain("Sample", recorder.Row("node.plan").Detail.ToJsonString());
+    }
+
     // ---- retries --------------------------------------------------------------------------------
 
     [Fact]

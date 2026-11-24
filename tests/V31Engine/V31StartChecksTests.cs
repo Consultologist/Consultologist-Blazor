@@ -149,6 +149,32 @@ public class V31StartChecksTests
         Assert.All(refusals, V31Contract.AssertSentence);
     }
 
+    [Theory]
+    [InlineData("Seen by **Dr A. Sample** in clinic.", null)]
+    [InlineData("Seen by **Dr A. Sample**\nin clinic.", "Input 'headline' was given a value that isn't its format: markdown_inline text sits inside a line and holds no line ending.")]
+    [InlineData("Seen by **Dr A. Sample**\r\n", "Input 'headline' was given a value that isn't its format: markdown_inline text sits inside a line and holds no line ending.")]
+    public void AMarkdownInlineValue_IsOneLine(string line, string? sentence)
+    {
+        // #1507, 2026-11-22 (2), 3 (R10) and D21: a markdown_inline value holds no line ending (part 02 § 5), at any depth
+        // of an input's value; one that holds one does not fit its format and refuses the start with A10-052.
+        var supplied = Valid();
+        supplied["headline"] = new JsonObject { ["line"] = line };
+
+        var (inputs, refusals) = V31StartChecks.Inputs(Plan(headline: true), supplied, new JsonObject(), NoProfile);
+
+        if (sentence is null)
+        {
+            Assert.Empty(refusals);
+            Assert.Equal(line, (string?)inputs!.Inputs["headline"]!["value"]!["line"]);
+            return;
+        }
+
+        Assert.Null(inputs);
+        var refusal = Assert.Single(refusals);
+        Assert.Equal(("A10-052", sentence), (refusal.Id, refusal.Sentence));
+        V31Contract.AssertSentence(refusal);
+    }
+
     [Fact]
     public void AnUndeclaredInput_IsRefused_AsTodaysStartRefusesIt()
     {
@@ -391,7 +417,7 @@ public class V31StartChecksTests
     /// <c>string</c>), <c>dose</c> (an optional enum of numbers, R4) and <c>kind</c> (an optional labelled choice), and with
     /// <paramref name="needs"/> as its <c>needs.profile</c> and <paramref name="facts"/> as its <c>run</c>.
     /// </summary>
-    private static RunPlan Plan(string[]? needs = null, string[]? facts = null, string? deliverableIf = null)
+    private static RunPlan Plan(string[]? needs = null, string[]? facts = null, string? deliverableIf = null, bool headline = false)
     {
         var pair = CompiledGoldenTests.Published(CompiledGoldenTests.Cases().Single(c => c.Name == "conditional"));
         var document = JsonNode.Parse(pair.Resolve)!.AsObject();
@@ -406,6 +432,18 @@ public class V31StartChecksTests
             """{ "type": "string", "oneOf": [ { "const": "new", "title": "New patient" }, { "const": "follow_up", "title": "Follow-up" } ] }""",
             required: false);
         document["inputOrder"] = new JsonArray("consult_draft", "sections", "include_billing", "notes", "code", "dose", "kind");
+        if (headline)
+        {
+            // R10, D21: an object input with a markdown_inline field (an input is never markdown_inline itself, S02-040).
+            document["formats"]!["$defs"]!["markdown_inline"] = JsonNode.Parse(
+                """{ "$id": "urn:consultologist:spec:31:format:markdown_inline", "$schema": "urn:consultologist:spec:31:dialect", "type": "string", "contentMediaType": "text/markdown", "x-markdown": "inline" }""");
+            inputs["headline"] = Input(
+                "Headline",
+                """{ "type": "object", "properties": { "line": { "$ref": "#/$defs/markdown_inline", "title": "Line" } }, "required": ["line"], "additionalProperties": false }""",
+                required: false);
+            document["inputOrder"]!.AsArray().Add("headline");
+        }
+
         document["needs"] = new JsonObject { ["profile"] = new JsonArray((needs ?? []).Select(n => (JsonNode?)n).ToArray()) };
         document["run"] = new JsonArray((facts ?? []).Select(f => (JsonNode?)f).ToArray());
         if (deliverableIf != null)
