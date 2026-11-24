@@ -5,7 +5,7 @@
 // manifest model has no source-generated context.
 #:property JsonSerializerIsReflectionEnabledByDefault=true
 
-// Migrates a workflow package directory on disk to specVersion 25 (the default), 26, 27, 28, 29 or 30, offline.
+// Migrates a workflow package directory on disk to specVersion 25 (the default), 26, 27, 28, 29, 30 or 31, offline.
 //
 // Usage:
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir>                   # dry run: notices, refusals, the file plan, the 25 validation
@@ -15,6 +15,10 @@
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 28 [--write] # #1286: the 27 → 28 rewrite (WorkflowPackageMigration27To28; every file renamed to its id)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 29 [--write] # #1307: the 28 → 29 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 30 [--write] # #1347: the 29 → 30 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] [--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]...
+//                                                                                                # #1507: the 30 → 31 migration (WorkflowPackageMigration30To31; a package from 5 to 29 raised to 30 in the same run)
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 --snapshot [--write]
+//                                                                                                # #1507: a 31 package's snapshot test, once its hand edits are made (tests/migration_snapshot.json)
 //
 // WHY THIS EXISTS. The editor upgrades a package in the browser: below 23 it
 // turns preludes into node macros and bumps the number (formats up to 24 are
@@ -35,6 +39,16 @@
 //
 // Exit codes: 0 migrated and valid; 1 refused, or migrated with validation
 // errors remaining; 2 usage or environment.
+//
+// --to 31 (#1507, part 10 §§ 1.1, 1.4) is the library's Migration31Script: the
+// dry run prints the notices and the file plan; --write leaves the folder holding
+// exactly the 31 files (manifest.json and the nine folders; 30's prompts/, flat
+// macros and dag.mmd deleted: 31's dag.mmd is not this script's). --rename and
+// --when-empty choose a reserved id's 31 id and a deliverable's whenEmpty (the
+// default is release). Its exits are part 10's: 0 migrated cleanly (or the
+// snapshot test written); 1 "written; hand edits remain"; 2 refused, writing
+// nothing (an unreadable manifest, a version below 5, any refusal), or usage or
+// environment.
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -43,7 +57,7 @@ using Consultologist.PackageFormat;
 
 var toIndex = System.Array.IndexOf(args, "--to");
 var to = toIndex >= 0 && toIndex + 1 < args.Length && int.TryParse(args[toIndex + 1], out var parsedTo) ? parsedTo : 25;
-var packageDir = args.Where((argument, i) => !argument.StartsWith("--", StringComparison.Ordinal) && i != toIndex + 1).FirstOrDefault();
+var packageDir = Migration31Script.PackageDirectory(args);
 var write = args.Contains("--write", StringComparer.Ordinal);
 
 if (packageDir is null)
@@ -90,6 +104,51 @@ catch (Exception ex) when (ex is InvalidOperationException or IOException)
 var catalogSchemas = catalog.Entries.Values
     .Where(entry => entry.SchemaJson != null)
     .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
+
+// #1507: the 31 stage — a 30 package (an older one raised through the chain in
+// the same run, D2) through the library's 30 → 31 migration, or with --snapshot a
+// 31 package's snapshot test. The registry is the published one under external/
+// (as the tests' V31Contract.PublishedTypes reads it); the toolchain is this
+// process's, with the pinned package format release and catalogues.
+if (to == 31)
+{
+    var (arguments31, usage31) = Migration31Script.Parse(args);
+    if (arguments31 is null)
+    {
+        Console.Error.WriteLine($"error: {usage31}");
+        Console.Error.WriteLine(Migration31Script.Usage);
+        return 2;
+    }
+
+    var contract31 = Path.Combine(repo.FullName, "external", "consultologist-package-format", "v31");
+    var agents31 = Path.Combine(agentsDir, Consultologist.Api.V31.V31AgentsCatalogue.Folder);
+    Consultologist.PackageFormat.V31.TypeRegistry registry31;
+    Consultologist.PackageFormat.V31.Toolchain toolchain31;
+    try
+    {
+        registry31 = Consultologist.PackageFormat.V31.TypeRegistry.Read(
+            Path.Combine(contract31, "formats"),
+            Path.Combine(agents31, "formats"),
+            Path.Combine(contract31, "renderers", "index.json"),
+            Path.Combine(agents31, "bindings.json"),
+            Path.Combine(agents31, "agents.json"));
+        var specVersions = Path.Combine(repo.FullName, "external", "consultologist-package-format", "spec-versions.json");
+        var release = (string?)JsonNode.Parse(File.ReadAllText(specVersions))?["version"]
+            ?? throw new InvalidOperationException($"{specVersions} names no version.");
+        toolchain31 = Consultologist.PackageFormat.V31.Toolchain.Current(
+            Consultologist.Api.Workflow.EngineAttestation.RefOf(Consultologist.Api.Workflow.EngineAttestation.PackageFormatRegistry, release)!,
+            formats.ResolvedRef,
+            $"{Consultologist.Api.V31.EngineToolchain.AgentsRegistry}@{Consultologist.Api.V31.V31AgentsCatalogue.Load(agentsDir).Version}");
+    }
+    catch (Exception ex) when (ex is FormatException or InvalidOperationException or IOException or JsonException)
+    {
+        Console.Error.WriteLine($"error: the 31 type registry or toolchain could not be read under {repo.FullName}/external: {ex.Message}");
+        return 2;
+    }
+
+    return Migration31Script.Run(
+        root, arguments31, new Migration31Options(registry31, toolchain31, formats, ResolveContract), Console.Out, Console.Error);
+}
 
 // #1244: the diagram --dag draws — the declarations and, from 25 (#1227), the reads the
 // package's templates make, walked over its files and the formats catalogue. A walk
