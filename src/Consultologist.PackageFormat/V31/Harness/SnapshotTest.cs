@@ -148,7 +148,7 @@ public static class SnapshotTest
             var state = deliverable.State.ToString().ToLowerInvariant();
             deliverables[deliverable.Key] = deliverable.State == DeliverableState.Skipped
                 ? new JsonObject { ["state"] = state }
-                : new JsonObject { ["state"] = state, ["hash"] = deliverable.ContentHash ?? CanonicalJson.HashText(deliverable.Text ?? "") };
+                : new JsonObject { ["state"] = state, ["hash"] = deliverable.ContentHash };
         }
 
         return new JsonObject

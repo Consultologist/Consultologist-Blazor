@@ -13,6 +13,11 @@ namespace Consultologist.PackageFormat;
 /// <paramref name="WhenEmpty"/> (D7, § 1.10) maps a deliverable id to its <c>whenEmpty</c>; the default is
 /// <c>"release"</c>. <paramref name="FolderFormats"/> (part 01 § 3, part 05 § 6.2) maps a snippet folder's id to the
 /// package format its items' headers are values of; a folder with no entry takes <c>&lt;folder&gt;_item</c>.
+/// <paramref name="WriteSnapshot"/> (part 10 § 4, D13; default <c>true</c>): whether
+/// <see cref="WorkflowPackageMigration30To31.Migrate"/> ends by writing the snapshot test (publishing the migrated package
+/// in memory and running it offline). With it <c>false</c> nothing is published or run, no A10-011, A10-060 or A10-061
+/// is said, and <c>tests/index.json</c> is written with <c>"items": []</c>: for a caller that reads only the hand edits
+/// and whether the migration succeeded (the operator's weekly summary).
 /// </summary>
 public sealed record Migration31Options(
     V31.TypeRegistry Registry,
@@ -21,7 +26,8 @@ public sealed record Migration31Options(
     Func<JsonNode, string?>? ResolveContract = null,
     IReadOnlyDictionary<string, string>? Renames = null,
     IReadOnlyDictionary<string, string>? WhenEmpty = null,
-    IReadOnlyDictionary<string, string>? FolderFormats = null);
+    IReadOnlyDictionary<string, string>? FolderFormats = null,
+    bool WriteSnapshot = true);
 
 /// <summary>
 /// #1507 (part 10 § 1.1, D1): what the 30 → 31 migration produced, in the earlier rewriters' shape so that every caller
@@ -170,12 +176,12 @@ public static class WorkflowPackageMigration30To31
 
         // Part 10 § 4, D13: a package with no hand edit gets its snapshot test; one with hand edits gets A10-011, and
         // Snapshot writes it once the edits are made. A snapshot that cannot be written is a notice, never a hand edit.
+        if (!options.WriteSnapshot)
+            return result;
         if (result.HandEdits.Count > 0)
             return result with { Notices = [.. result.Notices, MigrationSentences.NoSnapshotHandEditsRemain] };
-        var (snapshot, published, why) = WithSnapshot(result.ManifestJson, result.Files, options, snapshotFileBytes);
-        if (snapshot is not null)
-            return result with { Files = snapshot };
-        return result with { Notices = [.. result.Notices, .. published ? why : [MigrationSentences.SnapshotNotRun("does not publish")]] };
+        var (snapshot, why, _) = WithSnapshot(result.ManifestJson, result.Files, options, snapshotFileBytes);
+        return snapshot is not null ? result with { Files = snapshot } : result with { Notices = [.. result.Notices, why!] };
     }
 
     /// <summary>
@@ -200,57 +206,102 @@ public static class WorkflowPackageMigration30To31
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(options);
 
-        var (snapshot, _, refusals) = WithSnapshot(manifestJson, files, options, snapshotFileBytes);
-        return snapshot is null ? Refused(manifestJson, files, refusals) : new Migration31Result(manifestJson, snapshot, [], []);
+        // A source that does not publish is refused with the checker's own sentences; anything else with its A10 sentence.
+        var (snapshot, why, unpublished) = WithSnapshot(manifestJson, files, options, snapshotFileBytes);
+        return snapshot is not null ? new Migration31Result(manifestJson, snapshot, [], [])
+            : Refused(manifestJson, files, unpublished ?? [why!]);
     }
 
     /// <summary>
-    /// The files with the snapshot test; or <c>null</c> with why not: the checker's sentences when the source does not
-    /// publish (<c>Published</c> false), else one A10-060 or A10-061 sentence.
+    /// The upload published for a snapshot: the source without <c>tests/migration_snapshot.json</c>, its
+    /// <c>tests/index.json</c> no longer listing it (a snapshot is written anew), every other test as given.
     /// </summary>
-    private static (Dictionary<string, string>? Files, bool Published, IReadOnlyList<string> Refusals) WithSnapshot(
-        string manifestJson, IReadOnlyDictionary<string, string> files, Migration31Options options, int snapshotFileBytes)
+    private static Dictionary<string, byte[]> Upload(string manifestJson, IReadOnlyDictionary<string, string> files)
     {
         var upload = files
             .Where(f => f.Key != V31.Harness.SnapshotTest.File)
             .ToDictionary(f => f.Key, f => System.Text.Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
+        if (files.TryGetValue(TestsIndexFile, out var index) && WithoutSnapshot(index) is { } without)
+            upload[TestsIndexFile] = System.Text.Encoding.UTF8.GetBytes(without);
         upload["manifest.json"] = System.Text.Encoding.UTF8.GetBytes(manifestJson);
+        return upload;
+    }
 
-        var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain);
-        if (compiled is null)
-            return (null, false, publishRefusals.Select(r => r.Sentence).ToList());
+    /// <summary>
+    /// <paramref name="text"/> (a <c>tests/index.json</c>) without <c>migration_snapshot</c> in its <c>items</c>, other
+    /// members and items as they are; <c>null</c> when it does not list it or does not read (it is then published as given).
+    /// </summary>
+    private static string? WithoutSnapshot(string text)
+    {
+        if (V31.StrictJson.Parse(text) is not { Fault: null, Value: JsonObject index } || index["items"] is not JsonArray items)
+            return null;
+        var listed = items.Where(IsSnapshotId).ToList();
+        if (listed.Count == 0)
+            return null;
+        foreach (var item in listed)
+            items.Remove(item);
+        return Migrated.Json(index);
+    }
 
-        var (plan, _) = V31.Run.RunPlan.Build(compiled.Resolve, compiled.ResolveHash, compiled.LockHash, null);
-        if (plan is null)
-            return (null, true, [MigrationSentences.SnapshotNotRun("cannot be run offline")]);
+    private static bool IsSnapshotId(JsonNode? item) =>
+        item is JsonValue v && v.TryGetValue<string>(out var id) && id == V31.Harness.SnapshotTest.Id;
 
-        var request = V31.Harness.SnapshotTest.Fictional(plan);
-        V31.Harness.OfflineResult run;
+    /// <summary>
+    /// The files with the snapshot test, or <c>null</c> and the one notice that says why not (part 10 § 4, D13): A10-061
+    /// when the source does not publish (its checker's sentences in it), its plan does not build, its run on
+    /// <see cref="V31.Harness.SnapshotTest.Fictional"/>'s request is refused at the start, fails or times out, or anything
+    /// on the way faults (the migration never throws on package content); A10-060 when the file would pass
+    /// <see cref="V31.SourceBounds"/>. <c>Unpublished</c> holds the checker's sentences when the source does not publish.
+    /// Never throws.
+    /// </summary>
+    internal static (Dictionary<string, string>? Files, string? Why, IReadOnlyList<string>? Unpublished) WithSnapshot(
+        string manifestJson, IReadOnlyDictionary<string, string> files, Migration31Options options, int snapshotFileBytes)
+    {
         try
         {
+            var upload = Upload(manifestJson, files);
+            var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain);
+            if (compiled is null)
+            {
+                var sentences = publishRefusals.Select(r => r.Sentence).ToList();
+                return (null, MigrationSentences.SnapshotNotRun(MigrationSentences.DoesNotPublish(sentences)), sentences);
+            }
+
+            var (plan, _) = V31.Run.RunPlan.Build(compiled.Resolve, compiled.ResolveHash, compiled.LockHash, null);
+            if (plan is null)
+                return (null, MigrationSentences.SnapshotNotRun(MigrationSentences.CannotRun), null);
+
+            var request = V31.Harness.SnapshotTest.Fictional(plan);
             // The offline host answers every call at once, so the run ends without waiting on a clock.
-            run = V31.Harness.OfflineRun.RunAsync(plan, request).GetAwaiter().GetResult();
+            var run = V31.Harness.OfflineRun.RunAsync(plan, request).GetAwaiter().GetResult();
+            var (written, why) = Written(files, upload, plan, request, run, snapshotFileBytes);
+            return (written, why, null);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // The migration never throws on package content: a run the engine cannot make is a notice.
-            return (null, true, [MigrationSentences.SnapshotNotRun("cannot be run offline")]);
+            // The migration never throws on package content: a snapshot the engine cannot make is a notice.
+            return (null, MigrationSentences.SnapshotNotRun(MigrationSentences.CannotRun), null);
         }
+    }
 
+    /// <summary>The files with the snapshot of <paramref name="run"/>, or why not: A10-061 for a run that did not complete, A10-060 past a bound.</summary>
+    internal static (Dictionary<string, string>? Files, string? Why) Written(
+        IReadOnlyDictionary<string, string> files, IReadOnlyDictionary<string, byte[]> upload, V31.Run.RunPlan plan,
+        V31.Harness.OfflineRequest request, V31.Harness.OfflineResult run, int snapshotFileBytes)
+    {
         var how = run.State switch
         {
-            null => "is refused at its run's start",
-            V31.Run.RunState.Failed => "fails its offline run",
-            V31.Run.RunState.TimedOut => "times out in its offline run",
+            null => MigrationSentences.RefusedAtStart,
+            V31.Run.RunState.Failed => MigrationSentences.FailsItsRun,
+            V31.Run.RunState.TimedOut => MigrationSentences.TimesOut,
             _ => null,
         };
         if (how is not null)
-            return (null, true, [MigrationSentences.SnapshotNotRun(how)]);
+            return (null, MigrationSentences.SnapshotNotRun(how));
 
         var text = Migrated.Json(V31.Harness.SnapshotTest.Write(plan, request, run));
         var size = System.Text.Encoding.UTF8.GetByteCount(text);
-        var index = TestsIndex(files.GetValueOrDefault(TestsIndexFile));
-        var indexText = Migrated.Json(index);
+        var indexText = Migrated.Json(TestsIndex(files.GetValueOrDefault(TestsIndexFile)));
         var total = upload.Where(f => f.Key != TestsIndexFile).Sum(f => (long)f.Value.Length)
             + size + System.Text.Encoding.UTF8.GetByteCount(indexText);
         var count = upload.Count + (upload.ContainsKey(TestsIndexFile) ? 1 : 2);
@@ -259,14 +310,14 @@ public static class WorkflowPackageMigration30To31
             : count > V31.SourceBounds.Files ? "files"
             : null;
         if (bound is not null)
-            return (null, true, [MigrationSentences.SnapshotPastBound(bound)]);
+            return (null, MigrationSentences.SnapshotPastBound(bound));
 
         var written = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
             [V31.Harness.SnapshotTest.File] = text,
             [TestsIndexFile] = indexText,
         };
-        return (written, true, []);
+        return (written, null);
     }
 
     private const string TestsIndexFile = "tests/index.json";
@@ -278,7 +329,7 @@ public static class WorkflowPackageMigration30To31
         index ??= new JsonObject { ["description"] = null, ["items"] = new JsonArray() };
         if (index["items"] is not JsonArray items)
             index["items"] = items = new JsonArray();
-        if (!items.Any(i => i is JsonValue v && v.TryGetValue<string>(out var id) && id == V31.Harness.SnapshotTest.Id))
+        if (!items.Any(IsSnapshotId))
             items.Add(V31.Harness.SnapshotTest.Id);
         return index;
     }

@@ -370,12 +370,26 @@ internal static class MigrationSentences
         $"No snapshot test was written: tests/migration_snapshot.json would take the package past SourceBounds.{bound}.";
 
     /// <summary>
-    /// A10-061 (part 10 § 4, part 07 § 8.3; D13): a notice: the migrated package's offline run on the snapshot's fictional
-    /// request did not complete (<paramref name="how"/>: <c>does not publish</c>, <c>is refused at its run's start</c>,
-    /// <c>fails its offline run</c>, <c>times out in its offline run</c>, <c>cannot be run offline</c>), so no snapshot was
-    /// written. Never a hand edit; it names no value.
+    /// A10-061 (part 10 § 4, part 07 § 8.3; D13): a notice: the migrated package's snapshot could not be made, <paramref name="how"/>
+    /// being <see cref="DoesNotPublish"/>, <see cref="RefusedAtStart"/>, <see cref="FailsItsRun"/>, <see cref="TimesOut"/> or
+    /// <see cref="CannotRun"/>, so no snapshot was written. Never a hand edit; it names no value (a checker sentence is package text).
     /// </summary>
     public static string SnapshotNotRun(string how) => $"No snapshot test was written: the migrated package {how}.";
+
+    /// <summary>A10-061's form for a package that does not publish: the checker's <paramref name="sentences"/>, in order, after a colon.</summary>
+    public static string DoesNotPublish(IEnumerable<string> sentences) => "does not publish: " + string.Join(" ", sentences);
+
+    /// <summary>A10-061's form for a run whose start refused the fictional request.</summary>
+    public const string RefusedAtStart = "is refused at its run's start";
+
+    /// <summary>A10-061's form for a run that ended failed.</summary>
+    public const string FailsItsRun = "fails its offline run";
+
+    /// <summary>A10-061's form for a run that timed out (the offline clock never moves: not reached today).</summary>
+    public const string TimesOut = "times out in its offline run";
+
+    /// <summary>A10-061's form for a plan that does not build, or a fault on the way to the snapshot.</summary>
+    public const string CannotRun = "cannot be run offline";
 
     /// <summary>A10-041 (part 05 § 8.3, § 8.7): a reason: a 30 macro's body places macro <paramref name="placed"/> (its <c>.prompt</c>), which no 31 macro body does.</summary>
     public static string BodyPlacesMacro(string placed) =>
