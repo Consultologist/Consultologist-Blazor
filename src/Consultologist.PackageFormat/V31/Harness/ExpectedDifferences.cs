@@ -100,6 +100,12 @@ public static class ExpectedDifferences
         {
             Bytes = ItemIds,
         },
+        new("position-names-from-the-loop",
+            "part 04 § 2.7 (decided on #1392: an item with no name of its own is named by its loop's label and its 1-based position, where 30 named an input loop's item by the input's label); part 10 § 3.2",
+            "an item of a loop over an input's list that is named by its position takes the loop's label at 31, where 30 gave it the input's label")
+        {
+            Bytes = PositionNames,
+        },
         new("sent-format",
             "part 10 § 1.8 (every property required, an optional one nullable); part 10 § 3.2",
             "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order")
@@ -412,6 +418,52 @@ public static class ExpectedDifferences
         }
 
         return (old, undone.ToString());
+    }
+
+    /// <summary>
+    /// Part 04 § 2.7: in any compared text but the status, the heading <c>## &lt;loop label&gt; &lt;n&gt;</c> (<c>n</c>
+    /// digits, ending its line; a template may place the loop's <c>.content</c> after text on its first line) that a loop over
+    /// an input's list writes in its <c>.content</c> for an item named by its position, where the loop's label is not the
+    /// input's, put back as 30 wrote it, <c>## &lt;input label&gt; &lt;n&gt;</c>. The position is the same at both (30's
+    /// position names count from 1 too); nothing else on the line, and no other line, is touched.
+    /// </summary>
+    private static (string Old, string New)? PositionNames(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status)
+            return null;
+
+        var names = new List<(string Loop, string Input)>();
+        foreach (var entry in c.Plan.Entries.Values.OrderBy(e => e.Order))
+        {
+            if (entry.Kind != PlanKind.For || SourceLayout.Text(entry.Json["in"]) is not { } source
+                || !source.StartsWith("input.", StringComparison.Ordinal) || !source.EndsWith(".value", StringComparison.Ordinal))
+                continue;
+            var id = source["input.".Length..^".value".Length];
+            if (SourceLayout.Text(entry.Json["label"]) is { } loop && c.Plan.Inputs.TryGetValue(id, out var input)
+                && SourceLayout.Text(input["label"]) is { } label && loop != label)
+                names.Add((loop, label));
+        }
+
+        if (names.Count == 0)
+            return null;
+        var lines = now.Split('\n');
+        var changed = false;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            foreach (var (loop, label) in names)
+            {
+                var head = "## " + loop + " ";
+                var at = lines[i].LastIndexOf(head, StringComparison.Ordinal);
+                if (at >= 0 && lines[i].Length > at + head.Length && lines[i][(at + head.Length)..].All(char.IsAsciiDigit))
+                {
+                    lines[i] = lines[i][..at] + "## " + label + " " + lines[i][(at + head.Length)..];
+                    changed = true;
+                    break;
+                }
+            }
+        }
+
+        return changed ? (old, string.Join('\n', lines)) : null;
     }
 
     /// <summary>
