@@ -661,9 +661,12 @@ resolution: callers use it to tell a rule's read from a reference string.
 - A `for`'s `.stopped` is `string {until, bound, end}`; a `while`'s is `string {check, until, bound}`.
 - A `for`'s `.content` is `markdown_block` whatever its items' format (part 04 § 2.5, part 05 § 5.3; #1507's
   D23): the standard rendering keeps 30's bytes, so a Markdown deliverable writes it unescaped and a plain-text
-  one refuses it (S06-021). So is an inner `for`'s `.content` read through `.items` (`nodes.<id>.content`,
-  nullable). Every other `.content` is D10's: a text format's own text, else `plaintext`. That covers a
-  `while`'s (its last pass's `ret`), an item's in `.items`, and an object-valued node's.
+  one refuses it (S06-021). A flow's `.content` is its `ret`'s, so the type follows the `ret` chain
+  (`ScopeTree.RenderedContent`): a `while`, an `if` or a `case` whose `ret`s reach a `for` is `markdown_block`, as
+  is an item's `.content` in `.items` when the loop's `ret` is a `for`, and an inner `for`'s
+  `nodes.<id>.content` (nullable). Branches that differ (a `for` in one, a plain-text leaf in another) give the
+  union, which a Markdown deliverable escapes (R10). Where no `for` gives the text, `.content` is D10's: a text
+  format's own text, else `plaintext` (a leaf, an object-valued node, a `while` over a leaf).
 - `.passes` and `pass.number` are `integer`; `pass.previous.number` is a nullable `integer`.
 - `.history` and `pass.history` are lists, read only through `size`.
 - `item.id` is `string`. `item.value` is the element of the loop's source (`ScopeTree.Source`, below).
