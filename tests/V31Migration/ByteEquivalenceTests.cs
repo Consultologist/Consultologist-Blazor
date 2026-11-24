@@ -361,7 +361,12 @@ internal static class EquivalenceFixture
 
     private static readonly ConcurrentDictionary<string, Lazy<Task<(JsonObject, OfflineResult, IReadOnlyList<ComparedText>)>>> Runs = new(StringComparer.Ordinal);
 
-    public static Migration31Result Migrated(string package) => MigratedPackagesTests.Migrated(package);
+    /// <summary>
+    /// The migrated package as it is compared: as migrated when it has no hand edit, else with the operator's edits made
+    /// (<see cref="MigrationFixture.Edited"/>, Task 16).
+    /// </summary>
+    public static Migration31Result Migrated(string package) =>
+        MigratedPackagesTests.Migrated(package).HandEdits.Count == 0 ? MigratedPackagesTests.Migrated(package) : MigrationFixture.Edited(package);
 
     /// <summary>The migrated package's plan; it must publish.</summary>
     public static RunPlan Plan(string package) => Plans.GetOrAdd(package, name =>

@@ -133,6 +133,65 @@ internal static class MigrationFixture
         return WorkflowPackageMigration30To31.Migrate(manifestJson, files, Options(package));
     }
 
+    /// <summary>The folder of the operator's hand edits, beside <c>migrated/</c> (Task 16).</summary>
+    public const string HandEditsFolder = "hand-edits";
+
+    /// <summary>What a hand-edit folder holds besides the files it lays over the migration: its account of the edits.</summary>
+    public const string HandEditsReadme = "README.md";
+
+    /// <summary>The suffix of a hand-edit file that removes the migrated file of its path without the suffix.</summary>
+    public const string DeletedSuffix = ".deleted";
+
+    /// <summary>
+    /// #1507 (Task 16; part 10 §§ 1.4, 1.5): <paramref name="package"/> migrated (<see cref="MigratedPackagesTests.Migrated"/>)
+    /// with the operator's hand edits made: every file under <c>hand-edits/&lt;package&gt;/</c> but its <c>README.md</c>
+    /// laid over the migrated files (<see cref="Overlay"/>). The result keeps the migration's notices, hand edits, report
+    /// notes, keys and macro bodies: the edits change files, not what the migration said.
+    /// </summary>
+    public static Migration31Result Edited(string package) => EditedCache.GetOrAdd(package, name =>
+        Overlay(MigratedPackagesTests.Migrated(name), HandEditsOf(name)));
+
+    /// <summary>The folder of <paramref name="package"/>'s hand edits, <c>hand-edits/&lt;package&gt;/</c>.</summary>
+    public static string HandEditsOf(string package) =>
+        Path.Combine([ByteEquivalenceFixtures.Root, HandEditsFolder, .. package.Split('/')]);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Migration31Result> EditedCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// <paramref name="migrated"/> with the files under <paramref name="folder"/> laid over it, each at its path relative to
+    /// the folder (<c>manifest.json</c> the manifest): a file named <c>&lt;path&gt;.deleted</c> removes <c>&lt;path&gt;</c>, any
+    /// other replaces or adds its path. The folder's own <c>README.md</c> is not a package file. A folder that does not exist
+    /// changes nothing.
+    /// </summary>
+    public static Migration31Result Overlay(Migration31Result migrated, string folder)
+    {
+        if (!Directory.Exists(folder))
+            return migrated;
+
+        var manifest = migrated.ManifestJson;
+        var files = new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal);
+        foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
+            if (relative == HandEditsReadme)
+                continue;
+            if (relative.EndsWith(DeletedSuffix, StringComparison.Ordinal))
+            {
+                var removed = relative[..^DeletedSuffix.Length];
+                Assert.True(files.Remove(removed), $"{relative} removes {removed}, which the migration did not write.");
+                continue;
+            }
+
+            var text = ByteEquivalenceFixtures.ReadText(path);
+            if (relative == "manifest.json")
+                manifest = text;
+            else
+                files[relative] = text;
+        }
+
+        return migrated with { ManifestJson = manifest, Files = files };
+    }
+
     /// <summary>The value <c>vectors.json</c> writes for a read that has none: an absent input, a node with no output.</summary>
     public const string Absent = "<absent>";
 

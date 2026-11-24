@@ -34,7 +34,10 @@ public class MigratedPackagesTests
     public static TheoryData<string> PackagesWithoutHandEdits() => new(Names.Where(p => Migrated(p).HandEdits.Count == 0));
 
     /// <summary>The packages whose migration says at least one hand edit.</summary>
-    public static TheoryData<string> PackagesWithHandEdits() => new(Names.Where(p => Migrated(p).HandEdits.Count > 0));
+    public static TheoryData<string> PackagesWithHandEdits() => new(NamesWithHandEdits);
+
+    /// <summary>The names of <see cref="PackagesWithHandEdits"/>, in its order.</summary>
+    internal static IReadOnlyList<string> NamesWithHandEdits => Names.Where(p => Migrated(p).HandEdits.Count > 0).ToList();
 
     /// <summary>
     /// <paramref name="package"/> migrated with its options (<see cref="MigrationFixture.Migrate"/>), once per test run;
