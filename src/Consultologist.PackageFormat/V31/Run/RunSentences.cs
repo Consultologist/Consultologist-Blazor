@@ -21,6 +21,17 @@ public static class RunSentences
         return function == null ? $"{word} '{entry.Id}'" : $"{word} '{entry.Id}' in function '{function}'";
     }
 
+    /// <summary>
+    /// #1507 (area 10; part 02 § 5; R10, D21) A10-052: a model's reply that fits <paramref name="format"/> (as the runner
+    /// names it) but for a line ending in a <c>markdown_inline</c> text, which sits inside a line. Package text only.
+    /// </summary>
+    public static string ReplyBreaksALine(string id, string format) =>
+        $"Node '{id}' gave a reply that isn't {format}: markdown_inline text sits inside a line and holds no line ending.";
+
+    /// <summary>#1507 (area 10; R10, D21) A10-052: an input's value that fits <paramref name="format"/> but for a line ending in a <c>markdown_inline</c> text.</summary>
+    public static string InputBreaksALine(string id, string format) =>
+        $"Input '{id}' was given a value that isn't {format}: markdown_inline text sits inside a line and holds no line ending.";
+
     /// <summary>#1506 (area 09; R2, D1) A09-001: the job opened more instances than the engine allows one job.</summary>
     public static string JobInstances(int limit) =>
         $"The job reached {limit.ToString("N0", CultureInfo.InvariantCulture)} steps, the most this engine runs for one job.";

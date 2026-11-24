@@ -149,7 +149,8 @@ public sealed partial class PlanRunner
 
         /// <summary>
         /// A reply (part 02 § 3.4, part 05 § 1.2): read as its format's value (a text format's reply is the text) and validated
-        /// against the full format. An invalid one is asked again once, under <c>onInvalid: "retry"</c>, in the same slot and
+        /// against the full format (#1507, R10, D21: a <c>markdown_inline</c> text in it holds no line ending, A10-052 when
+        /// that is all that is wrong). An invalid one is asked again once, under <c>onInvalid: "retry"</c>, in the same slot and
         /// as the same call; invalid again, or under <c>"fail"</c>, the node fails with A06-005, which names the format and
         /// never the reply. The outcome is the row's <c>invalid</c> (part 08 § 4): that sentence as its <c>reason</c>, the
         /// node's <c>onInvalid</c> as its <c>action</c>, and the replies the node got as its <c>attempts</c>. A valid value
@@ -160,9 +161,13 @@ public sealed partial class PlanRunner
             var entry = instance.Entry;
             state.Replies++;
             var (value, parsed) = plan.Formats.Read(reply, entry.Format);
-            if (!parsed || !plan.Formats.Validate(value, entry.Format).Valid)
+            var fits = parsed ? plan.Formats.Validate(value, entry.Format) : null;
+            if (fits is not { Valid: true })
             {
-                var sentence = $"Node '{entry.Id}' gave a reply that isn't {FormatName(entry.Format)}.";
+                // #1507 (R10, D21): a markdown_inline text holding a line ending does not fit; A10-052 says why.
+                var sentence = fits is { BreaksALine: true }
+                    ? RunSentences.ReplyBreaksALine(entry.Id, FormatName(entry.Format))
+                    : $"Node '{entry.Id}' gave a reply that isn't {FormatName(entry.Format)}.";
                 await OnInvalidAsync(instance, state, sentence, sentence, []);
                 return;
             }

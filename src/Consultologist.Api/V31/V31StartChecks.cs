@@ -171,9 +171,12 @@ public static class V31StartChecks
                 continue;
             }
 
-            if (!plan.Formats.Validate(value, format).Valid)
+            if (plan.Formats.Validate(value, format) is { Valid: false } fits)
             {
-                refusals.Add(new SourceRefusal("A06-012", $"Input '{id}' was given a value that isn't {FormatName(format)}.", ""));
+                // #1507 (R10, D21): a markdown_inline text holding a line ending does not fit; A10-052 says why.
+                refusals.Add(fits.BreaksALine
+                    ? new SourceRefusal("A10-052", RunSentences.InputBreaksALine(id, FormatName(format)), "")
+                    : new SourceRefusal("A06-012", $"Input '{id}' was given a value that isn't {FormatName(format)}.", ""));
                 continue;
             }
 

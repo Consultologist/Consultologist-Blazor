@@ -14,7 +14,17 @@ namespace Consultologist.PackageFormat.V31;
 public sealed record FormatValueFault(string Pointer, string Keyword);
 
 /// <summary>The outcome of <see cref="IFormatValueValidator.Validate"/>: an invalid value always has at least one fault, sorted by pointer then keyword, without repeats.</summary>
-public sealed record FormatValueResult(bool Valid, IReadOnlyList<FormatValueFault> Faults);
+public sealed record FormatValueResult(bool Valid, IReadOnlyList<FormatValueFault> Faults)
+{
+    /// <summary>
+    /// #1507 (area 10; part 02 § 5; R10, D21): the keyword of the fault a value has when it fits its format as written but a
+    /// <c>markdown_inline</c> text in it holds a line ending: the annotation that makes the text inline.
+    /// </summary>
+    public const string LineEndingKeyword = "x-markdown";
+
+    /// <summary>Whether the value fits its format but for a line ending in a <c>markdown_inline</c> text (<see cref="LineEndingKeyword"/>).</summary>
+    public bool BreaksALine => !Valid && Faults.Count > 0 && Faults.All(f => f.Keyword == LineEndingKeyword);
+}
 
 /// <summary>
 /// #1500 (specVersion 31, area 03; D1): is a value one the format describes. The engine, the
@@ -76,10 +86,101 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
     /// reference left to resolve; what <see cref="Validate"/> holds a value to once it has expanded the format): an object,
     /// compiled once per process as <see cref="Validate"/> compiles one, or a boolean schema (<c>true</c> fits every value,
     /// <c>false</c> none, with the fault <c>("", "$ref")</c> of a format that cannot be compiled). Never throws on either.
+    /// #1507 (area 10; part 02 § 5: a <c>markdown_inline</c> text "sits inside a line"; R10, D21): a value that fits the
+    /// schema as written is held too to every <c>markdown_inline</c> text in it holding no line ending (<c>\n</c> or
+    /// <c>\r</c>), at any depth; one that holds one has a fault <see cref="FormatValueResult.LineEndingKeyword"/> at each
+    /// place it fails (<see cref="FormatValueResult.BreaksALine"/>).
     /// </summary>
     public FormatValueResult ValidateExpanded(JsonNode? value, JsonNode schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
+        var result = ValidateAsWritten(value, schema);
+        if (!result.Valid || schema is not JsonObject written)
+        {
+            return result;
+        }
+
+        var oneLine = (JsonObject)written.DeepClone();
+        if (!OneLine(oneLine, 0))
+        {
+            return result;
+        }
+
+        var held = ValidateAsWritten(value, oneLine);
+        return held.Valid
+            ? held
+            : new FormatValueResult(false, held.Faults
+                .Select(f => f with { Keyword = FormatValueResult.LineEndingKeyword })
+                .Distinct()
+                .ToList());
+    }
+
+    /// <summary>A schema that a text holding a line ending fits: what a <c>markdown_inline</c> text is held not to fit.</summary>
+    private static JsonObject LineEnding() => new() { ["pattern"] = "[\\r\\n]" };
+
+    /// <summary>
+    /// D21: gives each <c>markdown_inline</c> schema in <paramref name="node"/> (the text kind its own annotations give,
+    /// <see cref="FormatTypes.KindOf"/>), where a schema stands (the root, a property's, <c>items</c>, <c>prefixItems</c>,
+    /// <c>additionalProperties</c>, <c>not</c>, a member of <c>anyOf</c>, <c>oneOf</c> or <c>allOf</c>), the rule that it
+    /// holds no line ending: in its own <c>not</c>, or in its <c>allOf</c> when it has a <c>not</c>. Whether it found one.
+    /// Bounded by <see cref="SourceBounds.JsonDepth"/>.
+    /// </summary>
+    private static bool OneLine(JsonNode? node, int depth)
+    {
+        if (node is not JsonObject schema || depth > SourceBounds.JsonDepth)
+        {
+            return false;
+        }
+
+        var found = false;
+        foreach (var (name, member) in schema.ToList())
+        {
+            switch (name)
+            {
+                case "properties" when member is JsonObject properties:
+                    foreach (var (_, property) in properties.ToList())
+                    {
+                        found |= OneLine(property, depth + 1);
+                    }
+
+                    break;
+                case "items" or "additionalProperties" or "not":
+                    found |= OneLine(member, depth + 1);
+                    break;
+                case "anyOf" or "oneOf" or "allOf" or "prefixItems" when member is JsonArray members:
+                    foreach (var item in members.ToList())
+                    {
+                        found |= OneLine(item, depth + 1);
+                    }
+
+                    break;
+            }
+        }
+
+        if (FormatTypes.KindOf(schema) != "markdown_inline")
+        {
+            return found;
+        }
+
+        if (!schema.ContainsKey("not"))
+        {
+            schema["not"] = LineEnding();
+        }
+        else if (schema["allOf"] is JsonArray all)
+        {
+            all.Add(new JsonObject { ["not"] = LineEnding() });
+        }
+        else
+        {
+            schema["allOf"] = new JsonArray(new JsonObject { ["not"] = LineEnding() });
+        }
+
+        return true;
+    }
+
+    /// <summary><see cref="ValidateExpanded"/> against <paramref name="schema"/> as written, compiled once per process.</summary>
+    private static FormatValueResult ValidateAsWritten(JsonNode? value, JsonNode schema)
+    {
 
         if (schema is JsonValue boolean && boolean.GetValueKind() is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
         {
