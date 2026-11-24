@@ -24,7 +24,34 @@ public interface IWorkflowPackageVersions
     Task<string> ResolveVersionAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken);
 }
 
-public sealed class WorkflowPackageStore : IWorkflowPackageStore, IWorkflowPackageVersions
+/// <summary>
+/// #1507 (specVersion 31, area 10; R11, D22): a package as it is stored, for the migration to read (part 10 § 1.1): the
+/// stored <c>manifest.json</c> as its text, never the parsed model written again, and the files a load gathers as published.
+/// </summary>
+public interface IWorkflowPackageSources
+{
+    /// <summary>
+    /// The package <paramref name="packageRef"/> names (a <c>latest</c> ref at the version its pointer names). Below 31, at a
+    /// version this engine loads, its files are <see cref="WorkflowPackage.SourceFiles"/> and its formats catalogue the
+    /// load's; otherwise (31 or past it, below 5, a version that does not read) the manifest's text alone. A blob that
+    /// cannot be read, or a package the load refuses, throws as <see cref="IWorkflowPackageStore.ResolveAsync"/> does.
+    /// </summary>
+    Task<WorkflowPackageSource> ReadSourceAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// #1507 (D22): a stored package: <paramref name="Ref"/> at its resolved version, its <c>specVersion</c> (null when the
+/// manifest does not read), the stored <c>manifest.json</c> text, its other files (empty when it was not loaded) and the
+/// formats catalogue its load resolved (null when none).
+/// </summary>
+public sealed record WorkflowPackageSource(
+    string Ref,
+    int? SpecVersion,
+    string ManifestJson,
+    IReadOnlyDictionary<string, string> Files,
+    WorkflowFormatCatalog? Formats);
+
+public sealed class WorkflowPackageStore : IWorkflowPackageStore, IWorkflowPackageVersions, IWorkflowPackageSources
 {
     /// <summary>A manifest declares the rule set it was validated under (package-format-v6-design.md § 9).</summary>
     // v12 (#623): the engine runs twelve — the last rung of the v12 ladder
@@ -128,6 +155,36 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore, IWorkflowPacka
     /// <inheritdoc />
     public Task<string> ResolveVersionAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken) =>
         packageRef.IsLatest ? ResolveLatestVersionAsync(packageRef.Name, cancellationToken) : Task.FromResult(packageRef.Version);
+
+    /// <inheritdoc />
+    public Task<WorkflowPackageSource> ReadSourceAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken) =>
+        ReadSource(packageRef, ResolveVersionAsync, DownloadTextAsync, ResolveAsync, cancellationToken);
+
+    /// <summary>
+    /// #1507 (D22): <see cref="ReadSourceAsync"/> over its three reads: the version, a blob's text, and the load (which
+    /// gives the files as published, cached as every load is). Only a version this engine loads is loaded.
+    /// </summary>
+    internal static async Task<WorkflowPackageSource> ReadSource(
+        WorkflowPackageRef packageRef,
+        Func<WorkflowPackageRef, CancellationToken, Task<string>> resolveVersion,
+        Func<string, string, CancellationToken, Task<string>> download,
+        Func<WorkflowPackageRef, CancellationToken, Task<WorkflowPackage>> resolve,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(packageRef);
+        var version = await resolveVersion(packageRef, cancellationToken);
+        var exact = new WorkflowPackageRef(packageRef.Name, version);
+        var manifestJson = await download(exact.Name, $"{exact.Name}/{version}/{WorkflowPackageRef.ManifestFileName}", cancellationToken);
+        int? specVersion = WorkflowPackageMigrationChain.TryReadVersion(manifestJson, out _, out var read) ? read : null;
+        if (specVersion is not { } at || !SupportedSpecVersions.Contains(at))
+        {
+            return new WorkflowPackageSource(exact.ToString(), specVersion, manifestJson, new Dictionary<string, string>(StringComparer.Ordinal), null);
+        }
+
+        var package = await resolve(exact, cancellationToken);
+        return new WorkflowPackageSource(
+            exact.ToString(), at, manifestJson, package.SourceFiles ?? new Dictionary<string, string>(StringComparer.Ordinal), package.Formats);
+    }
 
     /// <summary>
     /// The package a load hands the run path, built from what <see cref="Materialise"/>
