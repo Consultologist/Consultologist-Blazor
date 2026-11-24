@@ -315,6 +315,7 @@ public class MigrateDeliverablesTests
         Assert.Equal(ids.Count, result.Files.Keys.Count(k => k.StartsWith("deliverables/", StringComparison.Ordinal) && k.EndsWith(".md", StringComparison.Ordinal)));
         Assert.Empty(refusals);
     }
+
     /// <summary>
     /// Part 05 § 8.3 (the macro's format follows its placers'), with R9: the macros <c>example-macros</c>' <c>summary</c>
     /// places (in its prompt, or through the snippet <c>style</c>) take its format, <c>markdown_block</c> while
@@ -336,6 +337,16 @@ public class MigrateDeliverablesTests
         Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(uncomposed, "nodes/summary.md").Header["format"]);
         foreach (var macro in placedBySummary)
             Assert.True("plaintext" == (string?)MigrateNodesTests.Md(uncomposed, $"macros/{macro}.md").Header["format"], $"{macro} is not plaintext.");
+
+        // A macro placed by a composed agent and an uncomposed one is plaintext (escaped in the Markdown agent): counselling,
+        // placed by standing_draft (composed by consult_note) and patient_line, once patient_letter no longer composes it.
+        Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(composed, "macros/counselling.md").Header["format"]);
+        var mixed = MigrateNodesTests.Migrated("example-macros", root =>
+            root["deliverables"]!.AsArray().Remove(root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "patient_letter")),
+            files => files["prompts/summary.md"] += "\n{{ node.patient_line.content }}\n");
+        Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(mixed, "nodes/standing_sections/standing_draft.md").Header["format"]);
+        Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(mixed, "nodes/patient_line.md").Header["format"]);
+        Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(mixed, "macros/counselling.md").Header["format"]);
     }
 
     /// <summary>
@@ -369,5 +380,67 @@ public class MigrateDeliverablesTests
             Assert.All(result.HandEdits, e => Assert.Matches("^Hand edit needed in nodes/(topic_tally.md, expression|refine/draft_summary.md, body): ", e));
             Assert.All(MigratedPackagesTests.Publish(result), r => Assert.True(r.Path is "nodes/topic_tally.md" or "nodes/refine/draft_summary.md", $"{r.Id} {r.Path}: {r.Sentence}"));
         }
+    }
+    /// <summary>
+    /// D20 with a flow whose leaves mix 30 prose with a <c>let</c> of <c>text</c> or a <c>rendered</c> node (both stay
+    /// <c>plaintext</c>): composer-sources' <c>tone_case</c> with <c>plain_line</c> made one. 30 refuses a deliverable that
+    /// composes such a flow (its branches disagree; "a deliverable composes prose"), so no composed flow can be the union
+    /// <c>markdown_block | plaintext</c>. Read only by a prompt, the flow composes nothing, its prose leaf stays
+    /// <c>plaintext</c> and its format is the one <c>plaintext</c>; publish refuses nothing but the package's two hand edits.
+    /// </summary>
+    [Theory]
+    [InlineData("let")]
+    [InlineData("rendered")]
+    public void AFlowMixingProseWithALetOrARenderedLeaf_IsNeverAUnion(string kind)
+    {
+        void Node(JsonObject root)
+        {
+            var line = MigrateNodesTests.Node(root, "plain_line");
+            if (kind == "let")
+            {
+                line.Remove("format");
+                line["let"] = "\"A plain line.\"";
+                line["type"] = "text";
+                line["onInvalid"] = "fail";
+            }
+            else
+            {
+                line["format"] = "rendered";
+            }
+        }
+
+        void Files(Dictionary<string, string> files)
+        {
+            if (kind == "let")
+                files.Remove("prompts/plain_line.md");
+            else
+                files["prompts/plain_line.md"] = "A plain line for {{ input.consult_draft }}.\n";
+        }
+
+        var (json, read) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var composedRoot = JsonNode.Parse(json)!.AsObject();
+        var composedFiles = new Dictionary<string, string>(read, StringComparer.Ordinal);
+        Node(composedRoot);
+        Files(composedFiles);
+        var refused = WorkflowPackageMigration30To31.Migrate(composedRoot.ToJsonString(), composedFiles, MigrationFixture.Options("composer-sources"));
+        Assert.False(refused.Succeeded);
+        Assert.Contains("At specVersion 30: Deliverable 'tone_line' source node.tone_case returns 'text'; a deliverable composes prose.", refused.Refusals);
+
+        var promptOnly = MigrateNodesTests.Migrated("composer-sources", root =>
+            {
+                root["deliverables"]!.AsArray().Remove(root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "tone_line"));
+                Node(root);
+            },
+            files =>
+            {
+                Files(files);
+                files["prompts/opening.md"] += "\n{{ node.tone_case.content }}\n";
+            });
+        Assert.Equal("\"plaintext\"", MigrateNodesTests.Json(promptOnly, "nodes/tone_case/index.json")["format"]!.ToJsonString());
+        Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(promptOnly, "nodes/tone_case/formal_line.md").Header["format"]);
+        Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(promptOnly, "nodes/tone_case/plain_line.md").Header["format"]);
+        Assert.Equal(kind == "let" ? "computed" : "rendered", (string?)MigrateNodesTests.Md(promptOnly, "nodes/tone_case/plain_line.md").Header["kind"]);
+        Assert.All(promptOnly.HandEdits, e => Assert.Matches("^Hand edit needed in nodes/(topic_tally.md, expression|refine/draft_summary.md, body): ", e));
+        Assert.All(MigratedPackagesTests.Publish(promptOnly), r => Assert.True(r.Path is "nodes/topic_tally.md" or "nodes/refine/draft_summary.md", $"{r.Id} {r.Path}: {r.Sentence}"));
     }
 }
