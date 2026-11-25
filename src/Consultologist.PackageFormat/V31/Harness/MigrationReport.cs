@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 using Consultologist.PackageFormat.V31.Run;
@@ -107,14 +106,14 @@ public sealed record MigrationReport(
         if (check.Refusals.Count > 0 || check.Parse.Package is not { } package || check.Resolution is not { } resolution)
             return null;
 
-        var calls = PublishNotes.WorstCaseCalls(package, resolution, new PublishLimits(run.MaxAgentCalls, run.LoopItems, run.JobAgentCalls));
-        var minutes = calls / run.MaxAgentCalls + (calls % run.MaxAgentCalls == 0 ? 0 : 1);
-        return minutes > run.JobMinutes ? WorstCase(package.Manifest.Name, minutes, run.JobMinutes) : null;
+        // #1508 (area 11; D16): the estimate is publish's own (S09-016, the same words), so the two never disagree.
+        var publish = new PublishLimits(run.MaxAgentCalls, run.LoopItems, run.JobAgentCalls, JobMinutes: run.JobMinutes);
+        return PublishNotes.MinutesNote(package, resolution, publish)?.Sentence;
     }
 
-    /// <summary>A10-014's words.</summary>
+    /// <summary>A10-014's words: S09-016's (#1508, D16).</summary>
     public static string WorstCase(string package, long minutes, int limit) =>
-        string.Create(CultureInfo.InvariantCulture, $"{package} could run for about {minutes} minutes in the worst case; this engine stops a job after {limit} minutes.");
+        ResolveSentences.WorstCaseMinutes(package, minutes, limit).Sentence;
 
     /// <summary>The deliverables the migrated package declares (its <c>deliverables/</c> files, any folder).</summary>
     private static int Deliverables(Migration31Result migrated) =>

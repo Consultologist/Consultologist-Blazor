@@ -106,32 +106,41 @@ public class FormatOwnDefinitionsTests
     }
 
     /// <summary>
-    /// #1508 (area 11; R2): a file that names a package format <c>timing</c> and also defines <c>timing</c> for itself
-    /// (which publish refuses, R4, A11-002) once compiled both references to <c>#/$defs/timing</c>, and the run read both
-    /// as the file's own definition. The bundle now refers to the package format by its <c>$id</c>, so the run reads each
-    /// as publish read it: the file's own definition, and the package format.
+    /// #1508 (area 11; R2): a file that names a package format <c>timing</c> and also defines <c>timing</c> for itself once
+    /// compiled both references to <c>#/$defs/timing</c>, and the run read both as the file's own definition. Publish now
+    /// refuses such a file (R4, A11-002); a compiled document that holds one all the same (forged here from one whose
+    /// definition has another name) refers to the package format by its <c>$id</c>, so the run reads each as publish
+    /// would: the file's own definition, and the package format.
     /// </summary>
     [Fact]
     public void ANameBesideAnOwnDefinitionOfTheSameName_ReadsAsThePackageFormat()
     {
         const string timing = "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", \"required\": [\"slot\"], \"additionalProperties\": false, "
             + "\"properties\": { \"slot\": { \"type\": \"string\", \"enum\": [\"morning\", \"afternoon\"] } } }";
-        const string both =
+        static string Both(string own) =>
             "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", \"required\": [\"mine\", \"theirs\"], "
-            + "\"additionalProperties\": false, \"properties\": { \"mine\": { \"$ref\": \"#/$defs/timing\" }, \"theirs\": { \"$ref\": \"timing\" } }, "
-            + "\"$defs\": { \"timing\": { \"type\": \"string\", \"enum\": [\"today\", \"next_visit\"] } } }";
-        var plan = RunFixture.Plan(Package(("timing", timing), ("visit_plan", both)), StubTemplates.Empty());
+            + $"\"additionalProperties\": false, \"properties\": {{ \"mine\": {{ \"$ref\": \"#/$defs/{own}\" }}, \"theirs\": {{ \"$ref\": \"timing\" }} }}, "
+            + $"\"$defs\": {{ \"{own}\": {{ \"type\": \"string\", \"enum\": [\"today\", \"next_visit\"] }} }} }}";
 
-        var entry = plan.Document["formats"]!["$defs"]!["visit_plan"]!["properties"]!;
-        Assert.Equal("{\"$ref\":\"#/$defs/timing\"}", entry["mine"]!.ToJsonString());
-        Assert.Equal(plan.Document["formats"]!["$defs"]!["timing"]!["$id"]!.ToJsonString(), entry["theirs"]!["$ref"]!.ToJsonString());
+        var refused = CompiledPackage.Publish(Package(("timing", timing), ("visit_plan", Both("timing"))), ResolveFixture.Published(), CompiledGoldenTests.Fixed);
+        Assert.Equal(["A11-002"], refused.Refusals.Select(r => r.Id));
+
+        var plan = RunFixture.Plan(Package(("timing", timing), ("visit_plan", Both("own_timing"))), StubTemplates.Empty());
+        var bundle = plan.Document["formats"]!.DeepClone();
+        var visitPlan = bundle["$defs"]!["visit_plan"]!.AsObject();
+        visitPlan["$defs"] = new JsonObject { ["timing"] = visitPlan["$defs"]!["own_timing"]!.DeepClone() };
+        visitPlan["properties"]!["mine"] = Ref("timing");
+        var formats = new PlanFormats(bundle);
+
+        var entry = visitPlan["properties"]!;
+        Assert.Equal(bundle["$defs"]!["timing"]!["$id"]!.ToJsonString(), entry["theirs"]!["$ref"]!.ToJsonString());
 
         // "theirs" is the package format (an object with a slot), as at publish; "mine" the file's own definition.
-        Assert.True(plan.Formats.Validate(JsonNode.Parse("""{"mine":"today","theirs":{"slot":"morning"}}"""), Ref("visit_plan")).Valid);
-        Assert.False(plan.Formats.Validate(JsonNode.Parse("""{"mine":"today","theirs":"next_visit"}"""), Ref("visit_plan")).Valid);
+        Assert.True(formats.Validate(JsonNode.Parse("""{"mine":"today","theirs":{"slot":"morning"}}"""), Ref("visit_plan")).Valid);
+        Assert.False(formats.Validate(JsonNode.Parse("""{"mine":"today","theirs":"next_visit"}"""), Ref("visit_plan")).Valid);
 
         // The package format itself, referred to from anywhere else, is unaffected.
-        Assert.True(plan.Formats.Validate(JsonNode.Parse("""{"slot":"morning"}"""), Ref("timing")).Valid);
+        Assert.True(formats.Validate(JsonNode.Parse("""{"slot":"morning"}"""), Ref("timing")).Valid);
     }
 
     [Fact]

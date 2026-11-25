@@ -127,10 +127,14 @@ internal static class V31Contract
 
     /// <summary>
     /// #1508: area 11's own sentences (<c>A11-NNN</c>), as plan area-11-registry-and-publish lists them; each is added by the
-    /// task that first says it (A11-008, Task 3: a run-time engine fault while rendering, in place of A06-008, R8 item 4).
+    /// task that first says it (A11-008, Task 3: a run-time engine fault while rendering, in place of A06-008, R8 item 4;
+    /// A11-001 to A11-003, Task 8: the publish refusals the owner ruled, R1, R4 and R5).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
+        ["A11-001"] = "Up to <n> steps could run in one job, through <loop key>; this engine runs at most <limit> for one job. Lower a loop's max or split the workflow.",
+        ["A11-002"] = "Format '<id>' names format '<name>' and also defines '<name>' in its own $defs. Rename the definition or remove it.",
+        ["A11-003"] = "Format '<id>' expands to more than <limit> parts, more than this engine can run. Make it smaller.",
         ["A11-008"] = "<Subject> couldn't be rendered because the engine failed. Tell the operator.",
     };
 

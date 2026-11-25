@@ -198,6 +198,9 @@ public static partial class FormatDialect
     private sealed partial class Walk(SchemaSite site, string format, string id, string path, JsonObject? defs)
     {
         private readonly HashSet<string> looping = Loops(defs);
+
+        /// <summary>#1508 (A11-002): the names a file both refers to and defines, each said once.</summary>
+        private readonly HashSet<string> alsoDefined = new(StringComparer.Ordinal);
         private bool tooDeep;
 
         public List<SourceRefusal> Refusals { get; } = [];
@@ -407,11 +410,19 @@ public static partial class FormatDialect
             }
         }
 
-        /// <summary>A <c>$ref</c>: a format name (looked up elsewhere), or <c>#/$defs/&lt;name&gt;</c> naming one of the root's definitions.</summary>
+        /// <summary>
+        /// A <c>$ref</c>: a format name (looked up elsewhere), or <c>#/$defs/&lt;name&gt;</c> naming one of the root's
+        /// definitions. #1508 (area 11; R4, ruled by the owner on #1508): a package's format file that names a format and
+        /// also defines that name in its own <c>$defs</c> is A11-002, once for each name, so no reader takes one for the other.
+        /// </summary>
         private void Reference(string reference, string pointer)
         {
             if (SourceIds.IsPattern(reference))
+            {
+                if (site == SchemaSite.PackageFormat && defs != null && defs.ContainsKey(reference) && alsoDefined.Add(reference))
+                    Refusals.Add(ResolveSentences.NameAlsoDefined(id, reference, path));
                 return;
+            }
 
             var name = DefinitionName(reference);
             if (name is null || defs is null || !defs.ContainsKey(name))

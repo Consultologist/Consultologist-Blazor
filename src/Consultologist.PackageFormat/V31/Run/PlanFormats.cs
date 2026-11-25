@@ -81,6 +81,18 @@ public sealed class PlanFormats
         return walk.Failed || expanded is null ? JsonValue.Create(false) : expanded;
     }
 
+    /// <summary>
+    /// #1508 (area 11; R5): whether <see cref="Expand"/> of <paramref name="format"/> stays within <see cref="NodeBudget"/>,
+    /// counted by the expansion's own counter, so publish (A11-003) and the run hold one budget. An expansion that fails
+    /// for another reason first (a cycle, the depth, the schema budget) is not past it.
+    /// </summary>
+    public bool WithinNodeBudget(JsonNode? format)
+    {
+        var walk = new Walk(defs, ids);
+        walk.Schema(format, 0);
+        return !walk.PastNodeBudget;
+    }
+
     /// <summary><paramref name="value"/> validated against <see cref="Expand"/> of <paramref name="format"/>.</summary>
     public FormatValueResult Validate(JsonNode? value, JsonNode? format) =>
         Validator.ValidateExpanded(value, Expand(format));
@@ -182,6 +194,9 @@ public sealed class PlanFormats
 
         public bool Failed { get; private set; }
 
+        /// <summary>Whether the expansion failed because it passed <see cref="NodeBudget"/>.</summary>
+        public bool PastNodeBudget { get; private set; }
+
         /// <summary><paramref name="node"/> where a schema is: counted when it is one written here (an object that is not a reference).</summary>
         public JsonNode? Schema(JsonNode? node, int depth)
         {
@@ -196,7 +211,13 @@ public sealed class PlanFormats
         private bool Counted() => (inlining.Count > 0 ? ++written : ++own) <= Budget;
 
         /// <summary>One more node written, within <see cref="NodeBudget"/>.</summary>
-        private bool Node() => ++nodes <= NodeBudget;
+        private bool Node()
+        {
+            if (++nodes <= NodeBudget)
+                return true;
+            PastNodeBudget = true;
+            return false;
+        }
 
         /// <summary><paramref name="node"/> copied, the references in it inlined, to <see cref="MaxDepth"/> and <see cref="NodeBudget"/>.</summary>
         private JsonNode? Copy(JsonNode? node, int depth)

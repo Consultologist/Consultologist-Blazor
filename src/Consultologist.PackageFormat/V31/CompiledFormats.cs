@@ -13,7 +13,8 @@ namespace Consultologist.PackageFormat.V31;
 /// <see cref="FormatTypes.FormatHash"/> and <see cref="FormatTypes.TypeHash"/> give them in the format's own scope
 /// (the rewrite changes neither). <see cref="Bindings"/> is format key, then producer, then
 /// <c>{ agentName, agentVersion, via }</c>, one for each format and producer an agent node is bound by.
-/// <see cref="Refusals"/> holds A05-004, a function's own format whose key another used format has.
+/// <see cref="Refusals"/> holds A05-004, a function's own format whose key another used format has, then (#1508, R5)
+/// A11-003, a format whose expansion at run passes the run's node budget.
 /// Every map is keyed by bundle key: a format's id, or <c>&lt;function&gt;__&lt;id&gt;</c> for a function's own (D5).
 /// </summary>
 public sealed record CompiledFormats(
@@ -58,12 +59,38 @@ public sealed record CompiledFormats(
             typeHashes[key] = FormatTypes.TypeHash(name, entry.Scope);
         }
 
+        var bundle = new JsonObject { ["$defs"] = defs };
+        refusals.AddRange(PastTheBudget(bundle, claimed, package));
         return new CompiledFormats(
-            new JsonObject { ["$defs"] = defs },
+            bundle,
             formatHashes,
             typeHashes,
             BindingsOf(package, types),
             refusals);
+    }
+
+    /// <summary>
+    /// #1508 (area 11; R5, ruled by the owner on #1508) A11-003: each bundled format, by key, whose expansion at run
+    /// (<see cref="Run.PlanFormats.Expand"/>, as a site names it) writes more than <see cref="Run.PlanFormats.NodeBudget"/>
+    /// nodes, counted by the run's own counter, so nothing publishes that the run would hold as <c>false</c>. The refusal
+    /// names the format's id and its file (the package's or the function's; <c>""</c> for a catalogue or built-in format).
+    /// </summary>
+    private static IEnumerable<SourceRefusal> PastTheBudget(JsonObject bundle, Dictionary<string, Entry> claimed, SourcePackage package)
+    {
+        var run = new Run.PlanFormats(bundle);
+        foreach (var (key, entry) in claimed.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            if (run.WithinNodeBudget(new JsonObject { ["$ref"] = $"#/$defs/{key}" }))
+                continue;
+            var files = entry.Format.Origin switch
+            {
+                FormatOrigin.Package => package.Definitions.Formats,
+                FormatOrigin.Function => entry.Function?.Definitions.Formats,
+                _ => null,
+            };
+            var file = files?.Items.FirstOrDefault(f => f.Id == entry.Format.Id)?.Path;
+            yield return ResolveSentences.ExpandsTooFar(entry.Format.Id, Run.PlanFormats.NodeBudget, file ?? "");
+        }
     }
 
     /// <summary>

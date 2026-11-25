@@ -43,7 +43,9 @@ public static partial class ResolveCompiler
     /// <c>resolve.json</c> of the source <paramref name="check"/> accepted, its formats from <paramref name="registry"/>,
     /// <c>requires.scriban</c> the range of <paramref name="scribanVersion"/> (the locked Scriban version, D8), and part
     /// 04 § 10.2's notes among the warnings when <paramref name="limits"/> are given (D11). A check with refusals gives
-    /// them back with no document. A null argument other than <paramref name="limits"/> is the caller's error.
+    /// them back with no document. #1508 (area 11, ruled by the owner on #1508): so do the compiler's own: A05-004 and a
+    /// format past the run's expansion budget (A11-003, <see cref="CompiledFormats.Refusals"/>), and a worst case past
+    /// <see cref="PublishLimits.Instances"/> (A11-001, <see cref="PublishNotes.Refusals"/>). A null argument other than <paramref name="limits"/> is the caller's error.
     /// </summary>
     public static ResolveResult Compile(SourceCheckResult check, TypeRegistry registry, string scribanVersion, PublishLimits? limits = null)
     {
@@ -61,8 +63,11 @@ public static partial class ResolveCompiler
 
         var builtins = BuiltInsUsed(derived, registry);
         var formats = CompiledFormats.Build(package, types, registry, builtins.SelectMany(b => new[] { b.Header["input"], b.Header["format"] }));
-        if (formats.Refusals.Count > 0)
-            return new ResolveResult(null, null, null, formats.Refusals, [], false);
+
+        // #1508 (area 11; R1, R5): the formats' own refusals (A05-004, A11-003), then the instances limit (A11-001).
+        var refusals = formats.Refusals.Concat(limits == null ? [] : PublishNotes.Refusals(package, resolution, limits)).ToList();
+        if (refusals.Count > 0)
+            return new ResolveResult(null, null, null, refusals, [], false);
 
         var context = new Context(check, package, types, resolution, derived, formats) { BuiltIns = builtins };
         var warnings = Warnings(context, limits);
