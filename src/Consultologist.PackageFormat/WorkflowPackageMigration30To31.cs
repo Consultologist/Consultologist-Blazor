@@ -154,33 +154,52 @@ public static class WorkflowPackageMigration30To31
             return Refused(manifestJson, files, refusals);
         }
 
-        // § 1.9: the reserved and long ids are renamed on the 30 package before any 31 file is written.
-        var (migrated, renameRefusals) = V31.Migration.Migrate.Renames.Apply(read);
-        if (migrated is null)
+        // Final review A7: the passes are wrapped as Migrated.Read is (the same filter). They are the engine's and the
+        // checker's readers, called on content they may not have been written for; the migration never throws on package
+        // content, so a fault in one is A10-020 and nothing is written.
+        Migration31Result result;
+        try
         {
-            return Refused(manifestJson, files, renameRefusals);
+            result = Passes();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return Refused(manifestJson, files, [MigrationSentences.PackageDoesNotRead]);
         }
 
-        // A10-026: a lone \r became a line end (part 01 § 2.4 refuses one), so the file's bytes changed there.
-        if (Migrated.HasLoneCarriageReturn(manifestJson))
-        {
-            migrated.Notice(MigrationSentences.LoneCarriageReturn("manifest.json"));
-        }
+        if (!result.Succeeded)
+            return result;
 
-        foreach (var file in files.Keys.Where(k => Migrated.HasLoneCarriageReturn(files[k])).Order(StringComparer.Ordinal))
+        Migration31Result Passes()
         {
-            migrated.Notice(MigrationSentences.LoneCarriageReturn(file));
-        }
+            // § 1.9: the reserved and long ids are renamed on the 30 package before any 31 file is written.
+            var (migrated, renameRefusals) = V31.Migration.Migrate.Renames.Apply(read);
+            if (migrated is null)
+            {
+                return Refused(manifestJson, files, renameRefusals);
+            }
 
-        V31.Migration.Migrate.Layout(migrated);
-        V31.Migration.Migrate.Inputs(migrated);
-        V31.Migration.Migrate.Nodes(migrated);
-        V31.Migration.Migrate.Templates(migrated);
-        V31.Migration.Migrate.Macros(migrated);
-        V31.Migration.Migrate.Checks(migrated);
-        V31.Migration.Migrate.Deliverables(migrated);
-        V31.Migration.Migrate.Derived(migrated);
-        var result = migrated.Result(at30.Notices);
+            // A10-026: a lone \r became a line end (part 01 § 2.4 refuses one), so the file's bytes changed there.
+            if (Migrated.HasLoneCarriageReturn(manifestJson))
+            {
+                migrated.Notice(MigrationSentences.LoneCarriageReturn("manifest.json"));
+            }
+
+            foreach (var file in files.Keys.Where(k => Migrated.HasLoneCarriageReturn(files[k])).Order(StringComparer.Ordinal))
+            {
+                migrated.Notice(MigrationSentences.LoneCarriageReturn(file));
+            }
+
+            V31.Migration.Migrate.Layout(migrated);
+            V31.Migration.Migrate.Inputs(migrated);
+            V31.Migration.Migrate.Nodes(migrated);
+            V31.Migration.Migrate.Templates(migrated);
+            V31.Migration.Migrate.Macros(migrated);
+            V31.Migration.Migrate.Checks(migrated);
+            V31.Migration.Migrate.Deliverables(migrated);
+            V31.Migration.Migrate.Derived(migrated);
+            return migrated.Result(at30.Notices);
+        }
 
         // Part 10 § 4, D13: a package with no hand edit gets its snapshot test; one with hand edits gets A10-011, and
         // Snapshot writes it once the edits are made. A snapshot that cannot be written is a notice, never a hand edit.
