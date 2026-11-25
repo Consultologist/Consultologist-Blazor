@@ -180,11 +180,11 @@ public sealed record PublishLimits(int Ceiling, int ItemsPerLoop, int CallsPerJo
 
 **Files:** Modify `tests/V31Resolve/ResolveFixture*.cs` (where `NestedNote()`, `Conditional()`, `Functions()` are), `tests/V31Resolve/CompiledDocumentsExport.cs`, `CompiledGoldenTests.cs`; Create goldens `tests/V31Resolve/Golden/macros.{resolve,lock}.json`; content repo `v31/schemas/resolve.schema.json`, `v31/conformance/compiled-documents/macros/`.
 
-- [ ] **Step 1: Write the case `Macros()`**, fictional (a letrozole-monitoring macro in a folder, offered by a `judgement` classifier; an agent with one part; a deliverable with a `run.date` spot; a `concept_list` read through `renderer.concept_bullets`). Reuse `tests/V31Run`'s macros fixture if it already has this shape (`macros.run.txt`).
-- [ ] **Step 2: Failing test** `ThePinnedFamily_IsWhatPublishGives` gains the case; `EveryGolden_ValidatesAgainstTheSchema` (if the suite has no in-repo schema validation of goldens, add one through the library's validator interface, reading the schema from `external/`).
-- [ ] **Step 3: Generate, read the golden:** it must have non-empty `placements`, a `runSpots` entry with `unit` and `neutral`, a `macros` folder entry, `parts`, and `renderers["renderer.concept_bullets"]`.
-- [ ] **Step 4: Close `entry`** in the schema to unknown members, per kind. Every golden (areas 05 to 10's and this one) and every conformance example must validate; add invalid examples (`v31/conformance/schemas/resolve/`: an entry with an unknown member).
-- [ ] **Step 5: Export, check, push** the content repo; move the pin; run V31 tests; commit `Tests (#1508): a compiled case with macros, a part, a run spot and a built-in renderer`; push.
+- [x] **Step 1: Write the case `Macros()`**, fictional (a letrozole-monitoring macro in a folder, offered by a `judgement` classifier; an agent with one part; a deliverable with a `run.date` spot; a `concept_list` read through `renderer.concept_bullets`). Reuse `tests/V31Run`'s macros fixture if it already has this shape (`macros.run.txt`).
+- [x] **Step 2: Failing test** `ThePinnedFamily_IsWhatPublishGives` gains the case; `EveryGolden_ValidatesAgainstTheSchema` (if the suite has no in-repo schema validation of goldens, add one through the library's validator interface, reading the schema from `external/`).
+- [x] **Step 3: Generate, read the golden:** it must have non-empty `placements`, a `runSpots` entry with `unit` and `neutral`, a `macros` folder entry, `parts`, and `renderers["renderer.concept_bullets"]`.
+- [x] **Step 4: Close `entry`** in the schema to unknown members, per kind. Every golden (areas 05 to 10's and this one) and every conformance example must validate; add invalid examples (`v31/conformance/schemas/resolve/`: an entry with an unknown member).
+- [x] **Step 5: Export, check, push** the content repo; move the pin; run V31 tests; commit `Tests (#1508): a compiled case with macros, a part, a run spot and a built-in renderer`; push.
 
 ## Part C: the pipeline, in the library
 
