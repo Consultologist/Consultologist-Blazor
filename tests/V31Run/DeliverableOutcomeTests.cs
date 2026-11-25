@@ -263,10 +263,10 @@ public class DeliverableOutcomeTests
             "Check 'all_sections' expression could not be decided: matches was given 1.1 MiB of text; the most is 1 MiB." },
         // its expression computes null (the host's stored outcome)
         { "null", "null", PassSearchesTheDraft, Escaped(), new RuleOutcome(null, null, null),
-            "Node 'all_sections' computed a value that isn't check_result." },
+            "Check 'all_sections' computed a value that isn't check_result." },
         // its expression computes an object that is not a check_result: pass is text
         { "not a check_result", "null", PassIsTheInput, Escaped(), null,
-            "Node 'all_sections' computed a value that isn't check_result." },
+            "Check 'all_sections' computed a value that isn't check_result." },
     };
 
     [Theory]

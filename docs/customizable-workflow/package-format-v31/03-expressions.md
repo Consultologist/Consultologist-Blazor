@@ -705,7 +705,7 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 | *"\<site\> reads \<path\>.title, but \<format\> is a plain enum with no titles; read .value, or give the format oneOf with const and title."* | rule decided (part 02) |
 | *"\<site\> compares \<path\>.title with "\<text\>", which is not one of its titles (\<titles\>)."* | rule decided (part 02) |
 | *"\<site\> reads profile.\<field\>; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."* | rule decided ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)) |
-| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* (for `snippet`, `part`, `macro`, `renderer`, `deliverable`) | rule decided (§ 4.1) |
+| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* (for `snippet`, `part`, `macro`, `renderer`, and `deliverable` outside `checks/`) | rule decided (§ 4.1) |
 | *"Deliverable '\<id\>' if reads node.\<id\>.content; a deliverable's if reads data (.value), not text."* | rule decided ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)) |
 | *"Deliverable '\<id\>' if reads check.\<id\>; a deliverable's existence can't depend on a check."* | as above |
 | *"Macro '\<id\>' if reads param.\<name\>; a macro's if is shared, so it can't depend on one function's parameter."* | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)) |

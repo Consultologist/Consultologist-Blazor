@@ -137,7 +137,7 @@ public static class SourceExpressions
         foreach (var fact in facts)
         {
             yield return site.Kind == ExpressionSiteKind.Expression
-                ? ExpressionSentences.RunDependentValue(site.ComputedId ?? "", $"run.{fact}", site.Path, site.Subject.StartsWith("Check ", StringComparison.Ordinal))
+                ? ExpressionSentences.RunDependentValue(site.ComputedId ?? "", $"run.{fact}", site.Path, site.InChecks)
                 : ExpressionSentences.RunDependentDecision(site, fact);
         }
     }

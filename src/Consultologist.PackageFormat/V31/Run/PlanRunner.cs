@@ -423,7 +423,7 @@ public sealed partial class PlanRunner
 
             if ((value.Value != null || entry.Gates.Count > 0) && !plan.Formats.Validate(value.Value, entry.Format).Valid)
             {
-                await FailLeafAsync(instance, $"Node '{entry.Id}' computed a value that isn't {FormatName(entry.Format)}.");
+                await FailLeafAsync(instance, $"{RunSentences.Subject(entry, null)} computed a value that isn't {FormatName(entry.Format)}.");
                 return;
             }
 
