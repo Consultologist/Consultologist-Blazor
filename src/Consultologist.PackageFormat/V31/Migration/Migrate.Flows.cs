@@ -170,14 +170,40 @@ internal static partial class Migrate
         return format;
     }
 
-    /// <summary>Whether <paramref name="format"/> is a union holding both a <c>markdown_block</c> and a <c>plaintext</c> member (R9's mixed branches).</summary>
-    private static bool MixesMarkdownAndPlainText(Migrated m, JsonNode format)
+    /// <summary>
+    /// Whether the <c>if</c> or <c>case</c> <paramref name="id"/>'s branches return both a <c>markdown_block</c> and a
+    /// <c>plaintext</c> member (R9's mixed branches): each <c>ret</c>'s format (a union's members each), a <c>ret</c> whose
+    /// chain reaches a <c>for</c> counted <c>markdown_block</c>, as its <c>.content</c> is (D23; final review A5).
+    /// </summary>
+    private static bool MixesMarkdownAndPlainText(Migrated m, NodeTree tree, string id)
     {
-        if (format is not JsonObject { } union || union["anyOf"] is not JsonArray members)
+        if (m.NodeReads[id].Format is not JsonObject { } union || union["anyOf"] is not JsonArray)
             return false;
+        var node = tree.ById[id];
+        IEnumerable<string?> rets = node.If is not null
+            ? [node.Then?.Ret, node.Else?.Ret]
+            : [.. (node.Branches ?? []).Select(b => b.Ret), node.Else?.Ret];
         var set = FormatSet.ForPackage(m.Options.Registry, m.PackageFormats());
-        var kinds = members.Select(member => FormatTypes.TextKind(member, set)).ToList();
+        var kinds = new List<string?>();
+        foreach (var child in rets.Select(RetId).OfType<string>().Where(m.NodeReads.ContainsKey))
+        {
+            if (ReachesFor(tree, child, 0))
+                kinds.Add("markdown_block");
+            else if (m.NodeReads[child].Format is JsonObject { } inner && inner["anyOf"] is JsonArray members)
+                kinds.AddRange(members.Select(member => FormatTypes.TextKind(member, set)));
+            else
+                kinds.Add(FormatTypes.TextKind(m.NodeReads[child].Format, set));
+        }
+
         return kinds.Contains("markdown_block") && kinds.Contains("plaintext");
+    }
+
+    /// <summary>Whether node <paramref name="id"/> is a <c>for</c>, or a <c>while</c> whose <c>ret</c> chain reaches one.</summary>
+    private static bool ReachesFor(NodeTree tree, string id, int depth)
+    {
+        if (depth > SourceBounds.JsonDepth || !tree.ById.TryGetValue(id, out var node))
+            return false;
+        return node.For is not null || (node.While is not null && RetId(node.Ret) is { } child && ReachesFor(tree, child, depth + 1));
     }
 
     /// <summary>The id a 30 <c>ret</c> (<c>node.&lt;id&gt;</c>) names, or null.</summary>
@@ -406,7 +432,7 @@ internal static partial class Migrate
         // checker refuses against the union its branches give (S02-015). Only where a deliverable reaches it through no for
         // (D23, Task 24's fix round 1): under a for the deliverable reads the loop's .content, markdown_block and never
         // escaped, so the union is written as derived and 30's bytes are kept.
-        if (kind is "if" or "case" && tree.ComposedDirect.Contains(id) && MixesMarkdownAndPlainText(m, m.NodeReads[id].Format))
+        if (kind is "if" or "case" && tree.ComposedDirect.Contains(id) && MixesMarkdownAndPlainText(m, tree, id))
         {
             header["format"] = "markdown_block";
             m.HandEdit(file, "format", MigrationSentences.ComposedBranchesMix(kind, id));
