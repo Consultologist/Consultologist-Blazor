@@ -254,8 +254,20 @@ valid on every deployment; only the note's numbers differ.
 
 **The total-work limits and the job limit are noted the same way** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): when a loop's list
 could be longer than the items limit, when the package's worst case could make more agent calls
-than the job allows, and when its estimated worst case passes the job limit. Each is a note,
-never a refusal (part 04 § 10.2).
+than the job allows, and when its estimated worst case passes the job limit (S09-016: one minute
+for every round of the ceiling's agent calls in the worst case, rounded up). Each is a note, never
+a refusal (part 04 § 10.2).
+
+**The instances limit refuses** (ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), the publish half of § 3.4's tenth limit):
+publish counts the instances the package's worst case could open, as the runner counts them (a
+node, check or deliverable instance, a loop item, a pass, a call's body), each body as often as it
+can run: a loop's items the least of its known length, the items limit and its `max`; a while's
+`max` passes, and one more when it checks first; the larger branch of an `if` or a `case`; a call
+its function's body. A loop over a list known only at run time is bounded by the items limit, so
+no path is unbounded for this count. Past the engine's `jobInstances` (10,000) publish refuses:
+
+> *"Up to <n> steps could run in one job, through <loop key>; this engine runs at most <limit> for
+> one job. Lower a loop's max or split the workflow."*
 
 ### 3.6 Every deploy is preceded by a drain
 

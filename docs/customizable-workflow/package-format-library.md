@@ -951,10 +951,19 @@ upload's order or line ends.
 - **`needs.profile`** and **`run`** are `PackageDerived`'s.
 - **`warnings`** are `{ sentence, at }`, `at` null for the package as a whole. They come from the
   derived step, the resolve step's S04-074, and, when `limits` are given, `PublishNotes.Of`: S04-072
-  or S04-073, S04-079, S04-080, measured against the caller's
-  `PublishLimits(Ceiling, ItemsPerLoop, CallsPerJob)` (D11). They are distinct, and sorted by `at`
+  or S04-073, S04-079, S04-080, then S09-016 when `JobMinutes` is given, measured against the caller's
+  `PublishLimits(Ceiling, ItemsPerLoop, CallsPerJob, Instances = null, JobMinutes = null)` (D11; #1508 D16). They are distinct, and sorted by `at`
   with null first. The notes work each function out once and apply it at every call, so a chain
   of functions each calling the next several times costs one walk per function, not one per path.
+- **The compiler's own refusals** (#1508, ruled by the owner): `Compile` gives no document, and these
+  refusals, for A05-004 and A11-003 (`CompiledFormats.Refusals`: a bundled format whose expansion,
+  `PlanFormats.WithinNodeBudget` with the run's own counter, passes `PlanFormats.NodeBudget`) and, when
+  `limits.Instances` is given, A11-001 (`PublishNotes.Refusals`: the instances the worst case could open,
+  counted as `PlanRunner` opens them: every node, check and deliverable instance, loop item, pass and call
+  body; a body runs as often as S04-080 counts it, a while one more pass when it checks first, so a loop over
+  a list known only at run time is bounded by the items limit and nothing is unbounded). The sentence
+  names the outermost loop on the heaviest path, through `if`s and `case`s. A11-002 (a package format file
+  that names a format and defines the same name in its own `$defs`) is `FormatDialect`'s, at the type step.
 
 `SourceHash.Of(files)` hashes the listing of § 2.6: `manifest.json`, every `README.md` and every file
 under the nine folders, each hash taken after `\r\n` → `\n`. `dag.mmd`, the compiled copies and the
@@ -1222,9 +1231,10 @@ fits.
   half of `SourceBounds.TotalBytes`, as many JSON nodes as a whole source can hold); past it, `false`. The
   object written for each inlined reference and an `allOf` list are not counted, so what is written can pass
   the budget by a small multiple, never without bound. It stops a forged document that repeats a very large
-  `enum` from thousands of places. Publish has no such bound, so a package can publish and still pass it: a
-  record of 4,500 fields, each referring to a format with a 250-value `enum`, is within the schema budget and
-  writes about 1.1 million nodes. Such a format fits nothing at run.
+  `enum` from thousands of places. The schema budget alone does not hold it: a record of 4,500 fields, each
+  referring to a format with a 250-value `enum`, is within the schema budget and writes about 1.1 million
+  nodes. #1508 (R5): publish refuses such a format (A11-003), counting with `WithinNodeBudget`, the same walk
+  and counter, so no published format is past it at run.
 
 `Validate(value, format)` is `Expand` followed by `CorvusFormatValueValidator.ValidateExpanded`.
 `IsText(format)` is true for `plaintext`, `markdown_block` and `markdown_inline`, by their bundle `$id`.
@@ -2514,8 +2524,9 @@ bytes rules in order, each at most once, and the text is expected only when they
 `MigrationReport.Of(oldVersion, migrated, texts, worstCase)` builds `migration-report.json`: `oldVersion`,
 `newVersion`, `handEdits` (the S10-002 notices), `notices` (every other notice, then A10-063 for a package with more than
 one deliverable, R8, then the worst-case note) and `texts`. `ToJson()` writes it canonical (RFC 8785).
-`MigrationReport.WorstCaseNote` is A10-014, said only when the worst case's agent calls (`PublishNotes.WorstCaseCalls`,
-S04-080's count) divided by `RunLimits.MaxAgentCalls`, rounded up, pass `RunLimits.JobMinutes` (D14). The report is
+`MigrationReport.WorstCaseNote` is A10-014, said only when the worst case's agent calls (S04-080's count)
+divided by `RunLimits.MaxAgentCalls`, rounded up, pass `RunLimits.JobMinutes` (D14); #1508 (D16): the arithmetic is
+publish's S09-016 (`PublishNotes.MinutesNote`), the same words. The report is
 never a gate: no test asserts how many texts differ, and each report is pinned as a golden.
 
 ### The script

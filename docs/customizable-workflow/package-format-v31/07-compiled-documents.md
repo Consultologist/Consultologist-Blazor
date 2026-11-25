@@ -795,6 +795,11 @@ points (§ 4.4):
 - *"Test '<test id>' must give exactly the profile fields the workflow reads: <fields>."* and *"Test '<test id>' must give exactly the run facts the workflow reads: <facts>."*
 - *"Tests took longer than 60 seconds in all. Publish stopped."*
 
+**At publish, from the engine's limits** (ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508); this implementation's sentences A11-001 to A11-003, after the check, before anything is written):
+- *"Up to <n> steps could run in one job, through <loop key>; this engine runs at most <limit> for one job. Lower a loop's max or split the workflow."* The package's worst case opens more instances than the engine's `jobInstances` ([part 09 § 3.5](09-engine-and-pages.md#35-the-publish-note)).
+- *"Format '<id>' names format '<name>' and also defines '<name>' in its own $defs. Rename the definition or remove it."* A package's format file names a format and defines the same name for itself ([part 02 § 3.1](02-types-and-inputs.md#31-the-keywords)); no byte of a published format changes.
+- *"Format '<id>' expands to more than <limit> parts, more than this engine can run. Make it smaller."* A bundled format whose expansion at run (every reference inlined, § 2.4) passes the run's own budget of 1,048,576 nodes, counted by the run's counter, so nothing publishes that cannot run.
+
 **Warnings** (never blocking):
 - *"Test '<test id>' stubs <row key>, which doesn't run."*
 - CI, in the examples repository: *"<path> is evidence written only by publish; it is ignored and shouldn't be committed."*

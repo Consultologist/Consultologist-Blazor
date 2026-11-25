@@ -1039,6 +1039,9 @@ is v30's built sentence, kept; the rest is new. Every rule below is decided
 | *"Loop '\<id\>' iterates \<reference\>, which could hold more than \<limit\> items; this engine runs at most \<limit\> per loop, and fails the loop beyond that."* | note | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | *"Up to \<n\> agent calls could run in one job; this engine runs at most \<limit\> per job, and fails the job beyond that."* | note | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | *"Function '\<f\>' lists \<snippet \| macro \| format \| renderer\> '\<id\>' in uses but never uses it."* | warning | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6888253558)) |
+| *"Up to \<n\> steps could run in one job, through \<loop key\>; this engine runs at most \<limit\> for one job. Lower a loop's max or split the workflow."* | refusal | ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508): the publish half of the instances limit ([part 09 § 3.5](09-engine-and-pages.md#35-the-publish-note)) |
+| *"Format '\<id\>' names format '\<name\>' and also defines '\<name\>' in its own $defs. Rename the definition or remove it."* | refusal | ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508) ([part 07 § 10](07-compiled-documents.md#10-refusals)) |
+| *"Format '\<id\>' expands to more than \<limit\> parts, more than this engine can run. Make it smaller."* | refusal | ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508): the run's format-expansion budget, applied at publish ([part 07 § 10](07-compiled-documents.md#10-refusals)) |
 
 ## Proposed in this part
 
