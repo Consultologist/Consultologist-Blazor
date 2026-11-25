@@ -62,7 +62,8 @@ public sealed record V31DeliverySettings(string? Address, bool EmailRequested);
 /// finalises the job: <c>Completed</c>, or <c>Failed</c> with the run's sentence (a timed-out run is a failed job with
 /// S09-012's). #1505 (part 09 § 3.9; D14): a failed job (an engine fault included) and a failed delivery alert the
 /// operator through <see cref="ConsultGenerationActivityNames.AlertOperatorV31"/>, as do the run's notices
-/// (<see cref="StoredRunRecorder.NoticeAsync"/>); an alert's failure never fails the job. A fault fails the job with
+/// (<see cref="StoredRunRecorder.NoticeAsync"/>); #1508: an alert is scheduled, never awaited where it is raised, and waited
+/// for as the orchestration ends (<see cref="PendingAlerts"/>); an alert's failure never fails the job. A fault fails the job with
 /// A06-010, never the exception's message, which can carry a service's response. Telemetry at the end: the run's state,
 /// its agent calls and the peak in flight, never text.
 /// </summary>
@@ -83,6 +84,8 @@ public sealed class ConsultGenerationOrchestratorV31
         var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), input.JobId);
         // #1506 (final review F2): outside the try, so the catch can store what the run recorded since its last flush
         StoredRunRecorder? recorder = null;
+        // #1508: the operator's alerts are scheduled, not awaited where they are raised; the orchestration waits for them as it ends
+        var alerts = new PendingAlerts(context, logger);
 
         try
         {
@@ -123,7 +126,7 @@ public sealed class ConsultGenerationOrchestratorV31
             if (plan == null)
             {
                 await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed,
-                    loaded.Refusal ?? V31Plans.HashMismatch(input.PackageName, input.PackageVersion), logger);
+                    loaded.Refusal ?? V31Plans.HashMismatch(input.PackageName, input.PackageVersion), alerts, logger);
                 return;
             }
 
@@ -133,7 +136,7 @@ public sealed class ConsultGenerationOrchestratorV31
                     input.TimeZone, input.RunFactsBase));
             if (held.Document is not { } document)
             {
-                await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed, held.Refusal ?? EngineFault, logger);
+                await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed, held.Refusal ?? EngineFault, alerts, logger);
                 return;
             }
 
@@ -151,7 +154,7 @@ public sealed class ConsultGenerationOrchestratorV31
                     held.RecordedRunFacts));
 
             var inputs = InputsOf(document, held.RunFacts ?? new JsonObject());
-            recorder = new StoredRunRecorder(context, input);
+            recorder = new StoredRunRecorder(context, input, alerts);
             var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input, limits), recorder)
                 .RunAsync(inputs, startedAtUtc);
 
@@ -161,8 +164,8 @@ public sealed class ConsultGenerationOrchestratorV31
 
             if (result.State == RunState.Completed)
             {
-                await DeliverAsync(context, entityId, input, limits, recorder, result.Deliverables, logger);
-                await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Completed, null, logger);
+                await DeliverAsync(context, entityId, input, limits, recorder, result.Deliverables, alerts, logger);
+                await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Completed, null, alerts, logger);
             }
             else
             {
@@ -172,7 +175,7 @@ public sealed class ConsultGenerationOrchestratorV31
                     await recorder.DeliveryAsync(row);
                 // #1506 (D12): recorded directly, so stored here, before the job is final
                 await recorder.FlushAsync();
-                await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed, result.Sentence, logger, result.FailedKey);
+                await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed, result.Sentence, alerts, logger, result.FailedKey);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -231,8 +234,12 @@ public sealed class ConsultGenerationOrchestratorV31
             await SealRecordV31Activity.SealAsync(context, input.JobId, logger);
 
             // #1505 (D14): an engine fault is a failed job too; the alert's own failure is logged, never thrown.
-            await AlertOperatorV31Activity.RaiseAsync(context, new OperatorAlert(OperatorAlertKinds.JobFailed, input.JobId, null, null), logger);
+            alerts.Raise(new OperatorAlert(OperatorAlertKinds.JobFailed, input.JobId, null, null));
             throw;
+        }
+        finally
+        {
+            await alerts.WhenSentAsync();
         }
     }
 
@@ -253,7 +260,7 @@ public sealed class ConsultGenerationOrchestratorV31
     /// </summary>
     private static async Task DeliverAsync(
         TaskOrchestrationContext context, EntityInstanceId entityId, ConsultGenerationOrchestrationInputV31 input, RunLimits limits,
-        StoredRunRecorder recorder, IReadOnlyList<DeliverableOutcome> outcomes, ILogger logger)
+        StoredRunRecorder recorder, IReadOnlyList<DeliverableOutcome> outcomes, PendingAlerts alerts, ILogger logger)
     {
         // #1507 (D19; Task 22 fix round 1): the link-only email of a job that released nothing is sent only by an
         // orchestration this build started (its input carries the start's Delivery); one started before replays the
@@ -274,8 +281,7 @@ public sealed class ConsultGenerationOrchestratorV31
         if (delivered.Failed > 0)
         {
             var first = delivered.Rows.First(row => string.Equals(row.Result, "failed", StringComparison.Ordinal));
-            await AlertOperatorV31Activity.RaiseAsync(
-                context, new OperatorAlert(OperatorAlertKinds.DeliveryFailed, input.JobId, first.Key, delivered.Failed), logger);
+            alerts.Raise(new OperatorAlert(OperatorAlertKinds.DeliveryFailed, input.JobId, first.Key, delivered.Failed));
         }
     }
 
@@ -287,7 +293,7 @@ public sealed class ConsultGenerationOrchestratorV31
     /// </summary>
     private static async Task FinalizeAsync(
         TaskOrchestrationContext context, EntityInstanceId entityId, ConsultGenerationOrchestrationInputV31 input, string status, string? error,
-        ILogger logger, string? failedKey = null)
+        PendingAlerts alerts, ILogger logger, string? failedKey = null)
     {
         await context.Entities.CallEntityAsync(
             entityId,
@@ -297,7 +303,7 @@ public sealed class ConsultGenerationOrchestratorV31
         // #1506 (D13): the job is terminal now; its record is sealed, best-effort (the read and the sweep seal it otherwise)
         await SealRecordV31Activity.SealAsync(context, input.JobId, logger);
         if (status == ConsultGenerationJobStatuses.Failed)
-            await AlertOperatorV31Activity.RaiseAsync(context, new OperatorAlert(OperatorAlertKinds.JobFailed, input.JobId, failedKey, null), logger);
+            alerts.Raise(new OperatorAlert(OperatorAlertKinds.JobFailed, input.JobId, failedKey, null));
     }
 
     /// <summary>

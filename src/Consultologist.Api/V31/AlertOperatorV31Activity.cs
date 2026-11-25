@@ -27,12 +27,30 @@ public sealed class AlertOperatorV31Activity(IOperatorAlerts alerts, ILogger<Ale
                 alert.Kind, alert.JobId, ex.GetType().FullName);
         }
     }
+}
 
-    /// <summary>
-    /// Raises <paramref name="alert"/> from an orchestration, through the activity. Its failure is logged (the fault's type
-    /// only) and never fails the orchestration or the job.
-    /// </summary>
-    internal static async Task RaiseAsync(TaskOrchestrationContext context, OperatorAlert alert, ILogger logger)
+/// <summary>
+/// #1508 (ruling 4, item 5; part 09 § 3.9; D14): the alerts one 31 orchestration raises. <see cref="Raise"/> schedules the
+/// <see cref="ConsultGenerationActivityNames.AlertOperatorV31"/> activity and returns at once, so the run never waits on an
+/// alert; the orchestration calls <see cref="WhenSentAsync"/> once, as it ends, so it does not complete with an alert
+/// outstanding. An alert's failure is logged (the fault's type only) and never fails the orchestration or the job. The
+/// activities are scheduled in the order <see cref="Raise"/> is called, the same on every replay.
+/// </summary>
+internal sealed class PendingAlerts(TaskOrchestrationContext context, ILogger logger)
+{
+    private readonly List<Task> _sent = [];
+
+    /// <summary>Schedules the alert's activity; not awaited.</summary>
+    public void Raise(OperatorAlert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        _sent.Add(SendAsync(alert));
+    }
+
+    /// <summary>Ends once every alert raised has been answered, or has failed. Never faults.</summary>
+    public Task WhenSentAsync() => Task.WhenAll(_sent);
+
+    private async Task SendAsync(OperatorAlert alert)
     {
         try
         {

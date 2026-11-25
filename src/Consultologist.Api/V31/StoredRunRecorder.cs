@@ -22,6 +22,15 @@ namespace Consultologist.Api.V31;
 /// </summary>
 public sealed class StoredRunRecorder(TaskOrchestrationContext context, ConsultGenerationOrchestrationInputV31 input) : IRunRecorder
 {
+    private PendingAlerts? _alerts;
+
+    /// <summary>The alerts the orchestration raises (<see cref="PendingAlerts"/>), its notices included.</summary>
+    internal PendingAlerts Alerts => _alerts ??= new PendingAlerts(context, _logger);
+
+    /// <summary>The recorder, raising its notices through <paramref name="alerts"/>.</summary>
+    internal StoredRunRecorder(TaskOrchestrationContext context, ConsultGenerationOrchestrationInputV31 input, PendingAlerts alerts)
+        : this(context, input) => _alerts = alerts;
+
     private readonly EntityInstanceId _entity = new(nameof(ConsultGenerationJobEntity), input.JobId);
     private readonly ILogger _logger = context.CreateReplaySafeLogger(nameof(StoredRunRecorder));
     private readonly List<RecordRow> _rows = [];
@@ -82,13 +91,15 @@ public sealed class StoredRunRecorder(TaskOrchestrationContext context, ConsultG
     /// <summary>
     /// #1505 (area 08; part 09 § 3.9; D14): a notice alerts the operator through
     /// <see cref="ConsultGenerationActivityNames.AlertOperatorV31"/>, a durable task of the orchestration's, so a replay reads it
-    /// raised and never raises it twice: its kind, the job, its key and its minutes. An alert that could not be sent never
-    /// fails the run.
+    /// raised and never raises it twice: its kind, the job, its key and its minutes. #1508: it is scheduled, not awaited, so
+    /// the run does not wait on it; the orchestration waits for it as it ends (<see cref="PendingAlerts.WhenSentAsync"/>). An
+    /// alert that could not be sent never fails the run.
     /// </summary>
     public Task NoticeAsync(RunNotice notice)
     {
         ArgumentNullException.ThrowIfNull(notice);
-        return AlertOperatorV31Activity.RaiseAsync(context, new OperatorAlert(notice.Kind, input.JobId, notice.Key, notice.Minutes), _logger);
+        Alerts.Raise(new OperatorAlert(notice.Kind, input.JobId, notice.Key, notice.Minutes));
+        return Task.CompletedTask;
     }
 
     /// <summary>

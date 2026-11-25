@@ -530,10 +530,19 @@ build would fail its replay. **Run the drain (above) before deploying this build
 orchestration is unchanged. `seal-record-v31` is the first activity to bind `[DurableClient]`; the seal is best effort,
 so a binding failure shows only as the log line, and should be looked for on the first dev run.
 
+**Deploying: the alert is no longer awaited where it is raised** (#1508, ruling 4, item 5). The `alert-operator-v31`
+activity keeps its name, but an orchestration now schedules it and goes on, so a 31 history holds the alert's
+scheduling before the next call's, not after its answer. An orchestration in flight across this build, whose history
+was written with the alert awaited, would fail its replay on the order of its tasks. The drain before the deploy (above)
+covers it: no 31 orchestration is in flight at the deploy. The activity's history event is the same name as before; the
+event that is new in a history is the one the order of calls gives, which only a drained deploy avoids.
+
 ## Alerts and the weekly summary
 
 *Part 09 § 3.9, D14.* The operator is told through the `alert-operator-v31` activity, so a replay reads that an alert
-was raised and never raises it twice. Every alert is logged as a warning (`Operator alert. Kind=…`, with the job,
+was raised and never raises it twice. The activity is scheduled where the alert is raised and **not awaited there**
+(#1508): the run goes on, and the orchestration waits for its alerts once, as it ends (`PendingAlerts`), so it never
+completes with one outstanding. An alert that failed is logged and never fails the job. Every alert is logged as a warning (`Operator alert. Kind=…`, with the job,
 the key and the number). It is also mailed to `Operators__AlertAddress`, from `EmailIntake__MailboxAddress`, when
 both are set; with either unset it is only logged. A mail fault is logged, with its type only, and never reaches the
 job. A message holds the kind, a fixed sentence for it, and the `Job`, `Key` and `Number` lines it has: ids, keys

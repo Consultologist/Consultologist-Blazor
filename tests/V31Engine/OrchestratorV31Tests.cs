@@ -820,6 +820,55 @@ public class OrchestratorV31Tests
         Assert.Equal([new OperatorAlert(OperatorAlertKinds.CapacityWait, V31Job.JobId, "node.plan", 6)], job.Alerts);
     }
 
+    [Fact]
+    public async Task TheOperatorAlert_IsItsOwnActivity()
+    {
+        // #1508 (ruling 4, item 5): the notice is scheduled as its own activity and not awaited where it is raised: while the
+        // alert is still in flight the run goes on (node.plan's third attempt is dispatched), and the orchestration does not
+        // end until the alert has been answered
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        var context = job.Context().WrapActivityFailures();
+
+        await Task.Run(() =>
+        {
+            var run = V31Job.RunAsync(context.HoldActivities());
+            var alertHeld = (string name, string _) => name == ConsultGenerationActivityNames.AlertOperatorV31;
+            while (context.ReleaseOldest((name, input) => !alertHeld(name, input)))
+            {
+            }
+
+            Assert.Equal(1, context.PeakHeld(ConsultGenerationActivityNames.AlertOperatorV31));
+            Assert.Equal(3, V31Job.AgentCalls(context).Count(c => c.Key == "node.plan"));
+            Assert.Empty(job.Alerts);
+            Assert.False(run.IsCompleted, "The orchestration ended with its alert in flight.");
+
+            while (context.HeldActivities > 0)
+                context.ReleaseOldest();
+            Assert.True(run.IsCompleted, "The orchestration has not ended: something it waits on was never released.");
+            return run;
+        });
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal([new OperatorAlert(OperatorAlertKinds.CapacityWait, V31Job.JobId, "node.plan", 6)], job.Alerts);
+    }
+
+    [Fact]
+    public async Task AFailedAlert_NeverFailsTheJob()
+    {
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        job.Alert = _ => throw new InvalidOperationException("The mailbox is down.");
+        var context = job.Context().WrapActivityFailures();
+
+        await V31Job.DriveAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+    }
+
     [Theory]
     [InlineData("nested-note")]
     [InlineData("checked-note")]
