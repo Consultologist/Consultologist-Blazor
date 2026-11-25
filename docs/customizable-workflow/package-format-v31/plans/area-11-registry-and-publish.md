@@ -413,4 +413,22 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 ## Recorded in the build
 
-*(Each task adds a line here for a choice this plan does not state.)*
+Each line is a choice this plan does not state, taken while building. All of them go in the PR body under *Decisions made during build*.
+
+- **Order.** Task 11 ran before Task 10 (10 consumes `GenerateMissing`, which 11 adds).
+- **Task 2.** `failWith` is read from the root operation's literal (`all_pass`, `count_pass`, and `terms_subset` too); an aggregate wrapped in an `if` gives null.
+- **Task 4.** The alert activity keeps its deployed name `alert-operator-v31` (the plan's `send-operator-alert-v31` was wrong). The OCR model's dated version is `AnalyzeResult.ApiVersion`: the SDK in use (1.0.0) has no `ModelVersion`.
+- **Task 5.** The sentence rows S03-026, S03-027, S03-028, S03-038, A04-009 and A06-003 now start with the site (`Check 'x'` or `Computed node 'x'`).
+- **Task 7.** A placed macro's `run.*` is no run spot (07-D5), so it never lists `run-spots`.
+- **Task 8 (R1 as built).** Every `for` is bounded by the items limit (`loopItems`, 200) where its length is not known, a `while` by its `max`, and a ring of calls is refused earlier, so for A11-001 no path is unbounded and R1's clause "an unbounded path is not refused" has no case. At the default `jobInstances` (10,000) the `nested-note` example counts 80,614 instances and is refused. Put to the owner on #1508.
+- **Task 9.** `entry` is closed over the union of the kinds' members, not per kind; a snippet folder's item is the one open entry.
+- **Task 15.** Intake drops an uploaded `publish.json` unread (it was a stray-file refusal). A11-004 is said first, and only when `manifest.json` is an object without a text `name` or `version`. An incomplete pair is A11-007 with no fault type; a fresh `resolve.json` that `RunPlan.Build` refuses is A11-007 with fault `S07-006`. In-package tests run under the default `RunLimits`.
+- **Task 16.** The writer's interface takes the account kind as `string?`. The 31 branch is at the top of `PublishAsync`. Every refused 31 publish raises the `publish-failed` alert. A manifest without a text `name` or `version` is stored as uploaded, so A11-004 is the pipeline's.
+- **Task 17.** One writer at a time holds a version's folder, through a lease on a lock blob beside it (`{name}/{version}.lease`); a clear never deletes a stamp; any `publish.json` counts as a stamp; `dag.mmd` is stored as `text/plain`.
+- **Task 18.** An input's `Format` is one compound document: the input's schema at the root, each format it reaches once under `$defs` with its `$id`, references by `$id` (the plan's "no `$ref` left" gives duplicate `$id`s). An unreadable registry answers 503. `Fields` come in ordinal order, because `resolve.json` is canonical JSON and keeps no property order; part 09 § 4.3 says "written order". Put to the owner on #1508.
+- **Task 19.** `Content` serves any stamped version whose pair verifies against the stamp, whether or not this engine can run it; an uploaded `dag.mmd` and the stored `migration-report.json` are not in `Files`; a job start for a 31 pin with 31 not admitted answers S09-001 as a 400.
+- **Task 20.** The scripts reference the Api project and use the spec's default limits. `--write` refuses an out folder that is not empty. `--version` replaces only the manifest's `version`. `publishedBy` defaults to `ci <tag>`. Both scripts skip links.
+- **Task 21.** The record's size and row count are written on the job's index row at sealing; a record sealed before this build is "not measured".
+- **Task 22.** Every compiled case is published against stated limits (the engine's defaults; `nested-note` at 100,000 instances), so four golden pairs moved. `durationMs` is 0 on a stopped clock.
+- **Task 23.** `publish-report.schema.json`'s `publishedBy` accepts `ci <tag>`, as part 07 § 9 says and the script writes; the schema listed bare `ci` only.
+- **After the whole-branch review.** A version whose manifest declares specVersion 31 is listed (the account's listing, the public chain view, the catalogue sweep's count) only once its stamp exists. The corpus re-render walks nested names and exits 2 when it checked nothing. `PendingAlerts` never faults, a cancelled alert included.
