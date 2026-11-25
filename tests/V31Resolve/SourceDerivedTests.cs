@@ -841,7 +841,7 @@ public class SourceDerivedTests
     public void ACheck_ReadingAMemberADeliverableLacks_IsRefused() =>
         AssertDialectRefusal(WithCheck(ResolveFixture.Functions(), "listed",
                 ResolveFixture.ObjectCheck("Listing the note", "{ \">\": [{ \"size\": [{ \"var\": \"deliverable.emr.consult.items\" }] }, 0] }")),
-            "S03-014", "Computed node 'listed' reads deliverable.emr.consult.items, which doesn't exist here.", "checks/listed.md");
+            "S03-014", "Check 'listed' reads deliverable.emr.consult.items, which doesn't exist here.", "checks/listed.md");
 
     [Fact]
     public void AGate_ReadingItsDeliverablesState_IsRefused() =>

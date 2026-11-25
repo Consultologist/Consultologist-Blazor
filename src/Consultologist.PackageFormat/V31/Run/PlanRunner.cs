@@ -947,8 +947,10 @@ public sealed partial class PlanRunner
         /// <summary>D4's <c>&lt;site&gt;</c> for an instance's <c>if</c> and its render: <c>Node 'id'</c>, <c>Check 'id'</c> or <c>Deliverable 'id'</c>, with <c> in function 'f'</c> inside one.</summary>
         private static string Subject(RunInstance instance) => RunSentences.Subject(instance.Entry, instance.Frame.Function);
 
-        /// <summary>D4's <c>&lt;site&gt;</c> for a computed node's <c>expression</c>.</summary>
-        private static string ComputedSubject(RunInstance instance) => $"Computed node '{instance.Entry.Id}'{InFunction(instance)}";
+        /// <summary>D4's <c>&lt;site&gt;</c> for a computed node's <c>expression</c>; a check is named as a check (#1508).</summary>
+        private static string ComputedSubject(RunInstance instance) => IsCheck(instance.Key)
+            ? Subject(instance)
+            : $"Computed node '{instance.Entry.Id}'{InFunction(instance)}";
 
         private static string InFunction(RunInstance instance) =>
             instance.Frame.Function is { } function ? $" in function '{function}'" : "";

@@ -223,11 +223,11 @@ internal static class ExpressionSentences
         Say(site, "S03-037", $"{site.Subject} {site.Member} reads run.{fact}; its decision can differ between runs with the same inputs.");
 
     /// <summary>
-    /// S03-038 (a warning, § 11.2): computed node <paramref name="id"/> reads <paramref name="read"/>, a run fact
-    /// (<c>run.id</c>) or a run-dependent value's path; <paramref name="path"/> is the node's file.
+    /// S03-038 (a warning, § 11.2): computed node <paramref name="id"/> (<c>Check 'id'</c> when <paramref name="check"/>) reads
+    /// <paramref name="read"/>, a run fact (<c>run.id</c>) or a run-dependent value's path; <paramref name="path"/> is the node's file.
     /// </summary>
-    public static SourceRefusal RunDependentValue(string id, string read, string path) =>
-        new("S03-038", $"Computed node '{id}' reads {read}, which is run-dependent; its value can differ between runs with the same inputs.", path);
+    public static SourceRefusal RunDependentValue(string id, string read, string path, bool check = false) =>
+        new("S03-038", $"{(check ? "Check" : "Computed node")} '{id}' reads {read}, which is run-dependent; its value can differ between runs with the same inputs.", path);
 
     /// <summary>S03-042: a counted repetition over 100.</summary>
     public static SourceRefusal PatternRepeats(ExpressionSite site, string pattern, int times) =>

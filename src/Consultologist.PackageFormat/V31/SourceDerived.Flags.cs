@@ -300,7 +300,8 @@ public static partial class SourceDerived
             if (vertex.Declaration is SourceLeaf { Kind: "computed" } computed
                 && derived.Value(vertex, LineageFlag.RunDependent) is { Value: true, Because: { } because })
             {
-                warnings.Add(ExpressionSentences.RunDependentValue(computed.Id, because, computed.Path));
+                warnings.Add(ExpressionSentences.RunDependentValue(
+                    computed.Id, because, computed.Path, computed.Key.StartsWith("check.", StringComparison.Ordinal)));
             }
         }
     }

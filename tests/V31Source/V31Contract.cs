@@ -53,7 +53,7 @@ internal static class V31Contract
         ["A04-006"] = "<site> reads '<path>', which is not a path; a path is a root, then names joined by dots.",
         ["A04-007"] = "<site> writes object with <what it is>; object takes one object, from field names to rules.",
         ["A04-008"] = "<site> builds an object where no format gives its fields; object builds the value of a computed node.",
-        ["A04-009"] = "Computed node '<id>' builds <format> with <field> as <format>; the format declares it <format>.",
+        ["A04-009"] = "<site> builds <format> with <field> as <format>; the format declares it <format>.",
         ["A04-010"] = "<site> gives <operation> a <operand> that is <what it is>; <operand> is written as text.",
         ["A04-011"] = "<site> <member> could not be evaluated: <detail>.",
     };
