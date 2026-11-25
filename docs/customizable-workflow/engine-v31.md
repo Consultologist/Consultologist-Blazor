@@ -671,6 +671,14 @@ lease lapses; the retry then clears and rewrites it. Media types: `resolve.json`
 else (the stamp included) `application/json`. A migrated version's stamp carries `migratedFrom`, the old version; the
 load ignores it.
 
+**Listings.** The listings that find versions by `{name}/{version}/manifest.json` (the account's packages,
+`WorkflowPackages/Mine` and `MinePackages`, which the selector and History read; the public chain view; the operator's
+catalog strand sweep) were written for 5–30, which writes the manifest last. Since the 31 writer writes the manifest
+first, a version whose manifest declares specVersion 31 is listed only when `{name}/{version}/publish.json` is in the
+same blob listing (`AccountPackageListing.IsUnstamped31`; no extra read), so a publish in flight, one that died, or a
+write that lost its lease lists nothing. Its manifest is not cached until it is stamped, and a name whose only version
+is unstamped is no package. A 5–30 version is listed as before, whatever its own `publish.json`.
+
 ### `Current` at 31
 
 `GET WorkflowPackages/Current` tries the compiled load (`CompiledPackageStore.TryLoadAsync`) for the resolved pin first.
