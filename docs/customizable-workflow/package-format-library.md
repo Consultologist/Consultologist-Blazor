@@ -2090,7 +2090,7 @@ escaped too, and a `plaintext` deliverable refuses a nullable Markdown read (S06
 character past spaces, tabs and the tags that write nothing (`if`, `else`, `end`, `for`), so `{{ if x }}# Heading` is
 refused; an output at the line's start is no marker. Where a `markdown_inline` output sits is not judged, but its
 value holds no line ending (D21): `CorvusFormatValueValidator.ValidateExpanded` holds every `markdown_inline` text of
-a value to no `\n` or `\r` (`FormatValueResult.BreaksALine`), so a reply fails with A10-052
+a value to no `\n` or `\r` (`FormatValueResult.BreaksALine`; the rule is typed `string`, so a nullable one takes `null`), so a reply fails with A10-052
 (`RunSentences.ReplyBreaksALine`) and an input refuses the start with it (`InputBreaksALine`).
 
 ### The escape (D7, R9)
@@ -2302,7 +2302,7 @@ engine at specVersion 31](engine-v31.md)). The 5–30 path, `SendEmailIntakeRepl
 [migration and tools](package-format-v31/10-migration-and-tools.md) (part 10) §§ 1 to 5 and
 [types and inputs](package-format-v31/02-types-and-inputs.md) § 11, with
 [the plan](package-format-v31/plans/area-10-migration.md) for the decisions (the owner's rulings R1 to R11 on #1507,
-the decisions D1 to D31) and for what the build left to the owner (its *Results*). The 30 side of every comparison is
+the decisions D1 to D34) and for what the build left to the owner (its *Results*). The 30 side of every comparison is
 area 01's fixtures, described with this area's goldens in `tests/Fixtures/ByteEquivalence/README.md`. What the engine
 does for a migrated package (macro choices at a 31 start, the link-only email, the weekly summary's hand-edits line)
 is in [the engine at specVersion 31](engine-v31.md).*
@@ -2388,8 +2388,8 @@ is A10-016, one already at 31 A10-015. An older package is raised to 30 in the s
 library), the 24 → 25 rewrite with `ResolveContract`, 25 → 26, the 27 raise, 27 → 28, and the 29 and 30 raises, each
 validated as the script validates it. Below 5 is A10-012; a rung's refusal or validation error is A10-017 and a rung
 that fails on the package A10-018, each naming the rung. `Migrated.Read` then reads the 30 package: a file that is not
-strict JSON is A10-019, a package 30 refuses A10-017, a reader that fails A10-020. A refusal writes nothing: the result
-holds the input's manifest and files.
+strict JSON is A10-019, a package 30 refuses A10-017, a reader that fails A10-020. The passes are wrapped the same way: a
+fault in one is A10-020 (D34). A refusal writes nothing: the result holds the input's manifest and files.
 
 **The passes** run in this order on one working set (`V31/Migration/Migrated.cs`), which serialises the files once, at
 the end: one object per JSON file, every member present (`null` for none), in `SourceShapes`' member order, with `\n`
@@ -2397,12 +2397,12 @@ line endings, a JSON Logic value in canonical order.
 
 | Pass | File | What it writes |
 |---|---|---|
-| renames | `Migrate.Renames.cs` | on the 30 package, before any 31 file: every reserved id, every name Windows reserves and every id past 64 characters, renamed by `Renames`, else with its kind as a suffix (`parts_for`, `test_snippet`; A10-006), the first free number when that is taken (S10-006), cut to 64 (A10-034). A hand choice that cannot be made refuses the run (A10-033). Every reference is rewritten by token, never by text search |
-| layout | `Migrate.Layout.cs` | the nine folders and their indexes, the manifest's identity, the formats as their schemas alone (every property required, an optional one nullable, § 1.8), the snippets and snippet folders with their 31 headers; the root `deliverables/index.json` has `delivery: ["pdf"]` (R8) |
+| renames | `Migrate.Renames.cs` | on the 30 package, before any 31 file: every reserved id, every name Windows reserves, every package format named like a 31 built-in or catalogue format (S01-034; A10-065) and every id past 64 characters, renamed by `Renames`, else with its kind as a suffix (`parts_for`, `test_snippet`, `judgement_format`; A10-006), the first free number when that is taken (S10-006), cut to 64 (A10-034). A hand choice that cannot be made refuses the run (A10-033), and so does a `FolderFormats` choice that is no 31 id or already a format (A10-069). Every reference is rewritten by token, never by text search |
+| layout | `Migrate.Layout.cs` | the nine folders and their indexes, the manifest's identity, the formats as their schemas alone (every property required, an optional one nullable, § 1.8), the snippets and snippet folders with their 31 headers (a folder's `<folder>_item` cut to 64 characters, A10-034; a chosen item format used as given, one two folders share written once); the root `deliverables/index.json` has `delivery: ["pdf"]` (R8) |
 | inputs | `Migrate.Inputs.cs` | 30's inputs array as the manifest's object keyed by id, in its order: `label`, `description: null`, the 31 `format`, `required`, `channel` from `expectedContent` |
-| nodes and flows | `Migrate.Nodes.cs`, `Migrate.Flows.cs` | every node under `nodes/` at its nested path, its kind from what it has (a flow member, a `let`, a `rendered` or an agent format); a `for`, `while`, `if` or `case` as a folder whose `index.json` is its header; every condition converted. 30's `prose` that a deliverable composes is `markdown_block`, prose only prompts read `plaintext` (R9, D20); a composed `if` or `case` mixing prose and plain text reached through no `for` is A10-053. A classifier's `with` values are written at the end of its prompt, as 30's engine sent them (A10-064). A `terms_subset` node gets no file here |
-| templates | `Migrate.Templates.cs`, `TemplateRewriter.cs` | every prompt, `rendered` body, snippet, folder item and macro body in the 31 dialect: bare reads to `.content` or `.value`, renderer pipes, a loop's `.items` and `state` (30's `!e.skipped` is `e.state == "completed"`), `item.label`, white-space marks. A simple body `if` is lifted into `parts`; an `if` around a placement is hoisted onto the placement, and a `for` over a macro folder unrolled (R6); the rest is a hand edit (A10-001, A10-005, A10-035 to A10-039, S10-004). Text outside tags is never touched |
-| macros | `Migrate.Macros.cs` | each macro as `macros/<id>.md` (a folder as its index and one file per item), its `instruction` 30's lines then 30's mechanics sentence (D5); an optional macro offered by an optional boolean input (its id, else `<id>_macro`, A10-007); a macro read only as fixed text as a snippet (D4); a `before` or `after` node macro placed at the end of the prompt with its instruction left for the operator (D3, A10-003); A10-004, A10-036, A10-040 to A10-042 and A10-045 for what it cannot decide |
+| nodes and flows | `Migrate.Nodes.cs`, `Migrate.Flows.cs` | every node under `nodes/` at its nested path, its kind from what it has (a flow member, a `let`, a `rendered` or an agent format); a `for`, `while`, `if` or `case` as a folder whose `index.json` is its header; every condition converted. 30's `prose` that a deliverable composes is `markdown_block`, prose only prompts read `plaintext` (R9, D20); a composed `if` or `case` mixing prose and plain text reached through no `for` is A10-053 (a branch that is a `for`, or a `while` whose `ret` reaches one, counts as Markdown, D34). A `checkFirst` while whose check reads its own body is a hand edit on `checkFirst` (A10-066), which A06-002 refuses. A classifier's `with` values are written at the end of its prompt, as 30's engine sent them (A10-064). A `terms_subset` node gets no file here |
+| templates | `Migrate.Templates.cs`, `TemplateRewriter.cs` | every prompt, `rendered` body, snippet, folder item and macro body in the 31 dialect: bare reads to `.content` or `.value`, renderer pipes, a loop's `.items` and `state` (30's `!e.skipped` is `e.state == "completed"`), `item.label`, white-space marks (one A10-068 per file names the lines whose marks changed, since `~` keeps line endings that `-` removed). A simple body `if` is lifted into `parts`; an `if` around a placement is hoisted onto the placement, and a `for` over a macro folder unrolled (R6); the rest is a hand edit (A10-001, A10-005, A10-035 to A10-039, S10-004). Text outside tags is never touched |
+| macros | `Migrate.Macros.cs` | each macro as `macros/<id>.md` (a folder as its index and one file per item), its `instruction` 30's lines then 30's mechanics sentence (D5); an optional macro offered by an optional boolean input (its id, else `<id>_macro`, A10-007; A10-067 when its `if` reads another boolean input too, so R7's start refuses a `MacroChoices` entry for it); a macro read only as fixed text as a snippet (D4); a `before` or `after` node macro placed at the end of the prompt with its instruction left for the operator (D3, A10-003); A10-004, A10-036, A10-040 to A10-042 and A10-045 for what it cannot decide |
 | checks | `Migrate.Checks.cs` | each `terms_subset` node as `checks/<id>.md`, `kind: computed`, `format: check_result`, its `failWith` the 30 sentence; a reader of `node.<id>` reads `check.<id>`. One 30 ran inside a flow is also A10-046 |
 | deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, `{{ profile.signature }}` for 30's `signature: true`, one blank line apart. An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim |
 | derived flags | `Migrate.Derived.cs` | last: every node and check header's `reproducible`, `modelDerived`, `runDependent` and `profileCarrying` from `SourceDerived.Values`, the derivation without the header checks (D15). A 30 `reproducible` claim that differs is A10-010; a header made of a body the dialect refused is A10-049 |
@@ -2490,18 +2490,18 @@ bytes rules in order, each at most once, and the text is expected only when they
 
 | Rule | Basis | Kind |
 |---|---|---|
-| `empty-input-list-runs` | R2 (the two captures it names) | case |
-| `skipped-deliverable-reads-null` | R4 item 1 | case |
+| `empty-input-list-runs` | R2 (the two captures it names, when the 31 run completed) | case |
+| `skipped-deliverable-reads-null` | R4 item 1 (when the 31 run completed: the status, and a deliverable only 31 has) | case |
 | `required-blank-refused` | R4 item 6 | case |
 | `all-refused-completes` | R4 item 7 | case |
-| `refused-deliverable-withheld` | R4 item 3 | bytes |
+| `refused-deliverable-withheld` | R4 item 3 (only in a row whose plan reads the blocked deliverable, which part 06 § 6.7 leaves to checks: on a published package it explains nothing, D34) | bytes |
 | `escaped-plain-text` | part 06 § 6.4, D8 | bytes |
 | `item-ids-from-one` | #1506 ruling 2, D26 | bytes |
 | `position-names-from-the-loop` | part 04 § 2.7, D27 | bytes |
 | `sent-format` | part 10 § 1.8, D26 | bytes |
 | `explicit-null-for-optional` | part 10 § 1.8 | bytes |
-| `macro-trailing-whitespace` | R5 | bytes |
-| `blank-conversion` | R1 | case |
+| `macro-trailing-whitespace` | R5 (a macro the row's text can hold, from the plan's reads and placements) | bytes |
+| `blank-conversion` | R1 (a gate of the text's own instance) | case |
 
 `ExpectedDifferences.ConditionReasons` holds the one reason a converted condition may answer otherwise than 30
 (`blank`, R1). Each rule has a test with a pair it explains and a near pair it must not (`ExpectedDifferencesTests`).
@@ -2610,7 +2610,7 @@ CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.
 The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10-004 and S10-006, each that row of
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
 version 30"*) is the publish path's (area 11). Every other notice, refusal and reason is an area sentence, A10-001 to
-A10-064 (A10-009 unused), listed in the plan's table and in `V31Contract.MigrationAreaSentences`. Area 10's rulings also
+A10-069 (A10-009 unused), listed in the plan's table and in `V31Contract.MigrationAreaSentences`. Area 10's rulings also
 added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
 `markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
 summary). No sentence, notice or report entry carries a value from an input, a model or a profile.
