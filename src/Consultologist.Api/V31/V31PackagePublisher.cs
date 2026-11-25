@@ -284,16 +284,3 @@ public sealed class V31PackagePublisher(
             ? oldVersion.GetString()
             : null;
 }
-
-/// <summary>
-/// #1508 (area 11, Task 16): the host's <see cref="IV31RegistryWriter"/> until Task 17's writer replaces it, so the host
-/// starts; a 31 publish that reaches the write fails here (only where the preview setting admits 31).
-/// </summary>
-internal sealed class PendingV31RegistryWriter : IV31RegistryWriter
-{
-    public Task<bool> IsPublishedAsync(string? accountKind, string name, string version, CancellationToken ct) =>
-        throw new NotSupportedException("The 31 registry writer is not in this build yet (#1508, area 11, Task 17).");
-
-    public Task<bool> WriteAsync(string? accountKind, string name, string version, IReadOnlyList<PublishFile> files, PublishedStamp stamp, CancellationToken ct) =>
-        throw new NotSupportedException("The 31 registry writer is not in this build yet (#1508, area 11, Task 17).");
-}

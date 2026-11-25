@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure;
+using Azure.Storage.Blobs.Models;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
@@ -11,7 +12,10 @@ using Consultologist.PackageFormat.V31.Run;
 
 namespace Consultologist.Api.V31;
 
-/// <summary>#1503 (specVersion 31, area 06): the registry's blobs, read whole.</summary>
+/// <summary>
+/// #1503 (specVersion 31, area 06): the registry's blobs, read whole. #1508 (area 11): and written, each change in the
+/// private container the account's kind picks, as the 5–30 writer's.
+/// </summary>
 public interface IRegistryFiles
 {
     /// <summary>
@@ -19,15 +23,61 @@ public interface IRegistryFiles
     /// <paramref name="packageName"/>, or null when it is absent.
     /// </summary>
     Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct);
+
+    /// <summary>Writes <paramref name="bytes"/> at <paramref name="path"/> with <paramref name="contentType"/>, replacing any blob there.</summary>
+    Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct);
+
+    /// <summary>
+    /// Creates the blob at <paramref name="path"/> only if none is there (If-None-Match <c>*</c>): false, and nothing
+    /// written, when one is.
+    /// </summary>
+    Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct);
+
+    /// <summary>Deletes every blob whose path starts with <paramref name="prefix"/>.</summary>
+    Task DeleteAllAsync(string? accountKind, string prefix, CancellationToken ct);
 }
 
 /// <summary>
 /// #1503: <see cref="IRegistryFiles"/> over the registry's containers: the public one for a repo-owned name, the private
 /// pair for an <c>acct-*</c> one (<see cref="WorkflowPackageBlobContainerFactory.GetContainersFor"/>), the first hit the
-/// only one, as the 5–30 store reads them.
+/// only one, as the 5–30 store reads them. #1508 (area 11): a change goes to the kind's private container
+/// (<see cref="WorkflowPackageBlobContainerFactory.GetContainer"/>, the 5–30 writer's), its client taken per call.
 /// </summary>
 public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory containers) : IRegistryFiles
 {
+    public async Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct) =>
+        await containers.GetContainer(accountKind).GetBlobClient(path).UploadAsync(
+            BinaryData.FromBytes(bytes),
+            new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = contentType } },
+            ct);
+
+    public async Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
+    {
+        try
+        {
+            await containers.GetContainer(accountKind).GetBlobClient(path).UploadAsync(
+                BinaryData.FromBytes(bytes),
+                new BlobUploadOptions
+                {
+                    HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+                    Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All },
+                },
+                ct);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            return false;
+        }
+    }
+
+    public async Task DeleteAllAsync(string? accountKind, string prefix, CancellationToken ct)
+    {
+        var container = containers.GetContainer(accountKind);
+        await foreach (var blob in container.GetBlobsAsync(prefix: prefix, cancellationToken: ct))
+            await container.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: ct);
+    }
+
     public async Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct)
     {
         foreach (var container in containers.GetContainersFor(packageName))

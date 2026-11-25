@@ -14,6 +14,8 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// counting every read, for <see cref="CompiledPackageStore"/>. <see cref="Put(CompiledGoldenTests.GoldenCase, string?)"/>
 /// publishes a golden into it as publish would leave it: <c>resolve.json</c>, <c>lock.json</c> and the stamp. A
 /// <c>latest</c> ref resolves through <see cref="Latest"/>, as the store's pointer read would.
+/// #1508 (area 11): one container for every account kind; writes, create-if-absent and deletes by prefix are recorded in
+/// <see cref="Changes"/>, with each blob's content type.
 /// </summary>
 internal sealed class FakeRegistry : IRegistryFiles, IWorkflowPackageVersions
 {
@@ -43,6 +45,57 @@ internal sealed class FakeRegistry : IRegistryFiles, IWorkflowPackageVersions
         if (ReadFailure != null)
             return Task.FromException<byte[]?>(ReadFailure);
         return Task.FromResult(Blobs.TryGetValue(path, out var bytes) ? bytes : null);
+    }
+
+    public Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
+    {
+        if (Change("write", accountKind, path) is { } failure)
+            return Task.FromException(failure);
+        Blobs[path] = bytes;
+        ContentTypes[path] = contentType;
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
+    {
+        if (Change("create", accountKind, path) is { } failure)
+            return Task.FromException<bool>(failure);
+        if (!Blobs.TryAdd(path, bytes))
+            return Task.FromResult(false);
+        ContentTypes[path] = contentType;
+        return Task.FromResult(true);
+    }
+
+    public Task DeleteAllAsync(string? accountKind, string prefix, CancellationToken ct)
+    {
+        if (Change("delete", accountKind, prefix) is { } failure)
+            return Task.FromException(failure);
+        foreach (var path in Blobs.Keys.Where(path => path.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            Blobs.TryRemove(path, out _);
+            ContentTypes.TryRemove(path, out _);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>#1508 (area 11): the content type each blob was written with, by path.</summary>
+    public ConcurrentDictionary<string, string> ContentTypes { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>#1508 (area 11): each write, create and delete, in order: the operation, the account kind and the path (a delete's prefix).</summary>
+    public IReadOnlyList<(string Operation, string? Kind, string Path)> Changes => _changes.ToArray();
+
+    /// <summary>#1508 (area 11): what a write, create or delete of a path throws, as storage would (null: it is made).</summary>
+    public Func<string, Exception?>? ChangeFailure { get; set; }
+
+    private readonly ConcurrentQueue<(string Operation, string? Kind, string Path)> _changes = new();
+
+    private Exception? Change(string operation, string? accountKind, string path)
+    {
+        if (ChangeFailure?.Invoke(path) is { } failure)
+            return failure;
+        _changes.Enqueue((operation, accountKind, path));
+        return null;
     }
 
     public Task<string> ResolveVersionAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken) =>

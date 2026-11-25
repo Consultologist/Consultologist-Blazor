@@ -24,6 +24,12 @@ public sealed record CompiledPackage(
     /// <summary>The compiled document's file name in a version's folder (§ 6).</summary>
     public const string ResolveFile = "resolve.json";
 
+    /// <summary>#1508 (area 11): <c>resolve.json</c>'s media type (part 07 § 1).</summary>
+    public const string ResolveMediaType = "application/vnd.consultologist.resolve+json";
+
+    /// <summary>#1508 (area 11): <c>lock.json</c>'s media type (part 07 § 1).</summary>
+    public const string LockMediaType = "application/vnd.consultologist.lock+json";
+
     /// <summary>
     /// The deepest nesting <see cref="Verify"/> reads; <see cref="CanonicalJson"/> writes nothing deeper, so a document
     /// past it is not the one published.

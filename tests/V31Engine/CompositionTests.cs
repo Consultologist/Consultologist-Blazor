@@ -52,7 +52,7 @@ public class CompositionTests
 
         Assert.Same(provider.GetRequiredService<V31PackagePublisher>(), FieldOf<V31PackagePublisher>(publisher));
         Assert.Same(provider.GetRequiredService<SpecVersionAdmission>(), FieldOf<SpecVersionAdmission>(publisher));
-        Assert.NotNull(provider.GetRequiredService<IV31RegistryWriter>());
+        Assert.IsType<V31RegistryWriter>(provider.GetRequiredService<IV31RegistryWriter>());
     }
 
     [Fact]
