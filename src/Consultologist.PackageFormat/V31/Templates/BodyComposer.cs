@@ -41,10 +41,10 @@ public static partial class BodyComposer
     /// Composes the body of <paramref name="request"/>'s entry (<c>plan.Functions[function].Entries[key]</c> inside a
     /// function, else <c>plan.Entries[key]</c>). An entry the plan lacks, one with no body, or a text a placement or a
     /// renderer reaches that is not a dialect template (it does not parse, or breaks a statement rule) is not what publish
-    /// wrote: S07-006, unless the engine failed reading a text (A08-006, <see cref="Composition.EngineFault"/>): A06-008. A <c>for</c> past <see cref="IterationLimit"/> is S05-012 at its line in the text that holds it;
+    /// wrote: S07-006, unless the engine failed reading a text (A08-006, <see cref="Composition.EngineFault"/>): A11-008. A <c>for</c> past <see cref="IterationLimit"/> is S05-012 at its line in the text that holds it;
     /// output past <see cref="OutputLimit"/> S05-014; <c>array.join</c> over a <c>null</c> element A07-006; the steps
     /// (each iteration of any <c>for</c>, in the body, its units and its renderers) past <see cref="ComposeRequest.StepLimit"/>
-    /// <see cref="Composition.TooManySteps"/>; any other failure A06-008, never Scriban's message. Never throws on the
+    /// <see cref="Composition.TooManySteps"/>; any other failure A06-008 (A11-008 when the engine failed), never Scriban's message. Never throws on the
     /// plan, the data or the decisions; a null argument is the caller's error.
     /// </summary>
     /// <remarks>
@@ -74,11 +74,11 @@ public static partial class BodyComposer
         try
         {
             // A body the engine failed to read (A08-006, which the activity logs) is the engine's fault, so it fails with
-            // A06-008, never S07-006, which would say the compiled document is not what was published (#1505 R14).
+            // A11-008 (#1508), never A06-008 or S07-006, which would say the compiled document is not what was published (#1505 R14).
             if (composing.Plan(body, null, 0) is not { } top)
             {
                 return composing.EngineFault is { } fault
-                    ? Failed(RunSentences.CouldNotRender(composing.Subject)) with { EngineFault = fault }
+                    ? Failed(RunSentences.EngineFailedRendering(composing.Subject)) with { EngineFault = fault }
                     : Failed(notPublished);
             }
 
@@ -100,7 +100,10 @@ public static partial class BodyComposer
             var stop = composing.Stop ?? Stopped(exception);
             if (stop is { TooManySteps: true })
                 return new Composition(null, null, null, true, [], [], [], []);
-            return Failed(stop?.Sentence ?? RunSentences.CouldNotRender(composing.Subject)) with { EngineFault = composing.EngineFault };
+            // A stop's own sentence is the package's; with none, the engine's fault (A11-008) when one was met, else A06-008.
+            var failure = stop?.Sentence
+                ?? (composing.EngineFault != null ? RunSentences.EngineFailedRendering(composing.Subject) : RunSentences.CouldNotRender(composing.Subject));
+            return Failed(failure) with { EngineFault = composing.EngineFault };
         }
     }
 

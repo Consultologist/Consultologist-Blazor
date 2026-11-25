@@ -463,6 +463,29 @@ public class AgentTurnTests
     }
 
     [Fact]
+    public void AnEngineFaultPreparingAPrompt_IsKindEngine_NotCompose()
+    {
+        // #1508 (R8 item 4): the engine failing to read the body is "engine" (A11-008), where a body that fails on what it reads is "compose" (A06-008).
+        var plan = RunFixture.Plan(LetrozoleFiles());
+
+        TemplateSyntax.TestParser.Value = _ => throw new InvalidOperationException("Margaret Okafor");
+        PreparedPrompt prepared;
+        try
+        {
+            prepared = AgentTurn.Prepare(plan, Call("node.assessment", new JsonObject()), 100_000, Rejects);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Equal("engine", prepared.ErrorKind);
+        Assert.Null(prepared.Text);
+        Assert.Equal("System.InvalidOperationException", prepared.Composition.EngineFault);
+        Assert.Equal("engine", AgentTurn.Finish(prepared, "anything").ErrorKind);
+    }
+
+    [Fact]
     public void APromptThatCannotBePrepared_SaysWhy()
     {
         var plan = RunFixture.Plan(LetrozoleFiles());

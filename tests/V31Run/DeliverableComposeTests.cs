@@ -336,7 +336,7 @@ public class DeliverableComposeTests
     public void AnEngineFault_ReadingTheBody_IsNotThePackagesFault(string format, string body)
     {
         // #1505 R14 (the final review): the engine failing to read a body (A08-006, logged by the activity) fails the
-        // deliverable with A06-008, never S07-006, which would say the package's compiled document was not what was published.
+        // deliverable with A11-008 (#1508), never A06-008 or S07-006, which would say the package's compiled document was not what was published.
         var plan = RunFixture.Plan(WithNote(format, body));
         var scope = BodyComposerTests.Scope(("node.plan.value", JsonNode.Parse("{ \"sections\": [] }")), ("node.plan.content", "The plan."));
 
@@ -353,8 +353,8 @@ public class DeliverableComposeTests
 
         Assert.Null(outcome.Text);
         Assert.Equal("System.InvalidOperationException", outcome.EngineFault);
-        Assert.Equal("Deliverable 'note' couldn't be rendered.", outcome.Failure);
-        V31Contract.AssertSentence(new SourceRefusal("A06-008", outcome.Failure!, ""));
+        Assert.Equal("Deliverable 'note' couldn't be rendered because the engine failed. Tell the operator.", outcome.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("A11-008", outcome.Failure!, ""));
     }
 
     [Theory]

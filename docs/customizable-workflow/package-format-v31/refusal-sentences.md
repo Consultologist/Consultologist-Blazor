@@ -2,7 +2,7 @@
 
 Every sentence the v31 design gives to a refusal, a warning, a job-start check or a History reason, in one place. **Milestone 39 uses them as written,** with no manual review, so the build is never held up by wording; the conformance suite pins each one. **They are reviewed in #1483 (Milestone 40),** concurrently with the build ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6985257872)).
 
-Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-sentences). `<…>` marks a placeholder. **Audience** is *author* (the Editor, publish, import, CI) or *clinician* (the Create page, job start, History), where rule 7 applies. The sentences in the parts are the source: if this table and a part disagree, the part wins and this table is corrected.
+Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-sentences). `<…>` marks a placeholder. **Audience** is *author* (the Editor, publish, import, CI) or *clinician* (the Create page, job start, History), where rule 7 applies; an *operator* sentence is for the engine's log alone (a fault in the engine itself, which neither an author nor a clinician can act on; ruled on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508)). The sentences in the parts are the source: if this table and a part disagree, the part wins and this table is corrected.
 
 | Part | Sentences |
 |---|---|
@@ -331,7 +331,7 @@ Said in a refusal's place when the engine fails reading a template in a way no t
 
 | Id | Section | Sentence | Audience | Review |
 |---|---|---|---|---|
-| A08-006 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it."* | author | |
+| A08-006 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it."* | operator | |
 
 ## 06 Checks, deliverables and the profile
 
@@ -459,3 +459,11 @@ Said at run time when one of a job's record rows is larger than the record's row
 | S10-004 | [Refusals](10-migration-and-tools.md#refusals) | *"the prompt reads profile.\<field\>, which a 31 prompt doesn't read; move it to a deliverable or a macro body."* | author | |
 | S10-005 | [Refusals](10-migration-and-tools.md#refusals) | *"\<package\> stays at version 30 for now: \<reason\>. Its pin is unchanged; you can migrate it in the Editor when Milestone 41 arrives."* | clinician | |
 | S10-006 | [Refusals](10-migration-and-tools.md#refusals) | *"Renamed '\<id\>' to '\<new id\>'; '\<id\>_\<kind\>' was already taken."* | author | |
+
+## 11 Registry and publish
+
+The build's area sentences for area 11, which are not rows of `sentences.json` and are not counted above. Each is added by the task that first says it.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A11-008 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"\<Subject\> couldn't be rendered because the engine failed. Tell the operator."* | clinician | |

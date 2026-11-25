@@ -62,7 +62,8 @@ public static class DialectSentences
 
     /// <summary>
     /// A08-006 (#1505 ruling 6, R14): reading the body failed in a way no text explains, a fault of the engine and not of the
-    /// package (<see cref="TemplateSyntax.Parse(string)"/>); no package produces it.
+    /// package (<see cref="TemplateSyntax.Parse(string)"/>); no package produces it. #1508 (R8 item 4): its audience is the
+    /// operator, not the author: the caller logs <see cref="SourceRefusal.EngineFault"/> (publish does, Task 16).
     /// </summary>
     public static SourceRefusal EngineFailedReading(string subject, string path) =>
         new("A08-006", $"{subject} couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it.", path);

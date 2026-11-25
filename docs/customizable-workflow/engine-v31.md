@@ -577,13 +577,15 @@ out, and the lines and the log carry counts only, none for what was not read.
 A template the engine fails to read in a way no text explains is the engine's fault, not the author's: an exception
 other than Scriban's own for unreadable text (`ScriptRuntimeException`, and the stack-depth exception for text too
 deep) is **A08-006** at publish, *"<Subject> couldn't be checked: the engine failed reading its template. This is a
-fault in the engine, not in the package; report it."*, never A07-005. At run time the node fails with A06-008,
-*"<Subject> couldn't be rendered."*, never S07-006, which would say the compiled document is not what was published.
+fault in the engine, not in the package; report it."*, never A07-005. Its audience is the operator, not the author: it is the log's, and a package author cannot act on it.
+At run time the node fails with **A11-008**, *"<Subject> couldn't be rendered because the engine failed. Tell the
+operator."*, which a clinician sees, never A06-008 (a body that fails on what it reads) and never S07-006, which would
+say the compiled document is not what was published. A call's `ErrorKind` is `engine` for it (`compose` for A06-008).
 The log is where the fault is seen: `run-agent-node-v31` (a prompt) and `render-node-v31` (a `rendered` node or a
 deliverable) log once per failed composition, at error level, *V31 engine fault reading a template* with
 `SentenceId=A08-006`, the key, the entry's key, the function and the exception's full type name. Never the
 exception's message, its stack or the text. Publish carries the type on its refusal (`SourceRefusal.EngineFault`) for
-area 11's caller, which has a logger.
+area 11's caller, which has a logger and logs it at publish as these activities do at run time.
 
 ## Settings
 

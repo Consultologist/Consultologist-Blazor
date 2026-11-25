@@ -53,6 +53,13 @@ public static class RunSentences
     /// <summary>A06-008: a body failed to render for another reason; never the template engine's message, which can quote a value.</summary>
     public static string CouldNotRender(string subject) => $"{subject} couldn't be rendered.";
 
+    /// <summary>
+    /// #1508 (area 11; R8 item 4) A11-008: the engine itself failed rendering a body (the run-time sibling of A08-006, which says it
+    /// at publish): never A06-008, which is for a body that fails on what it reads. The caller logs the fault
+    /// (<see cref="Templates.Composition.EngineFault"/>); the sentence carries no type, message or value.
+    /// </summary>
+    public static string EngineFailedRendering(string subject) => $"{subject} couldn't be rendered because the engine failed. Tell the operator.";
+
     /// <summary>#1505 (area 08; part 06 § 6.6; part 08 § 10) A08-005: a deliverable composed empty under <c>whenEmpty: fail</c>.</summary>
     public static string EmptyDeliverable(string id, string label) =>
         $"Deliverable '{id}' was empty, and the workflow fails an empty {label}.";

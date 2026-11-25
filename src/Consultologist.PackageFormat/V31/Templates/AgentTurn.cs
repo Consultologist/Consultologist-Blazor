@@ -7,7 +7,7 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// #1504 (specVersion 31, area 07; part 05 §§ 8.3 to 8.6; part 08 § 4; D8, D11): one attempt of an agent call as it is
 /// sent. <paramref name="Text"/> is what is sent, <c>null</c> when the prompt could not be prepared: then
 /// <paramref name="ErrorKind"/> says why (<c>"plan"</c>: the plan lacks the entry, it is no agent or has no binding,
-/// S07-006; <c>"steps"</c>: <see cref="Composition.TooManySteps"/>, S05-062; <c>"compose"</c>: <see cref="Composition.Failure"/>).
+/// S07-006; <c>"steps"</c>: <see cref="Composition.TooManySteps"/>, S05-062; <c>"compose"</c>: <see cref="Composition.Failure"/>; <c>"engine"</c>: the engine failed reading the body, A11-008).
 /// <paramref name="Composition"/> is the body's (its offered macros in prompt order), <paramref name="Detail"/> the row's
 /// detail in part 08 § 4's names, <paramref name="Format"/> the format the prompt ends with (a <c>via: "custom"</c>
 /// binding's, D8; <c>null</c> for a <c>via: "format"</c> agent, which carries its own), <paramref name="Ordered"/> the
@@ -70,7 +70,7 @@ public static class AgentTurn
         if (composition.TooManySteps)
             return Unprepared(composition, "steps");
         if (composition.Text is not { } body)
-            return Unprepared(composition, "compose");
+            return Unprepared(composition, composition.EngineFault != null ? "engine" : "compose");
 
         var (format, formats) = PlanScope(plan, entry.Format);
         var enveloped = EnvelopedFormat.Of(format, formats, strictRejects);

@@ -340,6 +340,7 @@ public class PlanRunnerAgentsTests
     [Theory]
     [InlineData("steps", "S05-062", "Node 'plan' stopped rendering: it took more than 100,000 steps.")]
     [InlineData("compose", "A06-008", "Node 'plan' couldn't be rendered.")]
+    [InlineData("engine", "A11-008", "Node 'plan' couldn't be rendered because the engine failed. Tell the operator.")]
     [InlineData("plan", "S07-006", null)]
     public async Task ACallThatCouldNotBeMade_FailsTheNodeAtOnce_WithItsSentence(string kind, string id, string? expected)
     {

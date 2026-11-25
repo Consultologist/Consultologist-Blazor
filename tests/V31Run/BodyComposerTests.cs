@@ -533,6 +533,40 @@ public class BodyComposerTests
     }
 
     [Fact]
+    public void AnEngineFaultWhileRendering_FailsTheNodeWithA11008_NotA06008()
+    {
+        // #1508 (R8 item 4): the engine failing to read a body is its own sentence, never the A06-008 of a body that fails on what it reads.
+        var plan = RunFixture.Plan(Package().WithAgent("draft", "Draft:\n{{ input.consult_draft.content }}\n"));
+
+        TemplateSyntax.TestParser.Value = _ => throw new InvalidOperationException(Draft);
+        Composition composition;
+        try
+        {
+            composition = Compose(plan, "node.draft", Scope(("input.consult_draft.content", Draft)));
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        AssertFailed(composition, "A11-008", RunSentences.EngineFailedRendering("Node 'draft'"));
+        Assert.Equal("Node 'draft' couldn't be rendered because the engine failed. Tell the operator.", composition.Failure);
+        Assert.Equal("System.InvalidOperationException", composition.EngineFault);
+        Assert.DoesNotContain("Okafor", composition.Failure, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARenderThatFailsOnPackageContent_StillSaysA06008()
+    {
+        var plan = RunFixture.Plan(Package().WithAgent("draft", "Draft:\n{{ input.consult_draft.content }}\n"));
+
+        var composition = Compose(plan, "node.draft", new JsonObject());
+
+        AssertFailed(composition, "A06-008", RunSentences.CouldNotRender("Node 'draft'"));
+        Assert.Null(composition.EngineFault);
+    }
+
+    [Fact]
     public void Compose_NeverThrows()
     {
         var files = Package().WithAgent("draft", "Draft:\n{{ input.consult_draft.content }}\n");

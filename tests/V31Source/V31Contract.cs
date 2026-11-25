@@ -126,6 +126,25 @@ internal static class V31Contract
     };
 
     /// <summary>
+    /// #1508: area 11's own sentences (<c>A11-NNN</c>), as plan area-11-registry-and-publish lists them; each is added by the
+    /// task that first says it (A11-008, Task 3: a run-time engine fault while rendering, in place of A06-008, R8 item 4).
+    /// </summary>
+    private static readonly Dictionary<string, string> PublishAreaSentences = new()
+    {
+        ["A11-008"] = "<Subject> couldn't be rendered because the engine failed. Tell the operator.",
+    };
+
+    /// <summary>
+    /// #1508 (R8 item 4): the audience of an area sentence whose audience is not the author's, as the refusal-sentences table
+    /// gives it: A08-006 is logged for the operator; A11-008 is shown to the clinician, who is told to tell the operator.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> AreaSentenceAudiences = new Dictionary<string, string>
+    {
+        ["A08-006"] = "operator",
+        ["A11-008"] = "clinician",
+    };
+
+    /// <summary>
     /// #1506: area 09's own sentences (<c>A09-NNN</c>), as plan area-09-the-record lists them (A09-001: the tenth limit, the
     /// instances one job may open, part 09 § 3.4; <c>&lt;n&gt;</c> is written as the other limits are, <c>10,000</c>; A09-002:
     /// a record row larger than the row store holds, part 09 § 9).
@@ -248,6 +267,20 @@ internal static class V31Contract
         }
 
         return dir!.FullName;
+    }
+
+    /// <summary>
+    /// #1508: the Audience column of <paramref name="id"/>'s row in <c>docs/customizable-workflow/package-format-v31/refusal-sentences.md</c>
+    /// (the row's fourth cell, after the sentence); fails when the table has no such row.
+    /// </summary>
+    public static string RefusalSentencesAudience(string id)
+    {
+        var path = System.IO.Path.Combine(RepoRoot(), "docs", "customizable-workflow", "package-format-v31", "refusal-sentences.md");
+        var prefix = $"| {id} |";
+        var row = File.ReadLines(path).FirstOrDefault(l => l.StartsWith(prefix, StringComparison.Ordinal));
+        Assert.True(row != null, $"{id} has no row in refusal-sentences.md.");
+        var cells = row!.Split(" | ");
+        return cells[^2].Trim();
     }
 
     /// <summary>A path under <c>external/consultologist-package-format/v31/</c>; fails when the file is missing.</summary>
@@ -382,6 +415,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A10-", StringComparison.Ordinal))
         {
             Assert.True(MigrationAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A11-", StringComparison.Ordinal))
+        {
+            Assert.True(PublishAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

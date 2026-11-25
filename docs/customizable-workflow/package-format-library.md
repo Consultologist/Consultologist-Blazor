@@ -1311,8 +1311,8 @@ check item *i* opens when production item *i* settles, so checking overlaps prod
 - `ServiceFailure` counts an attempt. At `ServiceAttempts` the node fails with S09-011.
 - Between attempts the runner waits on `host.DelayAsync`, holding its slot. A wait of 0 or less is taken as
   5,000 ms.
-- `Failed` (a call that could not be made: `ErrorKind` `plan`, `steps` or `compose`) fails the node at once, with
-  S07-006, S05-062 or A06-008, and is never retried.
+- `Failed` (a call that could not be made: `ErrorKind` `plan`, `steps`, `compose` or `engine`) fails the node at once, with
+  S07-006, S05-062, A06-008 or A11-008 (the engine failed reading the body), and is never retried.
 - The agent row's `Detail` carries `retries` in part 08 § 4's shape (`{ atUtc, waitMs, kind, error }`, `kind`
   `capacity` or `service`, `error` `timeout`, `5xx` or `connection`) and `invalid` (`{ reason, action, attempts }`,
   or null).
@@ -1454,7 +1454,8 @@ Area 06 adds these area sentences, in `V31Contract` and the conformance README:
 - A06-005 (a reply that does not fit);
 - A06-006 (a source that is not a list);
 - A06-007 (a `case` value no branch lists, with no `else`);
-- A06-008 (a body that fails to render, `RunSentences.CouldNotRender`).
+- A06-008 (a body that fails to render on what it reads, `RunSentences.CouldNotRender`); an engine fault while rendering is
+  A11-008 instead (`RunSentences.EngineFailedRendering`, #1508).
 
 The engine says A06-004 and A06-009 to A06-013 (see the engine guide). A06-003 and A06-005 do not name the
 function they are said in.
@@ -2143,7 +2144,7 @@ failed render, kept for a blocked or held one), and the entry's `Delivery` and `
 | State | When | Reason | The job |
 |---|---|---|---|
 | `Skipped` | its `if` did not hold | `skipped: <printed if> is false`, as every skipped row | goes on |
-| `Failed` | its render failed, or it composed empty under `whenEmpty: fail` | A06-008, or A08-005 *"Deliverable '<id>' was empty, and the workflow fails an empty <label>."* (`<id>` the entry's id, `<label>` as written) | fails |
+| `Failed` | its render failed, or it composed empty under `whenEmpty: fail` | A06-008 (A11-008 when the engine failed reading the body), or A08-005 *"Deliverable '<id>' was empty, and the workflow fails an empty <label>."* (`<id>` the entry's id, `<label>` as written) | fails |
 | `Held` | composed empty under `hold` | S08-003, `held: empty` | goes on |
 | `Blocked` | composed, and its gate check did not pass | S08-007, `blocked: check '<id>' failed (<detail>)`; or, when the gate could not run, S08-008, `blocked: check '<id>' could not run (<error>)` | goes on |
 | `Released` | composed, and its check passed, was skipped by its own `if`, or it has none | `null`, or S06-006, `released: check '<id>' didn't apply (its if was false)` | goes on |
@@ -2252,11 +2253,11 @@ Area 08 says these, besides the rows of `sentences.json` the earlier sections na
 A sentence with a row in `sentences.json` is that row with its `<…>` filled. A08-001 to A08-006 have no row: they are
 `V31Contract.ChecksAreaSentences`, and the content repo's conformance README lists each with where it is said. The
 rules that part 06 states and another part already says (R-C5, R-C6, R-C8, R-C9, R-D1, R-D3, R-D8, R-D9, R-D12,
-R-D13, R-F1 to R-F5) keep that part's id: one rule, one sentence. A08-006 is the engine's, not the author's: a
+R-D13, R-F1 to R-F5) keep that part's id: one rule, one sentence. A08-006 is the engine's, not the author's (its audience is the operator: #1508): a
 template the reader fails on with an exception other than Scriban's own for unreadable text
 (`ScriptRuntimeException`, `InsufficientExecutionStackException`, which stay A07-005). The publish refusal carries
 the exception's type on `SourceRefusal.EngineFault` (not serialised), `Composition` and `RenderOutcome` carry it too,
-and the engine logs it (engine guide); at run time the node fails with A06-008, never S07-006. A07-013 holds at every
+and the engine logs it (engine guide); at run time the node fails with A11-008 (*"<Subject> couldn't be rendered because the engine failed. Tell the operator."*, `RunSentences.EngineFailedRendering`), never A06-008 or S07-006. A07-013 holds at every
 depth: in a loop over a loop's `.items`, the `item` and every read along the chain to the folder item (`item.item`
 one loop down, `item.item.value.item` two) carries its body.
 

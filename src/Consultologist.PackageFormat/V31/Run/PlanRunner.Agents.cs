@@ -106,6 +106,7 @@ public sealed partial class PlanRunner
                     {
                         "steps" => RunSentences.StoppedRendering(Subject(instance), limits.RenderSteps),
                         "compose" => RunSentences.CouldNotRender(Subject(instance)),
+                        "engine" => RunSentences.EngineFailedRendering(Subject(instance)),
                         _ => ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence,
                     });
                     return;
