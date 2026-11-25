@@ -228,9 +228,9 @@ public static class TestExpectations { public static TestMismatch? First(RunPlan
 public static class TestOutcome    { public static string Hash(OfflineResult result); }   // D8
 ```
 
-- [ ] **Step 1: Failing tests,** one passing and one failing per member of § 8.3's table, on a small compiled fixture (reuse `tests/V31Run` fixtures: a loop, a `while`, a `case`, a check loop, a gated deliverable): `ran`, `skipped` (by condition; not run by `until`; not run by `max`), `decisions` (boolean and branch id, by part 08 § 5's decision ids as `RunDecision` carries them), `loops` (`count`; `passes` and `stopped`), `values` (canonical JSON equality: `1.0` equals `1`, member order ignored), `prompts` (`text` and `hash`; a mismatch reports hashes both ways), `checks` (`pass`), `deliverables` (state with `text`, with `hash`, and `{ "state": "skipped" }` alone; `failed` expected and got passes a run that failed through that deliverable's `fail`). Ordering (D7): two failing expectations report the earlier member, then the lower key. `OutcomeHash_IsTheSame_ForTwoRunsOfOneTest` and `…_Differs_WhenAStubChangesAPrompt`.
-- [ ] **Step 2 to 4: Run, implement, run.**
-- [ ] **Step 5: Commit** `PackageFormat (#1508): a test's expectations, its first mismatch and its outcome hash`; push.
+- [x] **Step 1: Failing tests,** one passing and one failing per member of § 8.3's table, on a small compiled fixture (reuse `tests/V31Run` fixtures: a loop, a `while`, a `case`, a check loop, a gated deliverable): `ran`, `skipped` (by condition; not run by `until`; not run by `max`), `decisions` (boolean and branch id, by part 08 § 5's decision ids as `RunDecision` carries them), `loops` (`count`; `passes` and `stopped`), `values` (canonical JSON equality: `1.0` equals `1`, member order ignored), `prompts` (`text` and `hash`; a mismatch reports hashes both ways), `checks` (`pass`), `deliverables` (state with `text`, with `hash`, and `{ "state": "skipped" }` alone; `failed` expected and got passes a run that failed through that deliverable's `fail`). Ordering (D7): two failing expectations report the earlier member, then the lower key. `OutcomeHash_IsTheSame_ForTwoRunsOfOneTest` and `…_Differs_WhenAStubChangesAPrompt`.
+- [x] **Step 2 to 4: Run, implement, run.**
+- [x] **Step 5: Commit** `PackageFormat (#1508): a test's expectations, its first mismatch and its outcome hash`; push.
 
 ### Task 13: Running a package's tests
 
