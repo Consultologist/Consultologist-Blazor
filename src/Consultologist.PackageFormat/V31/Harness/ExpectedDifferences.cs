@@ -61,14 +61,19 @@ public static class ExpectedDifferences
             "R2, ruled by the owner on #1507, 2026-11-20; part 10 § 3.2; part 04 § 2.4",
             "a fanned input with no entries settles at 0 items and the job runs, where 30 refused the start; the texts it then gives are 31's alone")
         {
-            Case = c => EmptyInputListCaptures.Contains((c.Package, c.Scenario))
+            // R2 rules that these runs complete: a text only 31 has is explained only when the 31 run completed (final review B3).
+            Case = c => EmptyInputListCaptures.Contains((c.Package, c.Scenario)) && c.Run31.State == RunState.Completed
                 && (IsStatus(c, ByteEquivalence.Refused, nameof(RunState.Completed)) || (c.Kind != ComparedKind.Status && c.OldText is null)),
         },
         new("skipped-deliverable-reads-null",
             "R4 item 1, ruled by the owner on #1507, 2026-11-21; part 10 § 3.2; part 04",
             "reading .content of a deliverable skipped by its if reads null and no longer fails the job; the texts after the read are 31's alone")
         {
-            Case = c => ReadSkippedDeliverable(c) && (IsStatus(c, nameof(RunState.Failed), nameof(RunState.Completed)) || (c.Kind != ComparedKind.Status && c.OldText is null)),
+            // Final review B3: only when the 31 run completed, and for a text, only a deliverable only 31 has: 30 read a
+            // deliverable's .content only while composing deliverables (a deliverable's macro), after every node had run,
+            // so what its failure left out is the deliverables after the read; a prompt or a rendered text only 31 has is not.
+            Case = c => ReadSkippedDeliverable(c) && c.Run31.State == RunState.Completed
+                && (IsStatus(c, nameof(RunState.Failed), nameof(RunState.Completed)) || (c.Kind == ComparedKind.Deliverable && c.OldText is null)),
         },
         new("required-blank-refused",
             "R4 item 6, ruled by the owner on #1507, 2026-11-21; part 10 § 3.2",
