@@ -209,7 +209,9 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 |---|---|---|---|---|
 | `id` | string | never | every entry | the bare id (the file or folder name) |
 | `parent` | string | allowed | every entry | the enclosing flow node's rooted key; `null` at the top level (of the package, or of a function). Not `in`, which a loop's header uses for its source |
-| `nodes` | array of string | never | `for`, `while`, branches | the children's rooted keys, in order |
+| `nodes` | array of string | never | `for`, `while`, `if`, `case` | the children's rooted keys, in order |
+| `then`, `else` | object `{ nodes, ret }` | `else` allowed | `if` (`then`, `else`), `case` (`else`) | each body as compiled: `nodes` the body's rooted keys in order and `ret` the rooted key it returns (`null` for an empty body); `else` is `null` when there is none |
+| `branches` | array of `{ when, nodes, ret }` | never | `case` | each branch in order: `when` the subject's values it takes (an array of text), then `nodes` and `ret` as above |
 | `ret` | string | allowed | `for`, `while`, `if`, `case`, functions | the returned node's rooted key; `null` on an `if` and a `case`, whose `then`, `else` and `branches` each hold their own `{ nodes, ret }` |
 | `reads` | array of string | never | every entry | every path the entry reads (header and body), canonical and sorted: `node.plan.value`, `input.consult_draft.content`, `item.value.point`, `run.date`, `profile.signature`, … Snippet and macro body reads count as the placing node's ([part 05](05-templates-and-macros.md)) |
 | `runDependent` | boolean | never | every entry | `true` when anything the entry reads is a `run.*` fact or a run-dependent value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
@@ -566,8 +568,7 @@ In order:
       `{ "specVersion": 31, "resolveHash": "sha256:…", "lockHash": "sha256:…" }`, the two hashes `resolve.json` and
       `lock.json` must have. It is canonical, holds no time, and gains one member, `migratedFrom` (a string:
       the old version), when the operator's migration publishes the package ([part 10 § 1.5](10-migration-and-tools.md#15-account-packages-by-the-operator)). Its schema,
-      `publish-stamp.schema.json`, refuses any other member; the reader ignores
-      them.
+      `publish-stamp.schema.json`, refuses any other member; the reader ignores any other member.
 
    Every hash is taken from final bytes. **A version exists only once stamped:** the engine and
    the registry ignore a folder without the stamp, so a publish that dies partway can be retried
