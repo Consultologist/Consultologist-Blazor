@@ -269,8 +269,9 @@ public class ExpectedDifferencesTests
     public void MacroTrailingWhitespace_ExplainsAMacroBodys31Rule()
     {
         // R5: a macro body ending "…here.\n\n" keeps one line end at 31 (its final one dropped), where 30 trimmed it: one
-        // more line end right after the macro's last word.
-        var migrated = WithMacro("macros/closing.md", "Please send an updated referral here.\n\n");
+        // more line end right after the macro's last word. composer-macros (edited): sections_note reads section_loop,
+        // whose section_draft places macro.section_close, so its body can stand in the deliverable (final review B4).
+        var migrated = WithMacro("composer-macros", "macros/section_close.md", "Please send an updated referral here.\n\n");
         const string Old = "Letter.\n\nPlease send an updated referral here.\n\nDr A. Sample";
         Assert.StartsWith("macro-trailing-whitespace: ", Explain(MacroContext(migrated, Old, "Letter.\n\nPlease send an updated referral here.\n\n\nDr A. Sample")));
 
@@ -279,8 +280,14 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(MacroContext(migrated, Old, "Letter.\n\n\nPlease send an updated referral here.\n\nDr A. Sample")));
         Assert.Null(ExpectedDifferences.Explain(MacroContext(migrated, Old, "Letter.\n\nPlease send an updated referral here.\n\n\n\nDr A. Sample")));
         Assert.Null(ExpectedDifferences.Explain(MacroContext(migrated, Old, "Letter.\n\nPlease send an updated referral here. \n\nDr A. Sample")));
-        Assert.Null(ExpectedDifferences.Explain(MacroContext(WithMacro("snippets/closing.md", "Please send an updated referral here.\n"), Old, "Letter.\n\nPlease send an updated referral here.\n\n\nDr A. Sample")));
-        Assert.Null(ExpectedDifferences.Explain(MacroContext(WithMacro("macros/closing.md", "Please send {{ snippet.x.content }}\n\n"), Old, "Letter.\n\nPlease send an updated referral here.\n\n\nDr A. Sample")));
+        Assert.Null(ExpectedDifferences.Explain(MacroContext(WithMacro("composer-macros", "snippets/section_close.md", "Please send an updated referral here.\n"), Old, "Letter.\n\nPlease send an updated referral here.\n\n\nDr A. Sample")));
+        Assert.Null(ExpectedDifferences.Explain(MacroContext(WithMacro("composer-macros", "macros/section_close.md", "Please send {{ snippet.x.content }}\n\n"), Old, "Letter.\n\nPlease send an updated referral here.\n\n\nDr A. Sample")));
+
+        // Near (B4): a row whose text cannot hold the macro's body (signed_only reads letter_body, which places no macro),
+        // and a macro no row places (example-classifier-scope's decline_letter, a closing macro added by hand).
+        Assert.Null(ExpectedDifferences.Explain(MacroContext(migrated, Old, "Letter.\n\nPlease send an updated referral here.\n\n\nDr A. Sample", key31: "deliverable.signed_only")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, "Letter.\n\nPlease send an updated referral here.\n\n\nDr A. Sample", "example-classifier-scope", "out-of-scope",
+            migrated: WithMacro("example-classifier-scope", "macros/closing.md", "Please send an updated referral here.\n\n"), key31: "deliverable.decline_letter")));
 
         // With the escape (the signature, read from the profile, is plain text in a Markdown deliverable), both rules are named.
         var both = Explain(MacroContext(migrated, Old, "Letter.\n\nPlease send an updated referral here.\n\n\n" + MarkdownEscape.Escape("Dr A. Sample"), Request(null, signature: "Dr A. Sample")));
@@ -350,13 +357,15 @@ public class ExpectedDifferencesTests
         new(package, scenario, $"{package}/{scenario}#{key31}", kind, null, key31, old, now,
             Capture("Completed", null), Run(RunState.Completed), EquivalenceFixture.Migrated(package), EquivalenceFixture.Plan(package));
 
-    private static DifferenceContext MacroContext(Migration31Result migrated, string old, string now, OfflineRequest? request = null) =>
-        Context(ComparedKind.Deliverable, old, now, "example-classifier-scope", "out-of-scope", migrated: migrated, key31: "deliverable.decline_letter", request: request);
+    /// <summary>A deliverable of composer-macros (edited, Task 16), so its own plan is read.</summary>
+    private static DifferenceContext MacroContext(Migration31Result migrated, string old, string now, OfflineRequest? request = null, string key31 = "deliverable.sections_note") =>
+        new("composer-macros", "default", $"composer-macros/default#{key31}", ComparedKind.Deliverable, null, key31, old, now,
+            Capture("Completed", null), Run(RunState.Completed), migrated, EquivalenceFixture.Plan("composer-macros"), request);
 
-    /// <summary>example-classifier-scope as migrated, with one more file holding a 30 macro's body (<see cref="Migration31Result.MacroBodies"/>).</summary>
-    private static Migration31Result WithMacro(string path, string body)
+    /// <summary><paramref name="package"/> as compared, with <paramref name="path"/> holding a 30 macro's body (<see cref="Migration31Result.MacroBodies"/>).</summary>
+    private static Migration31Result WithMacro(string package, string path, string body)
     {
-        var migrated = EquivalenceFixture.Migrated("example-classifier-scope");
+        var migrated = EquivalenceFixture.Migrated(package);
         var files = new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal)
         {
             [path] = "---\n{\"label\":\"Closing\",\"description\":null,\"if\":null,\"format\":\"markdown_block\",\"instruction\":[]}\n---\n" + body,
