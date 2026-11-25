@@ -124,6 +124,19 @@ public class PublishReportTests
         Assert.False(ResolveFixture.PinnedSchema("publish-report").Validate(json.ToJsonString(), null));
     }
 
+    /// <summary>
+    /// D4 and part 07 § 9: the CI script writes <c>ci &lt;tag&gt;</c>; the pinned schema accepts it, and still refuses a
+    /// <c>ci</c> with nothing after its space.
+    /// </summary>
+    [Fact]
+    public void ACiPublishWithItsTag_FitsTheSchema()
+    {
+        var schema = ResolveFixture.PinnedSchema("publish-report");
+
+        Assert.True(schema.Validate((Published() with { PublishedBy = "ci v2026.12.1" }).ToJson().ToJsonString(), null));
+        Assert.False(schema.Validate((Published() with { PublishedBy = "ci " }).ToJson().ToJsonString(), null));
+    }
+
     [Fact]
     public void ANullArgument_Throws_AndNothingElseDoes()
     {
