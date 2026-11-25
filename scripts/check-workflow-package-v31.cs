@@ -140,7 +140,7 @@ if (tag != null && upload.TryGetValue("manifest.json", out var manifestBytes) &&
 
 if (outFolder != null)
 {
-    var outRoot = Path.GetFullPath(outFolder);
+    var outRoot = OutRoot(outFolder);
     if (File.Exists(Path.Combine(outRoot, PublishedStamp.FileName)))
     {
         Console.Error.WriteLine($"error: {outRoot} holds a stamp ({PublishedStamp.FileName}); a stamped version is never written into.");
@@ -182,7 +182,7 @@ if (outFolder == null)
 
 try
 {
-    var outRoot = Path.GetFullPath(outFolder);
+    var outRoot = OutRoot(outFolder);
     foreach (var file in outcome.Files)
         WriteInto(outRoot, file.Path, file.Bytes);
 
@@ -195,7 +195,7 @@ catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or I
     return 2;
 }
 
-Console.Error.WriteLine($"published: {outcome.Report.Name}@{outcome.Report.Version} written to {Path.GetFullPath(outFolder)} ({outcome.Files.Count + 1} files, {PublishedStamp.FileName} last).");
+Console.Error.WriteLine($"published: {outcome.Report.Name}@{outcome.Report.Version} written to {OutRoot(outFolder)} ({outcome.Files.Count + 1} files, {PublishedStamp.FileName} last).");
 return 0;
 
 // ---- helpers ------------------------------------------------------------------------------------------------------------
@@ -207,6 +207,9 @@ static string? FindRepo(string start)
         dir = dir.Parent;
     return dir?.FullName;
 }
+
+/// <summary>The out folder's full path without a trailing separator, so "out/" and "out" are one folder and the containment check below holds.</summary>
+static string OutRoot(string outFolder) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(outFolder));
 
 static void WriteInto(string outRoot, string relative, byte[] bytes)
 {
