@@ -116,8 +116,12 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
                 .ToList());
     }
 
-    /// <summary>A schema that a text holding a line ending fits: what a <c>markdown_inline</c> text is held not to fit.</summary>
-    private static JsonObject LineEnding() => new() { ["pattern"] = "[\\r\\n]" };
+    /// <summary>
+    /// A schema that a text holding a line ending fits: what a <c>markdown_inline</c> text is held not to fit. Typed
+    /// <c>string</c>, since <c>pattern</c> alone fits every value that is not a string, so its <c>not</c> would refuse a
+    /// nullable one's <c>null</c> (#1507 final review C1).
+    /// </summary>
+    private static JsonObject LineEnding() => new() { ["type"] = "string", ["pattern"] = "[\\r\\n]" };
 
     /// <summary>
     /// D21: gives each <c>markdown_inline</c> schema in <paramref name="node"/> (the text kind its own annotations give,
