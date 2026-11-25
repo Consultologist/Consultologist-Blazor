@@ -146,11 +146,11 @@ A task that needs another sentence adds the next id and records it.
 
 **Interfaces:** Produces: the schema every later golden validates against. The stamp: `{ "specVersion": 31, "resolveHash", "lockHash", "migratedFrom"?: string }`, other members refused by the schema (the reader still ignores them).
 
-- [ ] **Step 1: List what the compiler writes.** Run the compiled goldens through a throwaway script that collects every member name per entry kind, and compare with part 07 § 2.5 and the schema. The ruled list (R3) is the minimum; name anything else found.
-- [ ] **Step 2: Write part 07** (a row per member in § 2.5's tables: `names`, `placements` with its five members, `runSpots.unit`, `runSpots.neutral`, `plainConverts`, `derivedFrom` in § 2.2, `"ret": null` on `if` and `case`, embedded built-in renderers in § 2.2's `renderers` row; § 5 step 4.6 names `publish.json`'s members) and the schema. **Do not close `entry` yet** (Task 9 does, after the goldens settle).
-- [ ] **Step 3: `check-v31.py`:** a guard that every member name the schema's entry definitions name appears in `package-format-v31.md`, and the same for the record's member names (#1508 comment 4 item 7, last bullet: "guards the new compiled and record member names"); a `publish-stamp` schema group.
-- [ ] **Step 4: Run** `python3 scripts/check-v31.py`; here `--filter "FullyQualifiedName~V31"` after moving the pin (the compiled goldens must still validate).
-- [ ] **Step 5: Commit** there and here (`Docs (#1508): part 07 names every compiled member`); push both.
+- [x] **Step 1: List what the compiler writes.** Run the compiled goldens through a throwaway script that collects every member name per entry kind, and compare with part 07 § 2.5 and the schema. The ruled list (R3) is the minimum; name anything else found.
+- [x] **Step 2: Write part 07** (a row per member in § 2.5's tables: `names`, `placements` with its five members, `runSpots.unit`, `runSpots.neutral`, `plainConverts`, `derivedFrom` in § 2.2, `"ret": null` on `if` and `case`, embedded built-in renderers in § 2.2's `renderers` row; § 5 step 4.6 names `publish.json`'s members) and the schema. **Do not close `entry` yet** (Task 9 does, after the goldens settle).
+- [x] **Step 3: `check-v31.py`:** a guard that every member name the schema's entry definitions name appears in `package-format-v31.md`, and the same for the record's member names (#1508 comment 4 item 7, last bullet: "guards the new compiled and record member names"); a `publish-stamp` schema group.
+- [x] **Step 4: Run** `python3 scripts/check-v31.py`; here `--filter "FullyQualifiedName~V31"` after moving the pin (the compiled goldens must still validate).
+- [x] **Step 5: Commit** there and here (`Docs (#1508): part 07 names every compiled member`); push both.
 
 ### Task 7: Formats in the bundle reference each other by `$id`; `requires` stays minimal
 
