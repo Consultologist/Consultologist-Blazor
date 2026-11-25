@@ -10,7 +10,8 @@ namespace Consultologist.Api.Tests.V31Source;
 /// <c>package/</c> of the case's files byte for byte and the <c>expect.json</c> that
 /// <see cref="SourceCheck.Run"/> (the reader, then the type rules, #1500, area 03, then the expressions, #1501, area 04) gives — then sets the <c>refusal-packages</c> family's <c>cases</c> in
 /// <c>v31/conformance/index.json</c>, leaving every other byte of that file as it was. A no-op
-/// without the variable, as <see cref="ConformanceFixtureExport"/> is: it is a generator, not a check.
+/// without the variable, as <see cref="ConformanceFixtureExport"/> is: it is a generator, not a check. #1508 (area 11):
+/// each case as <see cref="RefusalPackages.Judge"/> judges it, an <c>A11-</c> case through publish's compiler too.
 /// </summary>
 [Collection("V31 conformance export")] // #1505: the exporters each rewrite v31/conformance/index.json, so they run one at a time.
 public class RefusalPackagesExport
@@ -42,8 +43,8 @@ public class RefusalPackagesExport
                     File.WriteAllBytes(file, bytes);
                 }
 
-                var result = SourceCheck.Run(files, registry);
-                File.WriteAllText(Path.Combine(folder, "expect.json"), RefusalPackages.Expect(refusalCase.About, result.Refusals), Utf8NoBom);
+                var result = RefusalPackages.Judge(refusalCase.Id, files, registry);
+                File.WriteAllText(Path.Combine(folder, "expect.json"), RefusalPackages.Expect(refusalCase.About, result), Utf8NoBom);
                 cases.Add($"{refusalCase.Id}/{side}");
             }
         }

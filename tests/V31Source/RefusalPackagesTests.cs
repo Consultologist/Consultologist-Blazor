@@ -22,6 +22,8 @@ namespace Consultologist.Api.Tests.V31Source;
 /// <c>TemplatesNotShipped</c>.
 /// #1505 (specVersion 31, area 08): and of <see cref="CheckSentences"/> and <see cref="DeliverableSentences"/>, except
 /// <c>ChecksNotShipped</c>.
+/// #1508 (specVersion 31, area 11): an <c>A11-</c> case is judged as publish judges it (<see cref="RefusalPackages.Judge"/>:
+/// the check, then the compiler against the engine's default limits), so A11-001 and A11-003, the compiler's, have cases.
 /// </summary>
 public class RefusalPackagesTests
 {
@@ -62,7 +64,8 @@ public class RefusalPackagesTests
     /// in uses and never names); a package that gets it is accepted. (#1504, area 07: S04-063, a macro placed in a
     /// function whose if reads a node the function lacks, is judged through the dialect's reads, and has its case.) S04-072,
     /// S04-073, S04-079 and S04-080: part 04 § 10.2's notes, measured against the engine's limits (<c>PublishNotes</c>,
-    /// D11); a package that gets them is accepted.
+    /// D11); a package that gets them is accepted. #1508 (area 11; D16): so is S09-016, the worst case's minutes noted
+    /// against the job limit.
     /// Part 07 § 10's sentences, none a publish refusal of a package source (D10): S07-003, S07-004 and S07-005 are said at
     /// job start, of <c>requires</c> and the lock against an engine (<c>RequiresCheck.Engine</c>), and S06-031 and S06-032
     /// at job start, of <c>needs.profile</c> against the account's profile (<c>RequiresCheck.Profile</c>); S07-006 and
@@ -71,7 +74,7 @@ public class RefusalPackagesTests
     /// </summary>
     private static readonly string[] ResolveNotShipped =
     [
-        "S04-072", "S04-073", "S04-074", "S04-079", "S04-080",
+        "S04-072", "S04-073", "S04-074", "S04-079", "S04-080", "S09-016",
         "S06-031", "S06-032", "S07-003", "S07-004", "S07-005", "S07-006", "S07-015", "S07-016", "S07-017",
     ];
 
@@ -114,14 +117,14 @@ public class RefusalPackagesTests
         var registry = V31Contract.PublishedTypes();
         foreach (var refusalCase in RefusalPackages.All())
         {
-            var valid = SourceCheck.Run(refusalCase.Valid, registry);
-            Assert.True(valid.Refusals.Count == 0,
-                $"{refusalCase.Id} valid: {string.Join(" | ", valid.Refusals.Select(r => $"{r.Id} {r.Sentence}"))}");
+            var valid = RefusalPackages.Judge(refusalCase.Id, refusalCase.Valid, registry);
+            Assert.True(valid.Count == 0,
+                $"{refusalCase.Id} valid: {string.Join(" | ", valid.Select(r => $"{r.Id} {r.Sentence}"))}");
 
-            var invalid = SourceCheck.Run(refusalCase.Invalid, registry);
-            Assert.True(invalid.Refusals.Count == 1 && invalid.Refusals[0].Id == refusalCase.Id,
-                $"{refusalCase.Id} invalid: {string.Join(" | ", invalid.Refusals.Select(r => $"{r.Id} {r.Sentence}"))}");
-            V31Contract.AssertSentence(invalid.Refusals[0]);
+            var invalid = RefusalPackages.Judge(refusalCase.Id, refusalCase.Invalid, registry);
+            Assert.True(invalid.Count == 1 && invalid[0].Id == refusalCase.Id,
+                $"{refusalCase.Id} invalid: {string.Join(" | ", invalid.Select(r => $"{r.Id} {r.Sentence}"))}");
+            V31Contract.AssertSentence(invalid[0]);
             Assert.False(string.IsNullOrWhiteSpace(refusalCase.About), $"{refusalCase.Id} has no about.");
         }
     }
@@ -210,12 +213,12 @@ public class RefusalPackagesTests
         {
             var name = Path.GetRelativePath(V31Contract.RefusalPackagesFolder(), folder).Replace('\\', '/');
             var expect = JsonNode.Parse(File.ReadAllText(Path.Combine(folder, "expect.json")))!;
-            var result = SourceCheck.Run(ReadPackage(Path.Combine(folder, "package")), registry);
+            var result = RefusalPackages.Judge(name.Split('/')[0], ReadPackage(Path.Combine(folder, "package")), registry);
 
-            Assert.True((bool)expect["valid"]! == (result.Refusals.Count == 0), $"{name}: valid disagrees with the checker.");
+            Assert.True((bool)expect["valid"]! == (result.Count == 0), $"{name}: valid disagrees with the checker.");
             Assert.Equal(
                 expect["sentences"]!.AsArray().Select(s => (string)s!).ToList(),
-                result.Refusals.Select(r => r.Sentence).ToList());
+                result.Select(r => r.Sentence).ToList());
         }
     }
 
@@ -242,7 +245,7 @@ public class RefusalPackagesTests
                     && files.All(f => package[f.Key].AsSpan().SequenceEqual(f.Value)),
                     $"{refusalCase.Id}/{side}: the pinned package is not the case's files, byte for byte.");
 
-                var expected = RefusalPackages.Expect(refusalCase.About, SourceCheck.Run(files, registry).Refusals);
+                var expected = RefusalPackages.Expect(refusalCase.About, RefusalPackages.Judge(refusalCase.Id, files, registry));
                 Assert.Equal(expected, File.ReadAllText(Path.Combine(folder, "expect.json"), Encoding.UTF8));
             }
         }
