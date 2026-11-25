@@ -47,6 +47,17 @@ internal sealed class FakeRegistry : IRegistryFiles, IWorkflowPackageVersions
         return Task.FromResult(Blobs.TryGetValue(path, out var bytes) ? bytes : null);
     }
 
+    /// <summary>#1508 (area 11, Task 19): the paths under <paramref name="prefix"/>, ordinal-sorted; a listing counts as a read of the prefix.</summary>
+    public Task<IReadOnlyList<string>> ListAsync(string packageName, string prefix, CancellationToken ct)
+    {
+        Assert.StartsWith(packageName + "/", prefix, StringComparison.Ordinal);
+        _reads.Enqueue(prefix);
+        if (ReadFailure != null)
+            return Task.FromException<IReadOnlyList<string>>(ReadFailure);
+        return Task.FromResult<IReadOnlyList<string>>(
+            Blobs.Keys.Where(path => path.StartsWith(prefix, StringComparison.Ordinal)).OrderBy(path => path, StringComparer.Ordinal).ToList());
+    }
+
     public async Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
     {
         await Change("write", accountKind, path);

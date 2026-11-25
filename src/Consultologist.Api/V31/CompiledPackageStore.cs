@@ -25,6 +25,13 @@ public interface IRegistryFiles
     /// </summary>
     Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct);
 
+    /// <summary>
+    /// #1508 (area 11): the paths of the blobs whose path starts with <paramref name="prefix"/>, in the container that holds
+    /// <paramref name="packageName"/> (the first of its containers that has any, as <see cref="TryReadAsync"/> reads),
+    /// ordinal-sorted; empty when none has any.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListAsync(string packageName, string prefix, CancellationToken ct);
+
     /// <summary>Writes <paramref name="bytes"/> at <paramref name="path"/> with <paramref name="contentType"/>, replacing any blob there.</summary>
     Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct);
 
@@ -149,6 +156,31 @@ public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory contai
         {
             // no longer ours, or storage failed: an unreleased lease expires on its own
         }
+    }
+
+    public async Task<IReadOnlyList<string>> ListAsync(string packageName, string prefix, CancellationToken ct)
+    {
+        foreach (var container in containers.GetContainersFor(packageName))
+        {
+            var paths = new List<string>();
+            try
+            {
+                await foreach (var blob in container.GetBlobsAsync(prefix: prefix, cancellationToken: ct))
+                    paths.Add(blob.Name);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // no such container: nothing in it
+            }
+
+            if (paths.Count > 0)
+            {
+                paths.Sort(StringComparer.Ordinal);
+                return paths;
+            }
+        }
+
+        return [];
     }
 
     public async Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct)

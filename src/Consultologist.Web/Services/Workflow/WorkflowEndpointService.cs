@@ -382,7 +382,13 @@ public record WorkflowPackageContentResponse(
     string Version,
     int SpecVersion,
     JsonElement Manifest,
-    Dictionary<string, string> Files)
+    Dictionary<string, string> Files,
+    // #1508 (specVersion 31, area 11): mirrors the Api's trailing members; unused here until area 12.
+    JsonElement? Resolve = null,
+    JsonElement? Lock = null,
+    JsonElement? PublishReport = null,
+    string? MigratedFrom = null,
+    IReadOnlyList<string>? Notices = null)
 {
     public string Ref => $"{Name}@{Version}";
 }

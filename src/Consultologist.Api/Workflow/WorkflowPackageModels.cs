@@ -220,7 +220,14 @@ public sealed record WorkflowPackageContentResponse(
     string Version,
     int SpecVersion,
     JsonElement Manifest,
-    IReadOnlyDictionary<string, string> Files)
+    IReadOnlyDictionary<string, string> Files,
+    // #1508 (specVersion 31, area 11; D5, D14, D15): a stamped 31 version's evidence, parsed from the stored bytes, and the
+    // old version when the operator's migration published it; on an import, the notices said once (S07-016). Null below 31.
+    JsonElement? Resolve = null,
+    JsonElement? Lock = null,
+    JsonElement? PublishReport = null,
+    string? MigratedFrom = null,
+    IReadOnlyList<string>? Notices = null)
 {
     /// <summary>
     /// The response for a resolved manifest and its files; the manifest serialized once, canonically.

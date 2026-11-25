@@ -400,6 +400,9 @@ public class V31RegistryWriterTests
         public Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct) =>
             Turn(() => registry.TryReadAsync(packageName, path, ct));
 
+        public Task<IReadOnlyList<string>> ListAsync(string packageName, string prefix, CancellationToken ct) =>
+            Turn(() => registry.ListAsync(packageName, prefix, ct));
+
         public Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct) =>
             Turn(async () =>
             {

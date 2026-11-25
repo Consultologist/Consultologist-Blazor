@@ -28,6 +28,7 @@ public sealed class WorkflowPackages
     private readonly ILogger<WorkflowPackages> _logger;
     private readonly ICompiledPackageStore? _compiled;
     private readonly SpecVersionAdmission? _admission;
+    private readonly IRegistryFiles? _registry;
 
     public WorkflowPackages(
         IWorkflowPackageStore packageStore,
@@ -41,8 +42,11 @@ public sealed class WorkflowPackages
         ILogger<WorkflowPackages> logger,
         // #1508 (specVersion 31, area 11): the 31 load and the gate on it; null (a test) is today's path alone.
         ICompiledPackageStore? compiled = null,
-        SpecVersionAdmission? admission = null)
+        SpecVersionAdmission? admission = null,
+        // #1508 (Task 19): the registry's blobs, which Current/Content serves a stamped 31 version from.
+        IRegistryFiles? registry = null)
     {
+        _registry = registry;
         _compiled = compiled;
         _admission = admission;
         _ownership = ownership;
@@ -107,26 +111,7 @@ public sealed class WorkflowPackages
         }
         catch (WorkflowPackageSpecVersionException ex) when (ex.SpecVersion == Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion && _admission != null)
         {
-            // #1508 (Review Focus 4): a 31 pin that today's path met. With 31 not admitted (the preview setting unset) it is
-            // S09-001. Admitted, and the compiled load could not read the registry: nothing is known of the version, which
-            // may well be stamped, so the registry is unavailable, as today's path says it. Admitted, and the load found no
-            // stamp: the version isn't published (A06-004).
-            if (_admission.Runs31 && load is { Unreadable: true })
-            {
-                _logger.LogError("Workflow package resolution failed at 31. Pin={Pin}, Detail={Detail}", packageRef, load.OperatorDetail);
-                return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
-                    new { error = "Workflow package registry is unavailable." }, cancellationToken);
-            }
-
-            _logger.LogWarning("Workflow package is specVersion 31 and was not loaded at 31. Pin={Pin}, Admitted={Admitted}", packageRef, _admission.Runs31);
-            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
-                new
-                {
-                    error = _admission.Runs31
-                        ? CompiledPackageStore.NotPublished(packageRef.Name, packageRef.Version)
-                        : _admission.NotSupported(Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion),
-                },
-                cancellationToken);
+            return await NotLoadedAt31Async(req, packageRef, load, cancellationToken);
         }
         catch (InvalidOperationException ex)
         {
@@ -142,6 +127,33 @@ public sealed class WorkflowPackages
         await response.WriteAsJsonAsync(Describe(package), cancellationToken);
 
         return response;
+    }
+
+    /// <summary>
+    /// #1508 (Review Focus 4): a 31 version that today's path met, on a read endpoint. With 31 not admitted (the preview
+    /// setting unset) it is S09-001. Admitted, and the compiled <paramref name="load"/> could not read the registry: nothing
+    /// is known of the version, which may well be stamped, so the registry is unavailable, as today's path says it.
+    /// Admitted, and the load found no stamp: the version isn't published (A06-004).
+    /// </summary>
+    private async Task<HttpResponseData> NotLoadedAt31Async(
+        HttpRequestData req, WorkflowPackageRef packageRef, CompiledLoad? load, CancellationToken cancellationToken)
+    {
+        if (_admission!.Runs31 && load is { Unreadable: true })
+        {
+            _logger.LogError("Workflow package resolution failed at 31. Pin={Pin}, Detail={Detail}", packageRef, load.OperatorDetail);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
+                new { error = "Workflow package registry is unavailable." }, cancellationToken);
+        }
+
+        _logger.LogWarning("Workflow package is specVersion 31 and was not loaded at 31. Pin={Pin}, Admitted={Admitted}", packageRef, _admission.Runs31);
+        return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+            new
+            {
+                error = _admission.Runs31
+                    ? CompiledPackageStore.NotPublished(packageRef.Name, packageRef.Version)
+                    : _admission.NotSupported(Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion),
+            },
+            cancellationToken);
     }
 
     /// <summary>
@@ -424,10 +436,49 @@ public sealed class WorkflowPackages
         var packageRef = requested.Ref
             ?? await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
 
+        // #1508 (specVersion 31, area 11; part 09 § 8.2; D14): a version stamped 31 is served from its folder, on a
+        // deployment that runs 31 (the load reads nothing otherwise), after the access check above; a refusal of the load is
+        // its sentence. A version with no 31 stamp, or a registry that could not be read, is today's path's, as at Current.
+        var load = _compiled != null && _registry != null ? await _compiled.TryLoadAsync(packageRef, cancellationToken) : null;
+        if (load is { Unreadable: false })
+        {
+            if (load.Plan is { } plan)
+            {
+                WorkflowPackageContentResponse? content;
+                try
+                {
+                    content = await V31PackageContent.ReadAsync(_registry!, packageRef.Name, plan.Version, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The failure's type and status, never its message (which can carry a URI), as the 31 load logs it.
+                    _logger.LogError(
+                        "Workflow package content could not be read at 31. Ref={Ref}, Failure={Failure}, Status={Status}",
+                        packageRef, ex.GetType().Name, (ex as RequestFailedException)?.Status);
+                    return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
+                        new { error = "Workflow package registry is unavailable." }, cancellationToken);
+                }
+
+                return content != null
+                    ? await CreateJsonResponseAsync(req, HttpStatusCode.OK, content, cancellationToken)
+                    : await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                        new { error = CompiledPackageStore.NotPublished(packageRef.Name, plan.Version) }, cancellationToken);
+            }
+
+            _logger.LogWarning(
+                "Workflow package content could not be loaded at 31. Ref={Ref}, RefusalId={RefusalId}, Detail={Detail}",
+                packageRef, load.RefusalId, load.OperatorDetail ?? load.Refusal);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = load.Refusal }, cancellationToken);
+        }
+
         WorkflowPackage package;
         try
         {
             package = await _packageStore.ResolveAsync(packageRef, cancellationToken);
+        }
+        catch (WorkflowPackageSpecVersionException ex) when (ex.SpecVersion == Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion && _admission != null)
+        {
+            return await NotLoadedAt31Async(req, packageRef, load, cancellationToken);
         }
         // A package that is not there is not an outage. Asking for a pruned or
         // mistyped version used to answer "the registry is unavailable", which
@@ -831,7 +882,9 @@ public sealed class WorkflowPackages
             // The bytes are not a readable package (bad zip, no manifest.json,
             // unreadable manifest). Advisory content findings are NOT an error —
             // those come back with a 200 for the editor to show.
-            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = result.Error }, cancellationToken);
+            // #1508 (specVersion 31, area 11; D15): a 31 source refusal carries every sentence as errors, the first as error.
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                result.Errors is { } errors ? new { error = result.Error, errors } : (object)new { error = result.Error }, cancellationToken);
         }
 
         return await CreateJsonResponseAsync(req, HttpStatusCode.OK,

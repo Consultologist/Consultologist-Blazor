@@ -44,9 +44,32 @@ public static class WorkflowPackageArchive
     /// with a caller-surfaceable message on a directory/traversal entry or a cap
     /// breach; the caller (the editor import, or #858's server ingest) surfaces it.
     /// </summary>
-    public static IReadOnlyDictionary<string, string> Unzip(byte[] bytes)
+    public static IReadOnlyDictionary<string, string> Unzip(byte[] bytes) => Decode(UnzipBytes(bytes));
+
+    /// <summary>
+    /// #1508 (specVersion 31, area 11): each entry's text as <see cref="Unzip"/> reads it (UTF-8, a byte-order mark
+    /// detected and dropped, an invalid byte replaced), in the entries' order.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Decode(IReadOnlyDictionary<string, byte[]> entries)
     {
+        ArgumentNullException.ThrowIfNull(entries);
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (path, content) in entries)
+        {
+            using var reader = new StreamReader(new MemoryStream(content));
+            files[path] = reader.ReadToEnd();
+        }
+
+        return files;
+    }
+
+    /// <summary>
+    /// #1508 (specVersion 31, area 11): as <see cref="Unzip"/>, each entry's bytes as they are, for a 31 import, whose
+    /// intake judges the encoding itself (part 01 § 2.4). The same guards, thrown the same way.
+    /// </summary>
+    public static IReadOnlyDictionary<string, byte[]> UnzipBytes(byte[] bytes)
+    {
+        var files = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         using var buffer = new MemoryStream(bytes);
 
         ZipArchive archive;
@@ -93,8 +116,10 @@ public static class WorkflowPackageArchive
                     throw new InvalidDataException($"The package is larger than {MaxTotalBytes / (1024 * 1024)} MB uncompressed.");
                 }
 
-                using var reader = new StreamReader(entry.Open());
-                files[path] = reader.ReadToEnd();
+                using var stream = entry.Open();
+                using var content = new MemoryStream();
+                stream.CopyTo(content);
+                files[path] = content.ToArray();
             }
         }
 
