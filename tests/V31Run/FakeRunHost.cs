@@ -83,6 +83,15 @@ internal sealed class FakeRunHost(bool auto = false, RunPlan? plan = null) : IRu
         return this;
     }
 
+    private TimeSpan ruleTakes;
+
+    /// <summary>#1508: each rule evaluation moves the clock on by <paramref name="time"/> before it answers, as a slow host would.</summary>
+    public FakeRunHost RuleTakes(TimeSpan time)
+    {
+        ruleTakes = time;
+        return this;
+    }
+
     /// <summary>#1505 (R6): scripts the outcome of the rule <paramref name="member"/> of the row keyed <paramref name="key"/>.</summary>
     public FakeRunHost Rule(string key, string member, RuleOutcome outcome)
     {
@@ -155,6 +164,7 @@ internal sealed class FakeRunHost(bool auto = false, RunPlan? plan = null) : IRu
     public Task<RuleOutcome> EvaluateAsync(RuleCall call)
     {
         Rules.Add(call);
+        UtcNow += ruleTakes;
         if (ruleScript.TryGetValue((call.Key, call.Member), out var scripted))
             return Task.FromResult(scripted);
         Assert.True(plan != null, $"The fake host has no plan to evaluate {call.Key} {call.Member} over.");
