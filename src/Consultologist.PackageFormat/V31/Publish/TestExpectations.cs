@@ -38,8 +38,8 @@ public static class TestExpectations
             rows[row.Key] = row;
 
         return RunEnd(expect, result)
-            ?? RowStates(expect, "ran", rows, ran: true)
-            ?? RowStates(expect, "skipped", rows, ran: false)
+            ?? RowStates(plan, expect, "ran", rows, ran: true)
+            ?? RowStates(plan, expect, "skipped", rows, ran: false)
             ?? Decisions(expect, result)
             ?? Loops(expect, rows)
             ?? Values(expect, rows)
@@ -68,17 +68,17 @@ public static class TestExpectations
 
     // ---- ran, skipped --------------------------------------------------------------------------
 
-    private static TestMismatch? RowStates(JsonObject expect, string member, Dictionary<string, RunRow> rows, bool ran)
+    private static TestMismatch? RowStates(RunPlan plan, JsonObject expect, string member, Dictionary<string, RunRow> rows, bool ran)
     {
         if (expect[member] is not JsonArray keys)
             return null;
         foreach (var key in keys.Select(Text).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             rows.TryGetValue(key, out var row);
-            // A key with no row at all never ran: it holds for skipped, as an instance in a branch not taken does.
+            // No row holds for skipped only when the key names an entry of the plan (a child of a skipped or not-run container).
             var holds = ran
                 ? row?.State is RowState.Completed or RowState.Released
-                : row == null || row.State is RowState.Skipped or RowState.NotRun;
+                : row == null ? IsPlanEntry(plan, key) : row.State is RowState.Skipped or RowState.NotRun;
             if (!holds)
                 return new TestMismatch(member, key, member == "ran" ? "ran" : "skipped", RowWord(row));
         }
@@ -105,20 +105,30 @@ public static class TestExpectations
 
         foreach (var (id, wanted) in listed.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
+            decided.TryGetValue(id, out var found);
             string expected;
+            bool holds;
             if (wanted is JsonValue v && v.TryGetValue<bool>(out var flag))
+            {
                 expected = Word(flag);
+                holds = found is { Branch: null, Result: { } got } && got == flag;
+            }
             else if (Text(wanted) is { } branch)
+            {
                 expected = branch;
+                holds = found is { Branch: { } taken } && string.Equals(taken, branch, StringComparison.Ordinal);
+            }
             else
                 continue;
 
-            var actual = !decided.TryGetValue(id, out var found) ? NotRun
-                : found.Branch != null ? found.Branch
-                : found.Result is { } held ? Word(held)
-                : "undecided";
-            if (!string.Equals(expected, actual, StringComparison.Ordinal))
+            if (!holds)
+            {
+                var actual = found == null ? NotRun
+                    : found.Branch != null ? found.Branch
+                    : found.Result is { } held ? Word(held)
+                    : "undecided";
                 return new TestMismatch("decisions", id, expected, actual);
+            }
         }
 
         return null;
@@ -167,6 +177,7 @@ public static class TestExpectations
             var expected = CanonicalJson.Write(wanted);
             rows.TryGetValue(key, out var row);
             var actual = row == null ? NotRun
+                : row.Kind != PlanKind.Computed ? "not computed"
                 : TryValue(row, out var value) ? CanonicalJson.Write(value)
                 : RowWord(row);
             if (!string.Equals(expected, actual, StringComparison.Ordinal))
@@ -273,6 +284,33 @@ public static class TestExpectations
     }
 
     // ---- helpers -------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether <paramref name="key"/> (a row key) is of an entry of <paramref name="plan"/>: the key before <c>:</c> with any
+    /// <c>#n</c> removed is an entry's key, or goes through a call node into the function's own entries (<c>node.standards.section.patient_draft</c>).
+    /// </summary>
+    private static bool IsPlanEntry(RunPlan plan, string key)
+    {
+        var colon = key.IndexOf(':', StringComparison.Ordinal);
+        var entry = System.Text.RegularExpressions.Regex.Replace(colon < 0 ? key : key[..colon], "#[0-9]+", "");
+        return Resolves(plan, plan.Entries, entry);
+    }
+
+    private static bool Resolves(RunPlan plan, IReadOnlyDictionary<string, PlanEntry> entries, string key)
+    {
+        if (entries.ContainsKey(key))
+            return true;
+        foreach (var call in entries.Values)
+        {
+            if (call.Kind != PlanKind.Call || call.Function is not { } id || !plan.Functions.TryGetValue(id, out var function)
+                || !key.StartsWith(call.Key + ".", StringComparison.Ordinal))
+                continue;
+            if (Resolves(plan, function.Entries, "node" + key[call.Key.Length..]))
+                return true;
+        }
+
+        return false;
+    }
 
     private static string Word(string name) => name.ToLowerInvariant();
 

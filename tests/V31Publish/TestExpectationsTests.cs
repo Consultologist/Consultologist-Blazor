@@ -83,6 +83,30 @@ public class TestExpectationsTests
     }
 
     [Fact]
+    public async Task Skipped_Fails_ForAKeyThatNamesNoEntryOfThePlan()
+    {
+        var run = await Nested();
+
+        Assert.Equal(new TestMismatch("skipped", "node.pateint_letter", "skipped", "not run"), First(run, """{ "skipped": ["node.pateint_letter"] }"""));
+        Assert.Equal(new TestMismatch("skipped", "node.sections.outlnie:2", "skipped", "not run"), First(run, """{ "skipped": ["node.sections.outlnie:2"] }"""));
+        // an instance of a real entry that was never made (no row) holds: its item or pass does not exist
+        Assert.Null(First(run, """{ "skipped": ["node.sections.outline:9", "node.refine.judge#9"] }"""));
+    }
+
+    [Fact]
+    public async Task Skipped_ThroughACallNode_NeedsTheFunctionsEntry()
+    {
+        var run = await RunAsync(ResolveFixture.Functions());
+        var inside = run.Result.Rows.First(r => r.Key.Split(':')[0].Count(c => c == '.') >= 3 && r.Key.StartsWith("node.", StringComparison.Ordinal));
+        var entry = inside.Key.Split(':')[0];
+
+        Assert.Null(First(run, $$"""{ "skipped": ["{{entry}}:99"] }"""));
+        Assert.Equal(
+            new TestMismatch("skipped", entry + "x:99", "skipped", "not run"),
+            First(run, $$"""{ "skipped": ["{{entry}}x:99"] }"""));
+    }
+
+    [Fact]
     public async Task Skipped_Passes_ForItemsNotRunByMax()
     {
         var files = ResolveFixture.NestedNote()
@@ -107,6 +131,7 @@ public class TestExpectationsTests
         var run = await RunAsync(files, Stubs());
 
         Assert.Equal("until", (string?)run.Result.Rows.Single(r => r.Key == "node.sections").Detail["stopped"]);
+        Assert.Equal(RowState.NotRun, run.Result.Rows.Single(r => r.Key == "node.sections:2").State);
         Assert.Null(First(run, """{ "skipped": ["node.sections:2"] }"""));
         Assert.Equal(new TestMismatch("ran", "node.sections:2", "ran", "not run"), First(run, """{ "ran": ["node.sections:2"] }"""));
     }
@@ -123,6 +148,9 @@ public class TestExpectationsTests
         Assert.Equal(
             new TestMismatch("decisions", "node.refine/if:pass.2", "true", "false"),
             First(run, """{ "decisions": { "node.refine/if:pass.1": true, "node.refine/if:pass.2": true } }"""));
+        Assert.Equal(
+            new TestMismatch("decisions", "node.refine/if:pass.1", "true", "true"),
+            First(run, """{ "decisions": { "node.refine/if:pass.1": "true" } }"""));
         Assert.Equal(
             new TestMismatch("decisions", "node.refine/if:pass.3", "false", "not run"),
             First(run, """{ "decisions": { "node.refine/if:pass.3": false } }"""));
@@ -175,28 +203,46 @@ public class TestExpectationsTests
 
     // ---- values -------------------------------------------------------------------------------------------------
 
+    /// <summary>The nested note with a computed node <c>plan_copy</c> holding the plan's object.</summary>
+    private static Task<(RunPlan Plan, OfflineResult Result)> NestedWithCopy() =>
+        RunAsync(ResolveFixture.NestedNote()
+            .With("nodes/index.json", Index(["plan", "plan_copy", "section_count", "sections", "refine"]))
+            .With("nodes/plan_copy.md", Md(
+                Node("computed", "Copying the plan", "\"section_plan\"", true, true, "\"if\": null, \"expression\": { \"var\": \"node.plan.value\" }"),
+                "")), Stubs());
+
     [Fact]
     public async Task Values_AreComparedAsCanonicalJson_OneEqualsOnePointZero_AndMemberOrderIsIgnored()
     {
-        var run = await Nested();
+        var run = await NestedWithCopy();
 
         Assert.Null(First(run, """{ "values": { "node.section_count": 2 } }"""));
         Assert.Null(First(run, """{ "values": { "node.section_count": 2.0 } }"""));
         Assert.Null(First(run, """
-            { "values": { "node.plan": { "sections": [ { "kind": "narrative", "title": "History" }, { "title": "Plan", "kind": "table" } ] } } }
+            { "values": { "node.plan_copy": { "sections": [ { "kind": "narrative", "title": "History" }, { "title": "Plan", "kind": "table" } ] } } }
             """));
     }
 
     [Fact]
     public async Task Values_MismatchGivesTheCanonicalValuesOnBothSides()
     {
-        var run = await Nested();
+        var run = await NestedWithCopy();
 
         Assert.Equal(new TestMismatch("values", "node.section_count", "3", "2"), First(run, """{ "values": { "node.section_count": 3 } }"""));
         Assert.Equal(
-            new TestMismatch("values", "node.plan", """{"sections":[]}""", CanonicalJson.Write(JsonNode.Parse(TwoSections))),
-            First(run, """{ "values": { "node.plan": { "sections": [] } } }"""));
+            new TestMismatch("values", "node.plan_copy", """{"sections":[]}""", CanonicalJson.Write(JsonNode.Parse(TwoSections))),
+            First(run, """{ "values": { "node.plan_copy": { "sections": [] } } }"""));
         Assert.Equal(new TestMismatch("values", "node.nothing", "1", "not run"), First(run, """{ "values": { "node.nothing": 1 } }"""));
+    }
+
+    [Fact]
+    public async Task Values_AreOfComputedRowsOnly()
+    {
+        var run = await Nested();
+
+        Assert.Equal(
+            new TestMismatch("values", "node.plan", """{"sections":[]}""", "not computed"),
+            First(run, """{ "values": { "node.plan": { "sections": [] } } }"""));
     }
 
     // ---- prompts ------------------------------------------------------------------------------------------------
@@ -456,7 +502,7 @@ public class TestExpectationsTests
     }
 
     [Fact]
-    public async Task OutcomeHash_Differs_ForARunThatFailed_AndHoldsNoPromptText()
+    public async Task OutcomeHash_Differs_ForARunThatFailed()
     {
         var completed = await Nested();
         var failed = await RunAsync(ResolveFixture.NestedNote(), new Dictionary<string, JsonNode?>(StringComparer.Ordinal), strict: true);
