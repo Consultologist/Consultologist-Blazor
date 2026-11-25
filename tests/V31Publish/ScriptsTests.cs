@@ -17,9 +17,10 @@ namespace Consultologist.Api.Tests.V31Publish;
 /// runs a script as a process (a file-based app takes a build each time). What each script decides is the library's
 /// (<see cref="PackagePublish"/>), so these tests pin the pipeline's answers the scripts print and write from (the file order the
 /// stamp follows, S07-015 per dropped evidence file, a re-run's hashes against the stored report) and the scripts' text (their
-/// usage, exits and the lines that carry the behaviours). What stays covered by the recorded manual runs alone (the task report):
-/// the folder walk, the out-folder refusals, <c>--version</c> editing the manifest, the stamp written after the files, the
-/// trailing-separator out folder and the re-render's difference lines.
+/// usage, exits and the lines that carry the behaviours). What stays covered by the recorded manual runs alone (the task report
+/// and the final fix report): the folder walks (nested names, links skipped), the out-folder refusals, <c>--version</c>
+/// editing the manifest, the stamp written after the files, the trailing-separator out folder and the re-render's
+/// difference lines.
 /// </summary>
 public class ScriptsTests
 {
@@ -177,9 +178,44 @@ public class ScriptsTests
         var script = Script("rerender-workflow-packages-v31.cs");
 
         Assert.Contains("//   dotnet run -v q --file scripts/rerender-workflow-packages-v31.cs -- <folder of name/version folders>", script, StringComparison.Ordinal);
-        Assert.Contains("// Exit codes: 0 no difference; 1 at least one difference; 2 usage or environment.", script, StringComparison.Ordinal);
+        Assert.Contains("// Exit codes: 0 no difference; 1 at least one difference; 2 usage or environment, or no stamped 31 version found.", script, StringComparison.Ordinal);
         Assert.Contains("PackagePublish.CheckAsync(upload, options)", script, StringComparison.Ordinal);
         Assert.Contains("resolveHash was", script, StringComparison.Ordinal);
         Assert.Contains("outcomeHash was", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRerenderScript_WalksNestedNames_ToEveryFolderWithAStamp()
+    {
+        // An account package published with a slug is acct-<12hex>/<slug>/<version>, and a public name nests too
+        // (test/general): the walk is not two levels. A folder holding publish.json is a version, its name the relative
+        // path of its parent; a stamp that is not readable JSON is a difference, one whose specVersion is not 31 is skipped,
+        // and a walk that checked nothing is exit 2, never "no difference".
+        var script = Script("rerender-workflow-packages-v31.cs");
+
+        Assert.DoesNotContain("Directory.EnumerateDirectories(nameFolder)", script, StringComparison.Ordinal);
+        Assert.Contains("foreach (var versionFolder in StampedFolders(corpus))", script, StringComparison.Ordinal);
+        Assert.Contains("var name = Relative(corpus, Path.GetDirectoryName(versionFolder)!);", script, StringComparison.Ordinal);
+        Assert.Contains("var version = Path.GetFileName(versionFolder);", script, StringComparison.Ordinal);
+        Assert.Contains("case StampKind.Unreadable:", script, StringComparison.Ordinal);
+        Assert.Contains("is not readable or not valid JSON", script, StringComparison.Ordinal);
+        Assert.Contains("case StampKind.Other:", script, StringComparison.Ordinal);
+        Assert.Contains("if (checkedCount == 0)", script, StringComparison.Ordinal);
+        Assert.Contains("no stamped 31 version found under", script, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("check-workflow-package-v31.cs")]
+    [InlineData("rerender-workflow-packages-v31.cs")]
+    public void TheScripts_SkipLinks_FilesAndFolders_AndSaySo(string name)
+    {
+        // A symbolic link (a reparse point) in the folder is never followed: --write would copy a link's target into
+        // Release assets, and a re-render would read a file outside the version.
+        var script = Script(name);
+
+        Assert.DoesNotContain("SearchOption.AllDirectories", script, StringComparison.Ordinal);
+        Assert.Contains("static bool IsLink(FileSystemInfo entry) =>", script, StringComparison.Ordinal);
+        Assert.Contains("(entry.Attributes & FileAttributes.ReparsePoint) != 0 || entry.LinkTarget != null", script, StringComparison.Ordinal);
+        Assert.Contains("// A symbolic link (or any reparse point), file or folder, is skipped", script, StringComparison.Ordinal);
     }
 }

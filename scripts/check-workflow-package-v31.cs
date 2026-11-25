@@ -13,7 +13,9 @@
 //       # steps 0 to 4 (PackagePublish.RunAsync): the version's files in write order, then publish.json last,
 //       # into <out folder> (new or empty), for CI to upload and attach as Release assets
 //
-// The folder is read as an upload: every file under it by its path with "/" (a ".git" folder is skipped). Without --version
+// The folder is read as an upload: every file under it by its path with "/" (a ".git" folder is skipped).
+// A symbolic link (or any reparse point), file or folder, is skipped and never followed, so --write never copies a link's
+// target into the version's files (and the Release assets made from them). Without --version
 // the manifest's own name and version are used; with it, manifest.json's version is replaced by <tag> (the name is kept) in
 // place before step 0, as the engine does for the version it assigns (D2), so sourceHash covers the manifest as written.
 // --published-by is the report's publishedBy (D4); it defaults to "ci <tag>" with --version and "ci" without.
@@ -127,12 +129,12 @@ catch (Exception ex) when (ex is FormatException or InvalidOperationException or
 // ---- the folder as an upload --------------------------------------------------------------------------------------------
 
 var upload = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+foreach (var file in FilesUnder(new DirectoryInfo(root)))
 {
-    var path = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
+    var path = Path.GetRelativePath(root, file.FullName).Replace(Path.DirectorySeparatorChar, '/');
     if (path == ".git" || path.StartsWith(".git/", StringComparison.Ordinal))
         continue;
-    upload[path] = File.ReadAllBytes(file);
+    upload[path] = File.ReadAllBytes(file.FullName);
 }
 
 if (tag != null && upload.TryGetValue("manifest.json", out var manifestBytes) && Versioned(manifestBytes, tag) is { } versioned)
@@ -199,6 +201,29 @@ Console.Error.WriteLine($"published: {outcome.Report.Name}@{outcome.Report.Versi
 return 0;
 
 // ---- helpers ------------------------------------------------------------------------------------------------------------
+
+// Every file under the folder, to any depth. A symbolic link (or any reparse point), file or folder, is skipped (never
+// followed).
+static IEnumerable<FileInfo> FilesUnder(DirectoryInfo folder)
+{
+    foreach (var entry in folder.EnumerateFileSystemInfos())
+    {
+        if (IsLink(entry))
+            continue;
+        if (entry is DirectoryInfo child)
+        {
+            foreach (var file in FilesUnder(child))
+                yield return file;
+        }
+        else if (entry is FileInfo file)
+        {
+            yield return file;
+        }
+    }
+}
+
+static bool IsLink(FileSystemInfo entry) =>
+    (entry.Attributes & FileAttributes.ReparsePoint) != 0 || entry.LinkTarget != null;
 
 static string? FindRepo(string start)
 {
