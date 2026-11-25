@@ -531,6 +531,57 @@ public class MigrateDeliverablesTests
     }
 
     /// <summary>
+    /// Final review A5 (R9, D20, D23): a directly composed <c>if</c> (a while's <c>ret</c>) whose branches are a <c>for</c>
+    /// and a plain-text leaf is <c>[list, plaintext]</c>, a union with no <c>markdown_block</c> member, but the deliverable
+    /// would escape the loop's Markdown as one string. A <c>for</c>'s member counts as <c>markdown_block</c> (its
+    /// <c>.content</c> is, D23), so it is A10-053, a hand edit.
+    /// </summary>
+    [Fact]
+    public void AComposedIfWhoseBranchesAreAForAndPlainText_IsAHandEdit()
+    {
+        var (json, read) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var root = JsonNode.Parse(json)!.AsObject();
+        var files = new Dictionary<string, string>(read, StringComparer.Ordinal);
+        foreach (var id in new[] { "refine", "draft_summary", "judge", "topic_tally" })
+            root["nodes"]!.AsArray().Remove(MigrateNodesTests.Node(root, id));
+        foreach (var deliverable in root["deliverables"]!.AsArray().OfType<JsonObject>().Where(d => (string?)d["id"] is "summary" or "tally" or "summary_then_opening").ToList())
+            root["deliverables"]!.AsArray().Remove(deliverable);
+
+        root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "left_out", ["label"] = "A left-out line" });
+        MakePlainLeaf(root, files, "left_out", "let");
+        root["nodes"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = "redo", ["label"] = "Redoing the topics", ["while"] = "input.redraft == true", ["checkFirst"] = true, ["max"] = 2,
+            ["nodes"] = new JsonArray("redo_gate"), ["ret"] = "node.redo_gate",
+        });
+        root["nodes"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = "redo_gate", ["label"] = "Drafted or left out", ["if"] = "input.include_plan == true",
+            ["then"] = new JsonObject { ["nodes"] = new JsonArray("redo_topics"), ["ret"] = "node.redo_topics" },
+            ["else"] = new JsonObject { ["nodes"] = new JsonArray("left_out"), ["ret"] = "node.left_out" },
+        });
+        root["nodes"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = "redo_topics", ["label"] = "Redrafting the topics", ["for"] = "item in input.topics",
+            ["nodes"] = new JsonArray("redo_topic"), ["ret"] = "node.redo_topic",
+        });
+        root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "redo_topic", ["label"] = "Redrafting a topic", ["format"] = "prose" });
+        files["prompts/redo_topic.md"] = "Write one paragraph on the topic \"{{ item.value.title }}\" from this draft.\n{{ input.consult_draft }}\n";
+        root["deliverables"]!.AsArray().Add(new JsonObject { ["id"] = "redo", ["label"] = "A while over an if", ["sources"] = new JsonArray("node.redo") });
+
+        var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrateNodesTests.WithAgentPlaintext("composer-sources"));
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+
+        const string gate = "nodes/redo/redo_gate/index.json";
+        Assert.Equal("\"markdown_block\"", MigrateNodesTests.Json(result, gate)["format"]!.ToJsonString());
+        var reason = "the if 'redo_gate' that a deliverable composes returns Markdown from one branch and plain text from another, "
+            + "which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";
+        AssertHandEdit(result, gate, "format", "A10-053", reason);
+        Assert.Single(result.HandEdits);
+        Assert.NotEmpty(MigratedPackagesTests.Publish(result));
+    }
+
+    /// <summary>
     /// D8, D23 (Task 24): a migrated deliverable over a <c>for</c> reads the loop's <c>.content</c>, which is 30's blocks
     /// typed <c>markdown_block</c> (part 04 § 2.5, part 05 § 5.3), so the <c>markdown_block</c> deliverable writes it as it
     /// is: composer-sources' <c>topics</c> (a for over an input), <c>sections</c> (a for over a node's list, with a for
