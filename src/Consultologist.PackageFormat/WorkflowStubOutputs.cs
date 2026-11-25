@@ -24,11 +24,12 @@ namespace Consultologist.PackageFormat;
 /// <c>Pick(seed, path, 2) == 0</c>; an <c>integer</c> or <c>number</c> is <c>Pick(seed, path, 10)</c>,
 /// raised to <c>minimum</c> and lowered to <c>maximum</c>; a <c>string</c> is
 /// <c>"stub " + Hex8(seed, path)</c>, cut to <c>maxLength</c>; <c>null</c> is <c>null</c>.
-/// #1507 (specVersion 31, area 10, Task 13): two 31 forms a 30 schema never held, so every earlier seed's stub is unchanged:
-/// a <c>oneOf</c> whose every arm is a <c>const</c> (a labelled enum) gives the constant at <c>Pick(seed, path, count)</c>
-/// among its constants that are not <c>null</c> (all of them when only <c>null</c> is); a <c>string</c> of
-/// <c>format: date</c> is the ISO date <c>Pick(seed, path, 365)</c> days after 2026-01-01. A <c>pattern</c> is not
-/// met (31's formats have none, S02-021).
+/// #1507 (specVersion 31, area 10, Task 13): two 31 forms. A <c>oneOf</c> whose every arm is a <c>const</c> (a labelled
+/// enum), which a 30 schema never held, gives the constant at <c>Pick(seed, path, count)</c> among its constants that are
+/// not <c>null</c> (all of them when only <c>null</c> is). A <c>string</c> of <c>format: date</c> is the ISO date
+/// <c>Pick(seed, path, 365)</c> days after 2026-01-01; an inline 30 schema can say <c>format: date</c> too, and its stub
+/// is now that date where it was <c>"stub " + Hex8(seed, path)</c> (no 30 fixture's schema says it, so no capture's stub
+/// moved; the final review's B5). A <c>pattern</c> is not met (31's formats have none, S02-021).
 /// </summary>
 public static class WorkflowStubOutputs
 {
