@@ -899,9 +899,30 @@ public static class ExpectedDifferences
             && Gates(d.Owner, key));
     }
 
-    /// <summary>Whether a gate decided for row <paramref name="owner"/> gates the row <paramref name="key"/>: it is that row, or a flow instance around it.</summary>
+    /// <summary>
+    /// Whether a gate decided for row <paramref name="owner"/> gates the row <paramref name="key"/>: it is that row's entry,
+    /// or a flow around it, and the same instance (final review B2): the owner's pass, when it has one, is the row's, and
+    /// the owner's item ids are the first of the row's (part 08 § 1.1's row key: <c>#&lt;n&gt;</c> a pass,
+    /// <c>:&lt;id&gt;/&lt;id&gt;</c> the items, outermost first). A gate outside every loop gates each instance inside it.
+    /// </summary>
     private static bool Gates(string owner, string key)
     {
-        return owner == key || EntryOf(key).StartsWith(EntryOf(owner) + ".", StringComparison.Ordinal);
+        var (entry, ownerEntry) = (EntryOf(key), EntryOf(owner));
+        if (entry != ownerEntry && !entry.StartsWith(ownerEntry + ".", StringComparison.Ordinal))
+            return false;
+        var (ownerPass, ownerItems) = InstanceOf(owner);
+        var (pass, items) = InstanceOf(key);
+        return (ownerPass is null || ownerPass == pass)
+            && ownerItems.Length <= items.Length && ownerItems.SequenceEqual(items.Take(ownerItems.Length), StringComparer.Ordinal);
+    }
+
+    /// <summary>A row key's pass (after <c>#</c>, up to <c>:</c>) and item ids (after <c>:</c>, split at <c>/</c>); none when it has none.</summary>
+    private static (string? Pass, string[] Items) InstanceOf(string rowKey)
+    {
+        var colon = rowKey.IndexOf(':', StringComparison.Ordinal);
+        var hash = rowKey.IndexOf('#', StringComparison.Ordinal);
+        string? pass = hash < 0 || (colon >= 0 && colon < hash) ? null : rowKey[(hash + 1)..(colon < 0 ? rowKey.Length : colon)];
+        var items = colon < 0 ? [] : rowKey[(colon + 1)..].Split('/');
+        return (pass, items);
     }
 }
