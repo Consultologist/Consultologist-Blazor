@@ -380,6 +380,17 @@ internal static class MigrationSentences
         $"the {kind} '{flow}' that a deliverable composes returns Markdown from one branch and plain text from another, which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.";
 
     /// <summary>
+    /// A10-066 (part 04 § 3.3, A06-002, the owner's ruling 4 on #1507; #1507 final review A2): a reason: a 30 while declares
+    /// <c>checkFirst</c> true and its check reads the nodes <paramref name="nodes"/> of its own body, which have no value
+    /// before the first pass. <c>checkFirst</c> is written as 30 had it, so the checker refuses it (A06-002).
+    /// </summary>
+    public static string CheckFirstReadsBody(IReadOnlyList<string> nodes)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        return $"the check reads the loop's own nodes ({string.Join(", ", nodes)}), which have no value before the first pass; check after the pass, or read a value from outside the loop.";
+    }
+
+    /// <summary>
     /// S10-001 (part 10 § 1.4): the script's word when it wrote the migrated package and hand edits remain (its exit 1).
     /// </summary>
     public const string WrittenHandEditsRemain = "written; hand edits remain";

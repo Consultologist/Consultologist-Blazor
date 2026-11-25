@@ -337,6 +337,31 @@ internal static partial class Migrate
             : ResolveSentences.IsAnExpression("Case", id, "case", file).Sentence;
     }
 
+    /// <summary>
+    /// The nodes of the while <paramref name="id"/>'s own body (at any depth) that its converted <paramref name="rule"/>
+    /// reads as this pass's (<c>node.&lt;id&gt;</c>, <c>pass.node.&lt;id&gt;</c>), each once, in the rule's order, as the
+    /// checker's A06-002 finds them. A rule that did not convert (a JSON string, already a hand edit) reads none.
+    /// </summary>
+    private static List<string> OwnBodyReads(NodeTree tree, string id, JsonNode? rule)
+    {
+        var own = new List<string>();
+        if (rule is not JsonObject)
+            return own;
+        foreach (var path in JsonLogicShape.Paths(rule))
+        {
+            var read = path.Split('.') switch
+            {
+                ["node", var x, ..] => x,
+                ["pass", "node", var x, ..] => x,
+                _ => null,
+            };
+            if (read is not null && tree.ById.ContainsKey(read) && tree.Ancestors(read).Contains(id) && !own.Contains(read))
+                own.Add(read);
+        }
+
+        return own;
+    }
+
     /// <summary>The 31 folder of a node's file: <c>nodes</c>, then its chain of flow ids.</summary>
     private static string FolderOf(NodeTree tree, string id) =>
         string.Join('/', ["nodes", .. tree.Ancestors(id).Reverse()]);
@@ -412,6 +437,10 @@ internal static partial class Migrate
                 header["max"] = node.Max;
                 header["until"] = node.Until is null ? null : Condition(m, file, "until", node.Until, m.Scope(id), ConversionKind.Condition);
                 header["checkFirst"] = node.CheckFirst ?? false;
+                // Final review A2 (A06-002, the owner's ruling 4 on #1507): a check made before the first pass that reads
+                // the loop's own nodes has nothing to read. checkFirst stays as 30 had it, which the checker refuses.
+                if (node.CheckFirst == true && OwnBodyReads(tree, id, header["while"]) is { Count: > 0 } own)
+                    m.HandEdit(file, "checkFirst", MigrationSentences.CheckFirstReadsBody(own));
                 header["nodes"] = Ids(node.Nodes);
                 header["ret"] = Ret(node.Ret);
                 break;
