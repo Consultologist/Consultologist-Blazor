@@ -279,6 +279,15 @@ internal static class MigrationSentences
         $"The chosen rename of '{id}' to '{newId}' cannot be made: '{newId}' {(taken ? "is already taken" : "is not a 31 id")}; choose another.";
 
     /// <summary>
+    /// A10-069 (part 01 § 5.3, § 9.1; part 10 § 1.9, A10-033's sibling; #1507 final review A6): the hand-chosen item
+    /// format <paramref name="format"/> of snippet folder <paramref name="folder"/>
+    /// (<see cref="Migration31Options.FolderFormats"/>) cannot be used: it is no 31 id, or is already a format of the
+    /// package or the registry. A refusal: the operator's choice is never replaced by another.
+    /// </summary>
+    public static string ChosenFolderFormatRefused(string format, string folder, bool taken) =>
+        $"The chosen format '{format}' for snippet folder '{folder}' cannot be used: '{format}' {(taken ? "is already taken" : "is not a 31 id")}; choose another.";
+
+    /// <summary>
     /// A10-034 (part 01 § 6, § 7 <c>idLength</c>; part 10 § 1.9): the <paramref name="kind"/> <paramref name="id"/>, longer
     /// than 31's 64 characters (30 had no bound), was shortened to <paramref name="newId"/>.
     /// </summary>

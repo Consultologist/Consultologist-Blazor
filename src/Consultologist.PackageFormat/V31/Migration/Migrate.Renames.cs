@@ -274,6 +274,17 @@ internal static partial class Migrate
             foreach (var format in manifest.Formats ?? [])
                 Consider(Format, format.Id, "format", formats, _ => false);
 
+            // Final review A6: a snippet folder's chosen item format is used as given, so one that is no 31 id, or is
+            // already a format (the package's, renamed or not, or the registry's), refuses the run (A10-069).
+            foreach (var (folder, path) in manifest.Snippets ?? [])
+            {
+                if (!path.EndsWith('/') || m.Options.FolderFormats?.GetValueOrDefault(folder) is not { } chosen)
+                    continue;
+                var good = SourceIds.Check(chosen, "") is null;
+                if (!good || formats.Contains(chosen))
+                    refusals.Add(MigrationSentences.ChosenFolderFormatRefused(chosen, folder, taken: good));
+            }
+
             var deliverables = manifest.EffectiveDeliverables.Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
             foreach (var deliverable in manifest.EffectiveDeliverables)
                 Consider(Deliverable, deliverable.Id, "deliverable", deliverables, _ => false);

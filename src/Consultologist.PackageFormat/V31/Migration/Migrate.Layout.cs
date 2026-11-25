@@ -331,16 +331,31 @@ internal static partial class Migrate
 
     /// <summary>
     /// The package format a snippet folder's items are values of: <c>{ title: string }</c>, every property required (part
-    /// 01 § 5.3), named as the hand choice says or <c>&lt;folder&gt;_item</c>, with a numeric suffix (<c>_2</c>, …) when a
-    /// format of the package already has the name. Written to <c>formats/</c> and listed after the package's own.
+    /// 01 § 5.3), named as the hand choice says or <c>&lt;folder&gt;_item</c>. Written to <c>formats/</c> and listed after
+    /// the package's own. A hand choice the renames pass did not refuse (A10-069: no 31 id, or a format of the package or
+    /// the registry) is used as given; one an earlier folder chose is that folder's format, not written again. The
+    /// generated name is cut to 64 characters as every generated id is (A10-034, said), and takes a numeric suffix
+    /// (<c>_2</c>, …) when a format of the package already has it (final review A6).
     /// </summary>
     private static string FolderFormat(Migrated m, string folder)
     {
-        var wanted = m.Options.FolderFormats?.GetValueOrDefault(folder) ?? $"{folder}_item";
         var taken = m.Items("formats").Select(i => (string?)i).ToHashSet(StringComparer.Ordinal);
-        var id = wanted;
-        for (var n = 2; taken.Contains(id); n++)
-            id = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{wanted}_{n}");
+        string id;
+        if (m.Options.FolderFormats?.GetValueOrDefault(folder) is { } chosen)
+        {
+            if (taken.Contains(chosen))
+                return chosen;
+            id = chosen;
+        }
+        else
+        {
+            var wanted = $"{folder}_item";
+            id = Renames.Fit(folder, "_item");
+            for (var n = 2; taken.Contains(id); n++)
+                id = Renames.Fit(folder, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"_item_{n}"));
+            if (wanted.Length > SourceBounds.IdLength)
+                m.Notice(MigrationSentences.RenamedTooLong(Renames.Format, wanted, id));
+        }
 
         m.Put($"formats/{id}.json", new JsonObject
         {
