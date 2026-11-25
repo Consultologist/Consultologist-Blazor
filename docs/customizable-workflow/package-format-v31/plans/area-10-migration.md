@@ -157,7 +157,8 @@ src/Consultologist.PackageFormat/
   V31/Harness/SnapshotTest.cs              the test file of § 4                                                       Task 14
   V31/Harness/ByteEquivalence.cs, ExpectedDifferences.cs, MigrationReport.cs, KeyMap.cs                               Task 15
 src/Consultologist.Api/V31/V31StartChecks.cs    Inputs delegates (Task 13); Choices by the macro's if (Task 10)
-scripts/migrate-workflow-package.cs        --to 31, the chain, exits 0 / 1 / 2, --snapshot                            Task 17
+src/Consultologist.PackageFormat/Migration31Script.cs   the script's --to 31 run on a folder, in the library so it is tested   Task 17
+scripts/migrate-workflow-package.cs        --to 31, the chain, exits 0 / 1 / 2, --snapshot, --folder-format (D29)      Task 17
 tests/V31Migration/     *Tests.cs, MigrationFixture.cs, ExampleChoices.cs, Golden/                                    all
 tests/Fixtures/ByteEquivalence/
   conditions/converted.json                each expression's JSON Logic, type, reads, notices                         Tasks 2, 3
@@ -444,6 +445,11 @@ Tasks 20 to 23 build #1507's last comment ("Apply them before the area's remaini
 | D26 | § 3.2 "a rule explains the bytes exactly, naming its ruling or section" | Two rules beyond the brief's list, each on its ruling or section, **flagged for the owner in the PR**: `item-ids-from-one` (ruled by the owner on #1506, 2026-11-21, 2: item numbers are 1-based everywhere users see them, where 30 counted an array input's from 0) and `sent-format` (part 10 § 1.8: the format appended to a custom prompt is 30's as § 1.8 rewrites it, every property required and an optional one nullable, in canonical order; since Task 15's fix round 1, by the controller's ruling, a description, title, `$schema` or `$id` 31 sends where 30 sent the schema alone is declared nowhere and leaves the text unexpected). Bytes rules compose: each undoes its own difference, and a text is expected only when they leave the two texts equal. The report is canonical JSON (RFC 8785), as the other derived files; A10-063 is said for a package with more than one deliverable; D14's estimate is the worst case's calls divided by `MaxAgentCalls`, rounded up. Task 15. |
 | D27 | § 3.2 "a rule explains the bytes exactly, naming its ruling or section"; part 04 § 2.7 | One rule beyond the list, on a section, **flagged for the owner in the PR**: `position-names-from-the-loop` (part 04 § 2.7, decided on #1392: an item with no name of its own is named `<loop label> <n>`; "v30 used the input's label for input loops; at 31 the loop owns naming"). It puts back, in a 31 text, the heading `## <loop label> <n>` ending its line that a loop over an input's list with `itemLabel: null` writes for its items (each named by its position), where the loop's label is not the input's, as `## <input label> <n>`; nothing else. A loop with an `itemLabel` is not read: its position name is only the fallback for an empty name, which the text cannot tell apart, so that fallback stays unexplained (Task 16's fix round 1). It explains 24 texts of `composer-gates` and `example-structured-intake`. Task 16. |
 | D28 | part 10 §§ 1.4, 1.5; Task 16, Step 3 | The operator's edits (`hand-edits/<package>/`, whole files laid over the migration): a folder item's `if` is an `if` node in the loop over the folder, as the notice and part 04 § 5.4's `applies` write it, its `then` the body node moved under it; the move is recorded in the folder's `keys.json` (each moved 30 node id to its 31 rooted key, the operator's fact, not a package file), which `MigrationFixture.Overlay` lays over `Migration31Result.Keys` so the comparison maps 30's keys to the moved rows (Task 16's fix round 1; `KeyMap` is unchanged); a body `if` is a part placed where it was; a conditional deliverable macro is a snippet with the placement's or the macro's `if`, read where 30 placed it, and, where 30 left an unplaced macro out with its separator, its body starts with that blank line and it is read inline after the piece before it; a macro no prompt places then is removed, as D4 removes one, except one whose `if` is a per-run choice, kept so that R7 still maps a rerun's `MacroChoices`; a prompt's (or a macro body's) `deliverable.<id>.content` is written as that deliverable's template reads (30 read the composed sources without the deliverable's macros); a `before` or `after` node macro's instruction asks for its block marker alone on the reply's first or last line; a flag the checker names after an edit (S03-036) is rewritten. An edit that needs a choice the notices do not settle is not made (`HandEditsTests.NotEdited`). Task 16. |
+| D29 | part 10 § 1.5 ("making any hand edits, so every package migrates"); part 01 § 3; the controller's ruling, Task 17 fix round 1 | The script gains `--folder-format <folder>=<format>`, repeatable, filling `Migration31Options.FolderFormats` (`Migration31Arguments.FolderFormats`, `Fill`), parsed and refused as `--rename` is (a missing pair, a key given twice, beside `--snapshot`): § 1.5 has the operator migrate every package, and `test/general`'s snippet folder `standards` reaches its golden only typed `standard_section`, where the default writes `standards_item`. Task 17. |
+| D30 | part 10 § 1.4's exits; the ≤24 → 25 dry run | A dry run (`--to 31` without `--write`) whose migration says a hand edit **exits 1**, though nothing is written, as the script's ≤24 → 25 dry run exits 1 when validation fails; its summary ends `(dry run; pass --write to apply)`, not S10-001 (`written; hand edits remain`), which says "written". A clean dry run exits 0, and a `--snapshot` dry run 0. Part 10 § 1.4 words exit 1 as "written; hand edits remain", so a dry run's 1 is **flagged for the owner in the PR**. Task 17. |
+| D31 | part 10 § 4 against the published document's chapter 10; the controller's ruling, Task 18 fix round 1 | The `description` of the snapshot test the migration writes cites "chapter 10 § 10.12" (`SnapshotTest.Write`), not the design's "part 10 § 4": a migrated package is read with the published spec, and `check-v31.py`'s `citations` group holds package text to it, so the migration vectors are no longer exempt from that group. The seven `migrated/` snapshots moved one line each. Task 18. |
+| D32 | part 10 § 1.4 ("exit 2: refused, writing no package"); the script's convention | The script's `--to 31` exits 2 for every refusal (the chain's, an already-31 package, `Snapshot`'s), for a usage error, for a registry or toolchain that cannot be read, for a result path that would leave the folder (`Migration31Script.OutsideOf`; nothing written), and for a write that fails part-way, which prints `error: <folder> could not be written: <OS message>` and `<name@version>: … stopped part-way; restore the folder, then run again.` (environment lines in the script's style, no area sentence: they carry a path and the OS's message, no package value). The write puts new files first, then changed ones with `manifest.json` last, then the deletes, so a failure deletes no 30 file. `--snapshot` needs `--to 31`, follows the dry-run default, leaves a 31 folder's `dag.mmd` alone and refuses `--rename`, `--when-empty` and `--folder-format`; 30's `publish.json` is neither read nor touched; files are read as strict UTF-8; the 31 options are read only under `--to 31`, so the 5–30 path is unchanged; the `dag.mmd` line is a status line (`Migration31Script.NoDiagram`), not an area sentence. Task 17. |
+| D33 | part 10 § 5 ("30 packages with their expected 31 output and notices"); the conformance README's layout | Each migration vector is `source/` (the 30 files as the migration is given them, without the derived `dag.mmd`), `options.json` (`renames`, `whenEmpty`, `folderFormats`, each `null` when none, and `toolchain` in `lock.json`'s names; the registry and 30's catalogue are the published ones the README names, and `WriteSnapshot` is always its default), `expected/` (the 31 files, holding `tests/migration_snapshot.json` wherever the migration writes one, two cases, validated by `check-v31.py` against `test.schema.json`), `notices.json` (the `migrated/` goldens' shape) and `about.txt`. `test/general`'s case is the flat `test-general`; the invented package is `hand-built`, held in C# (`MigrationVectorsExport.HandBuilt`) so no area 01 fixture folder changes. The A10 sentences are listed in the conformance README in its three-column form, generated from `V31Contract.MigrationAreaSentences`; no test holds the README's list to the contract, as for the other areas. Task 18. |
 
 ### Task 20: Formats fail closed in a `markdown_block` deliverable (R10)
 
@@ -633,6 +639,8 @@ Tasks 20 to 23 build #1507's last comment ("Apply them before the area's remaini
 - [x] **Step 4: Run** the script on a copy of `vendored/example-nested-note` (`--rename parts=sections --when-empty note=fail --write`) and on `vendored/example-macros`; compare the written folders with `migrated/`. Record both commands and exits in the PR's *Verification*.
 - [x] **Step 5: Commit and push.**
 
+  *Recorded in the build:* no repo test runs a script as a process, so the `--to 31` run is in the library, `Migration31Script` (`src/Consultologist.PackageFormat/Migration31Script.cs`): `PackageDirectory`, `Parse` (into `Migration31Arguments`, whose `Fill` puts the pairs into the options), `Run` (read the folder, `Migrate` or `Snapshot`, print every notice, the file plan as `delete:`/`add:`/`rewrite:` and the `dag.mmd` line, apply with `--write`, return the exit), and `Clean`, `HandEditsLeft`, `Refused`, `HandEditsRemain` (S10-001, `MigrationSentences.WrittenHandEditsRemain`), `NoDiagram` and `Usage`. The script reads the registry with `TypeRegistry.Read` from the pinned `external/` paths `V31Contract.PublishedTypes` reads, builds `Toolchain.Current` with the pinned names, and runs its 31 block before the manifest parse and the "already at" guard, so an unreadable manifest exits 2. `MigrateScriptTests` (36 cases) runs `Run` on copies of the fixtures: a dry run writes nothing; `--write` leaves exactly the golden's files; hand edits exit 1; a 27 package is chained; four refusals exit 2 writing nothing; `--snapshot` on an edited folder writes `Snapshot`'s files; the arguments and their usage errors; the usage comment lists `--to 31`, `--snapshot` and `--folder-format`. By hand (Step 4), on copies: `example-nested-note` with `--rename parts=sections --when-empty note=fail --write` exits 0, `example-macros` with `--write` exits 1 (`written; hand edits remain`), and each written folder equals its `migrated/` golden but for the fixture-only `notices.json`. Decisions D30 and D32. *Fix round 1:* the write puts files before deletes and a write that fails part-way exits 2 deleting nothing (`AWriteThatFails_Exits2_AndDeletesNothing`, on a read-only folder); `--snapshot` leaves a 31 `dag.mmd` (`TheSnapshot_LeavesThe31FoldersOwnDiagramAlone`); a result path leaving the folder is refused (`APathThatLeavesTheFolder_IsFound`); and `--folder-format` (D29, the controller's ruling) gives `test/general` its golden (`TheFolderFormat_FillsTheOptions_AndTestGeneralGetsItsGolden`; by hand, `--when-empty consult=hold --folder-format standards=standard_section --write` exits 1 and the folder equals `migrated/test/general/` but for `notices.json`).
+
 ### Task 18: Migration vectors for the conformance suite
 
 **Spec:** part 10 § 5 ("Migration vectors": 30 packages with their expected 31 output and notices); the conformance README's layout; `index.json`'s `migration-vectors` family (exported by area 10).
@@ -645,17 +653,30 @@ Tasks 20 to 23 build #1507's last comment ("Apply them before the area's remaini
 - [x] **Step 4: Run** the area's tests and `--filter "FullyQualifiedName~V31Contracts|FullyQualifiedName~Conformance"`: green.
 - [x] **Step 5: Commit and push.**
 
+  *Recorded in the build:* `MigrationVectorsExport` writes eight cases, 391 files, 186,478 bytes: `composer-gates`, `composer-macros`, `composer-sources`, `example-conditional-sections`, `example-macros`, `example-nested-note`, `test-general` and `hand-built` (the `leaflet` macro choice beside an input `leaflet`, so `leaflet_macro`, A10-007; a union input, A10-023; a deliverable `if` with `string.upcase`, S10-003), each in D33's form; every in-repo case's `expected/` and `notices.json` equal its `migrated/` golden. `MigrationVectorsTests.ThePinnedVectors_AreWhatMigrateGives` reads the pinned family from `external/consultologist-package-format` (never the sibling checkout), runs `Migrate` on each `source/` with its `options.json` and holds the result to `expected/` and `notices.json` byte for byte, the options' toolchain to `CompiledGoldenTests.Fixed`, and the index's `cases` to the export's; `TheHandBuiltPackage_ShowsItsThreeConstructs` holds the hand-built case's three notices. In the content repository (`m39-build`): `check-v31.py` gains a `migration-vectors` group (each case's members; `expected/manifest.json` at 31; every snapshot valid against `test.schema.json`), the README a section "The migration vectors (area 10)" with the A10 sentences, `index.json` the family's cases, and `package-format-v31.md` § 6.8 and § 9.6 the link-only email (Task 22's concern) and § 12.2's row the vectors' options (e2c0d34, a0b4f86, 709b09b, 325596f). *Fix round 1:* the snapshot's description cites "chapter 10 § 10.12" (D31, the controller's ruling): the seven `migrated/` snapshots moved one line each and the two vectors' with them; the vectors' exemption from `check-v31.py`'s `citations` group is removed; `test-general`'s `about.txt` says its `test` → `test_snippet` rename is the migration's own; the content repository's root README names the exported families (175c277, 998689a). The pin is at 998689a.
+
 ### Task 19: The guide, the fixture README and the coverage table
 
 **Files:** `docs/customizable-workflow/package-format-library.md` (a section "specVersion 31: migration (preview)" after "checks, deliverables and delivery": the converter, the rewrite pass by pass, hand edits and the invariant, the offline run and who else uses it, the snapshot, the comparison and its rules, the script, the operator's run, the goldens and how to regenerate each, what it leaves to areas 11 to 13); `tests/Fixtures/ByteEquivalence/README.md` (the four new folders; "What area 10 does" rewritten as what it did); `docs/customizable-workflow/engine-v31.md` (the `MacroChoices` rule at the start); this plan (every checkbox, *Results*, the coverage table's commits).
 
-- [ ] **Step 1: Write the docs** from the code as built, not from this plan.
-- [ ] **Step 2: Run the whole verification** of the runbook's step 6 once here, to find what step 6 would: `dotnet build Consultologist.sln`; `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`.
-- [ ] **Step 3: Commit and push.**
+- [x] **Step 1: Write the docs** from the code as built, not from this plan.
+- [x] **Step 2: Run the whole verification** of the runbook's step 6 once here, to find what step 6 would: `dotnet build Consultologist.sln`; `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`.
+- [x] **Step 3: Commit and push.**
+
+  *Recorded in the build:* the library guide gains "specVersion 31: migration (preview)" after "checks, deliverables and delivery" (the converter, the passes, hand edits and the invariant, the offline run, the snapshot, the comparison and its twelve rules, the script and its exits, the operator's run, the goldens, the vectors, the sentences, what is left to areas 11 to 13), and its deliverables section now says R10 as built; the engine guide says the start's checks call `RunInputsBuilder`; the fixture README documents `conditions/converted.json` and `equivalence.json`, `migrated/`, `hand-edits/` (the overlay, `<path>.deleted`, `keys.json`, the README form `HandEditsTests.EachNotice_IsAnswered` parses) and `reports/`, and says what area 10 did. Decisions D29 to D33 are added from Tasks 17 and 18. The whole verification: the build succeeds (0 errors) and the solution's tests pass (Admin 10, Web 2165, Api 10696, 0 failed); the browser suite is the controller's.
 
 ## Results
 
-*(Filled during the build: Task 12's packages with hand edits; Task 4's `unruled` differences; Task 15's and Task 16's unexpected differences; A10 sentences added.)*
+What the build left for the owner, for the PR: Task 4's `unruled` condition cases; Task 12's packages with hand edits (seven of them edited in Task 16, two not); Task 15's and Task 16's unexpected differences, by cause, with two known gaps the bytes cannot show. The area sentences the build added are the table above, A10-001 to A10-064 (A10-009 unused), held by `V31Contract.MigrationAreaSentences` and listed in the conformance README; the decisions are D1 to D33, D23 to D33 added as the build met them.
+
+### Task 4: the `unruled` differences of the converted conditions (for the PR)
+
+`conditions/equivalence.json`, pinned by `ConditionEquivalenceTests.TheUnruledDifferences_AreTheseOnes`. Four cases of the § 2.2 fixtures answer otherwise than 30 and no ruling declares it; no public package's condition has either shape:
+
+- `row.size.member#0`: `input.problems.size == 0` with the optional list absent: `true` at 30 (an absent list reads `[]`), `false` at 31 (not given reads `null`, and `size` of `null` is `null`, part 03 §§ 6.1, 6.2; A10-027 says it where a package has it).
+- `row.strip.node#0`, `row.strip.input-field#0` and `#2`: `trim(x) == ""` written `blank(x)` (Task 12's fix rounds), with the node absent, the object input absent, or its field left out: `false` at 30 (30 compared a null text as not empty), `true` at 31 (`blank(null)` holds; A10-050 says it where a package has it).
+
+The five `blank` cases are R1's and expected (`row.not-text.node#1`, `#2`, `row.not-text.input#0` to `#2`).
 
 ### Task 12: the packages with hand edits (for Task 16)
 
@@ -774,34 +795,63 @@ Each README says what the other edits would be once these are chosen. `composer-
 
 ## Spec coverage
 
-| Requirement | Task |
+The commits that built each task, first to last in branch order (both included; `git log --oneline origin/m39-build..m39-area-10`, whose subjects name their task). Task 19 is this page and the guides.
+
+| Task | Commits |
 |---|---|
-| 10 § 1.1 the tool, its callers, its output, never an unknown member | 5, 12 (`NothingUnknownIsWritten`), 17; the operator's run 16 (D10); the Editor is Milestone 41 |
-| 10 § 1.2, row by row: files and folders, lists into indexes, `templating`, every member, `\r\n` | 6 |
-| … node headers (`reproducible`, `producer`, the three flags, flow `format`) | 7, 12 |
-| … reserved ids | 8 |
-| … `kind` and `format`; `prose`, `agent_*`, `x-generated`; format files; every property required | 6, 7 |
-| … inputs; union inputs; a long free-text field; bare `input.x` reads | 6, 9 (and 2 for conditions) |
-| … `labelField`; `when`; the `case` with no `else` | 7 |
-| … string conditions; `let` | 2, 3, 7 |
-| … `terms_subset`; deliverables; the signature | 11 |
-| … built-in renderers; whitespace forms; `{{ if }}` blocks; unroll, hoist, bare reads (R6) | 9 |
-| … `failIfEmpty` | 7 |
-| … optional macros; § 1.3; `MacroChoices` (R7) | 10 |
-| … one snapshot test; § 4 | 14 |
-| 10 § 1.4 hand edits, notices, the exits | 3, 7, 9, 10, 11, 12 (the invariant), 17 |
-| 10 § 1.5 account packages | the folder run and the report 16; publish, pins and owners are area 11's and the user's (*Not this area's*) |
-| 10 § 1.6, § 1.7 | the user's (the runbook's *After area 13*) |
-| 10 § 1.8 every property required; explicit nulls noted | 6, 15 (`explicit-null-for-optional`) |
-| 10 § 1.9 renames | 8 |
-| 10 § 1.10 `whenEmpty` | 11 (D7), 17 |
-| 10 § 2.1 the surface | 2, 3 |
-| 10 § 2.2 the table, strict equality, the classifier gate, canonical output | 2 |
-| 10 § 2.3 refusals, `!x` on text | 3 |
-| 10 § 2.4 fixtures for every row and refusal; semantic equivalence | 2, 3, 4 |
-| 10 § 3.1 the harness, the stubs | 13 |
-| 10 § 3.2 the report: differences, expected, what it lists, the worst case, its shape | 15, 16; `notices` 1 (D9) |
-| 10 § 5 migration vectors | 18 |
-| 10 *Refusals* (S10 rows) | 3 (S10-003, the type sentence), 9 (S10-004), 8 and 10 (S10-006), 15 (worst case), 17 (S10-001), every hand edit (S10-002); *"stays at version 30"* and *"migrated by the operator"* are said by the publish path (area 11) |
-| 02 § 11, row by row | 6 (inputs, formats), 7 (nodes, `let`), 9 (reads), 10 (choices), 11 (checks), 12 (flags and the `reproducible` list) |
-| #1507: `!x` (R1); two completions (R2); `skipped` (R3); seven rulings (R4); 2026-11-22's three (R5 to R7) | 1, 3, 4, 9, 10, 14, 15 |
+| 1 | 85e6ab73–9a0dceef |
+| 2 | 193c3d5a–1257d0ac |
+| 3 | 0b463473–2d7cf77a |
+| 4 | a713f86d–b3f61894 |
+| 5 | 790920e2–2b410c47 |
+| 6 | fee634b7–b07b26eb |
+| 7 | c03b3d9d–1e23bf7c |
+| 8 | 013b266a–f34f1632 |
+| 9 | 5f3a1ee7–be7404bc |
+| 10 | af852408–55df250d |
+| 11 | 6ee25c1e–4f34d69f |
+| 12 | cab58aa9–0bd79c7e, 297911d7–e05a3714 |
+| 13 | 074841a0–9b999063 |
+| 14 | a31c3a76–16540d03 |
+| 15 | 7dbe968d–f8411897 |
+| 16 | 4d893162–7f064f21 |
+| 17 | 1dad8e0d–a60386eb |
+| 18 | 0314a68e–b683d732 |
+| 20 | 862725b2–d4b1d7a4 |
+| 21 | 65d6a84f–731ca0bf |
+| 22 | 19c25f3f, 4ebd8a77–8b2fc1e5 |
+| 23 | 30bbbbea–e388662e |
+| 24 | f371d2f5–da65fff0 |
+
+| Requirement | Task | Commits |
+|---|---|---|
+| 10 § 1.1 the tool, its callers, its output, never an unknown member | 5, 12 (`NothingUnknownIsWritten`), 17; the operator's run 16 (D10); the weekly summary calls it, 23; the Editor is Milestone 41 | 5: 790920e2–2b410c47; 12: cab58aa9–0bd79c7e, 297911d7–e05a3714; 16: 4d893162–7f064f21; 17: 1dad8e0d–a60386eb; 23: 30bbbbea–e388662e |
+| 10 § 1.2, row by row: files and folders, lists into indexes, `templating`, every member, `\r\n` | 6 | 6: fee634b7–b07b26eb |
+| … node headers (`reproducible`, `producer`, the three flags, flow `format`) | 7, 12 | 7: c03b3d9d–1e23bf7c; 12: cab58aa9–0bd79c7e, 297911d7–e05a3714 |
+| … reserved ids | 8 | 8: 013b266a–f34f1632 |
+| … `kind` and `format`; `prose`, `agent_*`, `x-generated`; format files; every property required | 6, 7; composed prose is `markdown_block` 21 (R9); a `for`'s `.content` is `markdown_block` 24 (D23) | 6: fee634b7–b07b26eb; 7: c03b3d9d–1e23bf7c; 21: 65d6a84f–731ca0bf; 24: f371d2f5–da65fff0 |
+| … inputs; union inputs; a long free-text field; bare `input.x` reads | 6, 9 (and 2 for conditions) | 2: 193c3d5a–1257d0ac; 6: fee634b7–b07b26eb; 9: 5f3a1ee7–be7404bc |
+| … `labelField`; `when`; the `case` with no `else` | 7 | 7: c03b3d9d–1e23bf7c |
+| … string conditions; `let` | 2, 3, 7; `trim(x) == ""` as `blank(x)` 12 (fix rounds 1 and 2) | 2: 193c3d5a–1257d0ac; 3: 0b463473–2d7cf77a; 7: c03b3d9d–1e23bf7c; 12: cab58aa9–0bd79c7e, 297911d7–e05a3714 |
+| … `terms_subset`; deliverables; the signature; the root folder delivers `pdf` | 11; `delivery: ["pdf"]` 22 (R8); a composed `if` or `case` mixing text formats 21 (A10-053) | 11: 6ee25c1e–4f34d69f; 21: 65d6a84f–731ca0bf; 22: 19c25f3f, 4ebd8a77–8b2fc1e5 |
+| … built-in renderers; whitespace forms; `{{ if }}` blocks; unroll, hoist, bare reads (R6) | 9; `!e.skipped` as `e.state == "completed"` 15 | 9: 5f3a1ee7–be7404bc; 15: 7dbe968d–f8411897 |
+| … `failIfEmpty` | 7 | 7: c03b3d9d–1e23bf7c |
+| … optional macros; § 1.3; `MacroChoices` (R7) | 10; the start's rule in the library (`RunInputsBuilder.Choices`) 15 | 10: af852408–55df250d; 15: 7dbe968d–f8411897 |
+| … one snapshot test; § 4 | 14; its citation, chapter 10 § 10.12, 18 (D31) | 14: a31c3a76–16540d03; 18: 0314a68e–b683d732 |
+| 10 § 1.4 hand edits, notices, the exits | 3, 7, 9, 10, 11, 12 (the invariant), 21 (A10-053), 17 (the exits, D30, D32); the edits made 16 | 3: 0b463473–2d7cf77a; 7: c03b3d9d–1e23bf7c; 9: 5f3a1ee7–be7404bc; 10: af852408–55df250d; 11: 6ee25c1e–4f34d69f; 12: cab58aa9–0bd79c7e, 297911d7–e05a3714; 16: 4d893162–7f064f21; 17: 1dad8e0d–a60386eb; 21: 65d6a84f–731ca0bf |
+| 10 § 1.5 account packages | the folder run and the report 16; `--folder-format` 17 (D29); the weekly summary's count 23 (R11); publish, pins and owners are area 11's and the user's (*Not this area's*) | 16: 4d893162–7f064f21; 17: 1dad8e0d–a60386eb; 23: 30bbbbea–e388662e |
+| 10 § 1.6, § 1.7 | the user's (the runbook's *After area 13*) | — |
+| 10 § 1.8 every property required; explicit nulls noted | 6, 15 (`explicit-null-for-optional`, `sent-format`) | 6: fee634b7–b07b26eb; 15: 7dbe968d–f8411897 |
+| 10 § 1.9 renames | 8 | 8: 013b266a–f34f1632 |
+| 10 § 1.10 `whenEmpty` | 11 (D7), 17 | 11: 6ee25c1e–4f34d69f; 17: 1dad8e0d–a60386eb |
+| 10 § 2.1 the surface | 2, 3 | 2: 193c3d5a–1257d0ac; 3: 0b463473–2d7cf77a |
+| 10 § 2.2 the table, strict equality, the classifier gate, canonical output | 2; the `string.strip` row 12 | 2: 193c3d5a–1257d0ac; 12: cab58aa9–0bd79c7e, 297911d7–e05a3714 |
+| 10 § 2.3 refusals, `!x` on text | 3 | 3: 0b463473–2d7cf77a |
+| 10 § 2.4 fixtures for every row and refusal; semantic equivalence | 2, 3, 4; `row.strip.input-field` 12 | 2: 193c3d5a–1257d0ac; 3: 0b463473–2d7cf77a; 4: a713f86d–b3f61894; 12: cab58aa9–0bd79c7e, 297911d7–e05a3714 |
+| 10 § 3.1 the harness, the stubs | 13; the request a capture gives (D25) 15 | 13: 074841a0–9b999063; 15: 7dbe968d–f8411897 |
+| 10 § 3.2 the report: differences, expected, what it lists, the worst case, its shape | 15, 16; `notices` 1 (D9); one message per deliverable (A10-063) 15, for R8 22 | 1: 85e6ab73–9a0dceef; 15: 7dbe968d–f8411897; 16: 4d893162–7f064f21; 22: 19c25f3f, 4ebd8a77–8b2fc1e5 |
+| 10 § 5 migration vectors | 18 | 18: 0314a68e–b683d732 |
+| 10 *Refusals* (S10 rows) | 3 (S10-003, the type sentence), 9 (S10-004), 8 and 10 (S10-006), 15 (worst case), 17 (S10-001), every hand edit (S10-002); *"stays at version 30"* (S10-005) and *"migrated by the operator"* are said by the publish path (area 11) | 3: 0b463473–2d7cf77a; 8: 013b266a–f34f1632; 9: 5f3a1ee7–be7404bc; 10: af852408–55df250d; 15: 7dbe968d–f8411897; 17: 1dad8e0d–a60386eb |
+| 02 § 11, row by row | 6 (inputs, formats), 7 (nodes, `let`), 9 (reads), 10 (choices), 11 (checks), 12 (flags and the `reproducible` list), 21 (`prose`) | 6: fee634b7–b07b26eb; 7: c03b3d9d–1e23bf7c; 9: 5f3a1ee7–be7404bc; 10: af852408–55df250d; 11: 6ee25c1e–4f34d69f; 12: cab58aa9–0bd79c7e, 297911d7–e05a3714; 21: 65d6a84f–731ca0bf |
+| #1507: `!x` (R1); two completions (R2); `skipped` (R3); seven rulings (R4); 2026-11-22's three (R5 to R7) | 1, 3, 4, 9, 10, 14, 15 | 1: 85e6ab73–9a0dceef; 3: 0b463473–2d7cf77a; 4: a713f86d–b3f61894; 9: 5f3a1ee7–be7404bc; 10: af852408–55df250d; 14: a31c3a76–16540d03; 15: 7dbe968d–f8411897 |
+| #1507, 2026-11-22 (2): delivery (R8), composed prose (R9), formats fail closed (R10), the weekly summary (R11); a loop's `.content` (D23) | 22, 21, 20, 23; 24 | 20: 862725b2–d4b1d7a4; 21: 65d6a84f–731ca0bf; 22: 19c25f3f, 4ebd8a77–8b2fc1e5; 23: 30bbbbea–e388662e; 24: f371d2f5–da65fff0 |
