@@ -1,4 +1,5 @@
 using System.Globalization;
+using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 using Microsoft.Extensions.Configuration;
 
@@ -33,6 +34,14 @@ public sealed class EngineLimitSettings(IConfiguration configuration)
         JobAgentCalls: Read(configuration, "JobAgentCalls", Defaults.JobAgentCalls),
         RenderSteps: Read(configuration, "RenderSteps", Defaults.RenderSteps),
         JobInstances: Read(configuration, "JobInstances", Defaults.JobInstances));
+
+    /// <summary>
+    /// #1508 (area 11; R1, D16): the limits publish holds a 31 package to, from the same numbers the runner counts against:
+    /// the agent-call ceiling, the items per loop, the agent calls per job, the instances per job and the job's minutes
+    /// (the mapping area 10's worst-case estimate uses).
+    /// </summary>
+    public PublishLimits PublishLimits => new(
+        Limits.MaxAgentCalls, Limits.LoopItems, Limits.JobAgentCalls, Instances: Limits.JobInstances, JobMinutes: Limits.JobMinutes);
 
     /// <summary>The longest regex time-out .NET accepts, so the evaluator's: <see cref="int.MaxValue"/> - 1 milliseconds.</summary>
     private const int MaxRegexMilliseconds = int.MaxValue - 1;

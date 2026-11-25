@@ -1,4 +1,5 @@
 using Consultologist.Api.V31;
+using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 using Microsoft.Extensions.Configuration;
 
@@ -62,6 +63,16 @@ public class EngineLimitSettingsTests
     {
         Assert.Equal(250, With(("JobInstances", "250")).Limits.JobInstances);
         Assert.Throws<InvalidOperationException>(() => With(("JobInstances", "0")));
+    }
+
+    [Fact]
+    public void PublishLimits_AreTheRunnersNumbers()
+    {
+        // #1508 (area 11; R1, D16): publish holds a package to the limits the runner counts against
+        Assert.Equal(new PublishLimits(16, 200, 500, Instances: 10_000, JobMinutes: 30), With().PublishLimits);
+        Assert.Equal(
+            new PublishLimits(4, 201, 501, Instances: 250, JobMinutes: 31),
+            With(("MaxAgentCallsPerJob", "4"), ("LoopItems", "201"), ("JobAgentCalls", "501"), ("JobInstances", "250"), ("JobMinutes", "31")).PublishLimits);
     }
 
     [Theory]

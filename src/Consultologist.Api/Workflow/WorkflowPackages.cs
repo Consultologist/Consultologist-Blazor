@@ -709,11 +709,21 @@ public sealed class WorkflowPackages
 
         if (!result.Succeeded)
         {
-            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { errors = result.Errors }, cancellationToken);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, RefusalBody(result), cancellationToken);
         }
 
         return await CreateJsonResponseAsync(req, HttpStatusCode.OK, result.Response!, cancellationToken);
     }
+
+    /// <summary>
+    /// A refused publish's 400 body: <c>{ errors }</c>, as ever; #1508 (specVersion 31, area 11; D3) a refused 31 publish adds
+    /// <c>error</c> (the first sentence) and <c>report</c> (the publish report in full), <c>errors</c> kept beside them for
+    /// the clients that read it.
+    /// </summary>
+    internal static object RefusalBody(WorkflowPackagePublishResult result) =>
+        result.Report is { } report && result.Errors.Count > 0
+            ? new { errors = result.Errors, error = result.Errors[0], report }
+            : (object)new { errors = result.Errors };
 
     // #858: the import ingest cap on the raw upload — matches the client's own
     // import guard; the unzip enforces the per-file/total caps once decompressed.

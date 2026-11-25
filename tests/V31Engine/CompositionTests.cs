@@ -43,6 +43,19 @@ public class CompositionTests
     }
 
     [Fact]
+    public void TheHostsRegistrations_GiveThePublisherIts31Branch_AndTheAdmission()
+    {
+        // #1508 (area 11, Task 16): the publisher takes both through optional constructor parameters; a registration gone
+        // missing would answer every 31 publish S09-001 even where the preview setting admits 31
+        using var provider = HostServices(preview: "31");
+        var publisher = provider.GetRequiredService<WorkflowPackagePublisher>();
+
+        Assert.Same(provider.GetRequiredService<V31PackagePublisher>(), FieldOf<V31PackagePublisher>(publisher));
+        Assert.Same(provider.GetRequiredService<SpecVersionAdmission>(), FieldOf<SpecVersionAdmission>(publisher));
+        Assert.NotNull(provider.GetRequiredService<IV31RegistryWriter>());
+    }
+
+    [Fact]
     public void TheHostsRegistrations_GiveTheRecordsStores_AsSingletons_WithoutTouchingStorage()
     {
         // #1506 (Task 9): the record's rows (a table) and its text and document (blobs); built over a local connection
