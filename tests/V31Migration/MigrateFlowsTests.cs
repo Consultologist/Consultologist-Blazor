@@ -200,6 +200,26 @@ public class MigrateFlowsTests
     }
 
     [Fact]
+    public void ACheckFirstWhileWhoseCheckReadsItsOwnBody_IsAHandEditOnCheckFirst()
+    {
+        // Final review A2 (A06-002, the owner's ruling 4 on #1507): a check made before the first pass that reads a node of
+        // the loop's own body has nothing to read. checkFirst stays as 30 had it, so the checker refuses it.
+        var result = Migrated("example-nested-note", root => Node(root, "refine")["checkFirst"] = true);
+
+        var refine = Json(result, "nodes/refine/index.json");
+        Assert.True(refine["checkFirst"]!.GetValue<bool>());
+        var edit = Assert.Single(result.HandEdits);
+        const string reason = "the check reads the loop's own nodes (judge), which have no value before the first pass; check after the pass, or read a value from outside the loop.";
+        Assert.Equal($"Hand edit needed in nodes/refine/index.json, checkFirst: {reason}", edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "nodes/refine/index.json"));
+        V31Contract.AssertSentence(new SourceRefusal("A10-066", reason, ""));
+        Assert.Contains(MigratedPackagesTests.Publish(result), r => r.Id == "A06-002");
+
+        // The near pair: a checkFirst while whose check reads an input (composer-sources' refine) is no hand edit.
+        Assert.DoesNotContain(Migrated("composer-sources").HandEdits, e => e.Contains("checkFirst", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AnIf_WritesItsThenAndElseBodies()
     {
         var result = Migrated("composer-sources", root =>
