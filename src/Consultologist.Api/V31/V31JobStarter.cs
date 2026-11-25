@@ -122,7 +122,7 @@ public sealed class V31JobStarter(
             InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins
                 ? origins.ToDictionary(
                     pair => pair.Key,
-                    pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.Select(ExtractionSteps.Of).ToList(),
+                    pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.Select(origin => ExtractionSteps.Of(origin, extraction.OcrModelVersions)).ToList(),
                     StringComparer.Ordinal)
                 : null,
             SignatureBlockId = signature.BlockId,

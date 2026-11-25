@@ -1298,7 +1298,7 @@ public class DocumentExtractionTests
         return bytes;
     }
 
-    private static byte[] ImageOnlyPdf(int pages = 1)
+    internal static byte[] ImageOnlyPdf(int pages = 1)
     {
         const string OnePixelJpeg =
             "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a"

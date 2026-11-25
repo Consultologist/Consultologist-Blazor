@@ -27,8 +27,13 @@ internal static class ExtractionSteps
     /// <summary>The OCR extractor's name (<see cref="AzureDocumentIntelligenceOcr"/>'s).</summary>
     private const string OcrExtractor = "docintel";
 
-    /// <summary><paramref name="origin"/> with its <c>converter</c>, <c>parser</c> and <c>ocr</c>, each null where the step was not used.</summary>
-    public static ConsultInputOrigin Of(ConsultInputOrigin origin)
+    /// <summary>
+    /// <paramref name="origin"/> with its <c>converter</c>, <c>parser</c> and <c>ocr</c>, each null where the step was not used.
+    /// #1508 (part 08 § 3.1): the OCR step's model is the dated version the service gave
+    /// (<paramref name="ocrModelVersions"/>, by the document's file hash), <c>prebuilt-read/2024-11-30</c>, and
+    /// <c>prebuilt-read</c> alone when it gave none.
+    /// </summary>
+    public static ConsultInputOrigin Of(ConsultInputOrigin origin, IReadOnlyDictionary<string, string>? ocrModelVersions = null)
     {
         ArgumentNullException.ThrowIfNull(origin);
         if (Split(origin.Extractor) is not { } extractor)
@@ -48,7 +53,11 @@ internal static class ExtractionSteps
             {
                 Converter = null,
                 Parser = parsed,
-                Ocr = new ConsultOcrStep(AzureDocumentIntelligenceOcr.Service, AzureDocumentIntelligenceOcr.Model),
+                Ocr = new ConsultOcrStep(
+                    AzureDocumentIntelligenceOcr.Service,
+                    origin.FileSha256 is { } file && ocrModelVersions?.GetValueOrDefault(file) is { } dated
+                        ? $"{AzureDocumentIntelligenceOcr.Model}/{dated}"
+                        : AzureDocumentIntelligenceOcr.Model),
             };
         }
 

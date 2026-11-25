@@ -45,7 +45,10 @@ public enum DocumentOcrStatus
 /// (0..1) the service reported, or null when it read no words. The extraction
 /// edge compares it to the account's minimum-confidence policy to decide
 /// whether an Extracted read is accepted or refused as
-/// <see cref="DocumentExtractionOutcomes.OcrLowConfidence"/>.
+/// <see cref="DocumentExtractionOutcomes.OcrLowConfidence"/>. #1508 (part 08 § 3.1):
+/// <paramref name="ModelVersion"/> is the dated version of the model that read the document
+/// (the result's <c>ApiVersion</c>, <c>2024-11-30</c>: the pinned SDK has no <c>ModelVersion</c>), or null when the service
+/// gave none; only a 31 job's record keeps it.
 /// </summary>
 public sealed record DocumentOcrResult(
-    DocumentOcrStatus Status, string? Text, string? ExtractorId, double? MeanConfidence = null);
+    DocumentOcrStatus Status, string? Text, string? ExtractorId, double? MeanConfidence = null, string? ModelVersion = null);

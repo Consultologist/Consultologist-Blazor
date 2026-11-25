@@ -1732,7 +1732,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         ConsultGenerationJobStartError ErrorKind = ConsultGenerationJobStartError.InputFileUnreadable,
         // Error when it names only a declared id and fixed prose. Null when
         // the id is one the caller made up.
-        string? SenderSafeError = null);
+        string? SenderSafeError = null,
+        // #1508 (part 08 § 3.1): the dated OCR model version of each document OCR read, by the document's file hash. Only a
+        // 31 start reads it (ExtractionSteps), so no 5–30 origin carries it.
+        IReadOnlyDictionary<string, string>? OcrModelVersions = null);
 
     /// <summary>
     /// Reads every attached document and folds its text into the input map
@@ -2670,6 +2673,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
             : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
         var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(StringComparer.Ordinal);
+        var ocrModelVersions = new Dictionary<string, string>(StringComparer.Ordinal);
         // #874: file-bearing ids whose ref group the loop below already folded
         // in — so the ref-only post-loop skips them.
         var combinedRefIds = new HashSet<string>(StringComparer.Ordinal);
@@ -2847,6 +2851,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // the bytes — it wins over the input's declaration (image-ness is
                 // a server fact). Every other element keeps the input's kind.
                 var elementKind = result.FromImage ? ConsultInputOriginKinds.Image : kind;
+                if (result.OcrModelVersion is { } ocrModelVersion)
+                    ocrModelVersions[fileSha256] = ocrModelVersion;
                 inputOrigins.Add(new ConsultInputOrigin(
                     elementKind,
                     result.ExtractorId,
@@ -3005,7 +3011,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             request with { Inputs = inputs, InputFiles = null, TranscriptInputs = null, AmbientNoteInputs = null },
             origins,
             null,
-            null);
+            null,
+            OcrModelVersions: ocrModelVersions.Count > 0 ? ocrModelVersions : null);
     }
 
     /// <summary>"a text", "an enum", "an array of object" — for a sentence about a declaration.</summary>

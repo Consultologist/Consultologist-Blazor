@@ -125,6 +125,9 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
 2. **The inputs.** The request's typed `Inputs` (`ConsultDraft` back-fills `consult_draft`, as today) and its
    documents are read. The documents go through the starter's own extraction, so a document sent to a text input
    arrives as its text, behind the same OCR and speech-to-text gates as today.
+   #1508: a document OCR read records the model's dated version in the input's `ocr.model`, `prebuilt-read/2024-11-30`
+   (the result's `ApiVersion`: the pinned SDK's `AnalyzeResult` has no `ModelVersion`), and `prebuilt-read` alone when the
+   service gave none. Only a 31 start reads it (`ExtractionSteps`); a 5–30 origin is written as before.
 3. **The account.** The profile fields that `needs.profile` lists are read. `name` is the display name,
    `signature` is the block this job signs with, and the others are the account settings `profile.credentials`,
    `profile.organisation` and `profile.closing`. The time zone is `account.timeZone`, an IANA name (D6). The

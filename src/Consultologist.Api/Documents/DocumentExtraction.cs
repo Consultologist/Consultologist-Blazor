@@ -76,7 +76,10 @@ internal sealed record DocumentExtractionResult(
     // #730: the extracted text came from OCR'ing a raw image (not a PDF/DOCX/
     // text), so the starter stamps the `image` origin. The server observed it
     // — image-ness is in the bytes, unlike a transcript's assertion.
-    bool FromImage = false)
+    bool FromImage = false,
+    // #1508 (part 08 § 3.1): the dated version of the OCR model that read the document, when OCR did. Not part of the
+    // origin a 5–30 job records: only a 31 start reads it (ExtractionSteps).
+    string? OcrModelVersion = null)
 {
     internal static DocumentExtractionResult Refused(string outcome) => new(outcome, null, null, null);
 
@@ -431,7 +434,10 @@ internal static class DocumentExtraction
             return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.OcrLowConfidence, pageCount);
         }
 
-        return Normalize(DocumentExtractionResult.Extracted(ocr.Text!, ocr.ExtractorId!, pageCount, fromImage: fromImage));
+        return Normalize(DocumentExtractionResult.Extracted(ocr.Text!, ocr.ExtractorId!, pageCount, fromImage: fromImage) with
+        {
+            OcrModelVersion = ocr.ModelVersion,
+        });
     }
 
     internal static DocumentExtractionResult Extract(byte[] bytes)
