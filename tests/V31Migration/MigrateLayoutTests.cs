@@ -534,6 +534,53 @@ public class MigrateLayoutTests
     }
 
     [Fact]
+    public void ALongFoldersItemFormat_IsCutTo64_AndSaid()
+    {
+        // Final review A6 (part 01 § 7): <folder>_item is fitted to 64 characters as every generated id is (A10-034).
+        var folder = "standing_sections_" + new string('s', 44);
+        Assert.Equal(62, folder.Length);
+        var (json, read) = ByteEquivalenceFixtures.ReadPackage("example-problem-list");
+        json = json.Replace("\"sections/\"", $"\"{folder}/\"", StringComparison.Ordinal)
+            .Replace("item in snippet.sections", $"item in snippet.{folder}", StringComparison.Ordinal);
+        var files = read.ToDictionary(
+            f => f.Key.StartsWith("snippets/sections/", StringComparison.Ordinal) ? $"snippets/{folder}/" + f.Key["snippets/sections/".Length..] : f.Key,
+            f => f.Value, StringComparer.Ordinal);
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-problem-list"));
+
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+        var format = folder[..59] + "_item";
+        Assert.Equal(format, (string?)JsonOf(result, $"snippets/{folder}/index.json")["format"]);
+        Assert.Contains($"formats/{format}.json", result.Files.Keys);
+        var notice = $"Renamed format '{folder}_item' to '{format}': an id is at most 64 characters at 31.";
+        Assert.Contains(notice, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-034", notice, ""));
+    }
+
+    [Theory]
+    [InlineData("problem_list", true)]
+    [InlineData("judgement", true)]
+    [InlineData("Sections", false)]
+    public void AHandChosenFolderFormatThatCannotBeUsed_IsRefused(string chosen, bool taken)
+    {
+        // Final review A6: a chosen name already a format (the package's, or the registry's) is refused, as a chosen
+        // rename is, and never numbered; so is one that is no 31 id. Nothing is written.
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-problem-list");
+        var options = MigrationFixture.Options("example-problem-list") with
+        {
+            FolderFormats = new Dictionary<string, string>(StringComparer.Ordinal) { ["sections"] = chosen },
+        };
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, options);
+
+        Assert.False(result.Succeeded);
+        var refusal = $"The chosen format '{chosen}' for snippet folder 'sections' cannot be used: '{chosen}' {(taken ? "is already taken" : "is not a 31 id")}; choose another.";
+        Assert.Equal([refusal], result.Refusals);
+        V31Contract.AssertSentence(new SourceRefusal("A10-069", refusal, ""));
+        Assert.Equal(json.ReplaceLineEndings("\n"), result.ManifestJson.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
     public void AUnionInsideAFormat_IsKeptAsWritten_AndIsOneHandEdit()
     {
         var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
