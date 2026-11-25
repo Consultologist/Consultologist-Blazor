@@ -762,7 +762,7 @@ normalisation, the warnings, and the per-job ceiling note
 | `package` | object `{ name, version }` | never | the version published |
 | `outcome` | `"published"` or `"refused"` | never | a written report always says `published`; a refused publish returns the report without writing it |
 | `publishedAtUtc` | string (RFC 3339) | allowed | when it was written; `null` when refused |
-| `publishedBy` | string | never | `ci` with the tag, `editor`, `api` or `operator-migration` |
+| `publishedBy` | string | never | `ci` with the tag (`ci`, one space and the release tag, as `ci v2026.12.1`; [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508)), `editor`, `api` or `operator-migration`; a bare `ci` is also accepted |
 | `sourceHash` | string | never | as in `resolve.json` |
 | `resolveHash` | string | allowed | `null` when publish stopped before step 4 |
 | `lockHash` | string | allowed | `null` when publish stopped before step 4 |
@@ -816,6 +816,18 @@ points (§ 4.4):
 - *"Up to <n> steps could run in one job, through <loop key>; this engine runs at most <limit> for one job. Lower a loop's max or split the workflow."* The package's worst case opens more instances than the engine's `jobInstances` ([part 09 § 3.5](09-engine-and-pages.md#35-the-publish-note)).
 - *"Format '<id>' names format '<name>' and also defines '<name>' in its own $defs. Rename the definition or remove it."* A package's format file names a format and defines the same name for itself ([part 02 § 3.1](02-types-and-inputs.md#31-the-keywords)); no byte of a published format changes.
 - *"Format '<id>' expands to more than <limit> parts, more than this engine can run. Make it smaller."* A bundled format whose expansion at run (every reference inlined, § 2.4) passes the run's own budget of 1,048,576 nodes, counted by the run's counter, so nothing publishes that cannot run.
+
+**At publish, from the manifest, the test files and the registry** (this implementation's sentences A11-004 to
+A11-007, [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508)):
+- *"manifest.json must give name and version as text."* The registry writes the name and version it assigns into
+  `manifest.json` (§ 5 step 0), so both must be text; said first, at `manifest.json`.
+- *"Test '<test id>' <member> is not written as the test grammar says: <what is wrong>."* A member of `expect` of the
+  wrong shape, an unknown expectation, or an `outputs` key that is no row key (§§ 8.1 to 8.3); `<what is wrong>` is a
+  phrase of the grammar, never a value of the file.
+- *"Version <version> of <package> is already published. Publish a new version."* The version's folder was stamped by
+  another publish, and the next versions tried were taken too.
+- *"The workflow couldn't be published because the engine failed. Tell the operator."* An engine fault at publish; the
+  fault's type goes to the operator's log, never to the report.
 
 **Warnings** (never blocking):
 - *"Test '<test id>' stubs <row key>, which doesn't run."*

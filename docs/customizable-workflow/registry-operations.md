@@ -332,3 +332,166 @@ time and CalVer already answer "when", and git / the `acct-*` name already answe
 > `stamp-workflow-package.cs` load the formats catalogue beside the output
 > contracts, so a specVersion 25 package validates and stamps offline; a
 > package below 25 is migrated on disk by `migrate-workflow-package.cs`.)*
+
+## specVersion 31 (#1508, preview)
+
+*Part 07 §§ 4.4, 5 and 6 and part 09 § 2 of
+[the 31 design](package-format-v31/index.md). How the engine publishes and serves a 31 version is in
+[the engine at specVersion 31](engine-v31.md), "Publish, `Current`, `Content` and import"; the library's pipeline in
+[the package format as a library](package-format-library.md), "specVersion 31: publish".* Nothing here applies
+unless `WorkflowPackages__PreviewSpecVersions` admits 31, which only dev does.
+
+### A 31 version's folder
+
+```
+<container>/
+└── acct-<root>/<slug>/
+    ├── latest.json                     # the pointer, set after the stamp, as at 5–30
+    ├── v2026.12.1.lease                # the writer's lock blob (empty), beside the folder, never in it
+    └── v2026.12.1/
+        ├── manifest.json               # name and version written by the registry (D2)
+        ├── nodes/…, formats/…, checks/…, deliverables/…, tests/…   # the source, as normalised, every file sourceHash covers
+        ├── lock.json
+        ├── publish-report.json         # the publish report (not evidence: records never pin it)
+        ├── migration-report.json       # only for a version the operator's migration published
+        ├── resolve.json                # last of the files
+        └── publish.json                # the stamp, written last of all
+```
+
+The engine writes a 31 version only into an account's private container (`org-account-packages` or
+`personal-account-packages`), under an `acct-…` name: `WorkflowPackages/Publish` publishes only an account's packages.
+`dag.mmd` is written only once area 13 draws it. The order matters: **a folder without `publish.json` does not exist
+for any reader**, so a publish that dies part-way leaves nothing anyone loads, and the next attempt clears it and
+writes it again. A folder that has a `publish.json` of any shape (a 5–30 stamp has the same name) is never written to
+again.
+
+**The stamp** is `publish.json`, canonical JSON:
+`{ "lockHash": "sha256:…", "resolveHash": "sha256:…", "specVersion": 31 }`, with `"migratedFrom": "<old version>"`
+for a version the operator's migration published. Its schema is `publish-stamp.schema.json` in the format spec. The
+engine reads it first: a stamp with `specVersion` 31 takes the 31 load path (`resolve.json` and `lock.json`, held to
+the stamp's hashes), and anything else takes the 5–30 path.
+
+**Evidence is never taken from an upload.** `resolve.json`, `lock.json`, `publish-report.json` and `publish.json` in an
+upload or a zip are dropped unread; publish writes its own.
+
+### Dev's registry (part 09 § 2.2)
+
+31 is proven on `canada-east-ai-function-dev` with its own registry, and production's registry never sees a 31 package
+before the bump. On dev, `WorkflowPackages__BlobServiceUri` (the private side) and `WorkflowPackages__PublicBlobServiceUri`
+(the public side) point at containers in `consultdevcaeast` ([CONFIGURATION.md](../CONFIGURATION.md)). Setting them,
+and the roles the app's identity needs there, are the user's. It is filled in two ways, with fictional content only:
+
+- **The catalogues are copied, not published.** The public-side containers the engine reads (`workflow-packages`,
+  `output-contracts`, `formats`, `agent-definitions`, `package-format`, `provenance`) get copies of the versions
+  production uses, taken from the same release tags. The 31 type registry and the 31 agents catalogue are bundled in
+  the app (`package-format/v31/`, `agents/v31/`) and are not read from the registry.
+- **The example packages are published through the engine.** The example packages at 31 come from the migration
+  branch and are published to dev through `WorkflowPackages/Publish` by an operator's account, not by the public
+  repository's tag CI (which publishes to production). Each lands as that account's package (`acct-…/<slug>`):
+
+  ```
+  POST <dev app>/api/WorkflowPackages/Publish
+  Authorization: Bearer <an account's token>
+  { "newPackageSlug": "example-nested-note", "files": { "manifest.json": "<its text>", "nodes/index.json": "<its text>", … } }
+  ```
+
+  `manifest` is left out (null) and every file, `manifest.json` included, is text in `files`. The answer is the
+  version and the publish report in full, or a 400 whose `report` says why. A migrated version is published the same
+  way with the trailing `migrationReport` (the operator's `migration-report.json`), which only an account in
+  `Operators__AppUserIds` may send.
+
+### The two scripts
+
+Both reference the Api project, as `scripts/migrate-workflow-package.cs` does, and build the engine's own inputs from
+the pinned content repositories: the type registry from `external/consultologist-package-format/v31` and
+`external/consultologist-agents/agents/v31`, the toolchain as the engine attests it (the package-format release in
+`spec-versions.json`, the formats catalogue's ref, `agents@<the 31 catalogue's version>`), and the limits the engine has
+with no `ConsultGeneration__*` settings (the spec's starting values), so a run is the same anywhere. The clock is the
+system's, and no diagram is drawn.
+
+**`scripts/check-workflow-package-v31.cs`** checks a package folder, or publishes it for CI:
+
+```
+dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder>
+dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write <out folder> [--version <tag>] [--published-by "ci <tag>"]
+```
+
+- Without `--write` it runs steps 0 to 3 (`PackagePublish.CheckAsync`): nothing is written.
+- With `--write` it runs steps 0 to 4 and writes the version's files in the pipeline's order into `<out folder>`, then
+  `publish.json` last. The out folder must be new or empty (a stamped or non-empty one is refused, exit 2), so no stale
+  file ever sits beside the stamp. These are the files CI is to attach as Release assets.
+- `--version <tag>` replaces `manifest.json`'s `version` in place before step 0 (the name is kept); without it the
+  manifest's own name and version are used. `--published-by` is the report's `publishedBy`; it defaults to `ci <tag>`
+  with `--version` and `ci` without. `--version` and `--published-by` need `--write`.
+- stdout is the report's canonical JSON alone. stderr has S07-015 for each compiled copy or stamp found in the folder
+  (dropped unread), then each refusal, each warning, and a summary line.
+- Exit 0: published, or would publish; 1: refused; 2: usage or environment (an unreadable folder or registry, or an
+  out folder that is not empty or holds a stamp). A `.git` folder is skipped.
+
+**`scripts/rerender-workflow-packages-v31.cs`** is the corpus re-render (part 07 § 4.4, D11):
+
+```
+dotnet run -v q --file scripts/rerender-workflow-packages-v31.cs -- <folder of name/version folders>
+```
+
+For each `<name>/<version>/` that holds a `publish.json` whose `specVersion` is 31, it reads the stored source as an
+upload (leaving out `dag.mmd` and `migration-report.json`; the evidence is dropped by intake), runs steps 0 to 3 in
+memory with this build's library, and compares the result with the stored `publish-report.json`: the `resolveHash`,
+and each test's `outcomeHash`. A test either side lacks, a version that is now refused, and a stamped folder with no
+readable report are each a difference. A folder with no 31 stamp is skipped. stdout has one line per difference and a
+summary. Exit 0: no difference; 1: a difference; 2: usage or environment.
+
+**The corpus re-render before a library upgrade.** Before a build moves a locked library (Scriban, the evaluator, an
+operation), copy every stamped 31 version from the registry into a folder laid out as `<name>/<version>/`, run the
+re-render on the current build, then on the candidate build. Each run must print no difference. A difference under the
+candidate is the upgrade changing what a published version compiles to or does: the upgrade needs a break point (added to
+`EngineBreakPoints`, compiled in, so a code change; area 06) or is not made.
+
+**What only a manual run has shown.** The scripts' wiring is pinned by `tests/V31Publish/ScriptsTests.cs`, which does
+not run them as processes. The folder walk, the out-folder refusals firing, the `--version` edit, the stamp written
+last, a trailing separator on the out folder and the re-render's difference lines were shown by these runs (#1508,
+Task 20), on a copy of the `compiled-documents/macros/source` case outside the repository given a snapshot test with
+`dotnet run -v q --file scripts/migrate-workflow-package.cs -- /tmp/v31fix.IrNP/src --to 31 --snapshot --write`:
+
+1. `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- /tmp/v31fix.IrNP/src`: exit 0, stderr
+   `ok: example-macros@v2026.12.1 would publish (1 test(s) passed); nothing written.` (after two S04 warnings, for
+   `draft` and `stamp`).
+2. `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- /tmp/v31fix.IrNP/src --write /tmp/v31fix.IrNP/pub --version v2026.12.7 --published-by "ci v2026.12.7"`:
+   exit 0, `published: example-macros@v2026.12.7 written to /tmp/v31fix.IrNP/pub (27 files, publish.json last).`
+   The stamp was `{"lockHash":"sha256:935b2a36...","resolveHash":"sha256:1193334f...","specVersion":31}`.
+3. What was written, copied to `corpus/example-macros/v2026.12.7`:
+   `dotnet run -v q --file scripts/rerender-workflow-packages-v31.cs -- /tmp/v31fix.IrNP/corpus`: exit 0,
+   `no difference: 1 stamped 31 version(s) re-rendered.`
+4. The written copy's `draft` stub edited ("Stub reply for node.draft (c82d06f2)." to "Edited draft stub."), then the
+   same re-render: exit 1,
+   `example-macros/v2026.12.7: refused now (1 refusal(s)): Test 'migration_snapshot' failed: deliverables for deliverable.note expected sha256:8d7ef30f..., got sha256:2527b96f.... Publish stopped.`
+   then `1 difference(s) in 1 stamped 31 version(s) re-rendered.` The test pins the deliverable's hash, so the edit
+   shows as "refused now". An edit that keeps every test passing would show as
+   `test '<id>' outcomeHash was …, now …`; no run has shown that line.
+5. The check on the stamped folder: exit 0, with four S07-015 lines (`lock.json`, `publish-report.json`, `publish.json`,
+   `resolve.json`). The check on the edited copy: exit 1, with S07-007. `--write` into the stamped folder: exit 2,
+   "holds a stamp".
+6. A trailing separator on the out folder:
+   `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- /tmp/v31fix.IrNP/src --write /tmp/v31fix.IrNP/pub2/ --version v2026.12.7`:
+   exit 0, `published: example-macros@v2026.12.7 written to /tmp/v31fix.IrNP/pub2 (27 files, publish.json last).`
+   (`pub3//` also exit 0). A re-render of a copy of `pub2`: `no difference: 1 stamped 31 version(s) re-rendered.`
+
+### Before 31 leaves preview
+
+31 is admitted outside preview (joins `AcceptedSpecVersions`, and the preview setting is removed) only once these
+hold. They are the owner's conditions on #1508, word for word.
+
+From [the third comment](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7073314794)
+(item 3):
+
+> 3. **Conditions before 31 is admitted outside preview,** recorded in this area's publish notes and the release plan:
+>    - the v31 agents (`judgement` 1) are attested in Foundry; today they are attested against git only (D9);
+>    - `consultologist-agents` catalogue `v2026.12.2` (`concept_list` with `source`, `judgement`'s newline schema) and the content-repo changes are released from their `m39-build` branches.
+>
+>    Until then, a 5–30 host does not resolve the 31 catalogue (#1505, ruling 7).
+
+From [the fourth comment](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7082079188):
+
+> **Added to the conditions before 31 is admitted outside preview** (beside [the earlier list](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7073314794)):
+> - a dev-deployment run of a 31 job, including a forced replay: the Azure table and blob adapters (insert-if-absent, `row1…` splitting, the 1 MiB check) have only run over in-memory seams;
+> - the owner sets `Operators__AlertAddress` and `OperatorWeeklySummarySchedule`, and drains 31 orchestrations before deploying (their history gains `job-slow`, `evaluate-rule-v31` and the delivery step).

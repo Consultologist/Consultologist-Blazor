@@ -1083,11 +1083,10 @@ with its reason:
   - Reading `requires.spec`.
   - Running loops, whiles and calls as `resolve.json` describes them.
   - Loading only `resolve.json`.
-- **Area 11: tests and writing.** Step 3 of part 07 § 5 (the in-package tests against the in-memory
-  `resolve.json`), the publish report, writing the folder and the stamp, storing only a pair that is
-  `Complete`, `Toolchain.Current` with the release's names, `PublishLimits` from the engine's
-  numbers, and § 4.4's corpus re-render. The break points belong to the engine's configuration and
-  are checked here.
+- **Area 11: tests and writing, now built** ("publish" below). Step 3 of part 07 § 5 (the in-package tests
+  against the in-memory `resolve.json`), the publish report, writing the folder and the stamp, storing only a pair
+  that is `Complete`, `Toolchain.Current` with the release's names, `PublishLimits` from the engine's numbers, and
+  § 4.4's corpus re-render (a script). The break points belong to the engine's configuration and are checked here.
 - **Area 13: `dag.mmd`.** Generating it, and failing a committed one that differs. `SourceHash`
   leaves it out. `graph` has no edges inside a function; a diagram that needs them would add them
   with function-prefixed keys.
@@ -1138,7 +1137,7 @@ is in [the engine at specVersion 31](engine-v31.md).*
 `resolve.json` alone and runs it: leaves, `for`, `while`, `if`, `case`, and `call` with its function's body
 inline, under the per-job ceiling, the retries and the limits. It is a pure library. The run talks to the
 outside only through two interfaces, `IRunHost` (agent calls, renders, timers, the clock) and `IRunRecorder`
-(rows and decisions), so the same runner can serve the engine's orchestration, area 10's byte-equivalence run and
+(rows and decisions), so the same runner serves the engine's orchestration, area 10's byte-equivalence run and
 area 11's in-package tests. Nothing here reads a clock, a file or the network.
 
 ### The stamp
@@ -1148,7 +1147,7 @@ area 11's in-package tests. Nothing here reads a clock, a file or the network.
 `{ "specVersion": 31, "resolveHash": "sha256:…", "lockHash": "sha256:…" }`. `ToJson()` writes it canonically.
 `PublishedStamp.TryRead(string? json)` gives null unless the text is a JSON object with `specVersion` the
 integer 31 and two hashes, each `sha256:` and 64 lowercase hex digits. It ignores other members (area 11 writes
-the stamp and may add some), refuses a repeated member, and never throws. The engine chooses the load path by
+the stamp, with `migratedFrom` for a migrated version), refuses a repeated member, and never throws. The engine chooses the load path by
 it: a 31 stamp takes the 31 path, and anything else, no stamp included, takes today's.
 
 ### The plan
@@ -1413,12 +1412,12 @@ package's level. `Scope` is `RunScope.Data` over exactly the entry's compiled `r
 
 | Seam | Here | Who plugs in |
 |---|---|---|
-| `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)`, `EvaluateAsync(RuleCall)` (area 08) | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's `OfflineHost` (`V31/Harness/`, the offline run of "migration" below), on which area 11's in-package tests will run |
+| `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)`, `EvaluateAsync(RuleCall)` (area 08) | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's `OfflineHost` (`V31/Harness/`, the offline run of "migration" below), on which area 11's in-package tests run ("publish" below) |
 | `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, `DeliveryAsync(DeliveryRow)` and `NoticeAsync(RunNotice)` (area 08) and `FlushAsync()` (area 09, #1506), awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | the engine's `StoredRunRecorder` (area 09, which replaced `EntityRunRecorder`): it buffers a round's rows, decisions and delivery rows, and writes them at each flush to the record's table in one activity, then counts them on the job's entity; telemetry gets the key, state and hashes |
 | `AgentTurn`, `RenderTurn` (in the library, since area 07) | `AgentTurn.Prepare(plan, call, stepLimit, strictRejects)`, `AgentTurn.Finish(prepared, reply)`, `RenderTurn.Render(plan, call)` | the engine's two activities call them; area 07 removed the Api's `IBodyComposer` and `ScribanBodyComposer` (see "templates" below) |
 | A deliverable's outcome (area 08: `RunResult.Deliverables`) | `DeliveryRunner` takes the list | the engine's `DurableDeliveryHost` ("checks, deliverables and delivery" below) |
 | `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts`, `NoDeliverableCanExist` and `Signature` (area 08), `Choices` (area 10); `Inputs`, `Choices` and `NoDeliverableCanExist` call the library's `RunInputsBuilder` (area 10), so the offline run starts alike | area 12's Create page, which calls the same checks |
-| `SpecVersionAdmission` (in the Api) | `Admits`, `Runs31`, `NotSupported` | area 11 (publish, import, `WorkflowPackages/Current`) |
+| `SpecVersionAdmission` (in the Api) | `Admits`, `Runs31`, `NotSupported` | area 11 (publish, import, `WorkflowPackages/Current` and `Current/Content`, and the job start's answer to a 31 pin; "publish" below) |
 
 `RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail)`
 and `RunDecision(string Site, string Member, string Printed, bool? Result, string? Branch, DateTime DecidedAtUtc)`
@@ -1960,7 +1959,7 @@ rulings on #1504:
 - **Area 09:** storing rows, sub-rows and decisions. This area puts them in `RunRow.Detail` and `RunDecision` under
   part 08's names. The engine's `StoredRunRecorder` (area 09, now built) stores them and passes only the hashes on to telemetry.
 - **Area 10: now built** ("migration" below): converting a 30 package (part 05 § 10).
-- **Area 11:** in-package test stubs, and the publish path that stores a pair.
+- **Area 11: now built** ("publish" below): in-package test stubs, and the publish path that stores a pair.
 - **Area 12:** the Create page's three-state boolean for a per-run choice, and History's sub-rows.
 - **For the owner:** the 31 agents are attested against git, not Foundry, until the contracts are released (D9).
 
@@ -2332,8 +2331,8 @@ This area carries a specVersion 30 package to 31. It is four pure pieces of the 
    `ExpectedDifferences`, `MigrationReport`).
 
 The script `scripts/migrate-workflow-package.cs --to 31` runs the rewrite on a folder. The operator's run over a folder
-of account packages is a test (D10). Nothing here publishes a migrated version, moves a pin or tells an owner: that is
-area 11's publish path and the user's deploy (part 10 § 1.5).
+of account packages is a test (D10). Nothing here publishes a migrated version, moves a pin or tells an owner: area
+11's publish path ("publish" below) stores a migrated version, and the rest is the user's deploy (part 10 § 1.5).
 
 ### The converter (part 10 § 2)
 
@@ -2459,7 +2458,8 @@ profile's fields, the run facts by name (`run.` dropped), the replies to serve b
 
 `OfflineResult` gives `State` and `Sentence`, every sent prompt and rendered text as an `OfflineText(Key, Text, Hash)`,
 the deliverables' outcomes, every reply served, the rows and decisions, and `UnusedOutputs` (pinned keys no call asked
-for). The snapshot test, the comparison and the operator's run use it; area 11's in-package tests will run on it.
+for). The snapshot test, the comparison and the operator's run use it, and so do area 11's in-package tests, with
+`GenerateMissing` false ("publish" below).
 
 ### The snapshot test (part 10 § 4)
 
@@ -2625,7 +2625,8 @@ CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.
 
 The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10-004 and S10-006, each that row of
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
-version 30"*) is the publish path's (area 11). Every other notice, refusal and reason is an area sentence, A10-001 to
+version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`), for the script and the operator's tools; no publish
+path says it in this build. Every other notice, refusal and reason is an area sentence, A10-001 to
 A10-069 (A10-009 unused), listed in the plan's table and in `V31Contract.MigrationAreaSentences`. Area 10's rulings also
 added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
 `markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
@@ -2645,9 +2646,11 @@ summary). No sentence, notice or report entry carries a value from an input, a m
 
 ### What it leaves to areas 11 to 13
 
-- **Area 11:** the publish path that stores a migrated version and writes `migration-report.json` beside its publish
-  report, the publish record's *"migrated by the operator from …"*, S10-005, moving pins, running in-package tests at
-  publish on `OfflineRun`, and `OperatorAlertKinds.PublishFailed`.
+- **Area 11: now built** ("publish" below): the publish path that stores a migrated version and writes
+  `migration-report.json` beside its publish report, the stamp's `migratedFrom` (served as `MigratedFrom`, from which area 12
+  is to compose *"migrated by the operator from …"*), running in-package tests at publish on `OfflineRun`, and `OperatorAlertKinds.PublishFailed`.
+  S10-005 has its sentence (`PackagePublishSentences.StaysAt30`) and no caller yet; moving pins in bulk is the
+  user's.
 - **Area 12:** the Create page, whose per-run choice sets the optional boolean input a migrated macro's `if` reads
   (area 07's three-state boolean); this area adds nothing to it.
 - **Area 13:** the 31 diagram (`dag.mmd`), which the script does not write.
@@ -2661,3 +2664,182 @@ summary). No sentence, notice or report entry carries a value from an input, a m
 31 stays outside `AcceptedSpecVersions` and `SupportedSpecVersions`. Nothing in the engine migrates a package at run
 time: the weekly summary migrates in memory to count, and writes nothing. The 5–30 path keeps its behaviour; the two
 moves into the library (the stage to 24, the 31 start's input building) are behind the tests that existed.
+
+## specVersion 31: publish (preview)
+
+*Area 11 of the Milestone 39 build (#1508). Built from
+[compiled documents](package-format-v31/07-compiled-documents.md) (part 07) §§ 4.4 and 5 to 10,
+[the engine and the pages](package-format-v31/09-engine-and-pages.md) §§ 2, 4 and 8.2,
+[types and inputs](package-format-v31/02-types-and-inputs.md) § 12 and
+[migration and tools](package-format-v31/10-migration-and-tools.md) §§ 1.5 and 5, with
+[the plan](package-format-v31/plans/area-11-registry-and-publish.md) for the decisions (the owner's rulings R1 to R9 on
+#1508 and the decisions D1 to D16). How the engine publishes, serves `Current` and `Content`, and imports is in
+[the engine at specVersion 31](engine-v31.md), "Publish, `Current`, `Content` and import"; dev's registry, the two
+scripts and the conditions before 31 leaves preview are in [registry operations](registry-operations.md),
+"specVersion 31".*
+
+This area publishes a 31 package end to end. The library side is one pure call, `PackagePublish.RunAsync`
+(`V31/Publish/`): it receives the upload, compiles it, runs its in-package tests offline, builds the publish report,
+and gives the files to write in part 07 § 5's order with the stamp apart. It reads no clock but the one it is given,
+no file and no network. The engine's `V31PackagePublisher` calls it and `V31RegistryWriter` writes the folder; the CI
+script calls it the same way.
+
+### The pipeline (part 07 § 5)
+
+```csharp
+public static Task<PublishOutcome> RunAsync(IReadOnlyDictionary<string, byte[]> upload, PublishOptions options)
+public static Task<PublishOutcome> CheckAsync(IReadOnlyDictionary<string, byte[]> upload, PublishOptions options)
+```
+
+`PublishOptions(Registry, Toolchain, Limits, PublishedBy, Clock, Templates = null, Diagram = null, MigrationReport =
+null, MigratedFrom = null, MatchTimeLimit = null)` holds what the caller decides: the published types, the toolchain
+`lock.json` records, the `PublishLimits`, the report's `publishedBy` (D4), the clock (the report's time and the tests'
+limit), the `dag.mmd` builder (D1: none is written while it is null, which it is until area 13), the operator's
+`migration-report.json` text and the stamp's old version (D5), and the time limit of `matches` and `has_word` in the
+tests' plan.
+
+`RunAsync` does this, in order:
+
+1. **Steps 0 to 2** are `CompiledPackage.Publish(upload, registry, toolchain, limits, templates, out check)`: intake
+   (line endings normalised, `resolve.json`, `lock.json`, `publish-report.json` and `publish.json` dropped unread into
+   `Dropped`), the reader, every rule, and the pair, with R1's instances refusal (A11-001), R4's (A11-002) and R5's
+   node budget (A11-003) from the limits.
+2. **The name and version** are read from `manifest.json` as normalised. When the manifest is a JSON object whose `name`
+   or `version` is not text, A11-004 comes first among the refusals (D2).
+3. **The pair must be complete.** A pair the compiler could not finish (`Complete` false) is A11-007.
+4. **Step 3, the tests,** run on the plan of the in-memory `resolve.json` (`RunPlan.Build`, as the engine loads it;
+   never the source). A plan the build refuses is A11-007 with the refusal's id as its `EngineFault`.
+5. **Step 4.** The report is built with the clock's time, and the files are listed in write order: the source files
+   (only those `sourceHash` covers, by ordinal path, as normalised; an uploaded `dag.mmd` is never one), `dag.mmd` when
+   `Diagram` gave one, `lock.json`, `publish-report.json`, `migration-report.json` when given, and `resolve.json` last.
+   The stamp, `PublishedStamp(resolveHash, lockHash, MigratedFrom)`, is not among the files: the writer writes it after
+   them.
+
+`PublishOutcome(Report, Files, Stamp, Compiled, Dropped)` is `Published` when it has a stamp. A refusal at any step
+gives a refused report, no files and no stamp. Any exception inside is caught and is A11-007 with its type in
+`SourceRefusal.EngineFault` (the caller logs it; the report never holds it). Only a null argument throws.
+
+`CheckAsync` runs steps 0 to 3 and stops: the same report with `outcome` as it would be, `publishedAtUtc` null, and
+never files, a stamp or a call to `Diagram`. It is part 07 § 5's "run steps 0–3 without writing", which the CI script
+and the corpus re-render use.
+
+`CompiledPackage.Publish` keeps its earlier signature, which now calls the one with `out SourceCheckResult`.
+`PublishedStamp` gains a trailing `MigratedFrom`: `ToJson()` writes `migratedFrom` only when it is set, and `TryRead`
+ignores it.
+
+### The in-package tests (part 07 § 8)
+
+`PackageTests.RunAsync(plan, tests, files, clock)` runs the package's tests one at a time, in id order, each on
+`OfflineRun` (area 10's harness) with the run's default `RunLimits`:
+
+- **Reading a test** is `PackageTestFiles.Read(test, text, plan)`, after the source check has held the file to
+  `test.schema.json`. It checks what the compiled package needs: every declared input listed (S07-010), `profile`
+  exactly `needs.profile` (S07-011), `run` exactly the run facts the package reads (S07-012), and each `outputs` key
+  and `expect` member of the grammar's shape (A11-005: a member of the wrong shape, an unknown expectation, an
+  `outputs` key that is no row key; a key is described by its position, never printed). `expect.deliverables` takes
+  `{ "state": "skipped" }` alone (R9). A test it refuses fails, with the empty outcome's hash, and its refusals are
+  publish's.
+- **No stub is generated** (D6). `OfflineRequest` has a trailing `GenerateMissing` (default `true`, area 10's
+  behaviour); the tests pass `false`. `OfflineHost` then records a call with no stub in `OfflineResult.MissingOutputs`
+  and a stub that does not fit its format (read and validated as a reply is, markers included) in `InvalidOutputs`
+  (`StubFault(Key, Format, Error)`, the error a JSON pointer and a keyword, never the value), and fails the node at
+  once: no retry, no repair.
+- **The verdict** of each test: a missing stub is S07-008 for the first key in ordinal order; else an invalid one is
+  S07-009 for the first by key; else the first mismatch (`TestExpectations.First`, D7) is S07-007. A test that has
+  none of them passes. Every test runs, so a report holds one refusal for each test that fails. A stub no call asked
+  for is a warning, S07-014, one per key.
+- **The limit** is `PackageTests.LimitSeconds` (60, `constants.json`'s `limits.testsSeconds`, pinned by a test; D9).
+  The clock is read before each test, and a test's run is awaited for the time left at most. Past it, the outcome is
+  S07-013 alone with the results so far; a run still going is abandoned. An exception from a run is A11-007.
+
+`TestExpectations.First(plan, expect, result)` gives the first `TestMismatch(Expectation, Key, Expected, Actual)` in
+D7's order: a run that did not complete (unless a deliverable's `failed` says so) is `{ run, "", completed, <state> }`;
+then `ran`, `skipped`, `decisions`, `loops`, `values`, `prompts`, `checks` and `deliverables`, each by key in ordinal
+order. `expected` and `actual` are hashes for a prompt's or a deliverable's text, canonical JSON for a value, and plain
+words otherwise (`ran`, `not run`, `count 3`, `passes 2, stopped max`, a state). `TestOutcome.Hash(result)` is D8's
+`outcomeHash`: the canonical JSON of the end state, the rows' states, the decisions, the computed values, the prompts'
+hashes and the deliverables' states and hashes, rows and decisions in ordinal key order; no duration is in it.
+
+### The publish report (part 07 § 9)
+
+`PublishReport(Name, Version, Published, PublishedAtUtc, PublishedBy, SourceHash, ResolveHash, LockHash, Normalised,
+Refusals, Warnings, Tests)` is `publish-report.json` (`PublishReport.FileName`, media type `PublishReport.MediaType`).
+`ToJson()` writes every member (`documentVersion` 1, `outcome` `published` or `refused`, `{ sentence, at }` entries with
+`at` null for the package as a whole) and `ToCanonical()` its RFC 8785 text, the bytes written. The time is whole
+seconds in UTC. A refused report (D10) has `publishedAtUtc`, `resolveHash` and `lockHash` null, the tests run so far,
+and the warnings known so far; its `sourceHash` is the compiled one, else `SourceHash.Of` the files as received after
+normalisation, else the hash of the empty listing. Each `TestResult` writes `id`, `fileHash` (the file's text as
+stored), `result` `pass` or `fail`, `outcomeHash`, `firstMismatch` and `durationMs`.
+
+`publishedBy` is `editor`, `api` or `operator-migration` from the engine (D4), and `ci <tag>` (or `ci` with no tag)
+from the CI script. `publish-report.schema.json` admits the four bare values or `ci` followed by a space and the tag
+(the pattern `^ci \S.*$`).
+
+### The sentences
+
+`PackagePublishSentences` holds every sentence publish says that no earlier area says: S07-007 to S07-016 and S10-005,
+each the row of `sentences.json` with its `<…>` filled, and this area's A11-004 to A11-007. A11-001 to A11-003 are the
+compiler's (`ResolveSentences`), and A11-008 is the run's (`RunSentences.EngineFailedRendering`). Each is in
+[refusal-sentences.md](package-format-v31/refusal-sentences.md) § 11, in `V31Contract.PublishAreaSentences`, and in
+the conformance README's "Publish (area 11)" table. No sentence carries a value from an input, a model, a profile or a
+test's text: a mismatch on text gives hashes, and S07-009's error a path and a keyword.
+
+### The decisions as built
+
+| # | Where | As built |
+|---|---|---|
+| D1 | `dag.mmd` | `PublishOptions.Diagram` is null in the engine and the script, so no `dag.mmd` is written; an uploaded one is never stored or served |
+| D2 | name and version | the engine assigns the next CalVer as at 5–30 and writes `name` and `version` into `manifest.json` in place (every other member and its order kept) before step 0; the script's `--version` replaces `version` only. A stamped version is never written; an unstamped folder is cleared and rewritten. A manifest without both as text is stored as uploaded and refused with A11-004 |
+| D3 | the request | the same route and record: `Manifest` null, every file in `Files`. The 31 branch is taken when `manifest.json` parses as an object whose `specVersion` is the integer 31. The response gains a trailing `Report`; a refused publish's 400 is `{ errors, error, report }` |
+| D4 | `publishedBy` | `operator-migration` when the request carries `MigrationReport`, else `editor` when it carries `Source`, else `api`; `ci <tag>` from the script |
+| D5 | migration | `MigrationReport` is accepted only from a caller in `Operators__AppUserIds` (else 403) and only with `oldVersion` and `newVersion` as text (else 400); it is written as `migration-report.json` before `resolve.json`, and the stamp gains `migratedFrom` |
+| D6 | no stub | above, "The in-package tests" |
+| D7 | first mismatch | above |
+| D8 | `outcomeHash` | above |
+| D9 | 60 seconds | above; the bound is a wait, not a cancellation, since the offline run takes none |
+| D10 | a refused report | above, "The publish report" |
+| D11 | the corpus re-render | `scripts/rerender-workflow-packages-v31.cs` ([registry operations](registry-operations.md), "specVersion 31") |
+| D12 | `Blocks`, `Results` | the top-level entries in `graph.order`, nodes and deliverables apart |
+| D13 | `Fields` | `Required` when the property's type is not nullable; `Label` its `title`, else the title of the format it names, else its name. They come in ordinal order (below) |
+| D14 | `Content` | `Files` every stored source file but `manifest.json`, and `dag.mmd` when stored; `Resolve`, `Lock`, `PublishReport` parsed from the stored bytes; `MigratedFrom` from the stamp |
+| D15 | import | the source check only; the content with `Notices` holding S07-016 once when the zip held `resolve.json` or `lock.json` |
+| D16 | limits | `PublishLimits(Ceiling, ItemsPerLoop, CallsPerJob, Instances = null, JobMinutes = null)`; the engine's are `EngineLimitSettings.PublishLimits`. S09-016, the note that the estimated worst case passes `JobMinutes`, follows S04-080 |
+
+**`Format` and `Fields` at 31.** `PlanFormats.SelfContained(format)` gives an input's `Format` as one JSON Schema
+2020-12 compound document (the controller's ruling in the build): the input's schema at the root, each bundled format
+it reaches, transitively, once under the root's `$defs` with its `$id` kept and `$schema` dropped, and every reference
+to one written as `{ "$ref": "<its $id URN>" }`. A format file's own `$defs` stay with it. A format that recurses, names
+something unknown or passes the node budget gives `false`, as the run's expansion does. `Fields` follow the order
+`resolve.json` holds a format's properties in, which is ordinal: `resolve.json` is canonical JSON and keeps no written
+order. Part 09 § 4.3 says "in written order"; that difference is open with the owner on #1508.
+
+### What it leaves to areas 12 and 13
+
+- **Area 12:** the Create page (it reads `Format` by `$id`), History, the Editor's bar and "Download package" (the
+  content response's `Resolve`, `Lock` and `PublishReport`), showing the report the publish response and its 400
+  carry, and S09-004 (*"migrated by the operator from …"*) from the content response's `MigratedFrom`, which nothing
+  composes yet. A 31 start does not yet read `InputRefs` or form references.
+- **Area 13:** the 31 diagram: it fills `PublishOptions.Diagram`, and the writer already stores `dag.mmd` as
+  `text/plain`.
+- **Milestone 41:** the Editor's "Run tests", on the same `PackageTests`.
+- **Not this build's:** the public repository's tag CI (it is to call `scripts/check-workflow-package-v31.cs`), Release
+  assets, the bulk migration and its pins, and the Azure settings (the user's).
+
+### The tests and the conformance cases
+
+`tests/V31Publish/` holds the library's tests (`PackagePublishTests`, `PackageTestsTests`, `PackageTestFileTests`,
+`TestExpectationsTests`, `StrictStubsTests`, `PublishReportTests`, `ScriptsTests`); `tests/V31Engine/` the engine's
+(`V31PackagePublisherTests`, `V31RegistryWriterTests`, `V31PackageDescriptionTests`, `V31PackageContentTests`). Each
+`compiled-documents` case is published by `PackagePublish.RunAsync` against stated limits (the engine's defaults;
+`nested-note` at 100,000 instances, since 10,000 refuses it with A11-001) with `publishedBy` `ci` and a stopped clock,
+so each case folder holds `publish-report.json` (every `durationMs` 0) and `publish.json`; `nested-note` and `macros`
+carry a test each. The refusal packages gain S07-007 to S07-012 and A11-001 to A11-003 and A11-005 (A11-004 always comes with the
+source check's own sentence, so no package shows it alone); the content repository's
+`check-v31.py` holds the report and the stamp to their schemas and to the pair.
+
+### Not wired in
+
+31 stays outside `AcceptedSpecVersions` and `SupportedSpecVersions`. Every 31 branch of the Api (publish, import,
+`Current`, `Content`, job start) asks `SpecVersionAdmission` first, and without the preview setting answers S09-001 as
+a 400. The 5–30 publish, import and content paths keep their behaviour; the response records changed by trailing
+optional members only.

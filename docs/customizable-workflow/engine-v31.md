@@ -11,16 +11,19 @@ deliverables' outcomes, delivery, the operator's alerts and the engine-fault log
 "specVersion 31: checks, deliverables and delivery" in the same guide. Area 10 (#1507) migrates 30 packages to 31 in the
 library ("specVersion 31: migration" in the same guide); by the owner's rulings it also changed what the engine does at
 a 31 start (`MacroChoices` keyed by a macro's id), in delivery (`pdf` falls back to the link-only email) and in the
-weekly summary (the hand-edits line).*
+weekly summary (the hand-edits line). Area 11 (#1508) publishes a 31 package through `WorkflowPackages/Publish`, serves
+it through `Current` and `Current/Content`, and imports it ("Publish, `Current`, `Content` and import" below); the
+library's side is "specVersion 31: publish".*
 
 This page is for whoever deploys and operates the engine. It covers:
 
-- how a 31 package is loaded and a 31 job started;
+- how a 31 package is published, imported, described to the satellites, loaded and started;
 - the settings and their defaults;
 - the limits and retries;
 - delivery, the `delivering` status, the operator's alerts and the engine-fault log;
 - the drain that comes before every deploy, and what the release workflow must call;
-- how to size the deployment-wide limits.
+- how to size the deployment-wide limits;
+- what must hold before 31 leaves preview.
 
 **31 runs only where `WorkflowPackages__PreviewSpecVersions` lists it.** Without that setting nothing on this
 page changes what the engine does. No 31 code path reads storage, every door answers a 31 package as it does
@@ -557,8 +560,9 @@ and counts only, never a value.
 | `capacity-wait` | the job's 429 waits (the ones taken, not a 429 that fails its node) pass 5 minutes in all; `Number` is the whole minutes | per job |
 | `job-slow` | the job reaches 80% of `jobMinutes`; `Number` is the minutes it has run (a separate host timer, cancelled with the others) | per job |
 | `delivery-failed` | a delivery row is `failed`; `Key` is the first such row and `Number` how many | per job, after delivery |
+| `publish-failed` | a 31 publish is refused, for any reason, an author's failing test included (#1508); `Key` is the package name and `Number` the number of refusals. Raised by the publish endpoint directly, not by an orchestration | per refused publish |
 
-`publish-failed` and `exporter-warning` are named for areas 10 and 11 to raise; this build raises neither.
+`exporter-warning` is named and raised by nothing in this build.
 
 **The weekly summary** (`OperatorWeeklySummary`) is a timer function on `%OperatorWeeklySummarySchedule%`, an
 NCRONTAB value, for example `0 0 7 * * 1`. **Unset, the function is disabled** and the host is unaffected, as the
@@ -603,8 +607,123 @@ say the compiled document is not what was published. A call's `ErrorKind` is `en
 The log is where the fault is seen: `run-agent-node-v31` (a prompt) and `render-node-v31` (a `rendered` node or a
 deliverable) log once per failed composition, at error level, *V31 engine fault reading a template* with
 `SentenceId=A08-006`, the key, the entry's key, the function and the exception's full type name. Never the
-exception's message, its stack or the text. Publish carries the type on its refusal (`SourceRefusal.EngineFault`) for
-area 11's caller, which has a logger and logs it at publish as these activities do at run time.
+exception's message, its stack or the text. Publish carries the type on its refusal (`SourceRefusal.EngineFault`), and the publish
+endpoint logs it at error level, *31 publish engine fault*, with the sentence id and the type (#1508; "Publish, `Current`,
+`Content` and import" below).
+
+## Publish, `Current`, `Content` and import (area 11, #1508)
+
+*Part 07 §§ 5 to 7, part 09 §§ 2, 4 and 8.2. The pipeline itself is the library's: "specVersion 31: publish" in
+[the package format as a library](package-format-library.md). Dev's registry, the CI and re-render scripts, and the
+conditions before 31 leaves preview are in [registry operations](registry-operations.md), "specVersion 31".*
+
+Every 31 branch below asks `SpecVersionAdmission` before it reads anything. With `WorkflowPackages__PreviewSpecVersions`
+unset, a 31 publish, import, `Current`, `Content` and job start each answer **S09-001** as a 400, never a 500, and the
+5–30 path is untouched.
+
+### Publish
+
+`POST WorkflowPackages/Publish` (`[Function("WorkflowPackagePublish")]`) takes the 31 branch when the request's
+`Files["manifest.json"]` parses as an object whose `specVersion` is the integer 31. A 31 request sends `Manifest` null
+and every file, `manifest.json` included, as text in `Files` (written as UTF-8 without a byte-order mark). The branch
+(`WorkflowPackagePublisher.PublishV31Async`, then `V31PackagePublisher`) does this:
+
+1. **Admission**, before anything is read: S09-001 unless 31 is admitted.
+2. **A migration report** (the trailing request member `MigrationReport`, area 10's `migration-report.json`) is
+   accepted only from an account in `Operators__AppUserIds`, as the drain's endpoints are (else 403, *"A migration
+   report is accepted only from the operator."*), and only with `oldVersion` and `newVersion` as text (else 400).
+3. **`Source`** is optional at 31; when given it gets today's format checks and, unless `FromUpload`, today's access
+   check. **The target** is decided as at 5–30 (`Target`, `NewPackageSlug`, or the account's first name), so a 31
+   publish always lands in the account's private container under an `acct-…` name.
+4. **The version** is the next CalVer, as at 5–30. The name and version are written into `manifest.json` in place
+   (every other member, its order and its nulls kept; written indented), so `sourceHash` covers the manifest as stored.
+5. **The pipeline** (`PackagePublish.RunAsync`) runs with the engine's own inputs: the bundled 31 type registry
+   (`PublishedTypeRegistry`), the toolchain the engine attests (`EngineToolchain.Current()`), the limits
+   (`EngineLimitSettings.PublishLimits`: `MaxAgentCallsPerJob`, `LoopItems`, `JobAgentCalls`, `JobInstances` and
+   `JobMinutes`), the clock, `RegexMilliseconds` for the tests' `matches`, and no diagram. `publishedBy` is
+   `operator-migration` with a migration report, else `editor` with a `Source`, else `api`.
+6. **Writing.** The account's ownership is recorded once, before the first byte. If the version is already stamped, or
+   the write loses to another publish, the pipeline runs again on the next CalVer (never at or below the one that was
+   taken), three times in all; then the answer is **A11-006**. After the stamp the latest pointer is set and the
+   account's pin flipped, as at 5–30.
+
+**The answer.** Published: 200 with `{ Name, Version, Ref, Warnings, Report }`, where `Warnings` are the report's
+warning sentences and `Report` the publish report in full. Refused: 400 with `{ errors, error, report }`: every
+refusal sentence, the first one, and the refused report. Nothing is written for a refusal.
+
+**On a refusal** the engine logs one information line (package, version, the number of refusals, the first id), logs
+each engine fault at error level (`31 publish engine fault`, with the sentence id and the fault's type, or the refused
+plan's sentence id; never a message), and raises the operator alert **`publish-failed`** for every refused 31 publish,
+an author's failing test included (`Key` the package name, `Number` the number of refusals). A fault in the alert is
+logged by type and does not change the answer.
+
+**The folder** (`V31RegistryWriter`, in the private container the account's kind picks). One writer at a time holds a
+version's folder through a 60-second lease on a lock blob beside it, `{name}/{version}.lease` (never inside the folder,
+so no listing takes it for a file or a version; it is left in place after the write). The holder checks the stamp (a
+folder with any `publish.json` is never written to), clears the folder but the stamp, writes the files in the order the
+pipeline gave (the source, `lock.json`, `publish-report.json`, `migration-report.json` for a migration, `resolve.json`
+last), renewing the lease before each write, reads `resolve.json` and `lock.json` back and verifies them against the
+stamp it is about to write (`CompiledPackage.Verify`, the load's own check), and then creates `publish.json` only if
+absent. A lost lease or a failed check stops the write with no stamp. A writer that died holds the folder until its
+lease lapses; the retry then clears and rewrites it. Media types: `resolve.json`
+`application/vnd.consultologist.resolve+json`, `lock.json` `application/vnd.consultologist.lock+json`, the report
+`application/vnd.consultologist.publish-report+json`, a `.md` file `text/markdown`, `dag.mmd` `text/plain`, anything
+else (the stamp included) `application/json`. A migrated version's stamp carries `migratedFrom`, the old version; the
+load ignores it.
+
+### `Current` at 31
+
+`GET WorkflowPackages/Current` tries the compiled load (`CompiledPackageStore.TryLoadAsync`) for the resolved pin first.
+A plan answers 200 with `V31PackageDescription.Describe(plan)`, from `resolve.json` alone:
+
+- `SpecVersion` 31, `Name`, `Version`, `Title` (`resolve.json`'s `title`);
+- `Blocks`: the top-level nodes (`parent` null) in `graph.order`, `Id` the key and `Name` the `label`; `Results`: the
+  top-level deliverables in the same order, `Id` the key and `Label` the `label`; `Macros`: always `[]`;
+- each input in `inputOrder`: `Id`, `Label`, `Required`, and `Type`, `Values`, `Items` and `Fields` read from the
+  format the run expands (part 02 § 12's table; a shape with no row has `Type` null, and an element with none `text`);
+  `ExpectedContent` and the new `Channel` are both the input's `channel`; `Types` is null;
+- **`Format`** (new, trailing) is the input's format as one JSON Schema 2020-12 compound document: the input's schema
+  at the root, every format it reaches under the root's `$defs` once, each with its `$id` kept, and every reference to
+  one written as `{ "$ref": "<its $id URN>" }`. A satellite resolves references by `$id`. A format that cannot be
+  expanded (recursion) is `false`.
+- **`Fields`** come in ordinal property order, which is the order `resolve.json` holds them in (it is canonical JSON).
+  Part 09 § 4.3 says "in written order"; this is open with the owner on #1508. A field is `Required` when its type is
+  not nullable, and its `Label` is its `title`, else the title of the format it names, else its name.
+
+A load refusal (S09-009, S09-014, a `requires` sentence) is 400 `{ error }` with the job's sentence. A 31 version with
+no stamp is 400 A06-004 (*"isn't published"*) when 31 is admitted, and S09-001 when it is not. A registry that cannot be
+read for a 31 version is 503 *"Workflow package registry is unavailable."*, as at 5–30. A version with no 31 stamp takes
+today's path, after the one stamp read.
+
+### `Current/Content` at 31
+
+`GET WorkflowPackages/Current/Content` keeps today's ref parse and access check, then loads as `Current` does. A
+stamped version whose pair verifies is served from its folder (`V31PackageContent.ReadAsync`), **even when this engine
+will not run it** (a `requires` refusal is logged, not answered), so its owner can read it and publish a new version:
+
+- `Manifest` the stored `manifest.json`, member for member; `Files` every stored source file but `manifest.json`, and
+  `dag.mmd` when stored (never the evidence, `migration-report.json` or the lock blob);
+- trailing `Resolve`, `Lock` and `PublishReport`, each parsed from the stored bytes; `MigratedFrom`, the stamp's old
+  version. The pages are to show it as S09-004, *"migrated by the operator from \<old version\>"* (part 09 § 6.2);
+  nothing in this build composes that sentence (area 12).
+
+An integrity refusal (A06-004, S09-009, S09-014) is a 400 with its sentence; a folder whose `manifest.json` is not a
+JSON object is A06-004; a registry failure while reading the folder is 503. All these members are null below 31.
+
+### Import
+
+`POST WorkflowPackages/Ingest` reads the zip's entries as bytes. A zip whose `manifest.json` is a 31 manifest takes the
+31 branch: S09-001 unless admitted; otherwise the source check only (`SourceCheck.Run`: intake, which drops the
+evidence unread, the reader and every rule). A refusal is 400 `{ error, errors }`. Otherwise 200 with the content
+(source files but `manifest.json`, `SpecVersion` 31, `Resolve`, `Lock` and `PublishReport` null), empty `Findings`, and
+`Notices` holding S07-016 once when the zip held a `resolve.json` or `lock.json`. An uploaded `dag.mmd` is dropped.
+Nothing is compiled, tested or stored by an import. A 5–30 zip is read exactly as before.
+
+### A job started on a 31 pin with the preview off
+
+`ConsultGenerationJobStarter` answers a 31 pin it cannot admit with the error `SpecVersionNotAdmitted` and S09-001, a
+400, where it gave an unhandled spec-version message before. Other versions it does not run keep
+`SpecVersionNotYetExecutable` (422).
 
 ## Settings
 
@@ -621,13 +740,13 @@ re-read for that job.
 | `ConsultGeneration__MaxAgentCallsPerJob` | 16 | The per-job ceiling: agent calls in flight at once (`maxAgentCalls`) |
 | `ConsultGeneration__CapacityWaitMinutes` | 10 | The minutes a node may wait on 429s in all |
 | `ConsultGeneration__ServiceAttempts` | 5 | The attempts a node's call gets for other service failures |
-| `ConsultGeneration__JobMinutes` | 30 | The minutes a job may run from `startedAtUtc` |
+| `ConsultGeneration__JobMinutes` | 30 | The minutes a job may run from `startedAtUtc`. Publish notes a worst case estimated past it (S09-016) |
 | `ConsultGeneration__DeliveryMinutes` | 15 | Delivery's window, from the start of delivering; no attempt starts after it (recorded in `limits`; a job delivers under its own) |
 | `ConsultGeneration__DeliveryAttempts` | 3 | The attempts each destination gets, the wait before the second 2 minutes and doubling (recorded in `limits`) |
 | `ConsultGeneration__LoopItems` | 200 | The items one loop instance may be given (S04-078 past it) |
 | `ConsultGeneration__JobAgentCalls` | 500 | The agent calls one job may make; a retry or repair is part of its call (S09-015 past it) |
 | `ConsultGeneration__RenderSteps` | 100000 | The steps one render may take (S05-062 past it) |
-| `ConsultGeneration__JobInstances` | 10000 | The instances one job may open: a node, check or deliverable instance, a loop item, a pass or a call (A09-001 past it; recorded in `limits` as `jobInstances`) |
+| `ConsultGeneration__JobInstances` | 10000 | The instances one job may open: a node, check or deliverable instance, a loop item, a pass or a call (A09-001 past it; recorded in `limits` as `jobInstances`). Publish refuses a package whose worst case opens more (A11-001, #1508) |
 | `ConsultGenerationRecordStorage__TableServiceUri` (or `…__ConnectionStringName`) | unset | Where the table `ConsultGenerationRecordRows` lives. Unset, the table is on the account `AccountStorage` names, as the other job tables are; the text and record blobs are in the job outputs container, never here |
 | `ConsultGeneration__RegexMilliseconds` | 2000 | R2: the time one evaluation of `matches` or `has_word` may take (A06-001 past it). It is at most 2147483646, and it is not in the record (D8) |
 | `AzureAI__MaxRetries` | 0 | Keep 0 on any app that runs 31 jobs (above) |
@@ -761,3 +880,24 @@ To size them:
 A 429 that still gets through is retried (above). So a deployment sized too generously makes jobs slower, until a
 node's 429 waits pass `CapacityWaitMinutes` and it fails with S09-010. Record the values chosen in
 [CONFIGURATION.md](../CONFIGURATION.md) beside the deployment notes.
+
+## Before 31 leaves preview (R7, #1508)
+
+31 is admitted outside preview (joins `AcceptedSpecVersions`, and `WorkflowPackages__PreviewSpecVersions` is removed)
+only once these hold. They are the owner's conditions on #1508, word for word; [registry operations](registry-operations.md)
+keeps the same list beside dev's registry.
+
+From [the third comment](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7073314794)
+(item 3):
+
+> 3. **Conditions before 31 is admitted outside preview,** recorded in this area's publish notes and the release plan:
+>    - the v31 agents (`judgement` 1) are attested in Foundry; today they are attested against git only (D9);
+>    - `consultologist-agents` catalogue `v2026.12.2` (`concept_list` with `source`, `judgement`'s newline schema) and the content-repo changes are released from their `m39-build` branches.
+>
+>    Until then, a 5–30 host does not resolve the 31 catalogue (#1505, ruling 7).
+
+From [the fourth comment](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7082079188):
+
+> **Added to the conditions before 31 is admitted outside preview** (beside [the earlier list](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7073314794)):
+> - a dev-deployment run of a 31 job, including a forced replay: the Azure table and blob adapters (insert-if-absent, `row1…` splitting, the 1 MiB check) have only run over in-memory seams;
+> - the owner sets `Operators__AlertAddress` and `OperatorWeeklySummarySchedule`, and drains 31 orchestrations before deploying (their history gains `job-slow`, `evaluate-rule-v31` and the delivery step).
