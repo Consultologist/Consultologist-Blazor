@@ -95,11 +95,11 @@ A task that needs another sentence adds the next id and records it.
 
 **Interfaces:** Produces: no signature change if `Close()` is already async; otherwise `Task CloseAsync()`.
 
-- [ ] **Step 1: Failing tests.** `ASendInFlightAtTheWindowsClose_IsWaitedFor_AndRecordedAsItEnded` (the host's send completes after the window closes: the destination's row is `sent`, never `failed: window`); `ASendInFlightThatFails_AfterTheClose_IsFailedWithItsOwnReason_AndNotRetried`; `ADestinationNeverStarted_AtTheClose_IsFailedWindow` (unchanged behaviour).
-- [ ] **Step 2: Run, see them fail.**
-- [ ] **Step 3: Implement.** At the close, await every in-flight send (the activity has its own timeout), land its result, then fail only destinations with no send in flight. No new attempt starts after the close. The orchestration stays deterministic: await the host's tasks only.
-- [ ] **Step 4: Run** `--filter "FullyQualifiedName~V31"`; pass. Update `engine-v31.md` "Delivery" and `package-format-library.md` where they describe the close.
-- [ ] **Step 5: Commit** `PackageFormat (#1508): a send in flight at the window's close is waited for`; push.
+- [x] **Step 1: Failing tests.** `ASendInFlightAtTheWindowsClose_IsWaitedFor_AndRecordedAsItEnded` (the host's send completes after the window closes: the destination's row is `sent`, never `failed: window`); `ASendInFlightThatFails_AfterTheClose_IsFailedWithItsOwnReason_AndNotRetried`; `ADestinationNeverStarted_AtTheClose_IsFailedWindow` (unchanged behaviour).
+- [x] **Step 2: Run, see them fail.**
+- [x] **Step 3: Implement.** At the close, await every in-flight send (the activity has its own timeout), land its result, then fail only destinations with no send in flight. No new attempt starts after the close. The orchestration stays deterministic: await the host's tasks only.
+- [x] **Step 4: Run** `--filter "FullyQualifiedName~V31"`; pass. Update `engine-v31.md` "Delivery" and `package-format-library.md` where they describe the close.
+- [x] **Step 5: Commit** `PackageFormat (#1508): a send in flight at the window's close is waited for`; push.
 
 ### Task 2: `sentFormatHash` before wrapping; `failWith` from the literal
 
