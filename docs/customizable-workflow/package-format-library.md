@@ -2222,8 +2222,10 @@ in flight and the window's timer) for one to finish.
 - **A finished send is always landed.** The window closes only when its own timer ends (or when a retry's wait ends at
   or after the close). A send's result is read even when the host's clock is already past the close, as under a
   replay step that starts after it: an email that went out is `sent`, and a failure keeps its real error kind and
-  starts no attempt. Only a send still in flight when the window's timer ends is `failed`, and its attempt is
-  recorded `failed: window`.
+  starts no attempt. #1508: a send still in flight when the window's timer ends is waited for, not failed (a Durable
+  activity is not cancelled, so the email can still go out, and it has its own timeout): its result is landed, `sent` if
+  it went out, else `failed` with its own error kind, never retried. Only a destination with no send in flight (never
+  started, or waiting to retry) is `failed` at the close, with no `failed: window` attempt.
 - A row is `delivery:<deliverable key>/<kind>` (D13); `Result` is `sent`, `not sent` or `failed`; `Reason` is
   S08-006's sentence, `not sent: the job failed`, `failed: <kind>`, a link-only send's reason (A10-054 to A10-056), or
   `null` when sent as asked; `AtUtc` is the start of the attempt that sent it (null otherwise); `Attempts` each attempt

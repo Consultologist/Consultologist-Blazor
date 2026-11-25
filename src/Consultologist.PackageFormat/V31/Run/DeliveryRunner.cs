@@ -14,10 +14,10 @@ public sealed record DeliveryResult(IReadOnlyList<DeliveryRow> Rows, int Failed)
 /// <c>sent link-only</c> and its row's reason why); one whose kind is not set up is final at once, <c>not sent</c> with S08-006, and
 /// never retried; one that failed is retried after 2 minutes, doubling after, each wait cut to the time the window has left,
 /// until it has made <see cref="RunLimits.DeliveryAttempts"/> attempts. No attempt starts once
-/// <see cref="RunLimits.DeliveryMinutes"/> have passed from the start of delivering; what is unsent then (its send in
-/// flight when the window's timer ends, or waiting to retry) is <c>failed</c>. A send's result is always read, even when the
-/// host's clock is already past the close (a Durable replay step that started after it): an email that went out is
-/// <c>sent</c>, and a failure keeps its error kind and starts no attempt. Every row is recorded, in the fixed order, once every
+/// <see cref="RunLimits.DeliveryMinutes"/> have passed from the start of delivering; what is unsent then (never started, or
+/// waiting to retry) is <c>failed</c>. A send in flight when the window closes is waited for (#1508: its activity has its own
+/// timeout and is not cancelled, so the email can still go out): an email that went out is <c>sent</c>, and a failure keeps
+/// its error kind and starts no attempt, as when the host's clock is already past the close (a Durable replay step). Every row is recorded, in the fixed order, once every
 /// result is final or the window has closed.
 /// </summary>
 /// <remarks>
@@ -95,6 +95,9 @@ public sealed class DeliveryRunner
 
         private DateTime closesAtUtc;
 
+        /// <summary>Whether the window has closed and delivery is landing what was in flight: no attempt starts after.</summary>
+        private bool closing;
+
         public async Task<DeliveryResult> RunAsync()
         {
             closesAtUtc = host.UtcNow + TimeSpan.FromMinutes(limits.DeliveryMinutes);
@@ -110,7 +113,7 @@ public sealed class DeliveryRunner
                     if (ReferenceEquals(finished, window))
                     {
                         // The window closed: what is unsent is failed.
-                        Close();
+                        await CloseAsync();
                         break;
                     }
 
@@ -127,7 +130,7 @@ public sealed class DeliveryRunner
                     if (Closed())
                     {
                         // A wait that ended at or after the close: no attempt starts, and what is unsent is failed.
-                        Close();
+                        await CloseAsync();
                         break;
                     }
 
@@ -216,7 +219,7 @@ public sealed class DeliveryRunner
                 flight.AtUtc, outcome?.ErrorKind is { } kind ? $"{DeliveryPlan.Failed}: {kind}" : DeliveryPlan.Failed));
             var made = destination.Attempts.Count;
             var left = TimeLeft();
-            if (made >= limits.DeliveryAttempts || left <= TimeSpan.Zero)
+            if (closing || made >= limits.DeliveryAttempts || left <= TimeSpan.Zero)
             {
                 Fail(destination);
                 return;
@@ -229,25 +232,22 @@ public sealed class DeliveryRunner
         }
 
         /// <summary>
-        /// The window closed. A send that has already finished, unread (a Durable step reads what finished before it in one go),
-        /// is landed first, in the order started: an email that went out is <c>sent</c>, and a failure keeps its error kind.
-        /// Then each destination not final, in the fixed order, is failed, a send still in flight recorded as the attempt
-        /// <c>failed: window</c> (its result is never read).
+        /// The window closed. Every send in flight is waited for (a Durable activity is not cancelled, so an email can still go
+        /// out; it has its own timeout) and its result landed, in the order started: an email that went out is <c>sent</c>, and a
+        /// failure keeps its error kind and is not retried. Then each destination not final, in the fixed order (one that never
+        /// started, or was waiting to retry), is failed. No attempt starts after the close.
         /// </summary>
-        private void Close()
+        private async Task CloseAsync()
         {
-            foreach (var finished in flights.Where(f => f is { Wait: false, Task.IsCompleted: true }).ToList())
+            closing = true;
+            foreach (var sending in flights.Where(f => !f.Wait).ToList())
             {
-                flights.Remove(finished);
-                Land(finished, ((Task<DeliverySendOutcome>)finished.Task).GetAwaiter().GetResult());
+                flights.Remove(sending);
+                Land(sending, await (Task<DeliverySendOutcome>)sending.Task);
             }
 
             foreach (var destination in destinations.Where(d => d.Result == null))
-            {
-                if (flights.FirstOrDefault(f => f.To == destination) is { Wait: false } sending)
-                    destination.Attempts.Add(new DeliveryAttempt(sending.AtUtc, $"{DeliveryPlan.Failed}: window"));
                 Fail(destination);
-            }
         }
 
         /// <summary>The destination's reason as a row of <paramref name="kind"/> says it: a kind-naming sentence in that kind.</summary>

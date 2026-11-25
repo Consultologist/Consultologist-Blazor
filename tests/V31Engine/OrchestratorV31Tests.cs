@@ -516,7 +516,8 @@ public class OrchestratorV31Tests
     public async Task AFailedDelivery_LeavesTheJobCompleted()
     {
         // Review Focus 4: the letter's email fails at every attempt (the activity fails, which the host makes a failed send);
-        // its PDF is still in flight when the window closes. Both are failed, the job is Completed, and no timer is left.
+        // its PDF is still in flight when the window closes and is waited for (#1508): it then goes out, so the PDF is sent and only
+        // the email is failed. The job is Completed, and no timer is left.
         var job = V31Job.Of("checked-note");
         job.Deliver = input => input.Send.Kind == "email"
             ? throw new InvalidOperationException("Graph mail request failed with status 503.")
@@ -542,7 +543,7 @@ public class OrchestratorV31Tests
         Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
         Assert.Null(job.State.FailureError);
         Assert.Equal([("email", 1), ("pdf", 1), ("email", 2), ("email", 3)], Sends(context).Select(s => (s.Input.Send.Kind, s.Input.Send.Attempt)));
-        Assert.Equal(2, job.State.V31Progress!.States["delivery:failed"]);
+        Assert.Equal(1, job.State.V31Progress!.States["delivery:failed"]);
         Assert.Equal(
             [ConsultGenerationJobStatuses.Running, ConsultGenerationJobStatuses.Delivering, ConsultGenerationJobStatuses.Completed],
             Statuses(context));

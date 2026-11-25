@@ -358,7 +358,9 @@ has the status. These read it:
 the first attempt of every send at once, then waits for one to finish. Each destination gets
 `ConsultGeneration__DeliveryAttempts` attempts (default 3), the wait before the second 2 minutes, doubling after.
 No attempt starts after `ConsultGeneration__DeliveryMinutes` (default 15) from the start of delivering; a
-destination unsent then is `failed`. Delivery runs after the run's own timer is cancelled, so it is outside
+destination unsent then (never started, or waiting to retry) is `failed`. A send in flight at the close is waited for,
+not failed (#1508): its activity is not cancelled and has its own timeout, so the record says what happened to it.
+Delivery runs after the run's own timer is cancelled, so it is outside
 `jobMinutes`. Both limits are the job's recorded ones (the header's `limits`), never the settings as they are now.
 The waits are durable timers, all cancelled when delivery ends, so none is left outstanding.
 
