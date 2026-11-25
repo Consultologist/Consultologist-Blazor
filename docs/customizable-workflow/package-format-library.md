@@ -366,7 +366,7 @@ ids, member names, keywords, JSON pointers, counts, limits and package text. A
 - **A check's format** (D15): area 08's (S06-009). A rendered check's inline format is still
   A02-001.
 - **The envelope** (D22): `SentFormat` stops before it. Area 07 built it (`EnvelopedFormat`, 07-D8):
-  `sentFormatHash` is the hash of the canonical JSON sent, envelope included.
+  `sentFormatHash` is the hash of the format before the envelope wraps it (#1508).
 - **`uses.formats` listing a built-in or catalogue name** (D36): part 04 § 7.3's rule. Area 05
   allows it, and warns with S04-074, as for any other name, when the function never names it
   (05-D12).
@@ -1837,7 +1837,7 @@ folder's and its placing units' decisions all hold.
 **The envelope** (D8, part 02 § 3.5). `EnvelopedFormat.Of(format, formats, strictRejects)` is `SentFormat.Prepare`'s
 copy, with the attested agent's `strictRejects` removed (`NotSent`, as pointers). A copy whose root is not an object
 is wrapped as `{ "type": "object", "required": ["value"], "additionalProperties": false, "properties": { "value":
-<copy> } }`. `Hash` (`sentFormatHash`) is the hash of the canonical JSON sent, envelope included. `Unwrap(reply)`
+<copy> } }`. `Hash` (`sentFormatHash`) is the hash of the format before it is wrapped (#1508). `Unwrap(reply)`
 gives the `value` member's JSON text, or null when the reply is not exactly that object. A reply that is not the
 envelope is passed on, and its format refuses it.
 
@@ -1931,7 +1931,7 @@ sentence, in `V31Contract` and the conformance README:
 | A07-016 | `Input '<id>' is given one value in Inputs and another in MacroChoices; send it once.` (job start) |
 
 The run-time sentences are S05-012, S05-014, S05-053 to S05-059, S05-062 and A07-006. They are never said at
-publish, and S05-056 names the id the model wrote, bounded to the id pattern. Area 07 also applied the owner's later
+publish, and S05-056 is fixed text that does not name the id the model wrote. Area 07 also applied the owner's later
 rulings on #1504:
 
 - `requires.agents` holds integer versions;

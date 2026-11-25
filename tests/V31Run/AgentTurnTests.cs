@@ -321,8 +321,11 @@ public class AgentTurnTests
             list.Text);
         var text = list.Text!;
         var sent = JsonNode.Parse(text[(text.LastIndexOf('\n') + 1)..]);
-        Assert.Equal(CanonicalJson.Hash(sent), format.Hash);
-        Assert.Equal(format.Hash, (string)list.Detail["sentFormatHash"]!);
+        // #1508 (area 11, R8): sentFormatHash is taken before wrapping, the format as prepared, not the envelope sent
+        var beforeWrapping = CanonicalJson.Hash(format.Sent["properties"]!["value"]);
+        Assert.Equal(beforeWrapping, format.Hash);
+        Assert.NotEqual(CanonicalJson.Hash(sent), format.Hash);
+        Assert.Equal(beforeWrapping, (string)list.Detail["sentFormatHash"]!);
 
         Assert.Equal("[\"Assessment\",\"Plan\"]", format.Unwrap("{ \"value\": [\"Assessment\", \"Plan\"] }")!.Replace(" ", "", StringComparison.Ordinal));
         Assert.Null(format.Unwrap("[\"Assessment\"]"));

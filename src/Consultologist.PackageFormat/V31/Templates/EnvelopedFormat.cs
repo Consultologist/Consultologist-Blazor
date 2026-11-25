@@ -9,7 +9,7 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <paramref name="Sent"/> is <see cref="SentFormat.Prepare"/>'s copy, or, when that copy's root is not an object, the
 /// engine's envelope around it (<c>{ "type": "object", "required": ["value"], "additionalProperties": false,
 /// "properties": { "value": &lt;copy&gt; } }</c>, <paramref name="Wrapped"/>), so a text or a list format can be sent in
-/// strict mode. <paramref name="Hash"/> is the hash of the canonical JSON sent, envelope included (<c>sentFormatHash</c>);
+/// strict mode. <paramref name="Hash"/> is the hash of the format's canonical JSON before any envelope (<c>sentFormatHash</c>, #1506 ruling 3, #1508);
 /// <paramref name="NotSent"/> the keywords strict mode rejects that were removed, as pointers into the format.
 /// </summary>
 public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, IReadOnlyList<string> NotSent)
@@ -36,7 +36,7 @@ public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, I
             ["additionalProperties"] = false,
             ["properties"] = new JsonObject { [Member] = prepared.Schema },
         };
-        return new EnvelopedFormat(envelope, true, CanonicalJson.Hash(envelope), prepared.NotSent);
+        return new EnvelopedFormat(envelope, true, prepared.Hash, prepared.NotSent);
     }
 
     /// <summary>

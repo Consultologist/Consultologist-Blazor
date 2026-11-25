@@ -736,7 +736,7 @@ public sealed partial class PlanRunner
             var (target, reads) = CheckReads(instance, instance.EvaluatedOver ?? scope.Data(entry, instance.Frame, entry.Reads));
             detail["checked"] = target;
             detail["reads"] = reads;
-            var lists = RecordRows.CheckResult(read["value"], detail);
+            var lists = RecordRows.CheckResult(read["value"], detail, entry);
             detail["effect"] = entry.Gates.Count > 0 ? null : ReadBy(entry, instance.Frame.Map);
             return lists;
         }

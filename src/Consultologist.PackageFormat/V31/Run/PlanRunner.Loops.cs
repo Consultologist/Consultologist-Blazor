@@ -545,7 +545,9 @@ public sealed partial class PlanRunner
                 // #1506 (area 09; part 08 § 6): a check loop's item row is a check row: aligned with its production item, its
                 // check_result's members, and the loop's effect; what it checked and read are on the check rows inside it
                 detail["alignedWith"] = AlignedWith(instance, item);
-                text = WithLists(text, RecordRows.CheckResult(settled["value"], detail));
+                // the item's value is its ret's, so its failWith is the literal in the ret's expression
+                var producer = instance.Entry.Ret is { } retKey ? item.Frame?.Instances.FirstOrDefault(i => i.Entry.Key == retKey)?.Entry : null;
+                text = WithLists(text, RecordRows.CheckResult(settled["value"], detail, producer ?? instance.Entry));
                 detail["effect"] = ReadBy(instance.Entry, instance.Frame.Map);
             }
 

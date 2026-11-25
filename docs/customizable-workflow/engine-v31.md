@@ -314,9 +314,8 @@ slot, and calls again. A node fails after these limits:
   two newlines and the retry text (D11). For wrong macro markers it is `Your last reply could not be used:`, one
   line `- <sentence>` per fault (S05-053 to S05-059, which name macro ids only), and `Write the reply again, with
   each marker exactly as given above.`. For a reply that did not fit its format it is `Your last reply could not be
-  used: it did not fit the required format. Write the reply again.`. The retry never quotes the reply. One exception:
-  S05-056 names the id the model wrote in a marker that names no macro, bounded to the id pattern (two segments of
-  at most 64 characters).
+  used: it did not fit the required format. Write the reply again.`. The retry never quotes the reply, and S05-056 is
+  fixed text: it does not name the id the model wrote.
 
 **One attempt per call holds only while `AzureAI__MaxRetries` is 0** (its default). `SendPromptAsync` builds its
 own client retry policy from that setting on every call. A non-zero value makes the SDK retry a 429 or a 5xx
