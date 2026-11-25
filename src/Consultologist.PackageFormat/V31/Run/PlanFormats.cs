@@ -5,10 +5,11 @@ namespace Consultologist.PackageFormat.V31.Run;
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 07 § 2.4, 05-D47(1)): values held to <c>resolve.json</c>'s format bundle,
-/// <c>{ "$defs": { "&lt;key&gt;": &lt;schema&gt;, … } }</c>. A bundle entry keeps its own <c>$id</c> while the references in
-/// it are <c>#/$defs/&lt;key&gt;</c> of the bundle, so a standard validator given an entry resolves them against the entry;
-/// <see cref="Expand"/> inlines every reference instead, and a value is validated against what it gives. The bundle is
-/// read, never changed. Never throws on a bundle, a format or a value.
+/// <c>{ "$defs": { "&lt;key&gt;": &lt;schema&gt;, … } }</c>. #1508 (area 11; R2): a JSON Schema 2020-12 compound document,
+/// each entry with its <c>$id</c> and each reference in an entry to another the target's <c>$id</c>, while a format at a
+/// site (an input's, an entry's) is <c>#/$defs/&lt;key&gt;</c> of the bundle; <see cref="Expand"/> inlines every
+/// reference, and a value is validated against what it gives. The bundle is read, never changed. Never throws on a
+/// bundle, a format or a value.
 /// </summary>
 public sealed class PlanFormats
 {
@@ -47,26 +48,35 @@ public sealed class PlanFormats
 
     private readonly JsonObject defs;
 
+    /// <summary>The bundle's entries by their <c>$id</c>, the first of an <c>$id</c> kept.</summary>
+    private readonly Dictionary<string, JsonObject> ids = new(StringComparer.Ordinal);
+
     /// <summary>The formats of <paramref name="bundle"/> (<c>resolve.json</c>'s <c>formats</c>); anything that is not a bundle has none.</summary>
     public PlanFormats(JsonNode? bundle)
     {
         defs = bundle is JsonObject { } root && root["$defs"] is JsonObject found ? found : new JsonObject();
+        foreach (var (_, entry) in defs)
+        {
+            if (entry is JsonObject schema && SourceLayout.Text(schema["$id"]) is { } id)
+                ids.TryAdd(id, schema);
+        }
     }
 
     /// <summary>
     /// <paramref name="format"/> with every <c>{ "$ref": "#/$defs/&lt;key&gt;" }</c> replaced by that entry of the bundle,
+    /// and every <c>{ "$ref": "&lt;$id&gt;" }</c> by the entry of that <c>$id</c> (R2),
     /// <c>$id</c>, <c>$schema</c> and <c>$defs</c> dropped from each inlined entry (members beside a <c>$ref</c> are kept,
-    /// the entry joining them through <c>allOf</c>), to <see cref="MaxDepth"/> levels. Inside an inlined entry a reference
-    /// is first one of the entry's own <c>$defs</c> (its format file's definitions, which the bundle keeps as written,
-    /// part 02 § 3.1), then the bundle's entry of that key. A reference to a key neither has,
-    /// any other reference, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
+    /// the entry joining them through <c>allOf</c>), to <see cref="MaxDepth"/> levels. Inside an inlined entry a
+    /// <c>#/$defs/&lt;key&gt;</c> reference is first one of the entry's own <c>$defs</c> (its format file's definitions,
+    /// which the bundle keeps as written, part 02 § 3.1), then the bundle's entry of that key. A reference to a key or
+    /// <c>$id</c> none has, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
     /// <c>false</c>, the schema nothing fits. Too large is past <see cref="FormatTypes.SchemaBudget"/> schemas, counted as
     /// publish counts them (A03-011), so a format file publish accepted is not too large here, or past
     /// <see cref="NodeBudget"/> nodes written in all. A new tree: the bundle is not changed.
     /// </summary>
     public JsonNode Expand(JsonNode? format)
     {
-        var walk = new Walk(defs);
+        var walk = new Walk(defs, ids);
         var expanded = walk.Schema(format, 0);
         return walk.Failed || expanded is null ? JsonValue.Create(false) : expanded;
     }
@@ -160,7 +170,7 @@ public sealed class PlanFormats
     /// format file to the budget, not the place that refers to it. What the uncounted values hold is bounded by
     /// <see cref="NodeBudget"/>, which counts every node written.
     /// </summary>
-    private sealed class Walk(JsonObject defs)
+    private sealed class Walk(JsonObject defs, Dictionary<string, JsonObject> ids)
     {
         private readonly HashSet<JsonObject> inlining = new(ReferenceEqualityComparer.Instance);
 
@@ -251,14 +261,16 @@ public sealed class PlanFormats
             if (obj.ContainsKey("$ref"))
             {
                 var reference = SourceLayout.Text(obj["$ref"]);
-                if (reference is null || !reference.StartsWith(DefsPrefix, StringComparison.Ordinal))
+                if (reference is null)
                     return Fail();
-                var key = reference[DefsPrefix.Length..];
 
-                // The dialect resolves a reference against the file it is written in (part 02 § 3.1), and the bundle keeps a
-                // file's own definitions as written: the entry's own first, then the bundle's entry of that key.
-                var inFile = local != null && local.ContainsKey(key);
-                if ((inFile ? local![key] : defs[key]) is not JsonObject entry || !inlining.Add(entry) || !Counted())
+                // A reference by $id is that entry of the bundle (R2). The dialect resolves a #/$defs/ reference against
+                // the file it is written in (part 02 § 3.1), and the bundle keeps a file's own definitions as written: the
+                // entry's own first, then the bundle's entry of that key.
+                var key = reference.StartsWith(DefsPrefix, StringComparison.Ordinal) ? reference[DefsPrefix.Length..] : null;
+                var inFile = key != null && local != null && local.ContainsKey(key);
+                var found = inFile ? local![key!] : key != null ? defs[key] : ids.GetValueOrDefault(reference);
+                if (found is not JsonObject entry || !inlining.Add(entry) || !Counted())
                     return Fail();
 
                 // A bundle entry's references are its own file's; a definition of the file stays in the file.

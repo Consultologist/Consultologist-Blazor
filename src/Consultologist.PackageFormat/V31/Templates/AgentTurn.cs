@@ -168,26 +168,33 @@ public static class AgentTurn
 
     /// <summary>
     /// <paramref name="format"/> and a scope its names resolve in, from the plan's bundle: each <c>#/$defs/&lt;key&gt;</c>
-    /// that is not a definition of its own schema becomes the name <c>&lt;key&gt;</c>, found as the bundle's entry (as
-    /// <see cref="PlanFormats.Expand"/> reads it), so the sent copy is built as publish builds it (a text format's
-    /// description first, then its site's).
+    /// that is not a definition of its own schema, and each <c>$id</c> of an entry (#1508, R2: how an entry refers to
+    /// another), becomes the name <c>&lt;key&gt;</c>, found as the bundle's entry (as <see cref="PlanFormats.Expand"/>
+    /// reads it), so the sent copy is built as publish builds it (a text format's description first, then its site's).
     /// </summary>
     private static (JsonNode? Format, FormatSet Formats) PlanScope(RunPlan plan, JsonNode? format)
     {
         var bundle = (plan.Document["formats"] as JsonObject)?["$defs"] as JsonObject ?? [];
+        var keys = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, schema) in bundle)
+        {
+            if (schema is JsonObject entry && SourceLayout.Text(entry["$id"]) is { } id)
+                keys.TryAdd(id, key);
+        }
+
         var named = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
         foreach (var (key, schema) in bundle)
         {
-            if (schema is JsonObject entry && Rebased(entry, bundle, entry["$defs"] as JsonObject, 0) is JsonObject rebased)
+            if (schema is JsonObject entry && Rebased(entry, bundle, keys, entry["$defs"] as JsonObject, 0) is JsonObject rebased)
                 named[key] = rebased;
         }
 
         var registry = new TypeRegistry(named, new Dictionary<string, JsonObject>(), [], [], new Dictionary<string, BuiltInRenderer>());
-        return (Rebased(format, bundle, null, 0), FormatSet.ForPackage(registry, []));
+        return (Rebased(format, bundle, keys, null, 0), FormatSet.ForPackage(registry, []));
     }
 
     /// <summary>A copy of <paramref name="node"/> with each reference to a bundle entry written as that entry's key (<see cref="PlanScope"/>), to the depth the plan's formats are expanded to.</summary>
-    private static JsonNode? Rebased(JsonNode? node, JsonObject bundle, JsonObject? own, int depth)
+    private static JsonNode? Rebased(JsonNode? node, JsonObject bundle, Dictionary<string, string> keys, JsonObject? own, int depth)
     {
         if (depth > PlanFormats.MaxDepth)
             return node?.DeepClone();
@@ -197,23 +204,30 @@ public static class AgentTurn
                 var copy = new JsonObject();
                 foreach (var (key, value) in obj)
                 {
-                    if (key == "$ref" && SourceLayout.Text(value) is { } reference && reference.StartsWith("#/$defs/", StringComparison.Ordinal)
-                        && reference["#/$defs/".Length..] is var name && own?.ContainsKey(name) != true && bundle.ContainsKey(name))
-                    {
+                    if (key == "$ref" && SourceLayout.Text(value) is { } reference && Key(reference, bundle, keys, own) is { } name)
                         copy[key] = name;
-                    }
                     else
-                    {
-                        copy[key] = Rebased(value, bundle, own, depth + 1);
-                    }
+                        copy[key] = Rebased(value, bundle, keys, own, depth + 1);
                 }
 
                 return copy;
             case JsonArray list:
-                return new JsonArray([.. list.Select(item => Rebased(item, bundle, own, depth + 1))]);
+                return new JsonArray([.. list.Select(item => Rebased(item, bundle, keys, own, depth + 1))]);
             default:
                 return node?.DeepClone();
         }
+    }
+
+    /// <summary>The bundle key <paramref name="reference"/> names: an entry's <c>$id</c>, or <c>#/$defs/&lt;key&gt;</c> that is not one of <paramref name="own"/>'s definitions; else null.</summary>
+    private static string? Key(string reference, JsonObject bundle, Dictionary<string, string> keys, JsonObject? own)
+    {
+        if (keys.TryGetValue(reference, out var key))
+            return key;
+        const string defs = "#/$defs/";
+        return reference.StartsWith(defs, StringComparison.Ordinal) && reference[defs.Length..] is var name
+            && own?.ContainsKey(name) != true && bundle.ContainsKey(name)
+                ? name
+                : null;
     }
 
     // ---- the detail -----------------------------------------------------------------------------

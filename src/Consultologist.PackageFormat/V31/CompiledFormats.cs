@@ -6,7 +6,9 @@ namespace Consultologist.PackageFormat.V31;
 /// #1502 (specVersion 31, area 05): the formats part of <c>resolve.json</c> (part 07 § 2.4; part 02 §§ 2.3, 6.2, 6.3,
 /// 7; D5), built once for <c>ResolveCompiler</c> to place. <see cref="Bundle"/> is <c>{ "$defs": { key: schema } }</c>:
 /// every format the package uses, from its three homes, each with its <c>$id</c>, its <c>$schema</c> and its
-/// annotations, every name inside rewritten to <c>#/$defs/&lt;key&gt;</c> (<see cref="Rewrite"/>).
+/// annotations. #1508 (area 11; R2): a JSON Schema 2020-12 compound document, every name inside an entry rewritten to
+/// <c>{ "$ref": "&lt;the target's $id&gt;" }</c>, while a <c>format</c> outside the bundle names its key
+/// (<see cref="Rewrite"/>).
 /// <see cref="FormatHashes"/> and <see cref="TypeHashes"/> hold each bundled format's two hashes, as
 /// <see cref="FormatTypes.FormatHash"/> and <see cref="FormatTypes.TypeHash"/> give them in the format's own scope
 /// (the rewrite changes neither). <see cref="Bindings"/> is format key, then producer, then
@@ -104,22 +106,28 @@ public sealed record CompiledFormats(
     }
 
     /// <summary>
-    /// <paramref name="format"/> as <c>resolve.json</c> writes it, a clone: a name <paramref name="scope"/> knows becomes
-    /// <c>{ "$ref": "#/$defs/&lt;key&gt;" }</c>, and in a schema every name it holds (a <c>$ref</c>, or a name written as
-    /// a schema, under <c>properties</c>, <c>items</c>, <c>anyOf</c> and <c>$defs</c>, as <see cref="FormatSet"/> finds
-    /// them) likewise. The key is the name, or for a format of <paramref name="function"/>'s own
-    /// <c>&lt;function&gt;__&lt;name&gt;</c> (D5). A name the scope does not know, a <c>#</c> reference and anything that
-    /// is not a schema are copied as written. Never throws on package content.
+    /// <paramref name="format"/> as <c>resolve.json</c> writes it outside the bundle (an input's, an entry's), a clone: a
+    /// name <paramref name="scope"/> knows becomes <c>{ "$ref": "#/$defs/&lt;key&gt;" }</c>, and in a schema every name it
+    /// holds (a <c>$ref</c>, or a name written as a schema, under <c>properties</c>, <c>items</c>, <c>anyOf</c> and
+    /// <c>$defs</c>, as <see cref="FormatSet"/> finds them) likewise. The key is the name, or for a format of
+    /// <paramref name="function"/>'s own <c>&lt;function&gt;__&lt;name&gt;</c> (D5). A name the scope does not know, a
+    /// <c>#</c> reference and anything that is not a schema are copied as written. Never throws on package content.
     /// </summary>
     public static JsonNode? Rewrite(JsonNode? format, FormatSet scope, SourceFunction? function)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        return Rewrite(format, scope, found => $"#/$defs/{KeyOf(found, function)}");
+    }
+
+    /// <summary><paramref name="format"/>, a clone, each name <paramref name="scope"/> knows written as <paramref name="target"/> gives it.</summary>
+    private static JsonNode? Rewrite(JsonNode? format, FormatSet scope, Func<NamedFormat, string> target)
+    {
         if (format is JsonValue value)
-            return Reference(value, scope, function) ?? value.DeepClone();
+            return Reference(value, scope, target) ?? value.DeepClone();
 
         var copy = format?.DeepClone();
         if (copy is JsonObject schema)
-            Walk(schema, scope, function, 0);
+            Walk(schema, scope, target, 0);
         return copy;
     }
 
@@ -128,43 +136,52 @@ public sealed record CompiledFormats(
         found.Origin == FormatOrigin.Function && function != null ? $"{function.Id}__{found.Id}" : found.Id;
 
     /// <summary>
-    /// A bundle entry: the schema with its names rewritten; a package format's <c>$id</c> derived (part 02 § 6.2), a
-    /// function's own with the function in it (D5), and either given the dialect's <c>$schema</c> when it has none; a
-    /// built-in or catalogue format keeps its <c>$id</c> and <c>$schema</c> as published.
+    /// A bundle entry: the schema with each name it holds rewritten to its target's <c>$id</c> (R2, <see cref="IdOf"/>); a
+    /// package format's <c>$id</c> derived (part 02 § 6.2), a function's own with the function in it (D5), and either
+    /// given the dialect's <c>$schema</c> when it has none; a built-in or catalogue format keeps its <c>$id</c> and
+    /// <c>$schema</c> as published.
     /// </summary>
     private static JsonObject Bundled(SourceManifest manifest, Entry entry)
     {
-        var schema = (JsonObject)Rewrite(entry.Format.Schema, entry.Scope, entry.Function)!;
-        var package = $"urn:consultologist:package:{manifest.Name}@{manifest.Version}";
-        switch (entry.Format.Origin)
-        {
-            case FormatOrigin.Package:
-                schema["$id"] = $"{package}:format:{entry.Format.Id}";
-                break;
-            case FormatOrigin.Function:
-                schema["$id"] = $"{package}:function:{entry.Function!.Id}:format:{entry.Format.Id}";
-                break;
-            default:
-                return schema;
-        }
+        var schema = (JsonObject)Rewrite(entry.Format.Schema, entry.Scope, found => IdOf(manifest, found, entry.Function))!;
+        if (entry.Format.Origin is not (FormatOrigin.Package or FormatOrigin.Function))
+            return schema;
 
+        schema["$id"] = IdOf(manifest, entry.Format, entry.Function);
         if (!schema.ContainsKey("$schema"))
             schema["$schema"] = FormatDialect.DialectId;
         return schema;
     }
 
-    private static JsonObject? Reference(JsonValue value, FormatSet scope, SourceFunction? function) =>
+    /// <summary>
+    /// The <c>$id</c> of the bundle entry of <paramref name="found"/>, a format a scope of <paramref name="function"/> (or
+    /// the package's) found: a package format's derived from <paramref name="manifest"/>, a function's own with the
+    /// function in it (D5), a built-in's or catalogue format's as published. One published with no <c>$id</c> (none is) is
+    /// referred to by its key, <c>#/$defs/&lt;key&gt;</c>.
+    /// </summary>
+    private static string IdOf(SourceManifest manifest, NamedFormat found, SourceFunction? function)
+    {
+        var package = $"urn:consultologist:package:{manifest.Name}@{manifest.Version}";
+        return found.Origin switch
+        {
+            FormatOrigin.Package => $"{package}:format:{found.Id}",
+            FormatOrigin.Function when function != null => $"{package}:function:{function.Id}:format:{found.Id}",
+            _ => SourceLayout.Text(found.Schema["$id"]) ?? $"#/$defs/{KeyOf(found, function)}",
+        };
+    }
+
+    private static JsonObject? Reference(JsonValue value, FormatSet scope, Func<NamedFormat, string> target) =>
         BareName(value) is { } name && scope.Find(name) is { } found
-            ? new JsonObject { ["$ref"] = $"#/$defs/{KeyOf(found, function)}" }
+            ? new JsonObject { ["$ref"] = target(found) }
             : null;
 
-    private static void Walk(JsonObject schema, FormatSet scope, SourceFunction? function, int depth)
+    private static void Walk(JsonObject schema, FormatSet scope, Func<NamedFormat, string> target, int depth)
     {
         if (depth > WalkDepth)
             return;
 
-        if (schema["$ref"] is JsonValue target && BareName(target) is { } name && scope.Find(name) is { } found)
-            schema["$ref"] = $"#/$defs/{KeyOf(found, function)}";
+        if (schema["$ref"] is JsonValue reference && BareName(reference) is { } name && scope.Find(name) is { } found)
+            schema["$ref"] = target(found);
 
         foreach (var member in new[] { "properties", "$defs" })
         {
@@ -172,31 +189,31 @@ public sealed record CompiledFormats(
             {
                 foreach (var key in map.Select(p => p.Key).ToList())
                 {
-                    if (Member(map[key], scope, function, depth) is { } reference)
-                        map[key] = reference;
+                    if (Member(map[key], scope, target, depth) is { } written)
+                        map[key] = written;
                 }
             }
         }
 
-        if (Member(schema["items"], scope, function, depth) is { } items)
+        if (Member(schema["items"], scope, target, depth) is { } items)
             schema["items"] = items;
         if (schema["anyOf"] is JsonArray members)
         {
             for (var i = 0; i < members.Count; i++)
             {
-                if (Member(members[i], scope, function, depth) is { } reference)
-                    members[i] = reference;
+                if (Member(members[i], scope, target, depth) is { } written)
+                    members[i] = written;
             }
         }
     }
 
     /// <summary>A schema position's value: a name gives the <c>$ref</c> to put in its place; an object is walked in place (null).</summary>
-    private static JsonObject? Member(JsonNode? node, FormatSet scope, SourceFunction? function, int depth)
+    private static JsonObject? Member(JsonNode? node, FormatSet scope, Func<NamedFormat, string> target, int depth)
     {
         if (node is JsonValue value)
-            return Reference(value, scope, function);
+            return Reference(value, scope, target);
         if (node is JsonObject schema)
-            Walk(schema, scope, function, depth + 1);
+            Walk(schema, scope, target, depth + 1);
         return null;
     }
 

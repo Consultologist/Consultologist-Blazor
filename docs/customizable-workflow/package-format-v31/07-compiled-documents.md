@@ -120,7 +120,7 @@ The manifest's inputs object, keyed by id, with each entry's five members as wri
 ([part 02](02-types-and-inputs.md)): `label` (string), `description` (lines or `null`), `format`
 (a `$ref` into the bundle, `{ "$ref": "#/$defs/<id>" }`, or the inline schema), `required`
 (boolean) and `channel`. Bare format ids are rewritten to `#/$defs/<id>`, as everywhere in the
-document.
+document outside the bundle (inside it, a reference is the target's `$id`, § 2.4).
 
 **The order is explicit** in `inputOrder`, since RFC 8785 sorts an object's members and the written
 order is the Create page's
@@ -128,7 +128,7 @@ order is the Create page's
 
 ### 2.4 `formats` and `bindings`
 
-**`formats` is one self-contained JSON Schema bundle:** `{ "$defs": { "<id>": <schema>, … } }`,
+**`formats` is one self-contained JSON Schema bundle,** a JSON Schema 2020-12 compound document: `{ "$defs": { "<id>": <schema>, … } }`,
 holding every format the package uses, from its three homes, with no shadowing between them
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6879096608)):
 - **built-ins** (`string`, `number`, `boolean`, `date`, `plaintext`, `markdown_block`,
@@ -147,6 +147,17 @@ source. Each entry keeps its `$schema` (`urn:consultologist:spec:31:dialect`, ch
 Inline schemas written on an input or a node stay inline where they're written; they carry no
 `contentMediaType` or `x-markdown`.
 
+**Inside the bundle, a format refers to another by its `$id`**
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7064144841)):
+a name written in a bundled format (`{ "$ref": "plaintext" }`, `{ "$ref": "section_plan" }`) is
+rewritten to the target's `$id` URN (`{ "$ref": "urn:consultologist:spec:31:format:plaintext" }`,
+`{ "$ref": "urn:consultologist:package:example-nested-note@v2026.12.1:format:section_plan" }`), so a
+standard validator given the bundle resolves every reference in it as written. A `#/$defs/<name>`
+inside a format is that format file's own definition, as in source. **Outside the bundle,** an
+input's, a node's or any entry's `format` names the bundle's key: `{ "$ref": "#/$defs/<id>" }`.
+Only those references are rewritten: every other byte of a published format is kept, and neither
+hash below depends on how a reference is written.
+
 **Formats are pure shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)): one `plaintext`, one `markdown_block`, one `boolean`,
 with no producer families or prefixes. **Every node entry carries its `producer`**, as written
 and checked against its kind: `"generated"` for an agent node, `"computed"` for every other
@@ -158,7 +169,8 @@ runs; the producer says how its output can be verified.
 **Two hashes per format** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)):
 - **`formatHashes`**, the **full** hash: everything dereferenced, every keyword kept. It's what
   a model's reply is validated against.
-- **`typeHashes`**, the **type** hash: references by name, sorted, annotations dropped. Type checks
+- **`typeHashes`**, the **type** hash: references by name (the format's id, never the `$id` a
+  reference in the bundle is written as), sorted, annotations dropped. Type checks
   compare these: a written `format` against the derived one, `with` against parameters, branch
   results against each other.
 

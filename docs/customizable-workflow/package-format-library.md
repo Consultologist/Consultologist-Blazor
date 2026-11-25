@@ -907,7 +907,8 @@ upload's order or line ends.
   - A package format's `$id` is `urn:consultologist:package:<name>@<version>:format:<id>`.
   - A function's own format is keyed `<function>__<id>`, with `$id`
     `…:function:<function>:format:<id>`.
-  - Names inside are rewritten to `#/$defs/<key>` (`CompiledFormats.Rewrite`).
+  - Names inside an entry are rewritten to the target's `$id`, so the bundle is a JSON Schema 2020-12 compound
+    document (#1508, R2); a `format` outside the bundle names the key, `#/$defs/<key>` (`CompiledFormats.Rewrite`).
   - `formatHashes` and `typeHashes` are the type services' hashes of each format in its own scope.
   - `bindings` is format key, then `generated`, then `{ agentName, agentVersion, via }`.
 - **Entries.** Every entry is its header as written, cloned, with:
@@ -1200,19 +1201,19 @@ with S07-006 for its package. These are the cases:
 `Build` never throws on the document. A null argument, and a time limit the evaluator refuses, are the
 caller's errors.
 
-**`PlanFormats`** holds values to the bundle. `Expand(format)` inlines every `#/$defs/<key>` and drops `$id`,
+**`PlanFormats`** holds values to the bundle. `Expand(format)` inlines every `#/$defs/<key>` and every reference
+to an entry's `$id` (how one entry refers to another, #1508 R2), and drops `$id`,
 `$schema` and `$defs` from the inlined entries, to depth 64 (`PlanFormats.MaxDepth`) within
 `FormatTypes.SchemaBudget`. A cycle, a missing key or any other reference gives `false`, the schema nothing
 fits.
 
 - **A format file's own `$defs`.** The bundle keeps a file's definitions and its `#/$defs/<name>` references as
-  written, beside the names it rewrote to `#/$defs/<bundle key>`. So inside an inlined entry a reference is
-  first one of the entry's own `$defs`, then the bundle's entry of that key. Each entry's definitions are its
-  alone: an entry inlined inside another reads its own.
-- **A known gap.** A file that names a format `x` and also defines `x` in its own `$defs` publishes, and both
-  references are written `#/$defs/x`. The run cannot tell them apart and reads both as the file's own definition,
-  where publish read the bare name as the format. The compile would have to refuse such a file or rename the
-  definition; it does neither today.
+  written, beside the names it rewrote to `$id`s. So inside an inlined entry a `#/$defs/<name>` reference is
+  first one of the entry's own `$defs`, then the bundle's entry of that key (a document compiled before #1508).
+  Each entry's definitions are its alone: an entry inlined inside another reads its own.
+- **A name beside a definition of the same name.** A file that names a format `x` and also defines `x` in its own
+  `$defs` once compiled both references to `#/$defs/x`, and the run read both as the file's own definition. With
+  references by `$id` the run reads each as publish did.
 - **The schema budget** counts schemas as publish counts them for A03-011 (the format, each value of
   `properties`, `items`, each member of `anyOf`, each entry or definition inlined), so a format file publish
   accepted is never past it at run. The schemas a site's format writes itself are counted apart from those of
