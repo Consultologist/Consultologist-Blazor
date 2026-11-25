@@ -13,7 +13,7 @@ public sealed record SourceIntakeResult(
     IReadOnlyList<string> Normalised,
     IReadOnlyList<SourceRefusal> Refusals)
 {
-    /// <summary>#1502 (specVersion 31, area 05): the compiled copies and the publish report intake dropped unread at the root, sorted (part 07 § 7).</summary>
+    /// <summary>#1502 (specVersion 31, area 05): the compiled copies, the publish report and the stamp intake dropped unread at the root, sorted (part 07 § 7).</summary>
     public IReadOnlyList<string> Dropped { get; init; } = [];
 }
 
@@ -26,15 +26,16 @@ public static class SourceIntake
 {
     /// <summary>
     /// What publish writes at the package root, ignored in an upload: the compiled copies (part 01 § 2)
-    /// and the publish report (part 07 § 5 step 0 and § 6). Dropped unread and counted against no bound.
+    /// and the publish report (part 07 § 5 step 0 and § 6); #1508 (area 11, Global Constraints): and the stamp. Dropped
+    /// unread and counted against no bound.
     /// </summary>
-    private static readonly string[] CompiledCopies = ["resolve.json", "lock.json", "publish-report.json"];
+    private static readonly string[] CompiledCopies = ["resolve.json", "lock.json", "publish-report.json", "publish.json"];
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     /// <summary>
     /// Reads <paramref name="upload"/> (path to bytes; a path is used as given, nothing is
-    /// rewritten). Drops the compiled copies and the publish report at the root, naming them in
+    /// rewritten). Drops the compiled copies, the publish report and the stamp at the root, naming them in
     /// <see cref="SourceIntakeResult.Dropped"/>; then, for each file in path order,
     /// refuses a byte-order mark (S01-014) and bytes that are not UTF-8 (A02-002), turns
     /// <c>\r\n</c> into <c>\n</c> and refuses a remaining <c>\r</c> (S01-015); then measures the

@@ -35,7 +35,8 @@ public static class SourceHash
         return CanonicalJson.Hash(listing);
     }
 
-    private static bool IsSource(string path) =>
+    /// <summary>Whether <paramref name="path"/> is source: <c>manifest.json</c>, a <c>README.md</c>, or a file under the nine folders.</summary>
+    internal static bool IsSource(string path) =>
         path == "manifest.json"
         || path == "README.md"
         || path.EndsWith("/README.md", StringComparison.Ordinal)

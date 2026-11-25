@@ -21,7 +21,7 @@ public sealed record SourceParseResult(
     IReadOnlyDictionary<string, string> Files)
 {
     /// <summary>
-    /// #1502 (specVersion 31, area 05): the compiled copies and the publish report intake dropped unread at the root
+    /// #1502 (specVersion 31, area 05): the compiled copies, the publish report and the stamp intake dropped unread at the root
     /// (<see cref="SourceIntakeResult.Dropped"/>), sorted, whatever the outcome; the Editor's import says S07-016 of them
     /// (<see cref="ResolveSentences.ImportIgnored"/>).
     /// </summary>

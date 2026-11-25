@@ -29,6 +29,18 @@ public class PublishedStampTests
         Assert.Equal(stamp, PublishedStamp.TryRead(more));
     }
 
+    [Fact]
+    public void MigratedFrom_IsWrittenOnlyWhenSet_AndTheReaderIgnoresIt()
+    {
+        // #1508 (area 11; D5): the operator's migration names the old version.
+        var stamp = new PublishedStamp(ResolveHash, LockHash, "v2026.1.1");
+        var json = stamp.ToJson();
+
+        Assert.Equal($"{{\"lockHash\":\"{LockHash}\",\"migratedFrom\":\"v2026.1.1\",\"resolveHash\":\"{ResolveHash}\",\"specVersion\":31}}", json);
+        Assert.Equal(new PublishedStamp(ResolveHash, LockHash), PublishedStamp.TryRead(json));
+        Assert.DoesNotContain("migratedFrom", new PublishedStamp(ResolveHash, LockHash).ToJson(), StringComparison.Ordinal);
+    }
+
     public static TheoryData<string?> NotStamps() => new(
         null,
         "",
