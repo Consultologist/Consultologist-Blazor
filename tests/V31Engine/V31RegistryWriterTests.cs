@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Auth;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.V31;
+using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Publish;
@@ -61,11 +62,13 @@ public class V31RegistryWriterTests
 
         Assert.True(await Write(new V31RegistryWriter(registry), publish));
 
-        var changes = registry.Changes;
-        Assert.Equal(("delete", Kind, publish.Folder), changes[0]);
-        Assert.Equal(
-            publish.Files.Select(file => ("write", (string?)Kind, publish.Folder + file.Path)).Append(("create", Kind, publish.Folder + PublishedStamp.FileName)),
-            changes.Skip(1));
+        var lease = V31RegistryWriter.LeasePath(publish.Name, publish.Version);
+        List<(string, string?, string)> expected = [("acquire", Kind, lease), ("delete", Kind, publish.Folder)];
+        foreach (var file in publish.Files)
+            expected.AddRange([("renew", Kind, lease), ("write", Kind, publish.Folder + file.Path)]);
+        expected.AddRange([("renew", Kind, lease), ("create", Kind, publish.Folder + PublishedStamp.FileName), ("release", Kind, lease)]);
+        Assert.Equal(expected, registry.Changes);
+        Assert.False(registry.IsLeased(lease));
         foreach (var file in publish.Files)
             Assert.Equal(file.Bytes, registry.Blobs[publish.Folder + file.Path]);
         Assert.Equal(publish.Stamp.ToJson(), Utf8NoBom.GetString(registry.Blobs[publish.Folder + PublishedStamp.FileName]));
@@ -81,11 +84,12 @@ public class V31RegistryWriterTests
     [InlineData("nodes/old.md", "text/markdown")]
     [InlineData("migration-report.json", "application/json")]
     [InlineData("formats/resolve.json", "application/json")]
+    [InlineData("dag.mmd", "text/plain")]
     public async Task EachFile_HasItsMediaType(string path, string mediaType)
     {
         var registry = new FakeRegistry();
         var publish = Of(old: true);
-        publish = publish with { Files = [.. publish.Files, new("migration-report.json", Utf8NoBom.GetBytes("{}")), new("formats/resolve.json", Utf8NoBom.GetBytes("{}"))] };
+        publish = publish with { Files = [.. publish.Files, new("migration-report.json", Utf8NoBom.GetBytes("{}")), new("formats/resolve.json", Utf8NoBom.GetBytes("{}")), new("dag.mmd", Utf8NoBom.GetBytes("flowchart TD"))] };
         // the extra files go after resolve.json here, which the writer does not mind: it writes what it is given, in order
         Assert.True(await Write(new V31RegistryWriter(registry), publish));
 
@@ -121,7 +125,7 @@ public class V31RegistryWriterTests
 
         Assert.True(await new V31RegistryWriter(registry).IsPublishedAsync(Kind, publish.Name, publish.Version, CancellationToken.None));
         Assert.False(await Write(new V31RegistryWriter(registry), publish));
-        Assert.Empty(registry.Changes);
+        Assert.Equal(["acquire", "release"], registry.Changes.Select(change => change.Operation));
     }
 
     [Fact]
@@ -131,11 +135,12 @@ public class V31RegistryWriterTests
         var (packageRef, _) = registry.Put(CompiledGoldenTests.Cases().Single(c => c.Name == "nested-note"));
         registry.Blobs[FakeRegistry.PathOf(packageRef, "nodes/draft.md")] = Utf8NoBom.GetBytes("Margaret Okafor's first note.");
         var before = registry.Blobs.ToDictionary(blob => blob.Key, blob => blob.Value, StringComparer.Ordinal);
+        var lease = V31RegistryWriter.LeasePath(packageRef.Name, packageRef.Version);
 
         Assert.False(await Write(new V31RegistryWriter(registry), Of("conditional", packageRef.Name, packageRef.Version, "Margaret Okafor's second note.")));
 
-        Assert.Empty(registry.Changes);
-        Assert.Equal(before.OrderBy(b => b.Key, StringComparer.Ordinal), registry.Blobs.OrderBy(b => b.Key, StringComparer.Ordinal));
+        Assert.Equal([("acquire", Kind, lease), ("release", Kind, lease)], registry.Changes);
+        Assert.Equal(before.OrderBy(b => b.Key, StringComparer.Ordinal), registry.Blobs.Where(b => b.Key != lease).OrderBy(b => b.Key, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -155,7 +160,7 @@ public class V31RegistryWriterTests
         Assert.False(registry.Blobs.ContainsKey(first.Folder + "nodes/old.md"));
         Assert.Equal(
             retry.Files.Select(file => retry.Folder + file.Path).Append(retry.Folder + PublishedStamp.FileName).Order(StringComparer.Ordinal),
-            registry.Blobs.Keys.Order(StringComparer.Ordinal));
+            registry.Blobs.Keys.Where(path => path.StartsWith(retry.Folder, StringComparison.Ordinal)).Order(StringComparer.Ordinal));
         foreach (var file in retry.Files)
             Assert.Equal(file.Bytes, registry.Blobs[retry.Folder + file.Path]);
         Assert.Equal(retry.Stamp.ToJson(), Utf8NoBom.GetString(registry.Blobs[retry.Folder + PublishedStamp.FileName]));
@@ -183,8 +188,8 @@ public class V31RegistryWriterTests
     {
         var registry = new FakeRegistry();
         var alternation = new Alternation(first);
-        var one = Of("nested-note", "acct-0123456789ab", "v2026.12.1", "Margaret Okafor's note, one.");
-        var two = Of("conditional", "acct-0123456789ab", "v2026.12.1", "Margaret Okafor's note, two.");
+        var one = Of("nested-note", Account, Version, "Margaret Okafor's note, one.");
+        var two = Of("conditional", Account, Version, "Margaret Okafor's note, two.");
         Publish[] publishes = [one, two];
 
         var writes = Enumerable.Range(0, 2).Select(async who =>
@@ -211,6 +216,139 @@ public class V31RegistryWriterTests
             registry.Blobs[folder + ResolveCompiler.LockFile], winner.Stamp.ResolveHash, winner.Stamp.LockHash));
     }
 
+    private const string Account = "acct-0123456789ab";
+    private const string Version = "v2026.12.1";
+
+    [Fact]
+    public async Task Critical1_AStampMadeBetweenTheStampCheckAndTheClear_IsNeverDeleted_AndTheWriteIsLost()
+    {
+        // a stamp no lease kept out (a writer whose step outlived its lease, or one not of this class) lands between this
+        // writer's stamp check and its clear: the clear keeps it, and this writer's create fails
+        var registry = new FakeRegistry();
+        var rival = Of("conditional", Account, Version, "Margaret Okafor's rival note.");
+        var publish = Of("nested-note", Account, Version);
+        var stampPath = publish.Folder + PublishedStamp.FileName;
+        registry.BeforeChange = (operation, _) =>
+        {
+            if (operation == "delete")
+                registry.Blobs[stampPath] = Utf8NoBom.GetBytes(rival.Stamp.ToJson());
+            return Task.CompletedTask;
+        };
+
+        Assert.False(await Write(new V31RegistryWriter(registry), publish));
+
+        Assert.Equal(rival.Stamp.ToJson(), Utf8NoBom.GetString(registry.Blobs[stampPath]));
+    }
+
+    [Fact]
+    public async Task ReviewFocus2_AWriterStartingWhileAnotherHoldsTheLease_ReturnsFalse_AndWritesNothing()
+    {
+        var registry = new FakeRegistry();
+        var one = Of("nested-note", Account, Version, "Margaret Okafor's note, one.");
+        var two = Of("conditional", Account, Version, "Margaret Okafor's note, two.");
+        bool? second = null;
+        IReadOnlyList<(string Operation, string? Kind, string Path)>? secondChanges = null;
+        registry.BeforeChange = async (operation, _) =>
+        {
+            if (operation != "write" || second != null)
+                return;
+            var before = registry.Changes.Count;
+            second = false;
+            second = await Write(new V31RegistryWriter(registry), two);
+            secondChanges = registry.Changes.Skip(before).ToList();
+        };
+
+        Assert.True(await Write(new V31RegistryWriter(registry), one));
+
+        Assert.False(second);
+        Assert.Equal([("acquire", Kind, V31RegistryWriter.LeasePath(Account, Version))], secondChanges);
+        Assert.Single(registry.Changes, change => change.Operation == "create");
+        foreach (var file in one.Files)
+            Assert.Equal(file.Bytes, registry.Blobs[one.Folder + file.Path]);
+        Assert.Equal(one.Stamp.ToJson(), Utf8NoBom.GetString(registry.Blobs[one.Folder + PublishedStamp.FileName]));
+    }
+
+    [Fact]
+    public async Task ReviewFocus2_AWriterWhoseLeaseIsLostMidWrite_DoesNotStamp_AndWritesNoMore()
+    {
+        // one's lease lapses after its first write (one stalled past it) and two takes the folder and publishes; one's next
+        // renew fails
+        var registry = new FakeRegistry();
+        var one = Of("nested-note", Account, Version, "Margaret Okafor's note, one.", old: true);
+        var two = Of("conditional", Account, Version, "Margaret Okafor's note, two.");
+        var lease = V31RegistryWriter.LeasePath(Account, Version);
+        bool? second = null;
+        registry.BeforeChange = async (operation, _) =>
+        {
+            if (operation != "renew" || second != null || !registry.Changes.Any(change => change.Operation == "write"))
+                return;
+            second = false;
+            registry.LapseLease(lease);
+            second = await Write(new V31RegistryWriter(registry), two);
+        };
+
+        Assert.False(await Write(new V31RegistryWriter(registry), one));
+
+        Assert.True(second);
+        Assert.Single(registry.Changes, change => change.Operation == "create");
+        Assert.Equal(
+            two.Files.Select(file => two.Folder + file.Path).Append(two.Folder + PublishedStamp.FileName).Order(StringComparer.Ordinal),
+            registry.Blobs.Keys.Where(path => path.StartsWith(two.Folder, StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+        foreach (var file in two.Files)
+            Assert.Equal(file.Bytes, registry.Blobs[two.Folder + file.Path]);
+        Assert.Equal(two.Stamp.ToJson(), Utf8NoBom.GetString(registry.Blobs[two.Folder + PublishedStamp.FileName]));
+    }
+
+    [Fact]
+    public async Task ReviewFocus1_ACrashedWritersLease_HoldsTheFolderUntilItLapses_ThenARetryLeavesNoStaleFile()
+    {
+        var registry = new FakeRegistry();
+        var writer = new V31RegistryWriter(registry);
+        var first = Of("nested-note", Account, Version, old: true);
+        var lease = V31RegistryWriter.LeasePath(Account, Version);
+        // dies writing resolve.json, its release lost with it
+        registry.DropReleases = true;
+        registry.ChangeFailure = path => path.EndsWith(CompiledPackage.ResolveFile, StringComparison.Ordinal) ? new IOException("died") : null;
+        await Assert.ThrowsAsync<IOException>(() => Write(writer, first));
+        registry.ChangeFailure = null;
+        registry.DropReleases = false;
+        Assert.True(registry.Blobs.ContainsKey(first.Folder + "nodes/old.md"));
+
+        var retry = Of("conditional", Account, Version, "Margaret Okafor's revised note.");
+        var changes = registry.Changes.Count;
+        Assert.False(await Write(writer, retry));
+        Assert.Equal([("acquire", Kind, lease)], registry.Changes.Skip(changes));
+
+        registry.LapseLease(lease);
+        Assert.True(await Write(writer, retry));
+
+        Assert.Equal(
+            retry.Files.Select(file => retry.Folder + file.Path).Append(retry.Folder + PublishedStamp.FileName).Order(StringComparer.Ordinal),
+            registry.Blobs.Keys.Where(path => path.StartsWith(retry.Folder, StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+        Assert.Equal(retry.Stamp.ToJson(), Utf8NoBom.GetString(registry.Blobs[retry.Folder + PublishedStamp.FileName]));
+    }
+
+    [Fact]
+    public async Task TheLockBlob_IsBesideTheFolder_SoNoListingTakesItForAFileOrAVersion()
+    {
+        var registry = new FakeRegistry();
+        var publish = Of("nested-note", Account, Version);
+
+        Assert.True(await Write(new V31RegistryWriter(registry), publish));
+
+        var lease = V31RegistryWriter.LeasePath(Account, Version);
+        Assert.Equal($"{Account}/{Version}.lease", lease);
+        Assert.True(registry.Blobs.ContainsKey(lease));
+        Assert.False(registry.IsLeased(lease));
+        // a folder's files are the blobs under {name}/{version}/; a version is listed by its {name}/{version}/manifest.json
+        Assert.DoesNotContain(registry.Blobs.Keys, path => path.StartsWith(publish.Folder, StringComparison.Ordinal) && path.EndsWith(".lease", StringComparison.Ordinal));
+        Assert.Equal(
+            [(Account, Version)],
+            registry.Blobs.Keys.Select(path => WorkflowPackageRef.TryParseManifestPath(path, out var name, out var version) ? (name, version) : default)
+                .Where(found => found != default).Distinct());
+        Assert.Equal([Account], AccountPackageListing.NamesIn(registry.Blobs.Keys));
+    }
+
     [Theory]
     [MemberData(nameof(CompiledGoldenTests.Names), MemberType = typeof(CompiledGoldenTests))]
     public async Task AWrittenVersion_IsLoadedByTheEngine(string golden)
@@ -219,6 +357,7 @@ public class V31RegistryWriterTests
         var publish = Of(golden);
 
         Assert.True(await Write(new V31RegistryWriter(registry), publish));
+        Assert.True(registry.Blobs.ContainsKey(V31RegistryWriter.LeasePath(publish.Name, publish.Version)));
 
         var load = await Store(registry).TryLoadAsync(new WorkflowPackageRef(publish.Name, publish.Version), CancellationToken.None);
         Assert.NotNull(load);
@@ -271,10 +410,23 @@ public class V31RegistryWriterTests
         public Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct) =>
             Turn(() => registry.TryCreateAsync(accountKind, path, bytes, contentType, ct));
 
-        public Task DeleteAllAsync(string? accountKind, string prefix, CancellationToken ct) =>
+        public Task DeleteAllAsync(string? accountKind, string prefix, string keep, CancellationToken ct) =>
             Turn(async () =>
             {
-                await registry.DeleteAllAsync(accountKind, prefix, ct);
+                await registry.DeleteAllAsync(accountKind, prefix, keep, ct);
+                return true;
+            });
+
+        public Task<string?> TryAcquireLeaseAsync(string? accountKind, string path, CancellationToken ct) =>
+            Turn(() => registry.TryAcquireLeaseAsync(accountKind, path, ct));
+
+        public Task<bool> RenewLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct) =>
+            Turn(() => registry.RenewLeaseAsync(accountKind, path, leaseId, ct));
+
+        public Task ReleaseLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct) =>
+            Turn(async () =>
+            {
+                await registry.ReleaseLeaseAsync(accountKind, path, leaseId, ct);
                 return true;
             });
 

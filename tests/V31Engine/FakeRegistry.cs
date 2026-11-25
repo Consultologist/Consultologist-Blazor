@@ -47,55 +47,117 @@ internal sealed class FakeRegistry : IRegistryFiles, IWorkflowPackageVersions
         return Task.FromResult(Blobs.TryGetValue(path, out var bytes) ? bytes : null);
     }
 
-    public Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
+    public async Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
     {
-        if (Change("write", accountKind, path) is { } failure)
-            return Task.FromException(failure);
+        await Change("write", accountKind, path);
         Blobs[path] = bytes;
         ContentTypes[path] = contentType;
-        return Task.CompletedTask;
     }
 
-    public Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
+    public async Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
     {
-        if (Change("create", accountKind, path) is { } failure)
-            return Task.FromException<bool>(failure);
+        await Change("create", accountKind, path);
         if (!Blobs.TryAdd(path, bytes))
-            return Task.FromResult(false);
+            return false;
         ContentTypes[path] = contentType;
-        return Task.FromResult(true);
+        return true;
     }
 
-    public Task DeleteAllAsync(string? accountKind, string prefix, CancellationToken ct)
+    public async Task DeleteAllAsync(string? accountKind, string prefix, string keep, CancellationToken ct)
     {
-        if (Change("delete", accountKind, prefix) is { } failure)
-            return Task.FromException(failure);
-        foreach (var path in Blobs.Keys.Where(path => path.StartsWith(prefix, StringComparison.Ordinal)))
+        await Change("delete", accountKind, prefix);
+        foreach (var path in Blobs.Keys.Where(path => path.StartsWith(prefix, StringComparison.Ordinal) && path != keep))
         {
             Blobs.TryRemove(path, out _);
             ContentTypes.TryRemove(path, out _);
         }
-
-        return Task.CompletedTask;
     }
+
+    public async Task<string?> TryAcquireLeaseAsync(string? accountKind, string path, CancellationToken ct)
+    {
+        await Change("acquire", accountKind, path);
+        lock (_leases)
+        {
+            Blobs.TryAdd(path, []);
+            if (_leases.TryGetValue(path, out var held) && !held.Lapsed)
+                return null;
+            var id = Guid.NewGuid().ToString();
+            _leases[path] = (id, false);
+            return id;
+        }
+    }
+
+    public async Task<bool> RenewLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct)
+    {
+        await Change("renew", accountKind, path);
+        lock (_leases)
+        {
+            // as Azure renews: a lapsed lease too, unless another holder has taken it since
+            if (!_leases.TryGetValue(path, out var held) || held.Id != leaseId)
+                return false;
+            _leases[path] = (leaseId, false);
+            return true;
+        }
+    }
+
+    public async Task ReleaseLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct)
+    {
+        if (DropReleases)
+            return;
+        await Change("release", accountKind, path);
+        lock (_leases)
+        {
+            if (_leases.TryGetValue(path, out var held) && held.Id == leaseId)
+                _leases.Remove(path);
+        }
+    }
+
+    /// <summary>#1508 (area 11): the lease on <paramref name="path"/> lapses, as one unrenewed for <see cref="IRegistryFiles.LeaseSeconds"/> does.</summary>
+    public void LapseLease(string path)
+    {
+        lock (_leases)
+        {
+            if (_leases.TryGetValue(path, out var held))
+                _leases[path] = (held.Id, true);
+        }
+    }
+
+    /// <summary>#1508 (area 11): whether a live lease is held on <paramref name="path"/>.</summary>
+    public bool IsLeased(string path)
+    {
+        lock (_leases)
+            return _leases.TryGetValue(path, out var held) && !held.Lapsed;
+    }
+
+    /// <summary>#1508 (area 11): releases are lost, as a writer that dies loses its own.</summary>
+    public bool DropReleases { get; set; }
 
     /// <summary>#1508 (area 11): the content type each blob was written with, by path.</summary>
     public ConcurrentDictionary<string, string> ContentTypes { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>#1508 (area 11): each write, create and delete, in order: the operation, the account kind and the path (a delete's prefix).</summary>
+    /// <summary>
+    /// #1508 (area 11): each write, create, delete and lease call, in order: the operation, the account kind and the path
+    /// (a delete's prefix, a lease's lock blob).
+    /// </summary>
     public IReadOnlyList<(string Operation, string? Kind, string Path)> Changes => _changes.ToArray();
 
-    /// <summary>#1508 (area 11): what a write, create or delete of a path throws, as storage would (null: it is made).</summary>
+    /// <summary>#1508 (area 11): what a change of a path throws, as storage would (null: it is made).</summary>
     public Func<string, Exception?>? ChangeFailure { get; set; }
+
+    /// <summary>#1508 (area 11): run before each change (its operation and path), after it is recorded: another writer's step, say.</summary>
+    public Func<string, string, Task>? BeforeChange { get; set; }
 
     private readonly ConcurrentQueue<(string Operation, string? Kind, string Path)> _changes = new();
 
-    private Exception? Change(string operation, string? accountKind, string path)
+    private readonly Dictionary<string, (string Id, bool Lapsed)> _leases = new(StringComparer.Ordinal);
+
+    private async Task Change(string operation, string? accountKind, string path)
     {
         if (ChangeFailure?.Invoke(path) is { } failure)
-            return failure;
+            throw failure;
         _changes.Enqueue((operation, accountKind, path));
-        return null;
+        if (BeforeChange is { } before)
+            await before(operation, path);
     }
 
     public Task<string> ResolveVersionAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken) =>

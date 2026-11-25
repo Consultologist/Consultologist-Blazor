@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure;
 using Azure.Storage.Blobs.Models;
+using Azure.Storage.Blobs.Specialized;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
@@ -33,8 +34,26 @@ public interface IRegistryFiles
     /// </summary>
     Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct);
 
-    /// <summary>Deletes every blob whose path starts with <paramref name="prefix"/>.</summary>
-    Task DeleteAllAsync(string? accountKind, string prefix, CancellationToken ct);
+    /// <summary>Deletes every blob whose path starts with <paramref name="prefix"/>, but the one at <paramref name="keep"/>.</summary>
+    Task DeleteAllAsync(string? accountKind, string prefix, string keep, CancellationToken ct);
+
+    /// <summary>
+    /// A lease on the blob at <paramref name="path"/> (created empty when absent), for <see cref="LeaseSeconds"/>: its id,
+    /// or null when another holder's lease is live.
+    /// </summary>
+    Task<string?> TryAcquireLeaseAsync(string? accountKind, string path, CancellationToken ct);
+
+    /// <summary>
+    /// Renews <paramref name="leaseId"/> for another <see cref="LeaseSeconds"/>: false when it is no longer this holder's
+    /// (it expired and was taken, or was released).
+    /// </summary>
+    Task<bool> RenewLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct);
+
+    /// <summary>Releases <paramref name="leaseId"/>; a lease no longer held is left as it is. Never throws on storage's answer.</summary>
+    Task ReleaseLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct);
+
+    /// <summary>How long a lease lasts unrenewed: Azure's longest fixed lease, so a dead holder's lease ends on its own.</summary>
+    const int LeaseSeconds = 60;
 }
 
 /// <summary>
@@ -71,11 +90,65 @@ public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory contai
         }
     }
 
-    public async Task DeleteAllAsync(string? accountKind, string prefix, CancellationToken ct)
+    public async Task DeleteAllAsync(string? accountKind, string prefix, string keep, CancellationToken ct)
     {
         var container = containers.GetContainer(accountKind);
         await foreach (var blob in container.GetBlobsAsync(prefix: prefix, cancellationToken: ct))
-            await container.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: ct);
+        {
+            if (blob.Name != keep)
+                await container.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: ct);
+        }
+    }
+
+    public async Task<string?> TryAcquireLeaseAsync(string? accountKind, string path, CancellationToken ct)
+    {
+        var blob = containers.GetContainer(accountKind).GetBlobClient(path);
+        try
+        {
+            await blob.UploadAsync(
+                BinaryData.FromBytes([]),
+                new BlobUploadOptions { Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All } },
+                ct);
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            // there already (and perhaps leased): the lease below decides
+        }
+
+        try
+        {
+            var lease = await blob.GetBlobLeaseClient().AcquireAsync(TimeSpan.FromSeconds(IRegistryFiles.LeaseSeconds), cancellationToken: ct);
+            return lease.Value.LeaseId;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            return null;
+        }
+    }
+
+    public async Task<bool> RenewLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct)
+    {
+        try
+        {
+            await containers.GetContainer(accountKind).GetBlobClient(path).GetBlobLeaseClient(leaseId).RenewAsync(cancellationToken: ct);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            return false;
+        }
+    }
+
+    public async Task ReleaseLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct)
+    {
+        try
+        {
+            await containers.GetContainer(accountKind).GetBlobClient(path).GetBlobLeaseClient(leaseId).ReleaseAsync(cancellationToken: ct);
+        }
+        catch (RequestFailedException)
+        {
+            // no longer ours, or storage failed: an unreleased lease expires on its own
+        }
     }
 
     public async Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct)
