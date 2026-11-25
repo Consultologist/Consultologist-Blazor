@@ -469,4 +469,8 @@ The build's area sentences for area 11, which are not rows of `sentences.json` a
 | A11-001 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"Up to \<n\> steps could run in one job, through \<loop key\>; this engine runs at most \<limit\> for one job. Lower a loop's max or split the workflow."* | author | |
 | A11-002 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"Format '\<id\>' names format '\<name\>' and also defines '\<name\>' in its own $defs. Rename the definition or remove it."* | author | |
 | A11-003 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"Format '\<id\>' expands to more than \<limit\> parts, more than this engine can run. Make it smaller."* | author | |
+| A11-004 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"manifest.json must give name and version as text."* | author | |
+| A11-005 | [8. In-package tests](07-compiled-documents.md#8-in-package-tests-tests) | *"Test '\<test id\>' \<member\> is not written as the test grammar says: \<what is wrong\>."* | author | |
+| A11-006 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"Version \<version\> of \<package\> is already published. Publish a new version."* | author | |
+| A11-007 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"The workflow couldn't be published because the engine failed. Tell the operator."* | author | |
 | A11-008 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"\<Subject\> couldn't be rendered because the engine failed. Tell the operator."* | clinician | |

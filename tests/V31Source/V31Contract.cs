@@ -128,13 +128,17 @@ internal static class V31Contract
     /// <summary>
     /// #1508: area 11's own sentences (<c>A11-NNN</c>), as plan area-11-registry-and-publish lists them; each is added by the
     /// task that first says it (A11-008, Task 3: a run-time engine fault while rendering, in place of A06-008, R8 item 4;
-    /// A11-001 to A11-003, Task 8: the publish refusals the owner ruled, R1, R4 and R5).
+    /// A11-001 to A11-003, Task 8: the publish refusals the owner ruled, R1, R4 and R5; A11-004 to A11-007, Task 10: the manifest's name and version, a test's grammar, a version already published, an engine fault at publish, D2).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
         ["A11-001"] = "Up to <n> steps could run in one job, through <loop key>; this engine runs at most <limit> for one job. Lower a loop's max or split the workflow.",
         ["A11-002"] = "Format '<id>' names format '<name>' and also defines '<name>' in its own $defs. Rename the definition or remove it.",
         ["A11-003"] = "Format '<id>' expands to more than <limit> parts, more than this engine can run. Make it smaller.",
+        ["A11-004"] = "manifest.json must give name and version as text.",
+        ["A11-005"] = "Test '<test id>' <member> is not written as the test grammar says: <what is wrong>.",
+        ["A11-006"] = "Version <version> of <package> is already published. Publish a new version.",
+        ["A11-007"] = "The workflow couldn't be published because the engine failed. Tell the operator.",
         ["A11-008"] = "<Subject> couldn't be rendered because the engine failed. Tell the operator.",
     };
 
