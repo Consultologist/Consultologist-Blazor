@@ -160,6 +160,9 @@ internal static class TemplateRewriter
         private readonly Migrated m;
         private readonly Dictionary<string, WorkflowNodeSpec> nodes30 = new(StringComparer.Ordinal);
         private readonly HashSet<int> placements = [];
+
+        /// <summary>The lines of the 30 body whose white-space marks were rewritten (A10-068), in order.</summary>
+        private readonly SortedSet<int> markLines = [];
         private readonly Lazy<ConversionScope> scope;
         private IReadOnlyList<TemplateTag> tags = [];
         private int nextPart = 1;
@@ -209,7 +212,11 @@ internal static class TemplateRewriter
                 tags = found;
                 var root = new Sink(0, text.Length);
                 Block(template.Page.Body, ImmutableDictionary<string, Variable>.Empty, root, 0);
-                return Finish(root, "body");
+                var finished = Finish(root, "body");
+                // Final review A4 (part 05 § 2.6): a rewritten mark keeps white space 30 removed; one notice per file.
+                if (markLines.Count > 0)
+                    m.Notice(MigrationSentences.MarksRewritten(site.File, [.. markLines]));
+                return finished;
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -1029,10 +1036,14 @@ internal static class TemplateRewriter
         {
             var edits = new List<Edit>(sink.Edits);
             var spans = sink.Edits.Where(e => e.Span).ToList();
+            var marks = new List<Edit>();
             foreach (var tag in tags.Where(t => t.Start >= sink.From && t.End <= sink.To && !spans.Any(s => t.Start < s.End && t.End > s.Start)))
-                Marks(tag, edits);
+                Marks(tag, marks);
+            edits.AddRange(marks);
 
             var (kept, dropped) = Order(edits);
+            foreach (var mark in kept.Where(marks.Contains))
+                markLines.Add(LineOf(text, mark.Start));
             foreach (var edit in dropped)
             {
                 // Its 30 construct stays as it was: a hand edit, said where it stands.

@@ -225,6 +225,23 @@ internal static class MigrationSentences
         $"{file}: a carriage return that didn't end a line became a line end.";
 
     /// <summary>
+    /// A10-068 (part 05 § 2.6, part 10 § 1.2; #1507 final review A4): a notice: in <paramref name="file"/>, the white-space
+    /// marks on <paramref name="lines"/> of the 30 body were rewritten as 31 has them (<c>-</c>, which removed every white
+    /// space and line ending, is <c>~</c>, which removes spaces and tabs and one line ending on its right; a placement's
+    /// mark is dropped but a <c>{{~</c> alone on its line), so the text renders with the line endings beside them kept.
+    /// Never a hand edit.
+    /// </summary>
+    public static string MarksRewritten(string file, IReadOnlyList<int> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        var listed = lines.Count == 1
+            ? string.Create(CultureInfo.InvariantCulture, $"line {lines[0]}")
+            : "lines " + string.Join(", ", lines.Take(lines.Count - 1).Select(l => l.ToString(CultureInfo.InvariantCulture)))
+                + " and " + lines[^1].ToString(CultureInfo.InvariantCulture);
+        return $"{file}: the white-space marks at {listed} of the 30 body became 31's (- is ~; a placement keeps only a {{{{~ alone on its line), so line endings beside them are now kept.";
+    }
+
+    /// <summary>
     /// A10-006 (part 10 § 1.9, part 01 § 6, D6): the <paramref name="kind"/> (<c>node</c>, <c>input</c>, <c>macro</c>,
     /// <c>snippet</c>, <c>format</c>, <c>deliverable</c>) <paramref name="id"/>, a word or a Windows name 31 reserves, was
     /// renamed <paramref name="newId"/>: the hand choice, or the id with its kind as a suffix.
