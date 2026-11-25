@@ -125,9 +125,9 @@ A task that needs another sentence adds the next id and records it.
 
 **Files:** find each with grep in `src/Consultologist.Api/V31/` and `src/Consultologist.PackageFormat/V31/Run/`: the job time limit (`jobMinutes`, `job-slow`), the operator alert (`OperatorAlert`), OCR (`prebuilt-read`, `AnalyzeResult`), S06-035 (`tests/V31Source/` checks tests).
 
-- [ ] **Step 1: Failing tests,** one per item of #1508 comment 4, item 5: (a) `S06035_FailsClosed_ThroughAGatesDependencies` (a gate whose `if` reads a node that reads a nullable value, two steps away: refused); (b) `TheJobTimeLimit_IsCheckedAfterAHostRulesAnswerReturns` (a rule activity that returns after the limit: the job fails with S09-012 before anything else is dispatched); (c) `TheOperatorAlert_IsItsOwnActivity` (the orchestrator schedules an alert activity, named `send-operator-alert-v31`, and does not await a send inline; a failed alert never fails the job); (d) `TheOcrModelsDatedVersion_IsRecorded` (`AnalyzeResult.ModelVersion`, not `prebuilt-read` alone, in the input's extraction versions).
-- [ ] **Step 2 to 4: Run, implement, run** the whole non-E2E suite (shared engine code). If (a) passes as written, keep the test and change nothing.
-- [ ] **Step 5: Commit** per item (`Api (#1508): …`, `Tests (#1508): …`); update `engine-v31.md` (the drain's list of new history events gains the alert activity); push.
+- [x] **Step 1: Failing tests,** one per item of #1508 comment 4, item 5: (a) `S06035_FailsClosed_ThroughAGatesDependencies` (a gate whose `if` reads a node that reads a nullable value, two steps away: refused); (b) `TheJobTimeLimit_IsCheckedAfterAHostRulesAnswerReturns` (a rule activity that returns after the limit: the job fails with S09-012 before anything else is dispatched); (c) `TheOperatorAlert_IsItsOwnActivity` (the orchestrator schedules an alert activity, named `send-operator-alert-v31`, and does not await a send inline; a failed alert never fails the job); (d) `TheOcrModelsDatedVersion_IsRecorded` (`AnalyzeResult.ModelVersion`, not `prebuilt-read` alone, in the input's extraction versions).
+- [x] **Step 2 to 4: Run, implement, run** the whole non-E2E suite (shared engine code). If (a) passes as written, keep the test and change nothing.
+- [x] **Step 5: Commit** per item (`Api (#1508): …`, `Tests (#1508): …`); update `engine-v31.md` (the drain's list of new history events gains the alert activity); push.
 
 ### Task 5: The ruled spec edits, and the check's sentences
 
