@@ -133,10 +133,10 @@ A task that needs another sentence adds the next id and records it.
 
 **Files:** Modify `docs/customizable-workflow/package-format-v31/02-types-and-inputs.md` § 8.2, `09-engine-and-pages.md` § 5.1 (the documents bullet) and § 1.2 step 3 (R3), `03-expressions.md` § 4.1, `06-checks-deliverables-profile.md` § 6.7; in `~/Projects/consultologist-package-format`: `package-format-v31.md` (chapter 3 § 3.4.1 and the S03-019 row, and the twins of the edits above), `v31/sentences.json` if a row's words change; in `~/Projects/consultologist-provenance`: `hash-definitions.md` (`effectiveInputHash` definition 7); `src/Consultologist.PackageFormat/V31/CheckSentences.cs` and wherever a check's failure says "Computed node".
 
-- [ ] **Step 1: Edit the texts** exactly as #1508 comment 4 items 6 and 7 say: a document sent to a Markdown input is "extracted text, as at 30" (the converter is Milestone 40, #1442), in part 02 § 8.2, part 09 § 5 and definition 7; `checks/` may read a deliverable's `.content`, `.value` and `.state`; a gate comes after its deliverables in § 6.7's order; part 09 § 1.2 step 3 says the pointer names the lock by file name and the stamp carries `lockHash`.
-- [ ] **Step 2: Failing test** `AChecksFailure_SaysCheck_NotComputedNode` for every sentence a check can fail with at publish and at run time; implement by passing the subject (`Check '<id>'`) through.
-- [ ] **Step 3: Run** V31 tests and both content repos' checks (`python3 scripts/check-v31.py`; provenance's own check script if it has one). Regenerate the refusal packages whose sentence moved (`RefusalPackagesExport`), read the diff.
-- [ ] **Step 4: Commit** in each content repo, push `m39-build`, move the pins; commit here `Docs (#1508): the ruled spec edits …` and `PackageFormat (#1508): a check's failure says "Check"`; push.
+- [x] **Step 1: Edit the texts** exactly as #1508 comment 4 items 6 and 7 say: a document sent to a Markdown input is "extracted text, as at 30" (the converter is Milestone 40, #1442), in part 02 § 8.2, part 09 § 5 and definition 7; `checks/` may read a deliverable's `.content`, `.value` and `.state`; a gate comes after its deliverables in § 6.7's order; part 09 § 1.2 step 3 says the pointer names the lock by file name and the stamp carries `lockHash`.
+- [x] **Step 2: Failing test** `AChecksFailure_SaysCheck_NotComputedNode` for every sentence a check can fail with at publish and at run time; implement by passing the subject (`Check '<id>'`) through.
+- [x] **Step 3: Run** V31 tests and both content repos' checks (`python3 scripts/check-v31.py`; provenance's own check script if it has one). Regenerate the refusal packages whose sentence moved (`RefusalPackagesExport`), read the diff.
+- [x] **Step 4: Commit** in each content repo, push `m39-build`, move the pins; commit here `Docs (#1508): the ruled spec edits …` and `PackageFormat (#1508): a check's failure says "Check"`; push.
 
 ## Part B: the compiled documents, named and closed
 
