@@ -29,8 +29,11 @@ public class RunGoldenTests
     internal static string GoldenFolder() =>
         Path.GetFullPath(Path.Combine(CompiledGoldenTests.GoldenFolder(), "..", "..", "V31Run", "Golden"));
 
+    /// <summary>The compiled goldens whose run is the default stubs'; <c>macros</c> has its own run (<see cref="TheMacrosRun_IsWhatTheRunnerGives"/>).</summary>
+    public static TheoryData<string> OnTheStubs() => new(CompiledGoldenTests.Cases().Select(c => c.Name).Where(n => n != "macros"));
+
     [Theory]
-    [MemberData(nameof(CompiledGoldenTests.Names), MemberType = typeof(CompiledGoldenTests))]
+    [MemberData(nameof(OnTheStubs))]
     public async Task AGoldenRun_IsWhatTheRunnerGives(string name)
     {
         var plan = RunFixture.Plan(name);
@@ -53,7 +56,7 @@ public class RunGoldenTests
     public void TheGoldenFolder_HoldsARunPerCompiledGolden()
     {
         Assert.Equal(
-            CompiledGoldenTests.Cases().Select(c => $"{c.Name}.run.txt").Append("macros.run.txt").Append("checked-note-outcomes.run.txt")
+            CompiledGoldenTests.Cases().Select(c => $"{c.Name}.run.txt").Append("checked-note-outcomes.run.txt")
                 .Order(StringComparer.Ordinal),
             Directory.GetFiles(GoldenFolder(), "*.run.txt").Select(f => Path.GetFileName(f)!).Order(StringComparer.Ordinal));
     }

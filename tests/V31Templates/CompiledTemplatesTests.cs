@@ -334,26 +334,6 @@ public class CompiledTemplatesTests
         }
     }
 
-    /// <summary>
-    /// The pinned <c>&lt;name&gt;.schema.json</c>, with the common definitions, the format dialect and (for
-    /// <c>lock</c>) <c>resolve.schema.json</c>, which it refers to.
-    /// </summary>
-    private static JsonSchema Schema(string name)
-    {
-        List<AdditionalSchemaFile> files =
-        [
-            new("urn:consultologist:spec:31:schema:common", V31Contract.Path("schemas", "common.schema.json")),
-            new("urn:consultologist:spec:31:dialect", V31Contract.Path("dialect.schema.json")),
-        ];
-        if (name != "resolve")
-            files.Add(new("urn:consultologist:spec:31:schema:resolve", V31Contract.Path("schemas", "resolve.schema.json")));
-        var options = new JsonSchema.Options(
-            additionalSchemaFiles: files,
-            allowFileSystemAndHttpResolution: false,
-            defaultDialect: Corvus.Text.Json.RuntimeEvaluator.JsonSchemaDialect.Draft202012,
-            alwaysAssertFormat: false,
-            additionalDocumentResolver: null);
-        var path = V31Contract.Path("schemas", $"{name}.schema.json");
-        return JsonSchema.FromText(File.ReadAllText(path), $"urn:consultologist:spec:31:schema:{name}", options, false);
-    }
+    /// <summary>The pinned <c>&lt;name&gt;.schema.json</c>, with every schema it refers to (<see cref="ResolveFixture.PinnedSchema"/>).</summary>
+    private static JsonSchema Schema(string name) => ResolveFixture.PinnedSchema(name);
 }

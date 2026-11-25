@@ -73,6 +73,13 @@ public class CompiledGoldenTests
             + "composed note's .content and gates it; the note (markdown_block, delivered to emr, failing when empty) and an "
             + "ungated patient letter (plaintext) in the delivery folder patient, delivered by email and pdf and held when "
             + "empty."),
+        new("macros",
+            () => Named(ResolveFixture.Macros(), "example-macros", "Macros demo"),
+            "example-macros (#1508): an agent planning the sections; the classifier classify, a judgement on the plan; the "
+            + "run-dependent rendered node stamp, a run spot on run.date; the agent draft, reading stamp and placing the part "
+            + "close, whose text places the macro hpi of the folder section_notes (the folder and the macro each decided on "
+            + "the classifier's answer); and the deliverable, reading the draft. The agent terms "
+            + "returns a concept_list, which the rendered node terms_text reads through the built-in renderer renderer.concept_bullets."),
     ];
 
     public static TheoryData<string> Names() => new(Cases().Select(c => c.Name));
@@ -172,6 +179,37 @@ public class CompiledGoldenTests
 
             Assert.Null(CompiledPackage.Verify((string)package["name"]!, (string)package["version"]!, resolve, @lock, resolveHash, lockHash));
             Assert.Equal(resolveHash, (string?)JsonNode.Parse(@lock)!["resolve"]!["hash"]);
+        }
+    }
+
+    [Fact]
+    public void EveryGolden_ValidatesAgainstTheSchema()
+    {
+        // #1508 (area 11): the closed entry names every member the compiler writes, so each golden fits resolve.schema.json
+        // and lock.schema.json as the pinned content repository holds them.
+        var resolve = ResolveFixture.PinnedSchema("resolve");
+        var @lock = ResolveFixture.PinnedSchema("lock");
+        foreach (var name in Cases().Select(c => c.Name))
+        {
+            Assert.True(resolve.Validate(File.ReadAllText(Path.Combine(GoldenFolder(), $"{name}.resolve.json")), null), $"{name}.resolve.json does not fit resolve.schema.json.");
+            Assert.True(@lock.Validate(File.ReadAllText(Path.Combine(GoldenFolder(), $"{name}.lock.json")), null), $"{name}.lock.json does not fit lock.schema.json.");
+        }
+    }
+
+    [Fact]
+    public void ABundledEntry_WithAnUnnamedMember_DoesNotFitTheSchema()
+    {
+        var resolve = ResolveFixture.PinnedSchema("resolve");
+        var document = JsonNode.Parse(Published(Cases().Single(c => c.Name == "macros")).Resolve)!;
+        Assert.True(resolve.Validate(document.ToJsonString(), null));
+        foreach (var map in new[] { "nodes", "checks", "macros", "renderers", "deliverables" })
+        {
+            var changed = document.DeepClone();
+            var entries = changed[map]!.AsObject();
+            if (entries.Count == 0)
+                continue; // the macros case has no check; every other map has an entry
+            entries.First().Value!["madeUp"] = 1;
+            Assert.False(resolve.Validate(changed.ToJsonString(), null), $"{map}: an unnamed member still fits.");
         }
     }
 
