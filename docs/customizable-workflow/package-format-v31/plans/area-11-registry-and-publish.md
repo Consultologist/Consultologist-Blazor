@@ -369,10 +369,10 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 **Files:** Modify `tests/V31Resolve/CompiledDocumentsExport.cs` (each case folder gains `publish-report.json` and `publish.json`; the `macros` and `nested-note` cases gain a `tests/` file each, one with an unused stub so S07-014 is in the report, and `nested-note`'s limits set so the ceiling note is), `tests/V31Source/RefusalPackages.Publish.cs` (S07-007 to S07-013 and A11-005, valid and invalid; the invalid side's `expect.json` carries the sentence; S07-013 is listed in `RefusalPackagesTests`' not-shipped list with its reason, since no package can state a clock), `RefusalPackagesTests.cs` (the runner calls `PackagePublish.CheckAsync` for these ids); content repo `scripts/check-v31.py` (the compiled-documents group validates `publish-report.json` and `publish.json` against their schemas and checks their hashes against the pair), `v31/conformance/README.md`, `v31/conformance/index.json`.
 
-- [ ] **Step 1: Failing tests** `ThePinnedFamily_IsWhatPublishGives` over the report (with a fixed clock and `durationMs` written as 0 in the fixture: say so in `about.txt` and the README) and the stamp; each new refusal package gives its sentence.
-- [ ] **Step 2 to 3: Implement, export** one filter at a time, read `git status` and the new files in the content repo.
-- [ ] **Step 4: Run** `python3 scripts/check-v31.py`; push the content repo; move the pin; run V31 tests here.
-- [ ] **Step 5: Commit** `Tests (#1508): the conformance suite gains the publish report, the stamp and the test sentences`; push.
+- [x] **Step 1: Failing tests** `ThePinnedFamily_IsWhatPublishGives` over the report (with a fixed clock and `durationMs` written as 0 in the fixture: say so in `about.txt` and the README) and the stamp; each new refusal package gives its sentence.
+- [x] **Step 2 to 3: Implement, export** one filter at a time, read `git status` and the new files in the content repo.
+- [x] **Step 4: Run** `python3 scripts/check-v31.py`; push the content repo; move the pin; run V31 tests here.
+- [x] **Step 5: Commit** `Tests (#1508): the conformance suite gains the publish report, the stamp and the test sentences`; push.
 
 ### Task 23: The documents
 
