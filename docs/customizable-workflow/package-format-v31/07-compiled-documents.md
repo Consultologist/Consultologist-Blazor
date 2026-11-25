@@ -246,6 +246,19 @@ way, with `body`, `bodyHash`, `reads`, `runDependent`, `modelDerived`, `renders`
 deliverable's `reads` are its sources: the retired `sources` member is derived from them
 ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)).
 
+**An entry is closed: it holds the header members of its kind and the derived members above, and no other.** The
+header members, by kind, as written (`format` as `{ "$ref": "#/$defs/<id>" }`, or its inline schema):
+every node and check holds `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `modelDerived`,
+`runDependent`, `profileCarrying` and `if`; an agent node also `onInvalid`, `failIfEmpty`, `parts` and `ordered`; a
+computed node and a check also `expression`; a `call` also `function` and `with`; a `for` also `in`, `parallel`,
+`maxParallel`, `until`, `max`, `itemLabel`, `nodes` and `ret`; a `while` also `while`, `max`, `until`, `checkFirst`,
+`nodes` and `ret`; an `if` has `if`, `then` and `else`; a `case` has `case`, `branches` and `else`. A deliverable
+holds `label`, `kind`, `description`, `format`, `if`, `check` and `whenEmpty`; a renderer `label`, `kind`,
+`description`, `input` and `format`; a macro `label`, `description`, `if`, `format` and `instruction`; a macro folder
+`description`, `items` and `if`; a snippet `label`, `description`, `if` and `format`; a snippet folder `description`,
+`items` and `format`. `resolve.schema.json` names each member once, and a member it does not name is refused. The one
+open entry is a snippet folder's item, whose header members are the folder's `format`'s own.
+
 A `placements` entry is `{ "site": "part.<id>" | "snippet.<id>" | "macro.<id>" | "macro-folder.<id>", "within": <the site whose text places it, or null for the body>, "if": <the unit's rule, its keys rooted for this entry's place, or null>, "plainConverts": [<boolean>…], "form": "block" | "inline" | null }`. `plainConverts` is that rule's, as above. `form` is a macro's marker form and `null` for the other kinds. A macro in a folder is preceded, once per entry, by a `macro-folder.<id>` entry, so the folder is decided wherever one of its macros may be. The engine decides what a prompt holds from this member alone; a snippet's, a macro's and a part's own `if` stay as written.
 
 Each `deliverables` entry also carries `delivery` and `bundle`, as its delivery folder's `index.json`
