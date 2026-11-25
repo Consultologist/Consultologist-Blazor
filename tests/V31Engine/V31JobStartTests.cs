@@ -51,8 +51,9 @@ public class V31JobStartTests
     private const string Zone = "America/Toronto";
 
     [Fact]
-    public async Task WithoutThePreviewSetting_A31PackageIsAnsweredAsToday()
+    public async Task WithoutThePreviewSetting_A31PackageIsS09001_As400()
     {
+        // #1508 (Review Focus 4): nothing of 31 is asked; today's reader refuses the 31 pin, which is S09-001 as a 400.
         var start = new Start(preview: null);
         var packageRef = start.Put("nested-note");
         start.PackageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
@@ -61,7 +62,10 @@ public class V31JobStartTests
         var outcome = await start.RunAsync(packageRef, Text(Draft));
 
         Assert.Null(outcome.JobId);
-        Assert.Equal(ConsultGenerationJobStartError.SpecVersionNotYetExecutable, outcome.Error);
+        Assert.Equal(ConsultGenerationJobStartError.SpecVersionNotAdmitted, outcome.Error);
+        Assert.Equal(SpecVersionAdmissionTests.With(null).NotSupported(31), outcome.ErrorDetail);
+        V31Contract.AssertSentence(new SourceRefusal("S09-001", outcome.ErrorDetail!, ""));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, ConsultGenerationJobs.StatusFor(outcome.Error!.Value));
         Assert.Equal(0, start.Store.Calls);
         Assert.Empty(start.Registry.Reads);
         Assert.Empty(start.Scheduled);

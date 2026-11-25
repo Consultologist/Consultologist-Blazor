@@ -112,7 +112,11 @@ public enum ConsultGenerationJobStartError
     // #1302: new jobs are on hold for a release (Jobs__HoldNewJobs). Not the
     // request's fault and not the account's: 503, and the email door queues
     // the message as it does a rate limit. Appended last.
-    Held
+    Held,
+
+    // #1508 (specVersion 31, area 11; Review Focus 4): the pinned version is a spec version this deployment does not admit
+    // (31 with the preview setting unset): S09-001, a 400. Appended last.
+    SpecVersionNotAdmitted
 }
 
 /// <summary>
@@ -349,6 +353,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         try
         {
             package = await _packageStore.ResolveAsync(packageRef!, cancellationToken);
+        }
+        catch (WorkflowPackageSpecVersionException ex) when (_v31?.NotAdmitted(ex.SpecVersion) is { } notAdmitted)
+        {
+            // #1508 (Review Focus 4): a 31 pin on a deployment that does not admit 31 (the preview setting unset): S09-001,
+            // a 400, as WorkflowPackages/Current and Current/Content answer it.
+            _logger.LogWarning(
+                "Rejected job start: the pinned package is a specVersion this deployment does not admit. Pin={Pin}, SpecVersion={SpecVersion}",
+                packageRef,
+                ex.SpecVersion);
+            return new ConsultGenerationJobStartOutcome(null, ConsultGenerationJobStartError.SpecVersionNotAdmitted, notAdmitted);
         }
         catch (WorkflowPackageSpecVersionException ex)
         {

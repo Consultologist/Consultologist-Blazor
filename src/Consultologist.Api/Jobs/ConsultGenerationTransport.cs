@@ -2668,6 +2668,8 @@ public sealed class ConsultGenerationJobs
             // #1302: nothing is wrong with the request or the account — the
             // engine is draining for a release. 503 with Retry-After.
             ConsultGenerationJobStartError.Held => HttpStatusCode.ServiceUnavailable,
+            // #1508 (Review Focus 4): S09-001, as a 31 publish, import, Current or Content answers it.
+            ConsultGenerationJobStartError.SpecVersionNotAdmitted => HttpStatusCode.BadRequest,
             _ => HttpStatusCode.InternalServerError
         };
 
