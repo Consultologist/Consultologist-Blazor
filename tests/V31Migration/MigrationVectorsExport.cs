@@ -75,8 +75,9 @@ public class MigrationVectorsExport
         new("test-general", "test/general",
             "The vendored test/general: a snippet folder whose items' format is chosen by hand (standards takes "
             + "standard_section) and the loop over it, prompts that pipe into the concept renderers, the hand-chosen "
-            + "whenEmpty hold, a macro appended on the deliverable whose reserved id test is renamed (test_snippet), and a "
-            + "macro placed in a snippet folder's item, a hand edit."),
+            + "whenEmpty hold, a macro appended on the deliverable whose id test is reserved at 31 and so renamed test_snippet "
+            + "by the migration itself (A10-006; options.json chooses no rename), and a macro placed in a snippet folder's "
+            + "item, a hand edit."),
     ];
 
     /// <summary>
