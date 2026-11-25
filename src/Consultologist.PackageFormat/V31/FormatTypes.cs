@@ -228,9 +228,10 @@ public static class FormatTypes
 
     /// <summary>
     /// <paramref name="node"/> as <see cref="ExpandedShape"/> follows it: through each <c>allOf</c> of one member with only
-    /// annotations beside it (an expanded reference); null when it is no schema.
+    /// annotations beside it (an expanded reference); null when it is no schema. #1508 (area 11, Task 18): read by
+    /// <c>WorkflowPackages/Current</c> too, to fill its members from the schema whose shape this gives.
     /// </summary>
-    private static JsonObject? Inlined(JsonNode? node)
+    internal static JsonObject? Inlined(JsonNode? node)
     {
         for (var depth = 0; depth <= SourceBounds.JsonDepth; depth++)
         {

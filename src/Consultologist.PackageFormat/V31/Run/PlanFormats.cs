@@ -7,7 +7,8 @@ namespace Consultologist.PackageFormat.V31.Run;
 /// #1503 (specVersion 31, area 06; part 07 § 2.4, 05-D47(1)): values held to <c>resolve.json</c>'s format bundle,
 /// <c>{ "$defs": { "&lt;key&gt;": &lt;schema&gt;, … } }</c>. #1508 (area 11; R2): a JSON Schema 2020-12 compound document,
 /// each entry with its <c>$id</c> and each reference in an entry to another the target's <c>$id</c>, while a format at a
-/// site (an input's, an entry's) is <c>#/$defs/&lt;key&gt;</c> of the bundle; <see cref="Expand"/> inlines every
+/// site (an input's, an entry's) is <c>#/$defs/&lt;key&gt;</c> of the bundle; <see cref="Expand"/> (and
+/// <see cref="SelfContained"/>, which keeps each entry's <c>$id</c>) inlines every
 /// reference, and a value is validated against what it gives. The bundle is read, never changed. Never throws on a
 /// bundle, a format or a value.
 /// </summary>
@@ -77,6 +78,21 @@ public sealed class PlanFormats
     public JsonNode Expand(JsonNode? format)
     {
         var walk = new Walk(defs, ids);
+        var expanded = walk.Schema(format, 0);
+        return walk.Failed || expanded is null ? JsonValue.Create(false) : expanded;
+    }
+
+    /// <summary>
+    /// #1508 (area 11, Task 18; part 09 § 4.3, part 02 § 12): <paramref name="format"/> as a self-contained schema, the
+    /// <c>Format</c> of <c>WorkflowPackages/Current</c>: <see cref="Expand"/>'s inlining, every reference by key or by
+    /// <c>$id</c> replaced by its definition, each inlined entry keeping its <c>$id</c> (so a named format stays
+    /// recognisable) and its titles and annotations; <c>$schema</c> and <c>$defs</c> are dropped as there. What
+    /// <see cref="Expand"/> gives <c>false</c> for (a reference to itself, which publish refuses as S02-032; an unknown one;
+    /// an expansion too deep or too large) is <c>false</c> here too, as the run holds it.
+    /// </summary>
+    public JsonNode SelfContained(JsonNode? format)
+    {
+        var walk = new Walk(defs, ids, keepIds: true);
         var expanded = walk.Schema(format, 0);
         return walk.Failed || expanded is null ? JsonValue.Create(false) : expanded;
     }
@@ -182,7 +198,7 @@ public sealed class PlanFormats
     /// format file to the budget, not the place that refers to it. What the uncounted values hold is bounded by
     /// <see cref="NodeBudget"/>, which counts every node written.
     /// </summary>
-    private sealed class Walk(JsonObject defs, Dictionary<string, JsonObject> ids)
+    private sealed class Walk(JsonObject defs, Dictionary<string, JsonObject> ids, bool keepIds = false)
     {
         private readonly HashSet<JsonObject> inlining = new(ReferenceEqualityComparer.Instance);
 
@@ -301,7 +317,7 @@ public sealed class PlanFormats
                 var target = new JsonObject();
                 foreach (var (name, value) in entry)
                 {
-                    if (name is "$id" or "$schema" or "$defs")
+                    if (name is "$schema" or "$defs" || (name == "$id" && !keepIds))
                         continue;
                     target[name] = Member(name, value, depth + 1);
                 }

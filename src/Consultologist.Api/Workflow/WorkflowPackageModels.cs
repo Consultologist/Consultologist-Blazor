@@ -144,7 +144,11 @@ public sealed record WorkflowPackageInputResponse(
     string? ExpectedContent = null,
     // v14 (#729): a union input's accepted types, in try order (Type is the
     // primary/first arm). Null for a single-type input.
-    IReadOnlyList<string>? Types = null);
+    IReadOnlyList<string>? Types = null,
+    // #1508 (specVersion 31, area 11; part 09 § 4.3): the input's format as a
+    // self-contained schema, and its channel. Null below 31.
+    JsonElement? Format = null,
+    string? Channel = null);
 
 /// <summary>
 /// One declared field of an object, as the setup form renders it (v9 § 4).

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Azure;
 using Consultologist.Api.Auth;
+using Consultologist.Api.V31;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -25,6 +26,8 @@ public sealed class WorkflowPackages
     private readonly IAccountAuthorizer _authorizer;
     private readonly IWorkflowPackageOwnership _ownership;
     private readonly ILogger<WorkflowPackages> _logger;
+    private readonly ICompiledPackageStore? _compiled;
+    private readonly SpecVersionAdmission? _admission;
 
     public WorkflowPackages(
         IWorkflowPackageStore packageStore,
@@ -35,8 +38,13 @@ public sealed class WorkflowPackages
         WorkflowPackageBlobContainerFactory containerFactory,
         IAccountAuthorizer authorizer,
         IWorkflowPackageOwnership ownership,
-        ILogger<WorkflowPackages> logger)
+        ILogger<WorkflowPackages> logger,
+        // #1508 (specVersion 31, area 11): the 31 load and the gate on it; null (a test) is today's path alone.
+        ICompiledPackageStore? compiled = null,
+        SpecVersionAdmission? admission = null)
     {
+        _compiled = compiled;
+        _admission = admission;
         _ownership = ownership;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
@@ -75,10 +83,41 @@ public sealed class WorkflowPackages
 
         var packageRef = await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
 
+        // #1508 (specVersion 31, area 11; part 09 §§ 1.2, 4): a version stamped 31 is described from its resolve.json, on a
+        // deployment that runs 31 (the load reads nothing otherwise); a refusal of the load is its sentence. A version with
+        // no 31 stamp, or a registry that could not be read, is today's path's, which answers as it does with 31 off.
+        if (_compiled != null && await _compiled.TryLoadAsync(packageRef, cancellationToken) is { Unreadable: false } load)
+        {
+            if (load.Plan is { } plan)
+            {
+                return await CreateJsonResponseAsync(req, HttpStatusCode.OK, V31PackageDescription.Describe(plan), cancellationToken);
+            }
+
+            _logger.LogWarning(
+                "Workflow package could not be loaded at 31. Pin={Pin}, RefusalId={RefusalId}, Detail={Detail}",
+                packageRef, load.RefusalId, load.OperatorDetail ?? load.Refusal);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                new { error = load.Refusal ?? CompiledPackageStore.HashMismatch(packageRef.Name, packageRef.Version) }, cancellationToken);
+        }
+
         WorkflowPackage package;
         try
         {
             package = await _packageStore.ResolveAsync(packageRef, cancellationToken);
+        }
+        catch (WorkflowPackageSpecVersionException ex) when (ex.SpecVersion == Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion && _admission != null)
+        {
+            // #1508 (Review Focus 4): a 31 pin that today's path met. With 31 not admitted (the preview setting unset) it is
+            // S09-001; admitted, the compiled load found no stamp, so the version isn't published (A06-004).
+            _logger.LogWarning("Workflow package is specVersion 31 and was not loaded at 31. Pin={Pin}, Admitted={Admitted}", packageRef, _admission.Runs31);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                new
+                {
+                    error = _admission.Runs31
+                        ? CompiledPackageStore.NotPublished(packageRef.Name, packageRef.Version)
+                        : _admission.NotSupported(Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion),
+                },
+                cancellationToken);
         }
         catch (InvalidOperationException ex)
         {
