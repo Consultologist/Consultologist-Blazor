@@ -153,9 +153,9 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S03-023 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | author | |
 | S03-024 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | author | |
 | S03-025 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | author | |
-| S03-026 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | author | |
-| S03-027 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | author | |
-| S03-028 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Computed node '\<id\>' builds \<format\> with \<field\>, which the format doesn't declare."* | author | |
+| S03-026 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> yields \<format\>; it declares \<format\>."* | author | |
+| S03-027 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> builds \<format\> without \<field\>; object must give every property of the format."* | author | |
+| S03-028 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> builds \<format\> with \<field\>, which the format doesn't declare."* | author | |
 | S03-029 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal."* | author | |
 | S03-030 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | author | |
 | S03-031 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | author | |
@@ -165,7 +165,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S03-035 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | author | |
 | S03-036 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S03-037 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."* | author | |
-| S03-038 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."* | author | |
+| S03-038 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"\<site\> reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."* | author | |
 | S03-039 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"computed from model text: node.\<id\>"* | author | |
 | S03-040 | [11.3 Failures at run time](03-expressions.md#113-failures-at-run-time) | *"\<site\> \<member\> could not be decided: matches was given \<n\> MiB of text; the most is 1 MiB."* | author | |
 | S03-041 | [11.3 Failures at run time](03-expressions.md#113-failures-at-run-time) | *"\<site\> \<member\> yields \<a value kind\>; a condition yields a boolean."* | author | |

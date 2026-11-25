@@ -38,7 +38,8 @@ was [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/139
    equal the hash published for that version
    ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175));
    `lock.json`'s hash must equal its published hash; and the link between them must hold
-   (`resolve.json`'s pointer to its lock names that `lockHash`, part 07). A mismatch of any of
+   (`resolve.json`'s pointer names the lock by file name, `lock.json`, and the stamp carries
+   `lockHash`, part 07). A mismatch of any of
    the three refuses the load. The published hashes are in the version's stamp (part 07), and
    **a version without the "published" stamp doesn't exist** for the engine: publish writes the
    stamp last, so a publish that died partway is never loaded, and stamped folders are never
@@ -433,8 +434,9 @@ in written order, each with its `label` and its `description` as help text:
   `null`; a field whose type is not nullable must be filled in before Start is enabled.
 - **Documents need no member.** Any text-format input takes typed text or a document; an array of
   text takes typed rows, documents and earlier runs' deliverables in the order sent (#872, #874,
-  #1144), as today. A document sent to a Markdown input is converted to Markdown, and the
-  converter's, parser's and OCR's versions are recorded with the input
+  #1144), as today. A document sent to a Markdown input gives its extracted text, as at 30 (the
+  converter to Markdown is Milestone 40, #1442), and the parser's and OCR's versions are recorded
+  with the input
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6924904289)).
 - **`channel`** (`transcript`, `image`, `ambient-note`, `form`) does what `expectedContent` does
   today; only the name changes.

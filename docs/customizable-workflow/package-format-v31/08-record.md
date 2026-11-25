@@ -676,8 +676,8 @@ engine stamps it as `provenanceRef` on every 31 job. It changes:
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)):
   - `nodeHashVersions` gains **7**: the sent-text hash over the rendered body with run spots and
     macro markers substituted, and the run-neutral hash beside it;
-  - `effectiveInputHashVersions` gains **7**: inputs as the object keyed by id, with Markdown inputs
-    in their converted form;
+  - `effectiveInputHashVersions` gains **7**: inputs as the object keyed by id, a document's text as extracted
+    (as at 30);
   - `workflowOutputHashVersions` gains **4**: a deliverable composed from its template, `composedHash`
     as replayed in § 10;
   - the `resolveHash` and `lockHash` definitions: SHA-256 over RFC 8785 bytes;

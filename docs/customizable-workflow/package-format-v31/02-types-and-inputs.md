@@ -717,9 +717,11 @@ earlier run's deliverable, in the order sent (#872, #874, #1144). A data-format 
 except an object filled from a `form`. An element from an earlier run's deliverable starts out
 model-derived (§ 1.2), and its record links to the job it came from.
 
-- **A document uploaded to a Markdown input is converted to Markdown:** headings, lists and tables
-  preserved from docx; best effort from PDF and OCR
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6878562886)).
+- **A document uploaded to a Markdown input gives its extracted text, as at 30.** The
+  document-to-Markdown converter (headings, lists and tables kept from docx; best effort from PDF
+  and OCR, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6878562886))
+  is Milestone 40 ([#1442](https://github.com/Consultologist/Consultologist-Blazor/issues/1442)):
+  when it arrives it is a new definition of `effectiveInputHash`, not a change to 7.
 - A document uploaded to a `plaintext` input gives its extracted text, as today.
 
 ### 8.3 `channel`

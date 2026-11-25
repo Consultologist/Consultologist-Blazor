@@ -507,9 +507,10 @@ blank, so `whenEmpty` has no effect there, but is still written (#1394).
 ### 6.7 Deliverables are terminal
 
 - **Nodes may not read deliverables,** and other deliverables may not either.
-- **Checks may** read a deliverable's `.content`.
+- **Checks may** read a deliverable's `.content`, `.value` and `.state` (§ 1.2, § 7).
 - Text a later node wants to reuse is made by a `rendered` node, which both read.
-- **The graph:** nodes, then deliverables, then their checks, then release.
+- **The graph:** nodes, then deliverables, then their checks, then release. A gate comes after
+  the deliverables it gates, so `graph.order` leaves `gates` edges out (part 07 § 2.7).
 
 ## 7. Gating and outcomes
 

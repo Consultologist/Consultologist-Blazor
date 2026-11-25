@@ -132,7 +132,8 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing.value = true`.
 
 **Never readable by JSON Logic:** `profile.*` (no condition and no computed expression reads the
 profile, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)),
-`snippet.*`, `part.*`, `macro.*`, `renderer.*` and `deliverable.*`. A snippet folder's item data
+`snippet.*`, `part.*`, `macro.*` and `renderer.*`, and `deliverable.*` except in a rule under
+`checks/`, which may read a deliverable's `.content`, `.value` and `.state` (part 06 § 6.7). A snippet folder's item data
 is read through the loop that iterates it (`item.value.title`).
 
 **`.title` may be compared** in conditions and computed expressions, as a `string`: publish
@@ -681,7 +682,7 @@ Every rule below is decided (linked, or in [part 03's decision](https://github.c
 
 Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Node 'x'`,
 `Loop 'x'`, `While 'x'`, `Check 'x'`, `Deliverable 'x'`, `Macro 'x'`, `Part 'p' of node 'x'`,
-`Computed node 'x'`, and inside a function
+`Computed node 'x'` (`Check 'x'` for an entry under `checks/`, which is computed too), and inside a function
 `Node 'x' in function 'f'`. `<member>` is `if`, `while`, `until` or `expression`. `<path>` is a
 `var` path; `<format>` a format's type string (part 02).
 
@@ -711,9 +712,9 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 | *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | rule decided (v25's enum rule) |
 | *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | rule decided (#1385 decision 5) |
 | *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | rule decided (§ 3) |
-| *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | rule decided (v30's let sentence, adapted) |
-| *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | rule decided (§ 5.4) |
-| *"Computed node '\<id\>' builds \<format\> with \<field\>, which the format doesn't declare."* | as above |
+| *"\<site\> yields \<format\>; it declares \<format\>."* | rule decided (v30's let sentence, adapted) |
+| *"\<site\> builds \<format\> without \<field\>; object must give every property of the format."* | rule decided (§ 5.4) |
+| *"\<site\> builds \<format\> with \<field\>, which the format doesn't declare."* | as above |
 | *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal."* | rule decided ([#1400](https://github.com/Consultologist/Consultologist-Blazor/issues/1400#issuecomment-6905611896), [failWith](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116), [min](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); `<operand>` is `pattern`, `word`, `failWith` or `count_pass`'s `min` |
 | *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | rule decided ([part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
 | *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | rule decided |
@@ -732,7 +733,7 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6925165013)),
   one line per value or decision:
   *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."*
-  and *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."*
+  and *"\<site\> reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."*
 - **Model-derived** is shown, not warned: History, the diagram and the Editor mark each
   model-derived value and decision (§ 4.5); the Editor shows:
   *"computed from model text: node.\<id\>"*.
