@@ -426,7 +426,8 @@ dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write
 - stdout is the report's canonical JSON alone. stderr has S07-015 for each compiled copy or stamp found in the folder
   (dropped unread), then each refusal, each warning, and a summary line.
 - Exit 0: published, or would publish; 1: refused; 2: usage or environment (an unreadable folder or registry, or an
-  out folder that is not empty or holds a stamp). A `.git` folder is skipped.
+  out folder that is not empty or holds a stamp). A `.git` folder is skipped, and so is a symbolic link (any reparse
+  point), file or folder: a link is never followed, so `--write` never copies a link's target into the Release assets.
 
 **`scripts/rerender-workflow-packages-v31.cs`** is the corpus re-render (part 07 § 4.4, D11):
 
@@ -434,33 +435,43 @@ dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write
 dotnet run -v q --file scripts/rerender-workflow-packages-v31.cs -- <folder of name/version folders>
 ```
 
-For each `<name>/<version>/` that holds a `publish.json` whose `specVersion` is 31, it reads the stored source as an
-upload (leaving out `dag.mmd` and `migration-report.json`; the evidence is dropped by intake), runs steps 0 to 3 in
-memory with this build's library, and compares the result with the stored `publish-report.json`: the `resolveHash`,
-and each test's `outcomeHash`. A test either side lacks, a version that is now refused, and a stamped folder with no
-readable report are each a difference. A folder with no 31 stamp is skipped. stdout has one line per difference and a
-summary. Exit 0: no difference; 1: a difference; 2: usage or environment.
+It walks the folder to any depth for the folders that hold a `publish.json`. Each is a version: its name is the
+relative path of its parent, with `/` (so an account package published with a slug, `acct-<12hex>/<slug>/<version>`,
+and a nested public name such as `test/general/<version>` are found, as `<name>/<version>` is), and its version is the
+folder's own name. The walk does not go into a version's folder, and skips a symbolic link (any reparse point), file or
+folder, both in the walk and when it reads a version's files. A folder with no `publish.json` is not a version; a
+`publish.json` that is readable JSON with a `specVersion` other than 31 is skipped (a 5–30 version has a stamp of the
+same name); a `publish.json` that cannot be read or is not valid JSON is a difference.
+
+For each 31 version it reads the stored source as an upload (leaving out `dag.mmd` and `migration-report.json`; the
+evidence is dropped by intake), runs steps 0 to 3 in memory with this build's library, and compares the result with
+the stored `publish-report.json`: the `resolveHash`, and each test's `outcomeHash`. A test either side lacks, a version
+that is now refused, and a stamped folder with no readable report are each a difference. stdout has one line per
+difference and a summary. Exit 0: no difference; 1: a difference; 2: usage or environment, or no stamped 31 version
+found (a walk that checked nothing never reports "no difference").
 
 **The corpus re-render before a library upgrade.** Before a build moves a locked library (Scriban, the evaluator, an
-operation), copy every stamped 31 version from the registry into a folder laid out as `<name>/<version>/`, run the
+operation), copy every stamped 31 version from the registry into a folder laid out as the registry is (`<name>/<version>/`, the
+name nested where it is nested), run the
 re-render on the current build, then on the candidate build. Each run must print no difference. A difference under the
 candidate is the upgrade changing what a published version compiles to or does: the upgrade needs a break point (added to
 `EngineBreakPoints`, compiled in, so a code change; area 06) or is not made.
 
 **What only a manual run has shown.** The scripts' wiring is pinned by `tests/V31Publish/ScriptsTests.cs`, which does
-not run them as processes. The folder walk, the out-folder refusals firing, the `--version` edit, the stamp written
+not run them as processes. The folder walks, the out-folder refusals firing, the `--version` edit, the stamp written
 last, a trailing separator on the out folder and the re-render's difference lines were shown by these runs (#1508,
 Task 20), on a copy of the `compiled-documents/macros/source` case outside the repository given a snapshot test with
-`dotnet run -v q --file scripts/migrate-workflow-package.cs -- /tmp/v31fix.IrNP/src --to 31 --snapshot --write`:
+`dotnet run -v q --file scripts/migrate-workflow-package.cs -- <source> --to 31 --snapshot --write` (`<source>`, `<out>`
+and `<corpus>` stand for folders outside the repository):
 
-1. `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- /tmp/v31fix.IrNP/src`: exit 0, stderr
+1. `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <source>`: exit 0, stderr
    `ok: example-macros@v2026.12.1 would publish (1 test(s) passed); nothing written.` (after two S04 warnings, for
    `draft` and `stamp`).
-2. `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- /tmp/v31fix.IrNP/src --write /tmp/v31fix.IrNP/pub --version v2026.12.7 --published-by "ci v2026.12.7"`:
-   exit 0, `published: example-macros@v2026.12.7 written to /tmp/v31fix.IrNP/pub (27 files, publish.json last).`
+2. `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <source> --write <out> --version v2026.12.7 --published-by "ci v2026.12.7"`:
+   exit 0, `published: example-macros@v2026.12.7 written to <out> (27 files, publish.json last).`
    The stamp was `{"lockHash":"sha256:935b2a36...","resolveHash":"sha256:1193334f...","specVersion":31}`.
 3. What was written, copied to `corpus/example-macros/v2026.12.7`:
-   `dotnet run -v q --file scripts/rerender-workflow-packages-v31.cs -- /tmp/v31fix.IrNP/corpus`: exit 0,
+   `dotnet run -v q --file scripts/rerender-workflow-packages-v31.cs -- <corpus>`: exit 0,
    `no difference: 1 stamped 31 version(s) re-rendered.`
 4. The written copy's `draft` stub edited ("Stub reply for node.draft (c82d06f2)." to "Edited draft stub."), then the
    same re-render: exit 1,
@@ -472,9 +483,28 @@ Task 20), on a copy of the `compiled-documents/macros/source` case outside the r
    `resolve.json`). The check on the edited copy: exit 1, with S07-007. `--write` into the stamped folder: exit 2,
    "holds a stamp".
 6. A trailing separator on the out folder:
-   `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- /tmp/v31fix.IrNP/src --write /tmp/v31fix.IrNP/pub2/ --version v2026.12.7`:
-   exit 0, `published: example-macros@v2026.12.7 written to /tmp/v31fix.IrNP/pub2 (27 files, publish.json last).`
-   (`pub3//` also exit 0). A re-render of a copy of `pub2`: `no difference: 1 stamped 31 version(s) re-rendered.`
+   `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <source> --write <out2>/ --version v2026.12.7`:
+   exit 0, `published: example-macros@v2026.12.7 written to <out2> (27 files, publish.json last).`
+   (`<out3>//` also exit 0). A re-render of a copy of `<out2>`: `no difference: 1 stamped 31 version(s) re-rendered.`
+
+These runs (#1508, the final review's fixes) showed the nested walk, the stamp cases, the new exit and the links, on the
+same case (its own `close_line` test) written with `--write <out> --version v2026.12.7`:
+
+7. Copies of `<out>` at `<corpus>/acct-0123456789ab/breast/v2026.12.7`, `<corpus>/test/general/v2026.12.7` and
+   `<corpus>/plain/v2026.12.7`: `dotnet run -v q --file scripts/rerender-workflow-packages-v31.cs -- <corpus>`: exit 0,
+   `no difference: 3 stamped 31 version(s) re-rendered.` (Before the fix, the two nested ones were skipped.)
+8. Added: a folder with a 5–30 stamp (`{"specVersion":9,…}`), one with no `publish.json`, and
+   `acct-0123456789ab/broken/v2026.12.8` whose `publish.json` is `{"specVersion":`: exit 1,
+   `acct-0123456789ab/broken/v2026.12.8: publish.json is not readable or not valid JSON` then
+   `1 difference(s) in 4 stamped 31 version(s) re-rendered.`
+9. A folder holding only a 5–30 stamp and a folder with no stamp, and an empty folder: exit 2,
+   `error: no stamped 31 version found under <corpus> (a version is a folder holding publish.json).`
+10. Links: a name folder that is a link to a stamped copy outside the corpus, a version folder that is a link, and
+    `plain/v2026.12.7/nodes/extra.md` a link to a file outside: exit 0, `no difference: 3 stamped 31 version(s)
+    re-rendered.` (The control, the same `extra.md` as a real file: exit 1, `refused now … File 'nodes/extra.md' is
+    not listed …`.) The check script on a copy of `<source>` with a linked `nodes/extra.md` and a linked `assets`
+    folder, `--write <out>`: exit 0, no link and nothing of either target in `<out>`, and the report's `sourceHash`
+    the same as the run without links.
 
 ### Before 31 leaves preview
 
