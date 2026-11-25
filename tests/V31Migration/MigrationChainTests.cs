@@ -243,6 +243,44 @@ public class MigrationChainTests
         Assert.Equal(["Prelude 'Guidance' needs a snake_case id to become a macro; rename it, then upgrade."], refusals);
     }
 
+    [Fact]
+    public void APassThatFaults_IsRefusedWithA10020_WritingNothing()
+    {
+        // Final review A7: the passes are wrapped as the read is, so a fault in one becomes A10-020 and nothing is
+        // written. No package content is known to fault a pass, so the seam is a registry whose format lookup faults
+        // (the renames pass reads only its names; a later pass looks a format up).
+        var (manifestJson, files) = ByteEquivalenceFixture();
+        var registry = V31Contract.PublishedTypes();
+        var options = Options() with { Registry = registry with { BuiltInFormats = new FaultingLookup(registry.BuiltInFormats) } };
+
+        var result = WorkflowPackageMigration30To31.Migrate(manifestJson, files, options);
+
+        Assert.Equal(["The package does not read at specVersion 30; fix it, then migrate."], result.Refusals);
+        V31Contract.AssertSentence(new SourceRefusal("A10-020", result.Refusals[0], ""));
+        AssertRefusedWritingNothing(result, manifestJson, files);
+    }
+
+    /// <summary>A lookup whose names read, but whose values fault when looked up.</summary>
+    private sealed class FaultingLookup(IReadOnlyDictionary<string, JsonObject> inner) : IReadOnlyDictionary<string, JsonObject>
+    {
+        public JsonObject this[string key] => throw new InvalidOperationException("faulting lookup");
+
+        public IEnumerable<string> Keys => inner.Keys;
+
+        public IEnumerable<JsonObject> Values => throw new InvalidOperationException("faulting lookup");
+
+        public int Count => inner.Count;
+
+        public bool ContainsKey(string key) => inner.ContainsKey(key);
+
+        public bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out JsonObject value) =>
+            throw new InvalidOperationException("faulting lookup");
+
+        public IEnumerator<KeyValuePair<string, JsonObject>> GetEnumerator() => throw new InvalidOperationException("faulting lookup");
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private static (string ManifestJson, Dictionary<string, string> Files) ByteEquivalenceFixture() =>
         Consultologist.Api.Tests.ByteEquivalence.ByteEquivalenceFixtures.ReadPackage("general");
 
