@@ -801,11 +801,13 @@ public static class ExpectedDifferences
     /// 30's run at that place, and it follows that body's own last text: in 30's text the characters before the run end with
     /// the body's last word (its text after its last white space; a body that ends in a tag has no word to find, and explains
     /// nothing). Every other run, and all the text between, is the same. A snippet written from a macro (D4) is not a macro
-    /// body at 31: the migration writes it with 30's trimming, so it is never explained here.
+    /// body at 31: the migration writes it with 30's trimming, so it is never explained here. Only a macro the compared row's
+    /// text can hold counts (<see cref="PlacedMacros"/>; final review B4).
     /// </summary>
     private static (string Old, string New)? MacroTrailingWhitespace(DifferenceContext c, string old, string now)
     {
-        var kept = KeptTrailingWhitespace(c.Migrated);
+        var placed = PlacedMacros(c);
+        var kept = KeptTrailingWhitespace(c.Migrated).Where(k => placed.Contains(k.Site)).ToList();
         if (kept.Count == 0)
             return null;
         var a = WhiteSpaceRuns(old);
@@ -832,9 +834,9 @@ public static class ExpectedDifferences
     /// Each macro body's trailing white space that 31 keeps and 30's <c>TrimEnd()</c> took away (none empty), with the body's
     /// last word, the text it follows.
     /// </summary>
-    private static List<(string Trailing, string LastWord)> KeptTrailingWhitespace(Migration31Result migrated)
+    private static List<(string Trailing, string LastWord, string Site)> KeptTrailingWhitespace(Migration31Result migrated)
     {
-        var kept = new List<(string, string)>();
+        var kept = new List<(string, string, string)>();
         foreach (var path in migrated.MacroBodies.Where(p => p.StartsWith("macros/", StringComparison.Ordinal)))
         {
             if (!migrated.Files.TryGetValue(path, out var file) || FrontMatter.Split(file)?.Body is not { } body)
@@ -845,10 +847,62 @@ public static class ExpectedDifferences
             var trailing = body[text.Length..];
             var word = text[(text.LastIndexOfAny([' ', '\t', '\n', '\r']) + 1)..];
             if (trailing.Length > 0 && word.Length > 0 && !word.EndsWith("}}", StringComparison.Ordinal))
-                kept.Add((trailing, word));
+                kept.Add((trailing, word, "macro." + path["macros/".Length..^".md".Length].Replace('/', '.')));
         }
 
         return kept;
+    }
+
+    /// <summary>
+    /// Final review B4: the macros (<c>macro.&lt;id&gt;</c>, a folder's <c>macro.&lt;folder&gt;.&lt;item&gt;</c>) whose body
+    /// the compared row's 31 text can hold, from the plan's reads and placements: each entry the row reads (the longest
+    /// entry key a read names), a flow with every entry inside it, a rendered node with what it reads in turn; an agent
+    /// reached so holds the bodies of the macros it places (its reply's markers are replaced by them). A prompt's own
+    /// placements are its instructions, never a body, so the row's own are not counted. Empty for the status or a key
+    /// the plan has no entry for.
+    /// </summary>
+    private static HashSet<string> PlacedMacros(DifferenceContext c)
+    {
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+        if (c.Key31 is not { } key || !c.Plan.Entries.TryGetValue(EntryOf(key), out var row))
+            return placed;
+        var seen = new HashSet<string>(StringComparer.Ordinal) { row.Key };
+        var pending = new Queue<PlanEntry>();
+
+        void Read(PlanEntry reader)
+        {
+            foreach (var path in reader.Reads)
+            {
+                var named = c.Plan.Entries.Keys.Where(k => path == k || path.StartsWith(k + ".", StringComparison.Ordinal)).MaxBy(k => k.Length);
+                if (named is not null && seen.Add(named))
+                    pending.Enqueue(c.Plan.Entries[named]);
+            }
+        }
+
+        Read(row);
+        while (pending.Count > 0)
+        {
+            var entry = pending.Dequeue();
+            switch (entry.Kind)
+            {
+                case PlanKind.Agent:
+                    placed.UnionWith(entry.Placements.Select(p => p.Site).Where(s => s.StartsWith("macro.", StringComparison.Ordinal)));
+                    break;
+                case PlanKind.Rendered:
+                    Read(entry);
+                    break;
+                case PlanKind.For or PlanKind.While or PlanKind.If or PlanKind.Case:
+                    foreach (var inner in c.Plan.Entries.Values.Where(e => e.Key.StartsWith(entry.Key + ".", StringComparison.Ordinal)))
+                    {
+                        if (seen.Add(inner.Key))
+                            pending.Enqueue(inner);
+                    }
+
+                    break;
+            }
+        }
+
+        return placed;
     }
 
     private static List<(bool Space, string Text)> WhiteSpaceRuns(string text)
