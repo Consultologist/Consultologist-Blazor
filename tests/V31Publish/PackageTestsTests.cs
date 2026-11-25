@@ -151,6 +151,7 @@ public class PackageTestsTests
         var outcome = await RunAsync(null, Test("no_stub", file));
 
         Assert.False(Assert.Single(outcome.Results).Pass);
+        Assert.Equal(new TestMismatch("run", "", "completed", "failed"), Assert.Single(outcome.Results).FirstMismatch);
         var refusal = Assert.Single(outcome.Refusals);
         Assert.Equal("S07-008", refusal.Id);
         Assert.Equal($"Test 'no_stub' has no stub for {key}, which runs. Add it to outputs.", refusal.Sentence);
@@ -169,7 +170,8 @@ public class PackageTestsTests
         Assert.False(Assert.Single(outcome.Results).Pass);
         var refusal = Assert.Single(outcome.Refusals);
         Assert.Equal("S07-009", refusal.Id);
-        Assert.StartsWith($"Test 'bad_stub' stubs {key} with a value that isn't ", refusal.Sentence, StringComparison.Ordinal);
+        Assert.Equal("Test 'bad_stub' stubs node.plan with a value that isn't section_plan: /sections type.", refusal.Sentence);
+        Assert.Equal(new TestMismatch("run", "", "completed", "failed"), Assert.Single(outcome.Results).FirstMismatch);
         AssertSentences(outcome);
     }
 
@@ -238,8 +240,8 @@ public class PackageTestsTests
         var refusal = Assert.Single(outcome.Refusals);
         Assert.Equal("S07-013", refusal.Id);
         Assert.Equal("", refusal.Path);
-        Assert.True(outcome.Results.Count < 3);
-        Assert.DoesNotContain(outcome.Results, r => r.Id == "c");
+        Assert.Equal("a", Assert.Single(outcome.Results).Id);
+        Assert.DoesNotContain(outcome.Refusals, r => r.Id == "S07-007");
         V31Contract.AssertSentence(refusal);
     }
 
@@ -251,6 +253,108 @@ public class PackageTestsTests
         var outcome = await RunAsync(clock, Test("a", await PassingFile()), Test("b", await PassingFile()));
 
         Assert.Equal(2, outcome.Results.Count);
+        Assert.Empty(outcome.Refusals);
+    }
+
+    /// <summary>A clock whose timers fire once <see cref="Expire"/> has been called, whether armed before or after.</summary>
+    private sealed class ExpiringClock : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<(TimerCallback Callback, object? State)> _armed = [];
+        private bool _expired;
+
+        public void Expire()
+        {
+            List<(TimerCallback Callback, object? State)> due;
+            lock (_gate)
+            {
+                _expired = true;
+                due = [.. _armed];
+            }
+
+            foreach (var (callback, state) in due)
+                ThreadPool.QueueUserWorkItem(_ => callback(state));
+        }
+
+        private bool Arm(TimerCallback callback, object? state)
+        {
+            lock (_gate)
+            {
+                if (!_expired)
+                {
+                    _armed.Add((callback, state));
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            // The wait arms its timer with its due time here; an armed timer fires on the pool once the clock expires.
+            if (dueTime != Timeout.InfiniteTimeSpan && Arm(callback, state))
+                ThreadPool.QueueUserWorkItem(_ => callback(state));
+            return new Timer(this, callback, state);
+        }
+
+        private sealed class Timer(ExpiringClock clock, TimerCallback callback, object? state) : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                if (dueTime != Timeout.InfiniteTimeSpan && clock.Arm(callback, state))
+                    ThreadPool.QueueUserWorkItem(_ => callback(state));
+                return true;
+            }
+
+            public void Dispose()
+            {
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task ARunThatNeverEnds_IsAbandonedAtTheLimit_WithS07013Alone_AndTheResultsSoFarKept()
+    {
+        var tests = new[] { Test("a", await PassingFile()), Test("b", await PassingFile()), Test("c", await PassingFile()) };
+        var clock = new ExpiringClock();
+        var calls = 0;
+        Task<OfflineResult> Run(RunPlan plan, OfflineRequest request)
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+                return OfflineRun.RunAsync(plan, request);
+            // The second run never ends; the clock passes the remaining time while it is waited on.
+            clock.Expire();
+            return new TaskCompletionSource<OfflineResult>().Task;
+        }
+
+        var outcome = await PackageTests.RunAsync(
+            Plan,
+            tests.Select(t => t.Test).ToList(),
+            tests.ToDictionary(t => t.Test.Path, t => t.Text, StringComparer.Ordinal),
+            clock,
+            null,
+            Run);
+
+        Assert.Equal(2, calls);
+        Assert.Equal("a", Assert.Single(outcome.Results).Id);
+        var refusal = Assert.Single(outcome.Refusals);
+        Assert.Equal("S07-013", refusal.Id);
+        Assert.Equal("", refusal.Path);
+    }
+
+    [Fact]
+    public async Task ATestWhoseFileIsNotInTheFiles_IsReadFromItsJson_AndItsFileHashIsThatOfEmptyText()
+    {
+        var test = Test("absent", await PassingFile()).Test;
+
+        var outcome = await PackageTests.RunAsync(Plan, [test], new Dictionary<string, string>(StringComparer.Ordinal), TimeProvider.System);
+
+        var result = Assert.Single(outcome.Results);
+        Assert.True(result.Pass);
+        Assert.Equal(CanonicalJson.HashText(""), result.FileHash);
         Assert.Empty(outcome.Refusals);
     }
 

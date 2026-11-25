@@ -45,12 +45,22 @@ public static class PackageTests
     /// <summary>The empty outcome's hash, for a test that could not be read (D8).</summary>
     private static readonly string EmptyOutcomeHash = TestOutcome.Hash(new OfflineResult(null, null, [], [], [], [], new Dictionary<string, JsonNode?>(), [], [], []));
 
-    public static async Task<TestsOutcome> RunAsync(
+    public static Task<TestsOutcome> RunAsync(
         RunPlan plan,
         IReadOnlyList<SourceTest> tests,
         IReadOnlyDictionary<string, string> files,
         TimeProvider clock,
-        RunLimits? limits = null)
+        RunLimits? limits = null) =>
+        RunAsync(plan, tests, files, clock, limits, OfflineRun.RunAsync);
+
+    /// <summary>The same with the offline run given (a test's seam for a run that never ends).</summary>
+    internal static async Task<TestsOutcome> RunAsync(
+        RunPlan plan,
+        IReadOnlyList<SourceTest> tests,
+        IReadOnlyDictionary<string, string> files,
+        TimeProvider clock,
+        RunLimits? limits,
+        Func<RunPlan, OfflineRequest, Task<OfflineResult>> offlineRun)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(tests);
@@ -85,7 +95,8 @@ public static class PackageTests
             try
             {
                 var request = limits == null ? read.Request : read.Request with { Limits = limits };
-                var task = OfflineRun.RunAsync(plan, request);
+                // On the pool, so the run does not finish inside this call before the race starts.
+                var task = Task.Run(() => offlineRun(plan, request));
                 // The run is CPU-bound and bounded by RunLimits and has no cancellation: a runaway one is abandoned at the limit.
                 _ = task.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
                 run = await task.WaitAsync(remaining, clock);
