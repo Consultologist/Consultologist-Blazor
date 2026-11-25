@@ -15,6 +15,7 @@ public sealed class WorkflowPackages
     // Fork manifests are immutable; what is read off one holds for the process
     // lifetime (the Mine endpoint's per-version reads): the spec version and,
     // from v9, the title (#432) and tags (#453).
+    // #1508: an unstamped 31 version is never cached here (AccountPackageListing.SummarizeAsync)
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int? SpecVersion, string? Title, IReadOnlyList<string>? Tags)> ListingCache = new(StringComparer.Ordinal);
 
     private readonly IWorkflowPackageStore _packageStore;
@@ -307,7 +308,8 @@ public sealed class WorkflowPackages
     /// Lists the private registry under <paramref name="prefix"/> and builds a
     /// summary per owned name that has a manifest there, in ordinal order.
     /// Per-version spec, title and tags are one read each, cached for the
-    /// process lifetime (versions are immutable).
+    /// process lifetime (versions are immutable). #1508: a 31 version is listed
+    /// only once stamped, and not cached before (AccountPackageListing.SummarizeAsync).
     /// </summary>
     private async Task<AccountListing> ListAccountPackagesAsync(
         string? accountKind,
@@ -327,56 +329,30 @@ public sealed class WorkflowPackages
                 blobNames.Add(blob.Name);
             }
 
+            // #1508: a set, for the stamp of each 31 version (AccountPackageListing.IsUnstamped31)
+            var listed = new HashSet<string>(blobNames, StringComparer.Ordinal);
+
             foreach (var name in AccountPackageListing.NamesIn(blobNames).Where(ownedNames.Contains))
             {
                 string? latestPointerJson = null;
                 var latestPath = $"{name}/latest.json";
-                if (blobNames.Contains(latestPath))
+                if (listed.Contains(latestPath))
                 {
                     var download = await container.GetBlobClient(latestPath).DownloadContentAsync(cancellationToken);
                     latestPointerJson = download.Value.Content.ToString();
                 }
 
-                var specVersions = new Dictionary<string, int>(StringComparer.Ordinal);
-                var titles = new Dictionary<string, string>(StringComparer.Ordinal);
-                var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+                var summary = await AccountPackageListing.SummarizeAsync(
+                    name,
+                    listed,
+                    latestPointerJson,
+                    async manifestPath => (await container.GetBlobClient(manifestPath).DownloadContentAsync(cancellationToken)).Value.Content.ToString(),
+                    ListingCache);
 
-                foreach (var manifestPath in blobNames.Where(n => WorkflowPackageRef.TryParseManifestPath(n, out var owner, out _) && owner == name))
+                if (summary != null)
                 {
-                    if (!ListingCache.TryGetValue(manifestPath, out var listing))
-                    {
-                        var manifest = await container.GetBlobClient(manifestPath).DownloadContentAsync(cancellationToken);
-                        var manifestJson = manifest.Value.Content.ToString();
-                        listing = (
-                            AccountPackageListing.ReadSpecVersion(manifestJson),
-                            AccountPackageListing.ReadTitle(manifestJson),
-                            AccountPackageListing.ReadTags(manifestJson));
-                        ListingCache[manifestPath] = listing;
-                    }
-
-                    WorkflowPackageRef.TryParseManifestPath(manifestPath, out _, out var version);
-
-                    if (listing.SpecVersion is int value)
-                    {
-                        specVersions[version] = value;
-                    }
-
-                    if (listing.Title is { } title)
-                    {
-                        titles[version] = title;
-                    }
-
-                    if (listing.Tags is { } declared)
-                    {
-                        tags[version] = declared;
-                    }
+                    packages.Add(summary);
                 }
-
-                packages.Add(AccountPackageListing.Build(
-                    name, blobNames, latestPointerJson,
-                    specVersions.Count > 0 ? specVersions : null,
-                    titles.Count > 0 ? titles : null,
-                    tags.Count > 0 ? tags : null));
             }
         }
         catch (RequestFailedException ex) when (ex.Status == 404)

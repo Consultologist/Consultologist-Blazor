@@ -29,11 +29,14 @@ public sealed class CatalogStrandSweeper
     public async Task<CatalogStrandResponse> RunAsync(OutputContractCatalog candidate, CancellationToken cancellationToken)
     {
         var found = new HashSet<(string Name, string Version)>();
+        // #1508: every blob listed, for the stamp of each 31 version (AccountPackageListing.IsUnstamped31)
+        var listedBlobs = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var privateRegistry in new[] { false, true })
         {
             foreach (var blob in await _registry.ListBlobNamesAsync(privateRegistry, cancellationToken))
             {
+                listedBlobs.Add(blob);
                 if (WorkflowPackageRef.TryParseManifestPath(blob, out var name, out var version))
                 {
                     found.Add((name!, version!));
@@ -44,7 +47,7 @@ public sealed class CatalogStrandSweeper
         var versions = found.OrderBy(v => v.Name, StringComparer.Ordinal).ThenBy(v => v.Version, StringComparer.Ordinal).ToList();
         var pinnedBy = await CountPinsAsync(cancellationToken);
         var listed = new List<CatalogStrandVersion>();
-        int checkedCount = 0, stampedCount = 0, unsupported = 0, noSchema = 0;
+        int checkedCount = 0, stampedCount = 0, unsupported = 0, noSchema = 0, unstamped31 = 0;
 
         foreach (var (name, version) in versions)
         {
@@ -54,6 +57,13 @@ public sealed class CatalogStrandSweeper
             {
                 listed.Add(new CatalogStrandVersion(packageRef, PinHealthStatuses.Unreadable,
                     new[] { new CatalogStrandSchema("(manifest)", "manifest.json listed but not readable") }, pinnedBy.GetValueOrDefault(packageRef)));
+                continue;
+            }
+
+            // #1508: a 31 version whose stamp is not listed does not exist yet (its writer writes the stamp last).
+            if (AccountPackageListing.IsUnstamped31($"{name}/{version}", AccountPackageListing.ReadSpecVersion(manifestJson), listedBlobs))
+            {
+                unstamped31++;
                 continue;
             }
 
@@ -112,7 +122,7 @@ public sealed class CatalogStrandSweeper
             candidate.ResolvedRef,
             EngineAttestation.CommitOf(typeof(CatalogStrandSweeper).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion),
             DateTimeOffset.UtcNow,
-            new CatalogStrandCounts(versions.Count, checkedCount, stampedCount, unsupported, noSchema, _registry.HasPublicRegistry),
+            new CatalogStrandCounts(versions.Count - unstamped31, checkedCount, stampedCount, unsupported, noSchema, _registry.HasPublicRegistry),
             listed);
     }
 
