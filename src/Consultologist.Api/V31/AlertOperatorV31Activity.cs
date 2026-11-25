@@ -50,13 +50,16 @@ internal sealed class PendingAlerts(TaskOrchestrationContext context, ILogger lo
     /// <summary>Ends once every alert raised has been answered, or has failed. Never faults.</summary>
     public Task WhenSentAsync() => Task.WhenAll(_sent);
 
+    // Every exception, a cancellation included: WhenSentAsync is awaited in the orchestrator's finally, after the job is
+    // final, so a fault here would fail an orchestration whose job has already ended (or replace the fault being thrown).
+    // The call takes no cancellation token, so a cancellation here is the alert's own outcome, never the orchestration's.
     private async Task SendAsync(OperatorAlert alert)
     {
         try
         {
             await context.CallActivityAsync(ConsultGenerationActivityNames.AlertOperatorV31, alert);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             logger.LogWarning(
                 "Operator alert failed. Kind={Kind}, JobId={JobId}, ExceptionType={ExceptionType}",

@@ -869,6 +869,24 @@ public class OrchestratorV31Tests
         Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
     }
 
+    [Fact]
+    public async Task ACancelledAlert_NeverFailsAnOrchestrationWhoseJobIsFinal()
+    {
+        // #1508 (final review): PendingAlerts.WhenSentAsync is awaited in the orchestrator's finally, after the job is
+        // final; an alert's activity call that ends cancelled must not fault it (the context here does not wrap the fault
+        // in TaskFailedException, so the OperationCanceledException reaches PendingAlerts as it is).
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        job.Alert = _ => throw new OperationCanceledException();
+        var context = job.Context();
+
+        await V31Job.DriveAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+    }
+
     [Theory]
     [InlineData("nested-note")]
     [InlineData("checked-note")]
