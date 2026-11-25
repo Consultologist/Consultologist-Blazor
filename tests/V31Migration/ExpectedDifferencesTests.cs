@@ -123,16 +123,21 @@ public class ExpectedDifferencesTests
     // ---- bytes rules -----------------------------------------------------------------------------------------
 
     [Fact]
-    public void RefusedDeliverableWithheld_ExplainsAReaderOfTheRefusedText()
+    public void RefusedDeliverableWithheld_HoldsOnlyInARowThatReadsTheRefusedDeliverable()
     {
-        // R4 item 3: a deliverable its check refused reads as null at 31, where 30 read its composed text.
+        // R4 item 3: a deliverable its check refused reads as null at 31, where 30 read its composed text; only in a row that
+        // reads it (final review B1). Part 06 § 6.7 lets only checks read a deliverable at 31, and a plan whose prompt,
+        // rendered node or deliverable reads a checked deliverable does not build (it would wait on a check that runs after
+        // it), so no compared row of a published package reads one and the rule explains no such pair.
         var run = Run(RunState.Completed, deliverables: [Outcome("deliverable.note", DeliverableState.Blocked, "Diabetes paragraph.")]);
-        Assert.StartsWith("refused-deliverable-withheld: ", Explain(Context(ComparedKind.Deliverable, "Cover.\n\nDiabetes paragraph.\nEnd.", "Cover.\n\n\nEnd.", run: run, key31: "deliverable.cover")));
 
-        // Near: the reader differs otherwise too; the deliverable was released (not withheld).
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "Cover.\n\nDiabetes paragraph.\nEnd.", "Cover!\n\n\nEnd.", run: run, key31: "deliverable.cover")));
-        var released = Run(RunState.Completed, deliverables: [Outcome("deliverable.note", DeliverableState.Released, "Diabetes paragraph.")]);
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "Cover.\n\nDiabetes paragraph.\nEnd.", "Cover.\n\n\nEnd.", run: released, key31: "deliverable.cover")));
+        // The review's scenario: composer-gates' note and record_copy both compose [body], byte-identical at 30; note is
+        // blocked at 31 and a fault leaves record_copy composing "". record_copy does not read note: the lost text is
+        // unexpected, as is a text that lost the blocked one's bytes in its middle.
+        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Deliverable, "Diabetes paragraph.", "", "deliverable.record_copy", run)));
+        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Deliverable, "Cover.\n\nDiabetes paragraph.\nEnd.", "Cover.\n\n\nEnd.", "deliverable.record_copy", run)));
+        // Nor a key the plan has no row for (the rule's reads are the row's own).
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "Cover.\n\nDiabetes paragraph.\nEnd.", "Cover.\n\n\nEnd.", run: run, key31: "deliverable.cover")));
     }
 
     [Fact]
@@ -316,8 +321,9 @@ public class ExpectedDifferencesTests
         Context(ComparedKind.Prompt, old, now, "example-prior-letters", key30: key30, key31: key31);
 
     /// <summary>A context on composer-gates with its hand edits made (Task 16), so its own plan is read.</summary>
-    private static DifferenceContext GatesContext(ComparedKind kind, string old, string now, string key31) =>
-        EditedContext("composer-gates", "clinician-checks-pass", kind, old, now, key31);
+    private static DifferenceContext GatesContext(ComparedKind kind, string old, string now, string key31, OfflineResult? run = null, RunPlan? plan = null) =>
+        new("composer-gates", "clinician-checks-pass", $"composer-gates/clinician-checks-pass#{key31}", kind, null, key31, old, now,
+            Capture("Completed", null), run ?? Run(RunState.Completed), EquivalenceFixture.Migrated("composer-gates"), plan ?? EquivalenceFixture.Plan("composer-gates"));
 
     /// <summary>A context on a package with its hand edits made (Task 16), so its own plan is read.</summary>
     private static DifferenceContext EditedContext(string package, string scenario, ComparedKind kind, string old, string now, string key31) =>
