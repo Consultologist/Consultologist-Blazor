@@ -117,9 +117,9 @@ A task that needs another sentence adds the next id and records it.
 
 **Interfaces:** Produces: `RunSentences.EngineFailedRendering(string subject)` → A11-008. `SourceRefusal.EngineFault` stays the carrier a caller logs (Task 16 logs it at publish).
 
-- [ ] **Step 1: Failing tests.** `AnEngineFaultWhileRendering_FailsTheNodeWithA11008_NotA06008`; `ARenderThatFailsOnPackageContent_StillSaysA06008`; a contract test that A08-006's audience is `operator` in `V31Contract` and `refusal-sentences.md`.
-- [ ] **Step 2 to 4: Run, implement, run.** Add `PublishAreaSentences` to `V31Contract` with A11-008 and the `A11-` dispatch branch; add the README table "Publish (area 11)" in the content repo with A11-008 (later tasks append rows), push it on `m39-build`, move the pin.
-- [ ] **Step 5: Commit** `PackageFormat (#1508): an engine fault at run time has its own sentence, and A08-006 is the operator's`; push.
+- [x] **Step 1: Failing tests.** `AnEngineFaultWhileRendering_FailsTheNodeWithA11008_NotA06008`; `ARenderThatFailsOnPackageContent_StillSaysA06008`; a contract test that A08-006's audience is `operator` in `V31Contract` and `refusal-sentences.md`.
+- [x] **Step 2 to 4: Run, implement, run.** Add `PublishAreaSentences` to `V31Contract` with A11-008 and the `A11-` dispatch branch; add the README table "Publish (area 11)" in the content repo with A11-008 (later tasks append rows), push it on `m39-build`, move the pin.
+- [x] **Step 5: Commit** `PackageFormat (#1508): an engine fault at run time has its own sentence, and A08-006 is the operator's`; push.
 
 ### Task 4: The smaller safety fixes
 
