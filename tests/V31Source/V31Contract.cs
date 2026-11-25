@@ -163,7 +163,8 @@ internal static class V31Contract
     /// delivered in a message of its own, R8, Task 15; A10-064: a classifier's with values, written at the end of its
     /// prompt, D16, Task 15 fix round 1; A10-065: a package format named like a 31 built-in or catalogue format, renamed,
     /// S01-034, D34; A10-066: a checkFirst while whose check reads its own body, a hand edit, A06-002, D34; A10-067: a
-    /// migrated macro choice whose if reads another boolean input, refused in MacroChoices at a 31 start, R7, D34).
+    /// migrated macro choice whose if reads another boolean input, refused in MacroChoices at a 31 start, R7, D34; A10-068:
+    /// white-space marks rewritten as 31 has them, part 05 § 2.6, D34).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -233,6 +234,7 @@ internal static class V31Contract
         ["A10-065"] = "Renamed format '<id>' to '<new id>': '<id>' is the name of a <built-in | catalogue> format at 31.",
         ["A10-066"] = "the check reads the loop's own nodes (<ids>), which have no value before the first pass; check after the pass, or read a value from outside the loop.",
         ["A10-067"] = "Macro '<id>' is chosen per run by the input '<input id>', but its if reads another boolean input, so a MacroChoices entry for '<id>' is refused at 31; send the input '<input id>' in Inputs instead.",
+        ["A10-068"] = "<file>: the white-space marks at <line <n> | lines <list>> of the 30 body became 31's (- is ~; a placement keeps only a {{~ alone on its line), so line endings beside them are now kept.",
     };
 
     private static string RepoRoot()

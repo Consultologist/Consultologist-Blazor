@@ -171,6 +171,32 @@ public class TemplateRewriterTests
     }
 
     [Fact]
+    public void ARewrittenWhitespaceMark_IsSaid_OncePerFile_WithItsLines()
+    {
+        // Final review A4 (part 05 § 2.6, part 10 § 1.2): - removes every white space, ~ spaces and tabs (and one newline on
+        // the right), so A\n{{- x -}}\nB rendered A<x>B at 30 and renders A\n<x>B at 31. The rewrite stays; one notice per
+        // file names the lines of the 30 body whose marks changed. Not a hand edit.
+        var result = MigrateNodesTests.Migrated("example-nested-note", _ => { }, files =>
+            files["prompts/plan.md"] += "A\n{{- input.consult_draft -}}\nB\n{{ input.consult_draft ~}}\nC\n");
+
+        Assert.EndsWith("A\n{{~ input.consult_draft.content ~}}\nB\n{{ input.consult_draft.content ~}}\nC\n", MigrateNodesTests.Md(result, "nodes/plan.md").Body, StringComparison.Ordinal);
+        const string notice = "nodes/plan.md: the white-space marks at line 12 of the 30 body became 31's (- is ~; a placement keeps only a {{~ alone on its line), so line endings beside them are now kept.";
+        Assert.Equal([notice], result.Notices.Where(n => n.Contains("white-space marks", StringComparison.Ordinal)));
+        V31Contract.AssertSentence(new SourceRefusal("A10-068", notice, ""));
+        Assert.Empty(result.HandEdits);
+
+        // Several lines in one file are one notice; a ~ that 31 keeps (an ordinary output's) is no change.
+        var two = MigrateNodesTests.Migrated("example-nested-note", _ => { }, files =>
+            files["prompts/plan.md"] += "A\n{{- input.consult_draft }}\nB\n{{ input.consult_draft -}}\nC\n");
+        const string lines = "nodes/plan.md: the white-space marks at lines 12 and 14 of the 30 body became 31's (- is ~; a placement keeps only a {{~ alone on its line), so line endings beside them are now kept.";
+        Assert.Equal([lines], two.Notices.Where(n => n.Contains("white-space marks", StringComparison.Ordinal)));
+        V31Contract.AssertSentence(new SourceRefusal("A10-068", lines, ""));
+
+        // The near pair: the package as it is has no mark to rewrite, and says nothing.
+        Assert.DoesNotContain(MigrateNodesTests.Migrated("example-nested-note").Notices, n => n.Contains("white-space marks", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AWhitespaceForm31Refuses_IsRewritten()
     {
         var m = Working("example-macros");
