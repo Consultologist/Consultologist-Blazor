@@ -307,6 +307,15 @@ public class ExpectedDifferencesTests
         };
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "31", run: held, migrated: trim, package: "example-two-documents", key31: "node.identify_problem")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "31", run: held, migrated: migrated, package: "example-two-documents", key31: "node.extract_patient_concepts")));
+
+        // Final review B2: a gate decided in one flow instance explains a text of that instance (or one inside it), never
+        // another instance's.
+        var inOne = Run(RunState.Completed, decisions: [Decision("node.identify_problem:1", true, CanonicalJson.Hash(JsonValue.Create("")))]);
+        Assert.StartsWith("blank-conversion: ", Explain(Context(ComparedKind.Prompt, null, "31", run: inOne, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem:1")));
+        Assert.StartsWith("blank-conversion: ", Explain(Context(ComparedKind.Prompt, null, "31", run: inOne, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem.inner:1/2")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "31", run: inOne, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem:2")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "31", run: inOne, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem.inner:2/1")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "31", run: inOne, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem.inner:10")));
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------------
