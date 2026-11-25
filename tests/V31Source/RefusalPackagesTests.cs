@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Publish;
 using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.Api.Tests.V31Source;
@@ -24,6 +25,8 @@ namespace Consultologist.Api.Tests.V31Source;
 /// <c>ChecksNotShipped</c>.
 /// #1508 (specVersion 31, area 11): an <c>A11-</c> case is judged as publish judges it (<see cref="RefusalPackages.Judge"/>:
 /// the check, then the compiler against the engine's default limits), so A11-001 and A11-003, the compiler's, have cases.
+/// #1508 (Task 22): and every sentence of <see cref="PackagePublishSentences"/> a package's tests give (S07-007 to S07-012 and
+/// A11-005), judged by <see cref="PackagePublish.CheckAsync"/>, except <c>PublishNotShipped</c>.
 /// </summary>
 public class RefusalPackagesTests
 {
@@ -100,6 +103,18 @@ public class RefusalPackagesTests
     /// </summary>
     private static readonly string[] ChecksNotShipped = ["A08-006"];
 
+    /// <summary>
+    /// #1508 (area 11, Task 22): the sentences of <see cref="PackagePublishSentences"/> the suite has no case for. S07-013: all
+    /// tests together took longer than 60 seconds; the time is the engine's clock, and no package can state a clock, so no
+    /// package gives it on every implementation. S07-014: a warning (a stub that does not run); a package that gets it is
+    /// accepted (the <c>compiled-documents</c> case <c>nested-note</c>'s report holds one). A11-004: <c>manifest.json</c>'s
+    /// <c>name</c> or <c>version</c> not text is also the source check's member sentence, so no package gives A11-004 alone.
+    /// A11-006: a version already stamped, a fact of the registry, not of a package. A11-007: the engine failed, a fault of
+    /// the engine and not of the package. S10-005: said by the migration script and the operator's tools, never at publish.
+    /// (S07-015 and S07-016 are in <see cref="ResolveNotShipped"/>.)
+    /// </summary>
+    private static readonly string[] PublishNotShipped = ["S07-013", "S07-014", "A11-004", "A11-006", "A11-007", "S10-005"];
+
     /// <summary>The ids of <see cref="TemplatesNotShipped"/> said at run time, by no method of <see cref="DialectSentences"/>.</summary>
     private static readonly string[] TemplatesRunTime =
         ["S05-012", "S05-014", "S05-053", "S05-054", "S05-055", "S05-056", "S05-057", "S05-058", "S05-059", "S05-062", "A07-006"];
@@ -132,17 +147,18 @@ public class RefusalPackagesTests
     [Fact]
     public void EverySentence_TheCheckerCanSay_HasACase()
     {
-        // Each method of SourceSentences, FormatSentences, ExpressionSentences, ResolveSentences, DialectSentences, CheckSentences and DeliverableSentences that returns a refusal makes one sentence
+        // Each method of SourceSentences, FormatSentences, ExpressionSentences, ResolveSentences, DialectSentences, CheckSentences, DeliverableSentences and (#1508) PackagePublishSentences that returns a refusal makes one sentence
         // with a fixed id; calling it with any arguments gives that id (FormatSentences.Subject, which
         // returns text, is not one; nor is ExpressionSentences.Shape, which gives the sentence of a fault of the
         // written form by calling the others).
-        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences), typeof(DialectSentences), typeof(CheckSentences), typeof(DeliverableSentences))
+        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences), typeof(DialectSentences), typeof(CheckSentences), typeof(DeliverableSentences), typeof(PackagePublishSentences))
             .Except(NotShipped)
             .Except(TypesNotShipped)
             .Except(LogicNotShipped)
             .Except(ResolveNotShipped)
             .Except(TemplatesNotShipped)
             .Except(ChecksNotShipped)
+            .Except(PublishNotShipped)
             .Order(StringComparer.Ordinal)
             .ToList();
 
@@ -187,6 +203,13 @@ public class RefusalPackagesTests
     {
         var said = SaidBy(typeof(DialectSentences), typeof(CheckSentences), typeof(DeliverableSentences));
         Assert.All(ChecksNotShipped, id => Assert.Contains(id, said));
+    }
+
+    [Fact]
+    public void EveryPublishNotShipped_IsASentencePublishHas()
+    {
+        var said = SaidBy(typeof(PackagePublishSentences));
+        Assert.All(PublishNotShipped, id => Assert.Contains(id, said));
     }
 
     [Fact]
@@ -287,6 +310,7 @@ public class RefusalPackagesTests
         var t when t == typeof(ExpressionSite) => new ExpressionSite(ExpressionSiteKind.NodeIf, "x", "if", "x", null, null),
         var t when t == typeof(LineageValue) => new LineageValue(true, "x"),
         var t when t == typeof(IReadOnlyList<string>) => new[] { "resolve.json" },
+        var t when t == typeof(IEnumerable<string>) => new[] { "x" },
         _ => "x",
     };
 }

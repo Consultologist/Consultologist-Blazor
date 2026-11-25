@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Publish;
 
 namespace Consultologist.Api.Tests.V31Resolve;
 
@@ -10,7 +12,8 @@ namespace Consultologist.Api.Tests.V31Resolve;
 /// #1502 (specVersion 31, area 05): exports <see cref="CompiledGoldenTests.Cases"/> into the content repository named by
 /// <c>CONFORMANCE_EXPORT_V31</c> (its root): it deletes and rewrites <c>v31/conformance/compiled-documents/</c>, one
 /// folder per case (<see cref="Files"/>: the upload under <c>source/</c> byte for byte, <c>toolchain.json</c>, the
-/// <c>resolve.json</c> and <c>lock.json</c> publish gives, and <c>about.txt</c>), then sets the family's <c>cases</c> in
+/// <c>resolve.json</c> and <c>lock.json</c> publish gives, #1508 (area 11) the <c>publish-report.json</c> and <c>publish.json</c>
+/// it writes beside them, and <c>about.txt</c>), then sets the family's <c>cases</c> in
 /// <c>v31/conformance/index.json</c> to the case names, leaving every other byte of that file as it was. A no-op without
 /// the variable, as <see cref="RefusalPackagesExport"/> is: it is a generator, not a check.
 /// <see cref="CompiledGoldenTests.ThePinnedFamily_IsWhatPublishGives"/> holds the pin to it.
@@ -36,7 +39,7 @@ public class CompiledDocumentsExport
         var cases = new List<string>();
         foreach (var golden in CompiledGoldenTests.Cases())
         {
-            foreach (var (path, bytes) in Files(golden, CompiledGoldenTests.Published(golden)))
+            foreach (var (path, bytes) in Files(golden, CompiledGoldenTests.Publish(golden)))
             {
                 var file = Path.Combine([family, golden.Name, .. path.Split('/')]);
                 Directory.CreateDirectory(Path.GetDirectoryName(file)!);
@@ -56,17 +59,21 @@ public class CompiledDocumentsExport
     /// <summary>
     /// The files of <paramref name="golden"/>'s case folder, by path within it: <c>source/&lt;path&gt;</c> for each file of
     /// the upload, <c>toolchain.json</c> (<see cref="ToolchainJson"/>), <c>resolve.json</c> and <c>lock.json</c> as
-    /// <paramref name="compiled"/> holds them (canonical, no final newline), and <c>about.txt</c>.
+    /// <paramref name="published"/> compiled them (canonical, no final newline), #1508 (area 11) its <c>publish-report.json</c>
+    /// and its stamp <c>publish.json</c> as publish writes them, and <c>about.txt</c>.
     /// </summary>
-    internal static Dictionary<string, byte[]> Files(CompiledGoldenTests.GoldenCase golden, CompiledPackage compiled)
+    internal static Dictionary<string, byte[]> Files(CompiledGoldenTests.GoldenCase golden, PublishOutcome published)
     {
+        var compiled = published.Compiled!;
         var files = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var (path, bytes) in golden.Source())
             files[$"source/{path}"] = bytes;
         files["toolchain.json"] = Utf8NoBom.GetBytes(ToolchainJson(CompiledGoldenTests.Fixed));
         files["resolve.json"] = Utf8NoBom.GetBytes(compiled.Resolve);
         files["lock.json"] = Utf8NoBom.GetBytes(compiled.Lock);
-        files["about.txt"] = Utf8NoBom.GetBytes(About(golden, compiled));
+        files[PublishReport.FileName] = published.Files.Single(f => f.Path == PublishReport.FileName).Bytes;
+        files[PublishedStamp.FileName] = Utf8NoBom.GetBytes(published.Stamp!.ToJson());
+        files["about.txt"] = Utf8NoBom.GetBytes(About(golden, published));
         return files;
     }
 
@@ -97,13 +104,32 @@ public class CompiledDocumentsExport
         return document.ToJsonString(Indented) + "\n";
     }
 
-    /// <summary>The case's <c>about.txt</c>: what the package is, how to compile it, the two hashes, and where the bodies' reads come from.</summary>
-    private static string About(CompiledGoldenTests.GoldenCase golden, CompiledPackage compiled) =>
-        golden.About + "\n\n"
-        + "Publishing source/ with toolchain.json gives resolve.json and lock.json, byte for byte (canonical by RFC 8785, "
-        + "UTF-8, no final newline), with no publish limits, so no ceiling note.\n\n"
-        + $"resolve.json: {compiled.ResolveHash}\n"
-        + $"lock.json: {compiled.LockHash}\n\n"
-        + "What each Scriban body reads, places, renders and where its run spots are is what the dialect "
-        + "(scriban-dialect.md) finds in the bodies as written.\n";
+    /// <summary>
+    /// The case's <c>about.txt</c>: what the package is, how to publish it (the limits, the clock, who publishes), the two
+    /// hashes, what the report holds, and where the bodies' reads come from.
+    /// </summary>
+    private static string About(CompiledGoldenTests.GoldenCase golden, PublishOutcome published)
+    {
+        var limits = golden.Limits!;
+        var report = published.Report;
+        var tests = report.Tests.Count == 0
+            ? "The package has no tests, so the report's tests are []."
+            : $"The report's tests are {string.Join(", ", report.Tests.Select(t => $"{t.Id} ({(t.Pass ? "pass" : "fail")})"))}, run offline on their stubs.";
+        return golden.About + "\n\n"
+            + "Publishing source/ with toolchain.json gives resolve.json and lock.json, byte for byte (canonical by RFC 8785, "
+            + "UTF-8, no final newline), against these publish limits: "
+            + string.Create(CultureInfo.InvariantCulture, $"{limits.Ceiling} agent calls at once, {limits.ItemsPerLoop:N0} items a loop, ")
+            + string.Create(CultureInfo.InvariantCulture, $"{limits.CallsPerJob:N0} agent calls a job, {limits.Instances:N0} instances a job and {limits.JobMinutes} minutes a job")
+            + (limits == CompiledGoldenTests.EngineLimits
+                ? " (the engine's defaults)."
+                : " (the engine's defaults but the instances, raised so that the package publishes: at 10,000 it is refused, its worst case opening more).")
+            + " Any notes they give (the per-job ceiling note among them) are resolve.json's warnings and the report's.\n\n"
+            + $"resolve.json: {published.Compiled!.ResolveHash}\n"
+            + $"lock.json: {published.Compiled.LockHash}\n\n"
+            + "publish-report.json is the report publish writes beside them (canonical, no final newline), published by ci at "
+            + "2026-12-01T09:00:00Z on a clock that does not move, so every test's durationMs is 0 (a real publish measures it). "
+            + tests + " publish.json is the stamp written last, holding the two hashes above.\n\n"
+            + "What each Scriban body reads, places, renders and where its run spots are is what the dialect "
+            + "(scriban-dialect.md) finds in the bodies as written.\n";
+    }
 }

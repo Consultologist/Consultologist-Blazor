@@ -1,5 +1,6 @@
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Publish;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
 namespace Consultologist.Api.Tests.V31Source;
@@ -22,18 +23,23 @@ internal static partial class RefusalPackages
 
     /// <summary>
     /// What publish says of the case <paramref name="id"/>'s package <paramref name="files"/>: <see cref="SourceCheck.Run"/>'s
-    /// refusals, and for an <c>A11-</c> case that checks, <see cref="ResolveCompiler.Compile"/>'s against <see cref="CaseLimits"/>.
+    /// refusals; for an <c>A11-</c> case and (#1508, Task 22) a test's <c>S07-</c> case, the refusals of
+    /// <see cref="PackagePublish.CheckAsync"/> (steps 0 to 3: the check, the compiler against <see cref="CaseLimits"/>, and the
+    /// package's tests run offline), with <see cref="CompiledGoldenTests.Fixed"/> and a clock that does not move.
     /// </summary>
     public static IReadOnlyList<SourceRefusal> Judge(string id, IReadOnlyDictionary<string, byte[]> files, TypeRegistry registry)
     {
-        var check = SourceCheck.Run(files, registry);
-        if (check.Refusals.Count > 0 || !id.StartsWith("A11-", StringComparison.Ordinal))
-            return check.Refusals;
-        return ResolveCompiler.Compile(check, registry, CompiledGoldenTests.Fixed.Scriban, CaseLimits).Refusals;
+        if (!id.StartsWith("A11-", StringComparison.Ordinal) && !id.StartsWith("S07-", StringComparison.Ordinal))
+            return SourceCheck.Run(files, registry).Refusals;
+        var options = new PublishOptions(registry, CompiledGoldenTests.Fixed, CaseLimits, "ci", new CompiledGoldenTests.StoppedClock());
+        return PackagePublish.CheckAsync(files, options).GetAwaiter().GetResult().Report.Refusals;
     }
 
     private static IEnumerable<RefusalCase> PublishRefusals()
     {
+        foreach (var testCase in TestRefusals())
+            yield return testCase;
+
         yield return new RefusalCase("A11-001",
             "Publish refuses a package whose worst case opens more instances than the engine runs for one job (chapter 8 § 8.7; "
             + "ruled by the owner on #1508). Judged against the engine's default limits: 10,000 instances a job, 200 items a "
@@ -83,6 +89,71 @@ internal static partial class RefusalPackages
             .With("nodes/outer/inner/echo.md", Md(Node("computed", "Repeating a point", Plain, true, false,
                 "\"if\": null, \"expression\": { \"var\": \"item.value\" }"), ""));
     }
+
+    /// <summary>
+    /// #1508 (Task 22; part 07 §§ 8.1 to 8.3, § 10): the sentences a package's own test gives at publish, step 3, each on
+    /// <see cref="WithTest"/>: the valid side is that package, whose one test passes; the invalid side changes one member of
+    /// the test. S07-013 (the tests together past 60 seconds) has no case: no package can state a clock.
+    /// </summary>
+    private static IEnumerable<RefusalCase> TestRefusals()
+    {
+        const string common = "A package's test (tests/note.json, chapter 7 § 7.8) is run offline at publish, step 3, on its stubs, "
+            + "and a test that is not as the grammar says, or does not hold, stops publish. Valid: the test gives Margaret Okafor's "
+            + "draft (fictional), no profile field and no run fact (the workflow reads none), the plan's stub, and expects the plan "
+            + "to run; it passes. ";
+
+        yield return new RefusalCase("S07-007",
+            common + "Invalid: it expects the plan to be skipped; the plan runs, so the test fails on its first mismatch.",
+            WithTest(), WithTest().Edit("tests/note.json", "\"ran\": [", "\"skipped\": ["));
+
+        yield return new RefusalCase("S07-008",
+            common + "Invalid: outputs gives no stub for the plan, an agent node that runs.",
+            WithTest(), WithTest().Edit("tests/note.json", "{ \"node.plan\": \"History, then the plan (fictional).\" }", "{}"));
+
+        yield return new RefusalCase("S07-009",
+            common
+            + "Here the plan returns a judgement (the registry's format: answer, a boolean, and reason), and its stub is one. "
+            + "Invalid: the stub's answer is the text \"yes\", not a boolean; the sentence names the format, the path and the "
+            + "keyword that fails, never the value.",
+            JudgedPlan(), JudgedPlan().Edit("tests/note.json", "\"answer\": true", "\"answer\": \"yes\""));
+
+        yield return new RefusalCase("S07-010",
+            common + "Invalid: inputs gives no value for consult_draft.",
+            WithTest(), WithTest().Edit("tests/note.json", "{ \"consult_draft\": \"Margaret Okafor, 58, seen by Dr A. Sample at Sample Oncology Clinic (fictional).\" }", "{}"));
+
+        yield return new RefusalCase("S07-011",
+            common + "Invalid: profile gives a signature, a field the workflow does not read.",
+            WithTest(), WithTest().Edit("tests/note.json", "\"profile\": {}", "\"profile\": { \"signature\": \"Dr A. Sample\" }"));
+
+        yield return new RefusalCase("S07-012",
+            common + "Invalid: run gives the date, a fact the workflow does not read.",
+            WithTest(), WithTest().Edit("tests/note.json", "\"run\": {}", "\"run\": { \"date\": { \"value\": \"2026-11-16\", \"timeZone\": \"America/Toronto\" } }"));
+
+        yield return new RefusalCase("A11-005",
+            common + "Invalid: expect's values is an array, not an object keyed by row key; the sentence names the member and what "
+            + "is wrong, never a key or value of the file.",
+            WithTest(), WithTest().Edit("tests/note.json", "\"ran\": [\"node.plan\"]", "\"values\": []"));
+    }
+
+    /// <summary>
+    /// Minimal with the test <c>note</c>: Margaret Okafor's draft (fictional), no profile field and no run fact, the plan's
+    /// stub, and the expectation that the plan runs.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithTest() =>
+        Minimal()
+            .Edit("tests/index.json", "\"items\": []", "\"items\": [\"note\"]")
+            .With("tests/note.json", SourceFixture.Json(
+                "{ \"description\": [\"The plan of Margaret Okafor's note runs (fictional).\"], "
+                + "\"inputs\": { \"consult_draft\": \"Margaret Okafor, 58, seen by Dr A. Sample at Sample Oncology Clinic (fictional).\" }, "
+                + "\"profile\": {}, \"run\": {}, "
+                + "\"outputs\": { \"node.plan\": \"History, then the plan (fictional).\" }, "
+                + "\"expect\": { \"ran\": [\"node.plan\"] } }"));
+
+    /// <summary><see cref="WithTest"/> with the plan returning the registry's <c>judgement</c>, stubbed as one.</summary>
+    private static Dictionary<string, byte[]> JudgedPlan() =>
+        WithTest()
+            .Edit("nodes/plan.md", "\"format\": \"plaintext\"", "\"format\": \"judgement\"")
+            .Edit("tests/note.json", "\"History, then the plan (fictional).\"", "{ \"answer\": true, \"reason\": \"History, then the plan (fictional).\" }");
 
     private const string DialectSchema = "\"$schema\": \"urn:consultologist:spec:31:dialect\"";
 
