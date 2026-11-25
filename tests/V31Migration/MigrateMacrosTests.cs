@@ -216,6 +216,17 @@ public class MigrateMacrosTests
         Assert.Equal(
             """{"and":[{"===":[{"var":"input.note_type.value"},"consult"]},{"===":[{"var":"input.include_counselling.value"},true]},{"===":[{"var":"input.followup_only.value"},true]}]}""",
             MigrateNodesTests.Md(joined, "macros/followup_only.md").Header["if"]!.ToJsonString());
+
+        // Final review A3 (R7): that if reads include_counselling beside the choice, so a MacroChoices entry for the macro is
+        // refused at a 31 start (A10-044); the migration says so, and the package still publishes (a notice, not a hand edit).
+        const string choiceNotice = "Macro 'followup_only' is chosen per run by the input 'followup_only', but its if reads another boolean input, so a MacroChoices entry for 'followup_only' is refused at 31; send the input 'followup_only' in Inputs instead.";
+        Assert.Contains(choiceNotice, joined.Notices);
+        Assert.Contains(choiceNotice, joined.Report.MacroInputs);
+        Assert.DoesNotContain(joined.HandEdits, e => e.Contains("MacroChoices", StringComparison.Ordinal));
+        V31Contract.AssertSentence(new SourceRefusal("A10-067", choiceNotice, ""));
+        // The near pair: a choice whose if reads no other boolean input (follow_up_reminder; note_type is an enum) is not said.
+        Assert.DoesNotContain(result.Notices, n => n.Contains("chosen per run", StringComparison.Ordinal));
+        Assert.DoesNotContain(joined.Notices, n => n.Contains("chosen per run by the input 'follow_up_reminder'", StringComparison.Ordinal));
     }
 
     [Fact]
