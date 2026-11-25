@@ -378,10 +378,10 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 **Files:** Modify `docs/customizable-workflow/package-format-library.md` (a section "specVersion 31: publish (preview)" after "migration": the pipeline, the test runner, the report, D1 to D16, what it leaves to areas 12 and 13; and fix every "area 11" forward reference found by `grep -n "area 11\|Area 11"`), `docs/customizable-workflow/engine-v31.md` (publish, `Current`, `Content`, import; the settings), `docs/CONFIGURATION.md` (a row for `WorkflowPackages__PreviewSpecVersions`; dev's registry: `WorkflowPackages__BlobServiceUri` and `__PublicBlobServiceUri` point at containers in `consultdevcaeast` on `canada-east-ai-function-dev`, part 09 § 2.2), `docs/customizable-workflow/registry-operations.md` (a section "specVersion 31": the folder's layout, the stamp, how dev's registry is filled — the catalogues copied from the release tags, example packages through `WorkflowPackages/Publish` from the migration branch — the two scripts, the corpus re-render before a library upgrade, and **"Before 31 leaves preview"** with R7's conditions word for word from #1508 comments 3 and 4), `docs/README.md` if it indexes new sections, `refusal-sentences.md` (A11 rows, if a task left any out), part 07 § 10 (the A11 sentences said at publish).
 
-- [ ] **Step 1: Write them.** Plain words; every claim checked against the code as built (open the file, do not write from this plan).
-- [ ] **Step 2: Run** the docs' own checks if any (`grep -rn "docs" scripts/*.sh | head`; the content repo's `check-v31.py citations` group if the edits cite it).
-- [ ] **Step 3: Self-check against the spec:** walk the coverage table below; for each row open the code or test named and confirm it exists. Fix or record what does not.
-- [ ] **Step 4: Commit** `Docs (#1508): publish at 31, dev's registry, and what must hold before 31 leaves preview`; push.
+- [x] **Step 1: Write them.** Plain words; every claim checked against the code as built (open the file, do not write from this plan).
+- [x] **Step 2: Run** the docs' own checks if any (`grep -rn "docs" scripts/*.sh | head`; the content repo's `check-v31.py citations` group if the edits cite it).
+- [x] **Step 3: Self-check against the spec:** walk the coverage table below; for each row open the code or test named and confirm it exists. Fix or record what does not.
+- [x] **Step 4: Commit** `Docs (#1508): publish at 31, dev's registry, and what must hold before 31 leaves preview`; push.
 
 ## Spec coverage
 
