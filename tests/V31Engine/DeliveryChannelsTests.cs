@@ -92,6 +92,27 @@ public class DeliveryChannelsTests
     }
 
     [Fact]
+    public async Task ARealChannel_ThatOutlastsTheActivitysBound_IsAFailedSendOfKindTimeout()
+    {
+        // #1508: the mail seam waits on its token, as the real client's HTTP call does; the bound's expiry reaches the
+        // activity as a cancellation, not as the channel's own `error`.
+        _mail.SendMailAsync(Mailbox, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(),
+                Arg.Any<IReadOnlyList<GraphMailAttachment>?>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.ArgAt<CancellationToken>(4));
+            });
+        var activity = new DeliverV31Activity(new DeliveryChannels([Email()]), NullLogger<DeliverV31Activity>.Instance)
+        {
+            SendTimeout = TimeSpan.FromMilliseconds(50),
+        };
+
+        var outcome = await activity.RunAsync(Input("email"), CancellationToken.None);
+
+        Assert.Equal(new DeliverySendOutcome(DeliverySendResult.Failed, "timeout"), outcome);
+    }
+
+    [Fact]
     public void TheCompletedReply_OpensWithWhatTheBundleSplicesAfter()
     {
         // The final review: a bundle's labels line goes after MailDeliveryChannel.Opening only when the 5-30 reply starts with

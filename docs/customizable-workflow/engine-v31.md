@@ -359,7 +359,7 @@ the first attempt of every send at once, then waits for one to finish. Each dest
 `ConsultGeneration__DeliveryAttempts` attempts (default 3), the wait before the second 2 minutes, doubling after.
 No attempt starts after `ConsultGeneration__DeliveryMinutes` (default 15) from the start of delivering; a
 destination unsent then (never started, or waiting to retry) is `failed`. A send in flight at the close is waited for,
-not failed (#1508): its activity is not cancelled, and `deliver-v31` bounds each attempt at 2 minutes (its expiry is a failed send of kind `timeout`), so the record says what happened to it.
+not failed (#1508): its activity is not cancelled, and `deliver-v31` bounds each attempt at 2 minutes (a linked token the channel honours, whose expiry is a failed send of kind `timeout`; a channel that ignores its token is not cut off), so the record says what happened to it.
 Delivery runs after the run's own timer is cancelled, so it is outside
 `jobMinutes`. Both limits are the job's recorded ones (the header's `limits`), never the settings as they are now.
 The waits are durable timers, all cancelled when delivery ends, so none is left outstanding.
