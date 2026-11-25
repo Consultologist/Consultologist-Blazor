@@ -270,9 +270,9 @@ public sealed record PublishReport(string Name, string Version, bool Published, 
 }
 ```
 
-- [ ] **Step 1: Failing tests.** A published and a refused report each validate against `external/consultologist-package-format/v31/schemas/publish-report.schema.json` (through the library's validator interface); `publishedAtUtc` is RFC 3339 UTC with seconds (`2026-12-01T15:04:05Z`), null when refused; `warnings` and `refusals` are `{ sentence, at }` with `at` null for the package as a whole (as `resolve.json`'s warnings write it); canonical bytes are stable; an engine fault's exception type is not in the JSON.
-- [ ] **Step 2 to 4: Run, implement, run.**
-- [ ] **Step 5: Commit** `PackageFormat (#1508): the publish report`; push.
+- [x] **Step 1: Failing tests.** A published and a refused report each validate against `external/consultologist-package-format/v31/schemas/publish-report.schema.json` (through the library's validator interface); `publishedAtUtc` is RFC 3339 UTC with seconds (`2026-12-01T15:04:05Z`), null when refused; `warnings` and `refusals` are `{ sentence, at }` with `at` null for the package as a whole (as `resolve.json`'s warnings write it); canonical bytes are stable; an engine fault's exception type is not in the JSON.
+- [x] **Step 2 to 4: Run, implement, run.**
+- [x] **Step 5: Commit** `PackageFormat (#1508): the publish report`; push.
 
 ### Task 15: The pipeline
 
