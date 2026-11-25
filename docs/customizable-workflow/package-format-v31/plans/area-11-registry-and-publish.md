@@ -249,9 +249,9 @@ public static class PackageTests
 ```
 A test that cannot be read (Task 10's refusals) has result `fail`, `outcomeHash` the hash of the empty outcome, `firstMismatch` null, and its refusals in `Refusals`.
 
-- [ ] **Step 1: Failing tests.** A passing test → `pass`, no refusal; a failing one → S07-007 with D7's words filled in, word for word against `sentences.json`; a missing stub → S07-008 (first missing key); an invalid stub → S07-009; an unused stub → S07-014 in `Warnings`, the test still passes; results in id order; every failing test's sentence is given (publish stops after all tests ran, § 5 step 3 "with the test's id and its first mismatch" per test); the 60 seconds with a fake `TimeProvider` advanced by the run → S07-013 alone in `Refusals`, later tests not run (D9); Review Focus 5 (a `prompts` mismatch and S07-009's error carry no stub text: assert the fictional stub string is in no sentence); area 10's `migration_snapshot` of a migration vector passes on its own package (read one vector from `external/…/v31/conformance/migration-vectors/`, fail loudly when missing).
-- [ ] **Step 2 to 4: Run, implement, run.**
-- [ ] **Step 5: Commit** `PackageFormat (#1508): in-package tests run offline against the compiled package`; push.
+- [x] **Step 1: Failing tests.** A passing test → `pass`, no refusal; a failing one → S07-007 with D7's words filled in, word for word against `sentences.json`; a missing stub → S07-008 (first missing key); an invalid stub → S07-009; an unused stub → S07-014 in `Warnings`, the test still passes; results in id order; every failing test's sentence is given (publish stops after all tests ran, § 5 step 3 "with the test's id and its first mismatch" per test); the 60 seconds with a fake `TimeProvider` advanced by the run → S07-013 alone in `Refusals`, later tests not run (D9); Review Focus 5 (a `prompts` mismatch and S07-009's error carry no stub text: assert the fictional stub string is in no sentence); area 10's `migration_snapshot` of a migration vector passes on its own package (read one vector from `external/…/v31/conformance/migration-vectors/`, fail loudly when missing).
+- [x] **Step 2 to 4: Run, implement, run.**
+- [x] **Step 5: Commit** `PackageFormat (#1508): in-package tests run offline against the compiled package`; push.
 
 ### Task 14: The publish report
 
