@@ -213,9 +213,9 @@ public static class PackagePublishSentences   // S07-007 … S07-014, S07-016, A
 
 **Interfaces:** Produces: `OfflineRequest(…, Func<string,string>? StubSeed = null, bool GenerateMissing = true)`; `OfflineResult` gains trailing `IReadOnlyList<string> MissingOutputs` (row keys asked for with no stub, ordinal order) and `IReadOnlyList<StubFault> InvalidOutputs` where `public sealed record StubFault(string Key, string Format, string Error)` (`Format` the type string as sentences print formats, `Error` the first validation error: path and keyword only, never the value).
 
-- [ ] **Step 1: Failing tests.** With `GenerateMissing: false`: a call with no stub is not generated, its key is in `MissingOutputs`, and the run ends without calling later dependants' stubs as missing too (only nodes that were actually asked are listed); a stub invalid against its node's format (validated as an agent reply is, envelope included) is in `InvalidOutputs`, and the reply is not repaired by regeneration; a valid stub for a classifier decides the condition. With the default, area 10's tests and goldens do not move (run `--filter "FullyQualifiedName~V31"` and the byte-equivalence tests).
-- [ ] **Step 2 to 4: Run, implement, run.**
-- [ ] **Step 5: Commit** `PackageFormat (#1508): the offline run can refuse to generate a missing stub`; push.
+- [x] **Step 1: Failing tests.** With `GenerateMissing: false`: a call with no stub is not generated, its key is in `MissingOutputs`, and the run ends without calling later dependants' stubs as missing too (only nodes that were actually asked are listed); a stub invalid against its node's format (validated as an agent reply is, envelope included) is in `InvalidOutputs`, and the reply is not repaired by regeneration; a valid stub for a classifier decides the condition. With the default, area 10's tests and goldens do not move (run `--filter "FullyQualifiedName~V31"` and the byte-equivalence tests).
+- [x] **Step 2 to 4: Run, implement, run.**
+- [x] **Step 5: Commit** `PackageFormat (#1508): the offline run can refuse to generate a missing stub`; push.
 
 ### Task 12: Expectations, the first mismatch and the outcome hash
 
