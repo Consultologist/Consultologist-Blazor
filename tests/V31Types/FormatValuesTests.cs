@@ -84,6 +84,15 @@ public class FormatValuesTests
         var other = Check("""{ "lines": [5, "two\nthree"] }""", nested);
         Assert.False(other.Valid);
         Assert.False(other.BreaksALine);
+
+        // #1507 final review C1: a nullable type-array markdown_inline takes null (the rule holds only a string); a text
+        // holding a line ending still breaks it.
+        const string nullable = """{ "type": ["string", "null"], "contentMediaType": "text/markdown", "x-markdown": "inline" }""";
+        var none = Check("null", nullable);
+        Assert.True(none.Valid, Faults(none));
+        Assert.False(none.BreaksALine);
+        Assert.True(Check("\"*one*\"", nullable).Valid);
+        Assert.True(Check("\"two\\nthree\"", nullable).BreaksALine);
     }
 
     [Fact]
