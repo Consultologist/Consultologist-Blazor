@@ -233,7 +233,7 @@ public sealed class DeliveryRunner
 
         /// <summary>
         /// The window closed. Every send in flight is waited for (a Durable activity is not cancelled, so an email can still go
-        /// out; it has its own timeout) and its result landed, in the order started: an email that went out is <c>sent</c>, and a
+        /// out; the activity bounds each attempt at 2 minutes) and its result landed, in the order started: an email that went out is <c>sent</c>, and a
         /// failure keeps its error kind and is not retried. Then each destination not final, in the fixed order (one that never
         /// started, or was waiting to retry), is failed. No attempt starts after the close.
         /// </summary>

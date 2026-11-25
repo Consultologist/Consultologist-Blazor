@@ -241,6 +241,41 @@ public class DeliveryRunnerTests
         Assert.Equal(0, host.OutstandingDelays);
     }
 
+    [Fact]
+    public async Task ASendInFlightAtTheWindowsClose_IsWaitedFor_WhileADestinationNeverStarted_IsFailedWithNoAttempt()
+    {
+        // One run, both cases. The note's email fails, and its retry wait (2 minutes) ends at the close of a 2-minute window
+        // before attempt 2 can start: it never gets another attempt. The letter is in flight at the close and goes out.
+        IReadOnlyList<DeliverableOutcome> outcomes =
+        [
+            Outcome("deliverable.letter", ["email"]),
+            Outcome("deliverable.note", ["email"]),
+        ];
+        var host = new FakeDeliveryHost()
+            .Hold("delivery:deliverable.letter/email")
+            .Hold("delivery:deliverable.note/email");
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 2), host, new ListRecorder());
+
+        var result = await FakeDeliveryHost.Drive(() =>
+        {
+            var run = runner.RunAsync(outcomes);
+            host.Answer("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.Failed, "error"));
+            host.Advance(TimeSpan.FromMinutes(2));
+            Assert.False(run.IsCompleted);
+            host.Answer("delivery:deliverable.letter/email", new DeliverySendOutcome(DeliverySendResult.Sent, null));
+            return run;
+        });
+
+        Assert.Equal(2, host.Sends.Count);
+        var (letter, note) = (result.Rows[0], result.Rows[1]);
+        Assert.Equal(("sent", null), (letter.Result, letter.Reason));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "sent")], letter.Attempts);
+        Assert.Equal(("failed", "failed: email"), (note.Result, note.Reason));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "failed: error")], note.Attempts);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
     [Theory]
     [InlineData(5)]
     [InlineData(6)]

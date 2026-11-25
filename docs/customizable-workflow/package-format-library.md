@@ -2223,7 +2223,7 @@ in flight and the window's timer) for one to finish.
   or after the close). A send's result is read even when the host's clock is already past the close, as under a
   replay step that starts after it: an email that went out is `sent`, and a failure keeps its real error kind and
   starts no attempt. #1508: a send still in flight when the window's timer ends is waited for, not failed (a Durable
-  activity is not cancelled, so the email can still go out, and it has its own timeout): its result is landed, `sent` if
+  activity is not cancelled, so the email can still go out, and `deliver-v31` bounds each attempt at 2 minutes, a linked token the channel honours, whose expiry is a failed send of kind `timeout`): its result is landed, `sent` if
   it went out, else `failed` with its own error kind, never retried. Only a destination with no send in flight (never
   started, or waiting to retry) is `failed` at the close, with no `failed: window` attempt.
 - A row is `delivery:<deliverable key>/<kind>` (D13); `Result` is `sent`, `not sent` or `failed`; `Reason` is
