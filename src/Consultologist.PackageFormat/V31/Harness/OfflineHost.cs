@@ -41,6 +41,12 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
     /// <summary>The row keys an agent call was made for.</summary>
     public HashSet<string> Asked { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>D6: the row keys asked for with no stub, when the request does not generate.</summary>
+    public HashSet<string> Missing { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>D6: the stubs that did not fit, when the request does not generate.</summary>
+    public List<StubFault> Invalid { get; } = [];
+
     /// <inheritdoc/>
     public Task<AgentOutcome> CallAgentAsync(AgentCall call)
     {
@@ -61,9 +67,48 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
         }
 
         var given = request.Outputs.TryGetValue(call.Key, out var pinned);
+        if (!given && !request.GenerateMissing)
+        {
+            // D6: no stub is no answer; the call fails as one that could not be made, which no retry changes.
+            Missing.Add(call.Key);
+            return Task.FromResult(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"));
+        }
+
         var (value, reply) = OfflineStubs.Reply(plan, call, prepared, given, pinned, (request.StubSeed ?? (key => key))(call.Key));
+        var outcome = AgentTurn.Finish(prepared, reply);
+        if (!request.GenerateMissing && Fault(call, outcome) is { } fault)
+        {
+            // D6: a stub is the test's fixed answer: one that does not fit fails the node, and is not asked for again.
+            Invalid.Add(fault);
+            return Task.FromResult(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"));
+        }
+
         served[call.Key] = value;
-        return Task.FromResult(AgentTurn.Finish(prepared, reply));
+        return Task.FromResult(outcome);
+    }
+
+    /// <summary>
+    /// D6: what is wrong with the reply <paramref name="outcome"/> carries, as the runner checks a reply (read as its format's
+    /// value, then validated, an envelope already taken off; a reply with wrong macro markers): the first fault's path and
+    /// keyword, never the value; null when it fits.
+    /// </summary>
+    private StubFault? Fault(AgentCall call, AgentOutcome outcome)
+    {
+        if (outcome.Kind != AgentOutcomeKind.Completed)
+            return null;
+        var entries = call.Function == null ? plan.Entries : plan.Functions.GetValueOrDefault(call.Function)?.Entries;
+        var format = entries?.GetValueOrDefault(call.EntryKey)?.Format;
+        var name = format is JsonObject { Count: 1 } site && SourceLayout.Text(site["$ref"]) is { } reference
+            && reference.StartsWith("#/$defs/", StringComparison.Ordinal) ? reference["#/$defs/".Length..] : "its format";
+
+        if (outcome.Invalid is { Count: > 0 })
+            return new StubFault(call.Key, name, "/ marker");
+        var (value, parsed) = plan.Formats.Read(outcome.Reply ?? "", format);
+        var fits = parsed ? plan.Formats.Validate(value, format) : new FormatValueResult(false, [new FormatValueFault("", "type")]);
+        if (fits.Valid)
+            return null;
+        var first = fits.Faults[0];
+        return new StubFault(call.Key, name, $"{(first.Pointer.Length == 0 ? "/" : first.Pointer)} {first.Keyword}");
     }
 
     /// <inheritdoc/>
