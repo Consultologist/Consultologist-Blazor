@@ -1,0 +1,38 @@
+{
+  "kind": "if",
+  "label": "Holding the billing section back unless asked",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "if": {
+    "or": [
+      {
+        "!==": [
+          {
+            "var": "item.id"
+          },
+          "billing"
+        ]
+      },
+      {
+        "===": [
+          {
+            "var": "input.include_billing.value"
+          },
+          true
+        ]
+      }
+    ]
+  },
+  "then": {
+    "nodes": [
+      "standing_draft"
+    ],
+    "ret": "node.standing_sections.applies.standing_draft"
+  },
+  "else": null
+}

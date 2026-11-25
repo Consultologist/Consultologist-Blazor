@@ -1,0 +1,40 @@
+{
+  "kind": "case",
+  "label": "Routing a section by its kind",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "case": "item.value.kind",
+  "branches": [
+    {
+      "when": [
+        "narrative"
+      ],
+      "nodes": [
+        "narrative_draft"
+      ],
+      "ret": "node.sections_draft.route.narrative_draft"
+    },
+    {
+      "when": [
+        "table"
+      ],
+      "nodes": [
+        "table_draft"
+      ],
+      "ret": "node.sections_draft.route.table_draft"
+    },
+    {
+      "when": [
+        "omit"
+      ],
+      "nodes": [],
+      "ret": null
+    }
+  ],
+  "else": null
+}

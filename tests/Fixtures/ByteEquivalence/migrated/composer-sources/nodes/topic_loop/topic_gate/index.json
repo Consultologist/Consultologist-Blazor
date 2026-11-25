@@ -1,0 +1,26 @@
+{
+  "kind": "if",
+  "label": "Drafted topics only",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "if": {
+    "===": [
+      {
+        "var": "item.value.kind"
+      },
+      "drafted"
+    ]
+  },
+  "then": {
+    "nodes": [
+      "draft_topic"
+    ],
+    "ret": "node.topic_loop.topic_gate.draft_topic"
+  },
+  "else": null
+}

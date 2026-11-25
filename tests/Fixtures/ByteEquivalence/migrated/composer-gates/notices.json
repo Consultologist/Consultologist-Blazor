@@ -1,0 +1,23 @@
+{
+  "notices": [
+    "Hand edit needed in nodes/extract_note_terms.md, body: the template reads deliverable.note.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/extract_copy_terms.md, body: the template reads deliverable.record_copy.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/cover_note.md, parts.when_1.text: the template reads deliverable.patient_copy.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/cover_note.md, body: the template reads deliverable.note.content at line 2, which a 31 prompt doesn't read; rewrite it.",
+    "Node 'note_coverage' declared onInvalid at 30, which 31 has no member for; it was dropped.",
+    "Node 'copy_coverage' declared onInvalid at 30, which 31 has no member for; it was dropped.",
+    "checks/copy_coverage.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "checks/note_coverage.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/cover_note.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/extract_copy_terms.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/extract_note_terms.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "No snapshot test was written: hand edits remain."
+  ],
+  "handEdits": [
+    "Hand edit needed in nodes/extract_note_terms.md, body: the template reads deliverable.note.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/extract_copy_terms.md, body: the template reads deliverable.record_copy.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/cover_note.md, parts.when_1.text: the template reads deliverable.patient_copy.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/cover_note.md, body: the template reads deliverable.note.content at line 2, which a 31 prompt doesn't read; rewrite it."
+  ],
+  "refusals": []
+}

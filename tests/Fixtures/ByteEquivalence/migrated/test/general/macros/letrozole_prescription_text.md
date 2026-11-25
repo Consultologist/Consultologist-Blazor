@@ -1,0 +1,4 @@
+---
+{"label":"Letrozole prescription text","description":null,"if":{"===":[{"var":"input.note_type.value"},"consult"]},"format":"plaintext","instruction":["If the plan prescribes letrozole, the side-effect counselling goes where it belongs in the assessment and plan; otherwise nothing.","","If so, write {{ macro.letrozole_prescription_text.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward."]}
+---
+Discussed side effects including: hot flashes, joint or muscle pain, fatigue, headache, nausea, and bone thinning. Advised to monitor side effects.

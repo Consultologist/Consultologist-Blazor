@@ -111,12 +111,23 @@ public class DialectGoldensExport
         File.WriteAllText(indexPath, index, Utf8NoBom);
     }
 
-    /// <summary>R11: <paramref name="produced"/>, then each vector of <paramref name="existing"/> whose <c>plain</c> none of them has, in its order.</summary>
+    /// <summary>
+    /// R11: <paramref name="produced"/>, then each vector of <paramref name="existing"/> whose <c>plain</c> none of them has,
+    /// in its order. #1507, 2026-11-22 (2), 3 (R10): a kept vector is written <c>{ plain, escaped }</c> with its
+    /// <c>escaped</c> computed by <see cref="MarkdownEscape.Escape(string)"/>, never as written, so a stale one cannot reach
+    /// the freeze.
+    /// </summary>
     private static JsonArray MergedVectors(JsonArray produced, JsonArray? existing)
     {
         var plains = produced.Select(v => (string?)v!["plain"]).ToHashSet(StringComparer.Ordinal);
-        var kept = (existing ?? []).Where(v => v is JsonObject o && o["plain"] is JsonValue p && p.TryGetValue<string>(out var plain) && !plains.Contains(plain));
-        return new JsonArray([.. produced.Select(v => v!.DeepClone()), .. kept.Select(v => v!.DeepClone())]);
+        var kept = (existing ?? [])
+            .Select(v => v is JsonObject o && o["plain"] is JsonValue p && p.TryGetValue<string>(out var plain) ? plain : null)
+            .OfType<string>()
+            .Where(plain => !plains.Contains(plain));
+        return new JsonArray([
+            .. produced.Select(v => v!.DeepClone()),
+            .. kept.Select(plain => (JsonNode)new JsonObject { ["plain"] = plain, ["escaped"] = MarkdownEscape.Escape(plain) }),
+        ]);
     }
 
     /// <summary>Deletes <paramref name="folder"/> and writes <paramref name="files"/> under it.</summary>

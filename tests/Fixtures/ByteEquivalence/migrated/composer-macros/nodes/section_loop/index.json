@@ -1,0 +1,26 @@
+{
+  "kind": "for",
+  "label": "Sections",
+  "description": null,
+  "format": {
+    "type": "array",
+    "items": {
+      "$ref": "markdown_block"
+    }
+  },
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "in": "input.sections.value",
+  "parallel": true,
+  "maxParallel": null,
+  "until": null,
+  "max": null,
+  "itemLabel": "title",
+  "nodes": [
+    "section_draft"
+  ],
+  "ret": "node.section_loop.section_draft"
+}

@@ -1,6 +1,9 @@
+using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 using static Consultologist.Api.Tests.V31Templates.TemplateFixture;
@@ -29,7 +32,7 @@ public class DeliverableFormatsTests
     /// </summary>
     private static Dictionary<string, byte[]> Base() =>
         ResolveFixture.WithFormats(Package(), "section_plan", "outline", "verdict", "section_request", "standard_section")
-            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = System.Text.Json.Nodes.JsonNode.Parse(
+            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
                 "{ \"label\": \"Sections\", \"description\": null, "
                 + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
             .WithAgent("summary", "Summarise the plan for Margaret Okafor.\n\n{{ node.plan.content }}\n")
@@ -103,6 +106,160 @@ public class DeliverableFormatsTests
 
         Assert.Equal([("snippet.closing", "1:17"), (null, "3:1")], check.Templates!.Escapes(NoteKey));
     }
+
+    /// <summary>
+    /// <paramref name="files"/> published and loaded as the engine loads them, and the deliverable composed as the run
+    /// composes it over the data <paramref name="paths"/> give; its text, asserted composed.
+    /// </summary>
+    private static string Composed(Dictionary<string, byte[]> files, params (string Path, JsonNode? Value)[] paths)
+    {
+        var outcome = RenderTurn.Render(RunFixture.Plan(files), new RenderCall(NoteKey, NoteKey, null, BodyComposerTests.Scope(paths), 100_000));
+        Assert.True(outcome.Failure == null, outcome.Failure);
+        Assert.NotNull(outcome.Text);
+        return outcome.Text!;
+    }
+
+    [Theory]
+    [InlineData("# not a heading")]
+    [InlineData("**x**")]
+    public void AnUntypedRead_InAMarkdownDeliverable_IsEscapedAsAString(string value)
+    {
+        // #1507, 2026-11-22 (2), 3 (R10): formats fail closed. An output publish cannot type (an interpolated string: its
+        // format is null) is escaped as the string it writes; before, it was neither judged nor escaped, so model text
+        // could write Markdown into the document (part 06 § 6.4).
+        var files = WithNote("markdown_block", "## Plan\n\n{{ $\"{node.summary.content}\" }}\n");
+
+        Assert.Equal([(null, "3:1")], Accepted(files).Templates!.Escapes(NoteKey));
+        Assert.Equal($"## Plan\n\n{MarkdownEscape.Escape(value)}\n", Composed(files, ("node.summary.content", value)));
+    }
+
+    [Theory]
+    [InlineData("# not a heading")]
+    [InlineData("**x**")]
+    public void AUnionRead_InAMarkdownDeliverable_IsEscapedAsAString(string value)
+    {
+        // R10: a union is escaped as a string, a nullable plain text (plaintext | null, an item's .content) as any plain
+        // text; before, the union's text kind was not seen through, and it was written as Markdown.
+        var files = WithNote("markdown_block", "## Plan\n{{ for d in node.drafts.items }}{{ d.content }}\n{{ end }}")
+            .WithLoop("drafts", "node.plan.value.sections", "draft", "Draft the section {{ item.value.title }}.\n");
+
+        Assert.Equal([(null, "2:33")], Accepted(files).Templates!.Escapes(NoteKey));
+        var items = new JsonArray(new JsonObject { ["content"] = value }, new JsonObject { ["content"] = null });
+        Assert.Equal($"## Plan\n{MarkdownEscape.Escape(value)}\n\n", Composed(files, ("node.drafts.items", items)));
+    }
+
+    /// <summary>
+    /// <see cref="SourceFixture.Minimal"/> with the list input <c>sections</c> (of <c>section_request</c>) and the loop
+    /// <c>drafts</c> over it, labelled by its title, whose body is the agent <c>draft</c> of format
+    /// <paramref name="itemFormat"/>; the deliverable <c>note</c> of <paramref name="format"/> is <paramref name="body"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> OverALoop(string format, string body, string itemFormat = "markdown_block") =>
+        ResolveFixture.WithFormats(Minimal(), "section_request")
+            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
+                "{ \"label\": \"Sections\", \"description\": null, "
+                + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
+            .With("nodes/index.json", Index(["plan", "drafts"]))
+            .With("nodes/drafts/index.json", Json(SourceFixture.Node("for", "Sections", ArrayOf($"\"{itemFormat}\""), false, true,
+                "\"in\": \"input.sections.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"draft\"], \"ret\": \"node.drafts.draft\"")))
+            .With("nodes/drafts/draft.md", Agent("Drafting a section", $"\"{itemFormat}\"", "Write the section '{{ item.value.title }}'.\n"))
+            .With(Note, Md(Deliverable("Consultation note", $"\"{format}\"", "null", "hold"), body));
+
+    [Theory]
+    [InlineData("markdown_block")]
+    [InlineData("plaintext")]
+    public async Task ALoopsContent_InAMarkdownDeliverable_IsNotEscaped(string itemFormat)
+    {
+        // #1507 (D23; part 04 § 2.5, part 05 § 5.3): a loop's .content is 30's bytes, a standard rendering typed
+        // markdown_block, whatever its items' format: written as it is, ## headers and the items' Markdown included.
+        var files = OverALoop("markdown_block", "{{ node.drafts.content }}\n", itemFormat);
+        Assert.Empty(Accepted(files).Templates!.Escapes(NoteKey));
+
+        var plan = RunFixture.Plan(files);
+        var replies = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["node.drafts.draft:1"] = "Margaret Okafor reports **three months** of fatigue.",
+            ["node.drafts.draft:2"] = "Repeat TSH in **six weeks** with Dr A. Sample.",
+        };
+        var host = new ComposingRunHost(plan, (call, _) => replies.TryGetValue(call.Key, out var reply) ? reply : RunFixture.StubReply(plan, call));
+        var inputs = PlanRunnerLeavesTests.Inputs();
+        var given = new Dictionary<string, JsonNode?>(inputs.Inputs, StringComparer.Ordinal)
+        {
+            ["sections"] = new JsonObject
+            {
+                ["value"] = new JsonArray(
+                    new JsonObject { ["title"] = "History", ["kind"] = "narrative" },
+                    new JsonObject { ["title"] = "Plan", ["kind"] = "narrative" }),
+                ["content"] = null,
+                ["title"] = null,
+            },
+        };
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(inputs with { Inputs = given }, FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(
+            "## History\n\nMargaret Okafor reports **three months** of fatigue.\n\n"
+            + "## Plan\n\nRepeat TSH in **six weeks** with Dr A. Sample.\n",
+            (string?)result.Values[NoteKey]!["content"]);
+    }
+
+    [Fact]
+    public async Task AFlowOverALoop_HoldsTheLoopsRendering_AndIsNotEscaped()
+    {
+        // #1507 (D23; Task 24's fix round 1): a flow's .content is its ret's, so an if, a case or a while whose ret is a
+        // for, and an outer for's item whose ret is an inner for, hold that loop's standard rendering byte for byte at run
+        // time; their .content is typed markdown_block, and the Markdown note writes it as it is. The if whose branches are
+        // a for and a plain-text line is the union, escaped (R10): the note's one escape.
+        var files = ResolveFixture.LoopFlows();
+        Assert.Equal([(null, "9:10")], Accepted(files).Templates!.Escapes(NoteKey));
+
+        var plan = RunFixture.Plan(files);
+        var host = new ComposingRunHost(plan, (call, _) => call.EntryKey.EndsWith("_draft", StringComparison.Ordinal) || call.EntryKey.EndsWith(".note", StringComparison.Ordinal)
+            ? $"**{call.Key}** for Margaret Okafor."
+            : RunFixture.StubReply(plan, call));
+        var inputs = PlanRunnerLeavesTests.Inputs();
+        JsonObject Given(JsonNode value) => new() { ["value"] = value, ["content"] = null, ["title"] = null };
+        var given = new Dictionary<string, JsonNode?>(inputs.Inputs, StringComparer.Ordinal)
+        {
+            ["sections"] = Given(new JsonArray(
+                new JsonObject { ["title"] = "History", ["kind"] = "narrative" },
+                new JsonObject { ["title"] = "Plan", ["kind"] = "narrative" })),
+            ["visits"] = Given(new JsonArray(
+                new JsonObject { ["title"] = "First visit", ["points"] = new JsonArray("fatigue", "weight") },
+                new JsonObject { ["title"] = "Second visit", ["points"] = new JsonArray("TSH") })),
+            ["tone"] = Given("formal"),
+        };
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(inputs with { Inputs = given }, FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        string Content(string key) => (string)result.Values[key]!["content"]!;
+        // each item's reply names its row key (a pass of the while carries its number, #1)
+        string Rendering(string loop, string pass = "") =>
+            $"## History\n\n**{loop}.{loop.Split('.')[^1]}_draft{pass}:1** for Margaret Okafor.\n\n"
+            + $"## Plan\n\n**{loop}.{loop.Split('.')[^1]}_draft{pass}:2** for Margaret Okafor.";
+        Assert.Equal(Rendering("node.pick.then_loop"), Content("node.pick"));
+        Assert.Equal(Rendering("node.choose.formal_loop"), Content("node.choose"));
+        Assert.Equal(Rendering("node.redo.redo_loop", "#1"), Content("node.redo"));
+        var visits = result.Values["node.visits"]!["items"]!.AsArray();
+        foreach (var visit in visits)
+        {
+            Assert.StartsWith("## Points 1\n\n**node.visits.points.note:", (string)visit!["content"]!, StringComparison.Ordinal);
+            Assert.Equal((string?)visit["nodes"]!["points"]!["content"], (string?)visit["content"]);
+        }
+
+        Assert.Equal(
+            $"{Content("node.pick")}\n\n{Content("node.choose")}\n\n{Content("node.redo")}\n\n"
+            + $"{(string)visits[0]!["content"]!}\n\n{(string)visits[1]!["content"]!}\n\n{MarkdownEscape.Escape(Content("node.mixed"))}\n",
+            Content(NoteKey));
+    }
+
+    [Fact]
+    public void ALoopsContent_InAPlaintextDeliverable_IsRefused() =>
+        // part 06 § 6.4: a plain-text deliverable reads no Markdown, and a loop's .content is markdown_block (D23)
+        AssertRefusal(OverALoop("plaintext", "Dear Margaret Okafor,\n\n{{ node.drafts.content }}\n", "plaintext"),
+            "S06-021", "Deliverable 'note' is plaintext, and reads node.drafts.content (markdown_block) at line 3. Convert it in a node.");
 
     [Theory]
     [InlineData("{{ node.plan.value }}", "node.plan.value (section_plan)")]
@@ -188,6 +345,34 @@ public class DeliverableFormatsTests
     public void APlaintextDeliverable_WritingAHeading_IsRefused(string line, string quoted) =>
         AssertRefusal(WithNote("plaintext", $"Dear Margaret Okafor,\n\nYour plan:\n{line}\n{{{{ node.summary.content }}}}\n"),
             "S06-022", $"Deliverable 'note' is plaintext, and line 4 writes Markdown ('{quoted}').");
+
+    [Theory]
+    [InlineData("# Heading")]
+    [InlineData("- item")]
+    [InlineData("* star")]
+    [InlineData("> quote")]
+    [InlineData("a **b** c")]
+    [InlineData(" # Heading")]
+    public void ABlockMarkerOpenedByAnIf_IsRefused(string marker)
+    {
+        // R10: D9 sees through the tags that write nothing (an if, its else and end, a for) to the line's first character,
+        // so a marker an if opens is S06-022, as the bare line is. The line is quoted as written, trimmed.
+        var line = $"{{{{ if for.first }}}}{marker}{{{{ end }}}}";
+        AssertRefusal(WithNote("plaintext", $"Dear Margaret Okafor,\n\n{{{{ for s in node.plan.value.sections }}}}\n{line}\n{{{{ end }}}}\n"),
+            "S06-022", $"Deliverable 'note' is plaintext, and line 4 writes Markdown ('{line.Trim()}').");
+    }
+
+    [Theory]
+    [InlineData("{{ s.title }}# 1")]
+    [InlineData("{{ if for.first }}{{ s.title }}- 1{{ end }}")]
+    [InlineData("{{ if for.first }}Title{{ end }}")]
+    public void ATagWritingAValue_AtTheLinesStart_IsNoMarker(string line)
+    {
+        // R10: what an output writes stands before the character after it, so that character does not start the line.
+        var check = Accepted(WithNote("plaintext", $"Dear Margaret Okafor,\n\n{{{{ for s in node.plan.value.sections }}}}\n{line}\n{{{{ end }}}}\n"));
+
+        Assert.Empty(check.Templates!.Escapes(NoteKey));
+    }
 
     // ---- an object format ---------------------------------------------------------------------
 

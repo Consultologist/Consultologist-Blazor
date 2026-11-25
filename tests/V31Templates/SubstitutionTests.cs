@@ -84,7 +84,7 @@ public class SubstitutionTests
     public void EachOutputTag_IsASite()
     {
         var plan = RunFixture.Plan(WithNote(
-            "Dear {{ input.name.value }}\n{{ for s in input.lines.value }}- {{ s }}\n{{ end }}{{ node.plan.content }}\n"));
+            "Dear {{ input.name.value }}\n{{ for s in input.lines.value }}• {{ s }}\n{{ end }}{{ node.plan.content }}\n"));
 
         var composition = Compose(plan, BodyComposerTests.Scope(
             ("input.name.value", "Margaret Okafor"), ("input.lines.value", new JsonArray("Rest")), ("node.plan.content", "Fluids.")));
@@ -141,7 +141,7 @@ public class SubstitutionTests
     [Fact]
     public void ALoopOverNothing_HasNoSubstitutions()
     {
-        var plan = RunFixture.Plan(WithNote("Plan:\n{{ for s in input.lines.value }}- {{ s }}\n{{ end }}"));
+        var plan = RunFixture.Plan(WithNote("Plan:\n{{ for s in input.lines.value }}• {{ s }}\n{{ end }}"));
 
         var outcome = Render(plan, BodyComposerTests.Scope(("input.lines.value", new JsonArray())));
 
@@ -221,7 +221,7 @@ public class SubstitutionTests
     [Fact]
     public void ALoopedSite_HasOnePassPerIteration()
     {
-        var plan = RunFixture.Plan(WithNote("{{ for s in input.lines.value }}- {{ s }}\n{{ end }}"));
+        var plan = RunFixture.Plan(WithNote("{{ for s in input.lines.value }}• {{ s }}\n{{ end }}"));
 
         var composition = Compose(plan, BodyComposerTests.Scope(("input.lines.value", new JsonArray("Rest", "Fluids"))));
 

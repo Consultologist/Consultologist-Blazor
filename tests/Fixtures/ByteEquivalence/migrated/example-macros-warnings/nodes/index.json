@@ -1,0 +1,9 @@
+{
+  "description": null,
+  "items": [
+    "standing_sections",
+    "requested_sections",
+    "summary",
+    "patient_line"
+  ]
+}

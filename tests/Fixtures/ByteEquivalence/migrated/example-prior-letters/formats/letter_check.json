@@ -1,0 +1,18 @@
+{
+  "$schema": "urn:consultologist:spec:31:dialect",
+  "type": "object",
+  "description": "Whether one prior letter answers the consult's referral question, and what in it bears on the question.",
+  "additionalProperties": false,
+  "required": [
+    "answers_question",
+    "note"
+  ],
+  "properties": {
+    "answers_question": {
+      "type": "boolean"
+    },
+    "note": {
+      "type": "string"
+    }
+  }
+}

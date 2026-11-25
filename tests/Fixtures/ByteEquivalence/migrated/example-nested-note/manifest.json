@@ -1,0 +1,23 @@
+{
+  "name": "example-nested-note",
+  "version": "v2026.11.2",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Nested note demo",
+  "description": [
+    "A demonstration of what specVersion 30 opened: a node plans the note's sections, a loop drafts each section by first outlining it and then running an inner loop over that outline's points, one paragraph per point; a let counts the sections with no model call; and a while redrafts the opening summary until a judge holding a house style the drafter is not told calls it good, at most three times. Sections are named by their title. Not intended for clinical use."
+  ],
+  "tags": [
+    "demo",
+    "nested"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    }
+  }
+}

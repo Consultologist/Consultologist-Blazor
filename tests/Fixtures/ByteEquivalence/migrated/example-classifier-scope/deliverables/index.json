@@ -1,0 +1,12 @@
+{
+  "description": null,
+  "items": [
+    "plan",
+    "decline_letter",
+    "information_request"
+  ],
+  "delivery": [
+    "pdf"
+  ],
+  "bundle": null
+}

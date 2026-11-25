@@ -1,0 +1,26 @@
+{
+  "notices": [
+    "Node 'tone' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.",
+    "Hand edit needed in nodes/extract_note_terms.md, body: the template reads deliverable.consult.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/extract_letter_terms.md, body: the template reads deliverable.ack_letter.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Macro 'followup' is now offered by the input 'followup'.",
+    "Node 'note_coverage' declared onInvalid at 30, which 31 has no member for; it was dropped.",
+    "Node 'letter_coverage' declared onInvalid at 30, which 31 has no member for; it was dropped.",
+    "Hand edit needed in deliverables/consult.md, body: macro 'formal_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult.md, body: macro 'friendly_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult.md, body: macro 'followup' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "checks/letter_coverage.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "checks/note_coverage.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/extract_letter_terms.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/extract_note_terms.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "No snapshot test was written: hand edits remain."
+  ],
+  "handEdits": [
+    "Hand edit needed in nodes/extract_note_terms.md, body: the template reads deliverable.consult.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in nodes/extract_letter_terms.md, body: the template reads deliverable.ack_letter.content at line 1, which a 31 prompt doesn't read; rewrite it.",
+    "Hand edit needed in deliverables/consult.md, body: macro 'formal_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult.md, body: macro 'friendly_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult.md, body: macro 'followup' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template."
+  ],
+  "refusals": []
+}

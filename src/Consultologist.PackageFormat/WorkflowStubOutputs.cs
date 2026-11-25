@@ -24,6 +24,12 @@ namespace Consultologist.PackageFormat;
 /// <c>Pick(seed, path, 2) == 0</c>; an <c>integer</c> or <c>number</c> is <c>Pick(seed, path, 10)</c>,
 /// raised to <c>minimum</c> and lowered to <c>maximum</c>; a <c>string</c> is
 /// <c>"stub " + Hex8(seed, path)</c>, cut to <c>maxLength</c>; <c>null</c> is <c>null</c>.
+/// #1507 (specVersion 31, area 10, Task 13): two 31 forms. A <c>oneOf</c> whose every arm is a <c>const</c> (a labelled
+/// enum), which a 30 schema never held, gives the constant at <c>Pick(seed, path, count)</c> among its constants that are
+/// not <c>null</c> (all of them when only <c>null</c> is). A <c>string</c> of <c>format: date</c> is the ISO date
+/// <c>Pick(seed, path, 365)</c> days after 2026-01-01; an inline 30 schema can say <c>format: date</c> too, and its stub
+/// is now that date where it was <c>"stub " + Hex8(seed, path)</c> (no 30 fixture's schema says it, so no capture's stub
+/// moved; the final review's B5). A <c>pattern</c> is not met (31's formats have none, S02-021).
 /// </summary>
 public static class WorkflowStubOutputs
 {
@@ -50,6 +56,11 @@ public static class WorkflowStubOutputs
         if (obj is not null && obj.TryGetPropertyValue("const", out var constant))
         {
             return constant?.DeepClone();
+        }
+
+        if (Labelled(obj) is { Count: > 0 } choices)
+        {
+            return choices[(int)Pick(seed, path, choices.Count)]?.DeepClone();
         }
 
         switch (TypeOf(obj))
@@ -111,11 +122,51 @@ public static class WorkflowStubOutputs
             case "null":
                 return null;
 
+            case "string" when IsDate(obj):
+                return JsonValue.Create(FirstDate.AddDays((int)Pick(seed, path, DatesPicked)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+
             default:
                 var text = "stub " + Hex8(seed, path);
 
                 return JsonValue.Create(Bound(obj, "maxLength") is { } maxLength && maxLength < text.Length ? text[..Math.Max(0, (int)maxLength)] : text);
         }
+    }
+
+    /// <summary>Whether <paramref name="obj"/> says <c>format: date</c> (#1507).</summary>
+    private static bool IsDate(JsonObject? obj) =>
+        obj?["format"] is JsonValue named && named.TryGetValue(out string? format) && format == "date";
+
+    /// <summary>The first date a <c>format: date</c> stub may be (#1507).</summary>
+    private static readonly DateOnly FirstDate = new(2026, 1, 1);
+
+    /// <summary>How many days on from <see cref="FirstDate"/> a <c>format: date</c> stub is picked among (#1507).</summary>
+    private const int DatesPicked = 365;
+
+    /// <summary>
+    /// #1507 (specVersion 31's labelled enum, part 02 § 2.9): the constants of a <c>oneOf</c> whose every arm is a
+    /// <c>{ const }</c>, a <c>null</c> constant left out unless it is the only one; <c>null</c> for any other schema.
+    /// </summary>
+    private static List<JsonNode?>? Labelled(JsonObject? obj)
+    {
+        if (obj?["oneOf"] is not JsonArray arms || arms.Count == 0)
+        {
+            return null;
+        }
+
+        var constants = new List<JsonNode?>();
+
+        foreach (var arm in arms)
+        {
+            if (arm is not JsonObject choice || !choice.TryGetPropertyValue("const", out var constant))
+            {
+                return null;
+            }
+
+            constants.Add(constant);
+        }
+
+        var named = constants.Where(constant => constant is not null).ToList();
+        return named.Count > 0 ? named : constants;
     }
 
     private static string TypeOf(JsonObject? obj)

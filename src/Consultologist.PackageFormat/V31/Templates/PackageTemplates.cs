@@ -23,7 +23,14 @@ public sealed class PackageTemplates : ITemplateReads
     private readonly Dictionary<object, TemplateReads?> said = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<SourceText, (TemplateSyntax Body, TemplateSyntax? Instruction)> definitions = new(ReferenceEqualityComparer.Instance);
 
-    internal PackageTemplates(IReadOnlyList<CheckedBody> bodies, IReadOnlyList<SourceRefusal> warnings, SourcePackage package)
+    /// <summary>
+    /// The bodies <paramref name="bodies"/>; each snippet and macro of <paramref name="package"/> is read from its text, but
+    /// for one whose file is in <paramref name="unknown"/> (#1507: a file the dialect refused) and whose text breaks a
+    /// statement rule or does not read (a fault of <see cref="TemplateSyntax"/>), which is not known: a refusal of its
+    /// instruction's markers or of its <c>if</c> leaves what its text reads as written.
+    /// </summary>
+    internal PackageTemplates(IReadOnlyList<CheckedBody> bodies, IReadOnlyList<SourceRefusal> warnings, SourcePackage package,
+        IReadOnlySet<string>? unknown = null)
     {
         Bodies = bodies;
         Warnings = warnings;
@@ -32,10 +39,17 @@ public sealed class PackageTemplates : ITemplateReads
         foreach (var set in package.Functions.Items.Select(f => f.Definitions).Prepend(package.Definitions))
         {
             foreach (var text in set.Snippets.Items.SelectMany(SourceResolve.Texts))
-                definitions.TryAdd(text, (TemplateSyntax.Parse(text.Body), null));
+                Define(text, TemplateSyntax.Parse(text.Body), null, unknown);
             foreach (var text in set.Macros.Items.SelectMany(SourceResolve.Texts))
-                definitions.TryAdd(text, (TemplateSyntax.Parse(text.Body), Instruction(text)));
+                Define(text, TemplateSyntax.Parse(text.Body), Instruction(text), unknown);
         }
+    }
+
+    private void Define(SourceText text, TemplateSyntax body, TemplateSyntax? instruction, IReadOnlySet<string>? unknown)
+    {
+        if (unknown?.Contains(text.Path) == true && (body.Faults.Count > 0 || instruction?.Faults.Count > 0))
+            return;
+        definitions.TryAdd(text, (body, instruction));
     }
 
     /// <summary>The checked bodies, in the order <see cref="SourceTemplates.Check"/> visits them.</summary>

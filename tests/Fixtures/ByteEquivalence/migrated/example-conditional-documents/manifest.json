@@ -1,0 +1,45 @@
+{
+  "name": "example-conditional-documents",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": null,
+  "description": null,
+  "tags": [],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "seen_on": {
+      "label": "Date seen",
+      "description": null,
+      "format": "date",
+      "required": true,
+      "channel": null
+    },
+    "encounter_kind": {
+      "label": "Encounter kind",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "new_patient",
+          "follow_up"
+        ]
+      },
+      "required": false,
+      "channel": null
+    },
+    "include_billing": {
+      "label": "Include a billing sentence",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    }
+  }
+}

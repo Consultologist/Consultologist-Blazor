@@ -10,7 +10,8 @@ public sealed record DeliveryResult(IReadOnlyList<DeliveryRow> Rows, int Failed)
 /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8; D10 to D13): the deterministic runner of delivery at the end
 /// of a job that succeeded. It makes the first attempt of every send of <see cref="DeliveryPlan.Sends"/> at once, in their
 /// order, then waits, by <see cref="Task.WhenAny(IEnumerable{Task})"/> over what is in flight and the window's timer, for one
-/// to finish. A send that is sent is final; one whose kind is not set up is final at once, <c>not sent</c> with S08-006, and
+/// to finish. A send that is sent is final (#1507, D17: one that went as the link-only email is <c>sent</c>, its attempt
+/// <c>sent link-only</c> and its row's reason why); one whose kind is not set up is final at once, <c>not sent</c> with S08-006, and
 /// never retried; one that failed is retried after 2 minutes, doubling after, each wait cut to the time the window has left,
 /// until it has made <see cref="RunLimits.DeliveryAttempts"/> attempts. No attempt starts once
 /// <see cref="RunLimits.DeliveryMinutes"/> have passed from the start of delivering; what is unsent then (its send in
@@ -45,11 +46,16 @@ public sealed class DeliveryRunner
         this.recorder = recorder;
     }
 
-    /// <summary>Delivers each released deliverable of <paramref name="outcomes"/> (a job's, in plan order) to each of its destinations.</summary>
-    public Task<DeliveryResult> RunAsync(IReadOnlyList<DeliverableOutcome> outcomes)
+    /// <summary>
+    /// Delivers each released deliverable of <paramref name="outcomes"/> (a job's, in plan order) to each of its destinations;
+    /// #1507 (D19), with <paramref name="blockedEmail"/>, the link-only email of a job that released nothing
+    /// (<see cref="DeliveryPlan.Sends"/>).
+    /// </summary>
+    public Task<DeliveryResult> RunAsync(IReadOnlyList<DeliverableOutcome> outcomes, bool blockedEmail = true)
     {
         ArgumentNullException.ThrowIfNull(outcomes);
-        return new Delivering(this, DeliveryPlan.Sends(outcomes)).RunAsync();
+        var rowKinds = outcomes.ToDictionary(o => o.Key, DeliveryPlan.MailKindsOf, StringComparer.Ordinal);
+        return new Delivering(this, DeliveryPlan.Sends(outcomes, blockedEmail), rowKinds).RunAsync();
     }
 
     /// <summary>One send's destination: its attempts so far, and its result once final.</summary>
@@ -70,7 +76,8 @@ public sealed class DeliveryRunner
     private sealed record Flight(Destination To, Task Task, bool Wait, DateTime AtUtc);
 
     /// <summary>One delivery: its destinations, in the fixed order, and what is in flight.</summary>
-    private sealed class Delivering(DeliveryRunner runner, IReadOnlyList<DeliverySend> sends)
+    private sealed class Delivering(
+        DeliveryRunner runner, IReadOnlyList<DeliverySend> sends, IReadOnlyDictionary<string, IReadOnlyList<string>> rowKinds)
     {
         private readonly RunLimits limits = runner.limits;
         private readonly IDeliveryHost host = runner.host;
@@ -144,17 +151,25 @@ public sealed class DeliveryRunner
             {
                 foreach (var document in destination.Send.Documents)
                 {
-                    var row = new DeliveryRow(
-                        DeliveryPlan.Key(document.Deliverable, destination.Send.Kind),
-                        document.Deliverable,
-                        destination.Send.Kind,
-                        destination.Result!,
-                        destination.Reason,
-                        destination.AtUtc,
-                        destination.Attempts.ToList());
-                    rows.Add(row);
-                    await recorder.DeliveryAsync(row);
-                    await recorder.FlushAsync();
+                    // #1507 (D19): the one link-only send of a blocked job gives a row to each mail destination each
+                    // document lists, its result the send's, a reason naming a kind (S08-006, failed: <kind>) the row's own.
+                    var kinds = destination.Send.EveryDeliverableBlocked
+                        ? rowKinds.GetValueOrDefault(document.Deliverable) ?? [destination.Send.Kind]
+                        : [destination.Send.Kind];
+                    foreach (var kind in kinds)
+                    {
+                        var row = new DeliveryRow(
+                            DeliveryPlan.Key(document.Deliverable, kind),
+                            document.Deliverable,
+                            kind,
+                            destination.Result!,
+                            ReasonFor(destination, kind),
+                            destination.AtUtc,
+                            destination.Attempts.ToList());
+                        rows.Add(row);
+                        await recorder.DeliveryAsync(row);
+                        await recorder.FlushAsync();
+                    }
                 }
             }
 
@@ -183,8 +198,11 @@ public sealed class DeliveryRunner
             switch (outcome?.Result)
             {
                 case DeliverySendResult.Sent:
-                    destination.Attempts.Add(new DeliveryAttempt(flight.AtUtc, DeliveryPlan.Sent));
+                    // #1507 (D17, D19): the link-only email is sent; its attempt says so, and the row's reason says why.
+                    destination.Attempts.Add(new DeliveryAttempt(
+                        flight.AtUtc, outcome?.LinkOnly == null ? DeliveryPlan.Sent : DeliveryPlan.SentLinkOnly));
                     destination.Result = DeliveryPlan.Sent;
+                    destination.Reason = outcome?.LinkOnly;
                     destination.AtUtc = flight.AtUtc;
                     return;
 
@@ -230,6 +248,19 @@ public sealed class DeliveryRunner
                     destination.Attempts.Add(new DeliveryAttempt(sending.AtUtc, $"{DeliveryPlan.Failed}: window"));
                 Fail(destination);
             }
+        }
+
+        /// <summary>The destination's reason as a row of <paramref name="kind"/> says it: a kind-naming sentence in that kind.</summary>
+        private static string? ReasonFor(Destination destination, string kind)
+        {
+            if (string.Equals(kind, destination.Send.Kind, StringComparison.Ordinal))
+                return destination.Reason;
+            return destination.Result switch
+            {
+                DeliveryPlan.Failed => DeliveryPlan.FailedKind(kind),
+                DeliveryPlan.NotSent => DeliveryPlan.NotSetUp(kind),
+                _ => destination.Reason,
+            };
         }
 
         private static void Fail(Destination destination)

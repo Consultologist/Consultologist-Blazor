@@ -1,0 +1,13 @@
+{
+  "description": null,
+  "items": [
+    "note",
+    "record_copy",
+    "patient_copy",
+    "cover_letter"
+  ],
+  "delivery": [
+    "pdf"
+  ],
+  "bundle": null
+}

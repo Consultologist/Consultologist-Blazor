@@ -1,0 +1,78 @@
+{
+  "name": "composer-macros",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Composer macros fixture",
+  "description": [
+    "A byte-equivalence fixture (#1498): the deliverable composer's macros and signature, one deliverable per rule — prepend, append, both, two at one place; a macro's own if and a placement's if; an empty-rendering macro; optional macros; the profile and the run date; node macros around a loop's item; signed deliverables; placed macros reading a node, a macro and a deliverable. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "sections": {
+      "label": "Sections",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title"
+          ],
+          "properties": {
+            "title": {
+              "$ref": "markdown_block",
+              "title": "Title"
+            }
+          }
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "visit": {
+      "label": "Visit",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "new",
+          "review"
+        ]
+      },
+      "required": true,
+      "channel": null
+    },
+    "followup_offer": {
+      "label": "Follow-up offer",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    },
+    "leaflet_offer": {
+      "label": "Leaflet offer",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    },
+    "quoted_review": {
+      "label": "Quoted review",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    }
+  }
+}

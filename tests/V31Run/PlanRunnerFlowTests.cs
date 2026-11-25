@@ -762,7 +762,9 @@ public class PlanRunnerFlowTests
                 Twice + $"\"nodes\": [\"draft\"], \"ret\": \"{innerKey}.draft\"")))
             .With($"{inner}/draft.md", Agent("Drafting", Plain,
                 "Draft {{ pass.number }} of round {{ pass.parent.number }} after {{ pass.parent.node.review.content }}.\n"))
-            .With("deliverables/note.md", Md(Deliverable("Consultation note", Plain, "null", "hold"), "{{ node.rounds.content }}\n"));
+            // #1507 (D23, Task 24's fix round 1): with the loop between, the while's ret is a for, so its .content is that
+            // loop's rendering, markdown_block, which a plain-text note may not read
+            .With("deliverables/note.md", Md(Deliverable("Consultation note", forBetween ? "\"markdown_block\"" : Plain, "null", "hold"), "{{ node.rounds.content }}\n"));
         if (forBetween)
         {
             files.With("nodes/rounds/sections/index.json", Json(SourceFixture.Node("for", "Sections", ArrayOf(Plain), false, true,

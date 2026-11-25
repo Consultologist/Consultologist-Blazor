@@ -8,9 +8,10 @@ namespace Consultologist.Api.V31;
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 06 § 8): the delivery activity's input: the job, its account, and one attempt of one
 /// send. The send carries its documents' composed text across the activity boundary (as a render's input carries its
-/// scope); it is never logged.
+/// scope); it is never logged. #1507 (area 10; D18): <paramref name="Delivery"/> is the start's delivery settings, from the
+/// orchestration's input; <c>null</c> for a job started before it, whose channels read the account's settings at the attempt.
 /// </summary>
-public sealed record DeliverV31Input(string JobId, string AppUserId, DeliverySend Send);
+public sealed record DeliverV31Input(string JobId, string AppUserId, DeliverySend Send, V31DeliverySettings? Delivery = null);
 
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8; D10, D11): one attempt of one send, by its kind's channel
@@ -48,8 +49,8 @@ public sealed class DeliverV31Activity(DeliveryChannels channels, ILogger<Delive
         }
 
         logger.LogInformation(
-            "V31 delivery send. JobId={JobId}, Kind={Kind}, Folder={Folder}, Documents={Documents}, Attempt={Attempt}, Result={Result}, ErrorKind={ErrorKind}",
-            input.JobId, send.Kind, send.Folder, send.Documents.Count, send.Attempt, outcome.Result, outcome.ErrorKind);
+            "V31 delivery send. JobId={JobId}, Kind={Kind}, Folder={Folder}, Documents={Documents}, Attempt={Attempt}, Result={Result}, ErrorKind={ErrorKind}, LinkOnly={LinkOnly}",
+            input.JobId, send.Kind, send.Folder, send.Documents.Count, send.Attempt, outcome.Result, outcome.ErrorKind, outcome.LinkOnly);
         return outcome;
     }
 }

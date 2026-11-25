@@ -1,0 +1,11 @@
+{
+  "description": null,
+  "items": [
+    "consult_note",
+    "progress_note"
+  ],
+  "delivery": [
+    "pdf"
+  ],
+  "bundle": null
+}

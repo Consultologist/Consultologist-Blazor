@@ -356,6 +356,92 @@ internal static class ResolveFixture
         return files;
     }
 
+    // ---- LoopFlows ------------------------------------------------------------------------------
+
+    /// <summary>
+    /// #1507 (D23; Task 24's fix round 1): flows whose <c>ret</c> chain reaches a <c>for</c>, each <c>for</c> over the list
+    /// input <c>sections</c> (of <c>section_request</c>, labelled by its title) drafting each section with a
+    /// <c>markdown_block</c> agent: the <c>if</c> <c>pick</c> (both branches a for, <c>then_loop</c> and
+    /// <c>else_loop</c>, taken while the draft is not blank), the <c>case</c> <c>choose</c> on the enum input <c>tone</c>
+    /// (<c>formal_loop</c>, else <c>plain_loop</c>), the <c>while</c> <c>redo</c> (one pass, its <c>ret</c> the for
+    /// <c>redo_loop</c>), the for <c>visits</c> over the list input <c>visits</c> (of <c>visit_request</c>) whose
+    /// <c>ret</c> is the for <c>points</c> over each visit's points, and the <c>if</c> <c>mixed</c> (a for,
+    /// <c>mixed_loop</c>, else a plain-text agent <c>mixed_line</c>). The note (<c>markdown_block</c>) reads each flow's
+    /// <c>.content</c>, and each visit's through <c>.items</c>. Fictional (Margaret Okafor, Dr A. Sample).
+    /// </summary>
+    public static Dictionary<string, byte[]> LoopFlows()
+    {
+        const string Mb = "\"markdown_block\"";
+        const string NotBlank = "{ \"!\": [{ \"blank\": [{ \"var\": \"input.consult_draft.content\" }] }] }";
+        var files = WithFormats(Minimal(), "section_request")
+            .WithJson("manifest.json", m =>
+            {
+                var inputs = m["inputs"]!.AsObject();
+                inputs["sections"] = System.Text.Json.Nodes.JsonNode.Parse(
+                    "{ \"label\": \"Sections\", \"description\": null, "
+                    + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }");
+                inputs["visits"] = System.Text.Json.Nodes.JsonNode.Parse(
+                    "{ \"label\": \"Visits\", \"description\": null, "
+                    + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"visit_request\" } }, \"required\": true, \"channel\": null }");
+                inputs["tone"] = System.Text.Json.Nodes.JsonNode.Parse(
+                    "{ \"label\": \"Tone\", \"description\": null, "
+                    + "\"format\": { \"type\": \"string\", \"enum\": [\"formal\", \"plain\"] }, \"required\": true, \"channel\": null }");
+            })
+            .WithJson("formats/index.json", i => i["items"]!.AsArray().Add("visit_request"))
+            .With("formats/visit_request.json", Json(
+                "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", \"required\": [\"title\", \"points\"], "
+                + "\"additionalProperties\": false, \"properties\": { \"title\": { \"type\": \"string\", \"title\": \"Title\" }, "
+                + "\"points\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"title\": \"Points\" } } }"))
+            .With("nodes/index.json", Index(["plan", "pick", "choose", "redo", "visits", "mixed"]));
+
+        void Loop(string folder, string id)
+        {
+            files.With($"{folder}/{id}/index.json", Json(SourceFixture.Node("for", $"Sections ({id})", ArrayOf(Mb), false, true,
+                "\"in\": \"input.sections.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + $"\"itemLabel\": \"title\", \"nodes\": [\"{id}_draft\"], \"ret\": \"{Key(folder)}.{id}.{id}_draft\"")))
+                .With($"{folder}/{id}/{id}_draft.md", Agent($"Drafting a section ({id})", Mb, "Write the section '{{ item.value.title }}'.\n"));
+        }
+
+        static string Key(string folder) => "node." + folder["nodes/".Length..].Replace('/', '.');
+
+        files.With("nodes/pick/index.json", Json(SourceFixture.Node("if", "Picking the sections", ArrayOf(Mb), false, true,
+            $"\"if\": {NotBlank}, \"then\": {{ \"nodes\": [\"then_loop\"], \"ret\": \"node.pick.then_loop\" }}, "
+            + "\"else\": { \"nodes\": [\"else_loop\"], \"ret\": \"node.pick.else_loop\" }")));
+        Loop("nodes/pick", "then_loop");
+        Loop("nodes/pick", "else_loop");
+
+        files.With("nodes/choose/index.json", Json(SourceFixture.Node("case", "Choosing by tone", ArrayOf(Mb), false, true,
+            "\"case\": \"input.tone.value\", \"branches\": [{ \"when\": [\"formal\"], \"nodes\": [\"formal_loop\"], "
+            + "\"ret\": \"node.choose.formal_loop\" }], \"else\": { \"nodes\": [\"plain_loop\"], \"ret\": \"node.choose.plain_loop\" }")));
+        Loop("nodes/choose", "formal_loop");
+        Loop("nodes/choose", "plain_loop");
+
+        files.With("nodes/redo/index.json", Json(SourceFixture.Node("while", "Redoing the sections", ArrayOf(Mb), false, true,
+            "\"while\": { \"<\": [{ \"var\": \"pass.number\" }, 1] }, \"max\": 2, \"until\": null, \"checkFirst\": false, "
+            + "\"nodes\": [\"redo_loop\"], \"ret\": \"node.redo.redo_loop\"")));
+        Loop("nodes/redo", "redo_loop");
+
+        files.With("nodes/visits/index.json", Json(SourceFixture.Node("for", "Visits", ArrayOf(ArrayOf(Mb)), false, true,
+                "\"in\": \"input.visits.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"points\"], \"ret\": \"node.visits.points\"")))
+            .With("nodes/visits/points/index.json", Json(SourceFixture.Node("for", "Points", ArrayOf(Mb), false, true,
+                "\"in\": \"item.value.points\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": null, \"nodes\": [\"note\"], \"ret\": \"node.visits.points.note\"")))
+            .With("nodes/visits/points/note.md", Agent("Noting a point", Mb, "Note the point {{ item.value }} of {{ item.parent.value.title }}.\n"));
+
+        files.With("nodes/mixed/index.json", Json(SourceFixture.Node("if", "Sections or a line",
+            $"{{ \"anyOf\": [{ArrayOf(Mb)}, {{ \"$ref\": \"plaintext\" }}] }}", false, true,
+            $"\"if\": {NotBlank}, \"then\": {{ \"nodes\": [\"mixed_loop\"], \"ret\": \"node.mixed.mixed_loop\" }}, "
+            + "\"else\": { \"nodes\": [\"mixed_line\"], \"ret\": \"node.mixed.mixed_line\" }")));
+        Loop("nodes/mixed", "mixed_loop");
+        files.With("nodes/mixed/mixed_line.md", Agent("Writing one line", Plain, "Write one line for Margaret Okafor.\n"));
+
+        files.With("deliverables/note.md", Md(Deliverable("Consultation note", Mb, "null", "hold"),
+            "{{ node.pick.content }}\n\n{{ node.choose.content }}\n\n{{ node.redo.content }}\n\n"
+            + "{{ for v in node.visits.items }}{{ v.content }}\n\n{{ end }}{{ node.mixed.content }}\n"));
+        return files;
+    }
+
     // ---- CheckedNote ---------------------------------------------------------------------------
 
     /// <summary>
@@ -365,7 +451,8 @@ internal static class ResolveFixture
     /// <c>.items</c>, and the check <c>proofread</c> gating the note: the note's <c>.content</c> is not blank and every
     /// section is covered. The note (<c>markdown_block</c>, in <c>deliverables/</c>, delivered to the EMR) and the
     /// ungated patient letter (<c>plaintext</c>, in <c>deliverables/patient</c>, delivered by email and PDF, held when
-    /// empty). Fictional (Margaret Okafor, Dr A. Sample).
+    /// empty; it writes the sections' texts, as the loop's <c>.content</c> is <c>markdown_block</c>, #1507 D23).
+    /// Fictional (Margaret Okafor, Dr A. Sample).
     /// </summary>
     public static Dictionary<string, byte[]> CheckedNote()
     {
@@ -411,7 +498,8 @@ internal static class ResolveFixture
             .With("deliverables/patient/index.json", Index(["patient_letter"], extra: ", \"delivery\": [\"email\", \"pdf\"], \"bundle\": null"))
             .With("deliverables/patient/patient_letter.md", Md(
                 Deliverable("Letter to the patient", Plain, "null", "hold"),
-                "Dear Margaret Okafor,\n\nThis is what we talked about at your visit.\n\n{{ node.sections.content }}\n\nDr A. Sample\n"));
+                "Dear Margaret Okafor,\n\nThis is what we talked about at your visit.\n\n"
+                + "{{ for s in node.sections.value }}{{ s }}\n\n{{ end }}Dr A. Sample\n"));
         return files;
     }
 

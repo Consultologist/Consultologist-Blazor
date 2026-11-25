@@ -1,0 +1,107 @@
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+
+namespace Consultologist.PackageFormat.V31.Migration;
+
+/// <summary>
+/// #1507 (specVersion 31, area 10; part 10 § 1.2 the <c>terms_subset</c> row; part 06 §§ 1, 1.1, 2; part 03 § 7's
+/// migrated check): the checks pass. Each 30 <c>terms_subset</c> node (a format of the <c>computed</c> producer, which the
+/// nodes pass wrote no file for) becomes <c>checks/&lt;id&gt;.md</c>, listed in <c>checks/index.json</c> in 30's order:
+/// <c>kind: computed</c>, <c>producer: computed</c>, its label, <c>description: null</c>, <c>format: check_result</c>,
+/// the flags (placeholders, which <see cref="Derived"/> rewrites), <c>if: null</c> (30 checks are not gated), and <c>expression</c> the operation
+/// over its two operands, each read at its <c>.value</c>, with <c>failWith</c> the 30 sentence as a literal. Its body is
+/// empty. Every reader of <c>node.&lt;id&gt;</c> already reads <c>check.&lt;id&gt;</c>: the nodes pass registered the read
+/// (<see cref="Migrated.NodeReads"/>, <see cref="Migrated.Keys"/>), which the converter and the template rewriter follow.
+/// </summary>
+internal static partial class Migrate
+{
+    /// <summary>
+    /// The one 30 check operation: <c>terms_subset</c> is the catalogue's only format of the <c>computed</c> producer
+    /// (<see cref="IsCheck"/>), which <c>MigrateChecksTests.TermsSubset_IsTheOnlyComputedFormat</c> holds.
+    /// </summary>
+    private const string TermsSubset = "terms_subset";
+
+    private static readonly Regex BareNodeRead = new(@"^node\.[A-Za-z0-9_]+$", RegexOptions.CultureInvariant);
+
+    /// <summary>The checks pass, after the nodes pass (it reads the checks' 31 reads), before the deliverables pass.</summary>
+    public static void Checks(Migrated m)
+    {
+        ArgumentNullException.ThrowIfNull(m);
+        var tree = new NodeTree(m.Manifest30.Nodes ?? []);
+        foreach (var (id, node) in tree.ById)
+        {
+            if (!IsCheck(m, node))
+                continue;
+
+            var file = $"checks/{id}.md";
+            m.Put(file, new JsonObject
+            {
+                ["kind"] = "computed",
+                ["producer"] = "computed",
+                ["label"] = node.Label,
+                ["description"] = null,
+                ["format"] = "check_result",
+                ["reproducible"] = true,
+                ["modelDerived"] = false,
+                ["runDependent"] = false,
+                ["profileCarrying"] = false,
+                ["if"] = null,
+                ["expression"] = new JsonObject
+                {
+                    [TermsSubset] = new JsonArray(
+                        Operand(m, file, "of", node.With?.GetValueOrDefault("of"), node.Of),
+                        Operand(m, file, "in", node.With?.GetValueOrDefault("in"), node.In),
+                        FailWith(node)),
+                },
+            }, string.Empty);
+            m.Items("checks").Add(id);
+
+            // Part 06 §§ 1, 3: a 31 check lives in checks/, never inside a node flow. One 30 ran inside a flow (decided with
+            // its branch, or once per item) has no faithful 31 form, so the flow's list keeps its id, which names no file
+            // there (S01-009), with one hand edit naming the list.
+            if (tree.Owner.TryGetValue(id, out var owner))
+            {
+                var flow = tree.ById[owner];
+                var kind = flow switch { { For: not null } => "for", { While: not null } => "while", { If: not null } => "if", _ => "case" };
+                m.HandEdit(FlowFile(tree, owner), BodyMember(flow, id), MigrationSentences.CheckInsideAFlow(id, kind, owner));
+            }
+
+            // D16: a check is computed at 31, with no reply to judge; 30's onInvalid and failIfEmpty have no member there.
+            if (node.OnInvalid is not null)
+                m.Notice(MigrationSentences.MemberDropped(id, "onInvalid"));
+            if (node.FailIfEmpty is not null)
+                m.Notice(MigrationSentences.MemberDropped(id, "failIfEmpty"));
+        }
+    }
+
+    /// <summary>
+    /// One operand of a 30 check (<c>with.of</c>, <c>with.in</c>: a <c>node.&lt;id&gt;</c> reference, or the v12
+    /// <c>node:&lt;id&gt;</c> members) as a 31 read: the node's <c>.value</c>, converted over the package's top level
+    /// (<see cref="Condition"/>, a <c>concept_list</c> declared), so a read 31 cannot type stays 30's text with one hand edit
+    /// on <c>expression</c>.
+    /// </summary>
+    private static JsonNode Operand(Migrated m, string file, string name, JsonNode? with, string? legacy)
+    {
+        var text = with is JsonValue value && value.TryGetValue<string>(out var written) ? written
+            : legacy is not null ? "node." + legacy.Replace("node:", "", StringComparison.Ordinal)
+            : with?.ToJsonString() ?? "null";
+        if (BareNodeRead.IsMatch(text))
+            text += ".value";
+        return Condition(m, file, "expression", text, m.Scope((string?)null), ConversionKind.Value, JsonValue.Create("concept_list"));
+    }
+
+    /// <summary>The 30 check's <c>failWith</c> (part 06 § 2.2: a literal string), as 30 wrote it.</summary>
+    private static JsonNode? FailWith(WorkflowNodeSpec node) =>
+        node.With?.GetValueOrDefault("failWith")?.DeepClone() ?? (node.FailWith is { } sentence ? JsonValue.Create(sentence) : null);
+
+    /// <summary>The member of 30 flow <paramref name="flow"/> whose list holds <paramref name="child"/>: <c>nodes</c>, <c>then.nodes</c>, <c>else.nodes</c> or <c>branches.&lt;n&gt;.nodes</c> (from 0).</summary>
+    private static string BodyMember(WorkflowNodeSpec flow, string child)
+    {
+        if (flow.For is not null || flow.While is not null)
+            return "nodes";
+        if (flow.Then?.Nodes?.Contains(child) == true)
+            return "then.nodes";
+        var branch = (flow.Branches ?? []).FindIndex(b => b.Nodes?.Contains(child) == true);
+        return branch >= 0 ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"branches.{branch}.nodes") : "else.nodes";
+    }
+}

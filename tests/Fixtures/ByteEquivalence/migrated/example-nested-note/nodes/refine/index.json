@@ -1,0 +1,27 @@
+{
+  "kind": "while",
+  "label": "Refining the summary",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "while": {
+    "!==": [
+      {
+        "var": "node.judge.value.verdict"
+      },
+      "good"
+    ]
+  },
+  "max": 3,
+  "until": null,
+  "checkFirst": false,
+  "nodes": [
+    "draft_summary",
+    "judge"
+  ],
+  "ret": "node.refine.draft_summary"
+}

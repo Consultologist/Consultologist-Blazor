@@ -1,0 +1,26 @@
+{
+  "kind": "if",
+  "label": "The plan, when asked for",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "if": {
+    "===": [
+      {
+        "var": "input.include_plan.value"
+      },
+      true
+    ]
+  },
+  "then": {
+    "nodes": [
+      "draft_plan"
+    ],
+    "ret": "node.plan_gate.draft_plan"
+  },
+  "else": null
+}

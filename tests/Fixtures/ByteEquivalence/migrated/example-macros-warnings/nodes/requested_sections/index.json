@@ -1,0 +1,26 @@
+{
+  "kind": "for",
+  "label": "Requested sections — drafting each by its kind",
+  "description": null,
+  "format": {
+    "type": "array",
+    "items": {
+      "$ref": "markdown_block"
+    }
+  },
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "in": "input.sections.value",
+  "parallel": true,
+  "maxParallel": null,
+  "until": null,
+  "max": null,
+  "itemLabel": null,
+  "nodes": [
+    "route"
+  ],
+  "ret": "node.requested_sections.route"
+}

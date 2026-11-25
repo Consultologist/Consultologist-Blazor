@@ -598,6 +598,14 @@
       "reads": { "node.summary": "text" }
     },
     {
+      "id": "row.strip.input-field",
+      "kind": "condition",
+      "expression": "(input.patient.name | string.strip) == \"\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.downcase x`, `string.strip x`",
+      "reads": { "input.patient": { "type": "object", "fields": { "name": "text" } } }
+    },
+    {
       "id": "row.starts-with",
       "kind": "condition",
       "expression": "string.starts_with input.reason \"Breath\"",

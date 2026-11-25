@@ -1,0 +1,9 @@
+{
+  "description": null,
+  "items": [
+    "hpi",
+    "medications",
+    "assessment_plan"
+  ],
+  "format": "sections_item"
+}

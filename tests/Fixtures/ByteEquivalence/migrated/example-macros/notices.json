@@ -1,0 +1,35 @@
+{
+  "notices": [
+    "Hand edit needed in macros/header_line.md, body: the template uses case at line 1, which the 31 dialect doesn't have; rewrite it.",
+    "Hand edit needed in macros/counselling.md, if: macro 'counselling' is placed under different conditions in nodes/standing_sections/standing_draft.md and nodes/patient_line.md; a macro has one if, so place it under one condition, or split it into one macro per condition.",
+    "Hand edit needed in macros/counselling.md, instruction: macro 'counselling' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/section_caveat.md, instruction: macro 'section_caveat' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/table_note.md, instruction: macro 'table_note' was placed before the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/preamble.md, instruction: macro 'preamble' was placed before the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/sign_off.md, instruction: macro 'sign_off' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/silent_reminder.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.",
+    "Hand edit needed in macros/wrap_up.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.",
+    "Macro 'follow_up_reminder' is now offered by the input 'follow_up_reminder'.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'header_line' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'followup_only' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'brief_plan' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'follow_up_reminder' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "No snapshot test was written: hand edits remain."
+  ],
+  "handEdits": [
+    "Hand edit needed in macros/header_line.md, body: the template uses case at line 1, which the 31 dialect doesn't have; rewrite it.",
+    "Hand edit needed in macros/counselling.md, if: macro 'counselling' is placed under different conditions in nodes/standing_sections/standing_draft.md and nodes/patient_line.md; a macro has one if, so place it under one condition, or split it into one macro per condition.",
+    "Hand edit needed in macros/counselling.md, instruction: macro 'counselling' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/section_caveat.md, instruction: macro 'section_caveat' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/table_note.md, instruction: macro 'table_note' was placed before the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/preamble.md, instruction: macro 'preamble' was placed before the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/sign_off.md, instruction: macro 'sign_off' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in macros/silent_reminder.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.",
+    "Hand edit needed in macros/wrap_up.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'header_line' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'followup_only' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'brief_plan' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Hand edit needed in deliverables/consult_note.md, body: macro 'follow_up_reminder' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template."
+  ],
+  "refusals": []
+}

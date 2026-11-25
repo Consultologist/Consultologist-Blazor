@@ -1,0 +1,992 @@
+{
+  "reasons": {
+    "blank": "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given."
+  },
+  "equivalence": [
+    {
+      "id": "composer-gates.patient_copy.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "composer-macros.section_draft.section_close.if",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S03-002"
+      ],
+      "cases": 4,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "composer-macros.gated.review_note.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "composer-macros.review_summary.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "composer-macros.new_visit_note.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "composer-sources.topic_gate.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "composer-sources.refine.while",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "composer-sources.refine.until",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "composer-sources.plan_gate.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "composer-sources.tone_case.case",
+      "kind": "case",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "composer-sources.topic_tally.let",
+      "kind": "let",
+      "converted": false,
+      "noticeIds": [
+        "S10-003",
+        "S10-003"
+      ],
+      "cases": 4,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "example-classifier-scope.plan.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "example-classifier-scope.decline_letter.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "example-classifier-scope.information_request.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "example-conditional-documents.consult_note.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-conditional-documents.progress_note.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-conditional-sections.route.case",
+      "kind": "case",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-conditional-sections.narrative_only.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-conditional-sections.applies.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 6,
+      "agreed": 6,
+      "listed": []
+    },
+    {
+      "id": "example-macros.standing_draft.counselling.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "example-macros.route.case",
+      "kind": "case",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros.narrative_draft.section_caveat.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros.consult_note.header_line.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros.consult_note.followup_only.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros.brief_plan.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 9,
+      "agreed": 9,
+      "listed": []
+    },
+    {
+      "id": "example-macros.counselling.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros.followup_only.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.standing_draft.counselling.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.route.case",
+      "kind": "case",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.narrative_draft.section_caveat.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.consult_note.header_line.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.consult_note.followup_only.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.brief_plan.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 9,
+      "agreed": 9,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.counselling.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-macros-warnings.followup_only.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-nested-note.section_count.let",
+      "kind": "let",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "example-nested-note.refine.while",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "example-prior-letters.letters.until",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "example-problem-list.follow_up_plan.md.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-structured-intake.senior_review.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "example-structured-intake.long_stay_summary.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "example-structured-intake.notes_index.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "example-v12-constructs.consult.formal_note.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "example-v12-constructs.consult.friendly_note.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.read.node-value",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 4,
+      "listed": [
+        {
+          "case": 0,
+          "scope": {
+            "node.triage": "<absent>"
+          },
+          "at30": null,
+          "error30": "Condition 'row.read.node-value' failed to evaluate: <input>(1,19) : error : Cannot get the member node.triage.value.priority for a null object.",
+          "at31": "false",
+          "reason": null
+        }
+      ]
+    },
+    {
+      "id": "row.read.node-content",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S03-002"
+      ],
+      "cases": 5,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "row.read.item-id",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
+      "id": "row.read.item-value",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.read.pass-number",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.read.run-date",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.input.x",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S03-002"
+      ],
+      "cases": 5,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "row.input.x-y",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S03-002"
+      ],
+      "cases": 7,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "row.eq",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.ne",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.lt",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.le",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.gt",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.ge",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.and3",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 45,
+      "agreed": 45,
+      "listed": []
+    },
+    {
+      "id": "row.or3",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 45,
+      "agreed": 45,
+      "listed": []
+    },
+    {
+      "id": "row.not-boolean",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.not-text.node",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 2,
+      "listed": [
+        {
+          "case": 1,
+          "scope": {
+            "node.summary": ""
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "blank"
+        },
+        {
+          "case": 2,
+          "scope": {
+            "node.summary": " "
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "blank"
+        }
+      ]
+    },
+    {
+      "id": "row.not-text.input",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 1,
+      "listed": [
+        {
+          "case": 0,
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "blank"
+        },
+        {
+          "case": 1,
+          "scope": {
+            "input.reason": ""
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "blank"
+        },
+        {
+          "case": 2,
+          "scope": {
+            "input.reason": " "
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "blank"
+        }
+      ]
+    },
+    {
+      "id": "row.add",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 7,
+      "agreed": 7,
+      "listed": []
+    },
+    {
+      "id": "row.subtract",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 7,
+      "agreed": 7,
+      "listed": []
+    },
+    {
+      "id": "row.multiply",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 8,
+      "agreed": 8,
+      "listed": []
+    },
+    {
+      "id": "row.divide",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 8,
+      "agreed": 8,
+      "listed": []
+    },
+    {
+      "id": "row.divide.half",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 8,
+      "agreed": 8,
+      "listed": []
+    },
+    {
+      "id": "row.modulo",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 6,
+      "agreed": 6,
+      "listed": []
+    },
+    {
+      "id": "row.size.pipe",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.size.member",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 3,
+      "listed": [
+        {
+          "case": 0,
+          "scope": {
+            "input.problems": "<absent>"
+          },
+          "at30": true,
+          "error30": null,
+          "at31": "false",
+          "reason": "unruled"
+        }
+      ]
+    },
+    {
+      "id": "row.downcase",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S03-002"
+      ],
+      "cases": 5,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "row.strip.input",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.strip.node",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 3,
+      "listed": [
+        {
+          "case": 0,
+          "scope": {
+            "node.summary": "<absent>"
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "unruled"
+        }
+      ]
+    },
+    {
+      "id": "row.strip.input-field",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 3,
+      "listed": [
+        {
+          "case": 0,
+          "scope": {
+            "input.patient": "<absent>"
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "unruled"
+        },
+        {
+          "case": 2,
+          "scope": {
+            "input.patient": {}
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "unruled"
+        }
+      ]
+    },
+    {
+      "id": "row.starts-with",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.ends-with",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.contains",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.date-parse.lt",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.date-parse.eq",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.literal.number",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 5,
+      "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.literal.true",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.literal.false",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.literal.string",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "row.let-object",
+      "kind": "let",
+      "converted": false,
+      "noticeIds": [
+        "A04-009"
+      ],
+      "cases": 10,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "row.let-array",
+      "kind": "let",
+      "converted": false,
+      "noticeIds": [
+        "A04-003"
+      ],
+      "cases": 16,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.builtin.upcase",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S10-003"
+      ],
+      "cases": 5,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.builtin.round",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S10-003"
+      ],
+      "cases": 5,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.builtin.first",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S10-003"
+      ],
+      "cases": 4,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.text-less-than",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S03-008"
+      ],
+      "cases": 5,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.profile",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S03-018"
+      ],
+      "cases": 4,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.assignment",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S10-003"
+      ],
+      "cases": 1,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.template",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S10-003"
+      ],
+      "cases": 0,
+      "agreed": null,
+      "listed": []
+    },
+    {
+      "id": "refuse.two-statements",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "S10-003"
+      ],
+      "cases": 0,
+      "agreed": null,
+      "listed": []
+    }
+  ]
+}

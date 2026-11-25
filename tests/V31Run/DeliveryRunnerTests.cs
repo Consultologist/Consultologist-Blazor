@@ -319,6 +319,123 @@ public class DeliveryRunnerTests
         });
     }
 
+    // ---- #1507 (area 10; R8, ruled by the owner on #1507, 2026-11-22; D17, D19): delivery keeps 30's promise ----------
+
+    [Theory]
+    [InlineData("A10-054", "no document password")]
+    [InlineData("A10-055", "attachments over the budget")]
+    public async Task ALinkOnlySend_IsRecordedAsSentLinkOnly(string id, string reason)
+    {
+        // D17: a pdf send that fell back to the link-only email is sent; its attempt says sent link-only, its row why.
+        Assert.Equal(reason, id == "A10-054" ? DeliveryPlan.NoDocumentPassword : DeliveryPlan.OverTheBudget);
+        IReadOnlyList<DeliverableOutcome> outcomes = [Outcome("deliverable.note", ["pdf"])];
+        var host = new FakeDeliveryHost()
+            .Script("delivery:deliverable.note/pdf", new DeliverySendOutcome(DeliverySendResult.Sent, null, reason));
+
+        var (result, recorder) = await RunAsync(new RunLimits(), host, outcomes);
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(("sent", reason, FakeDeliveryHost.Start), (row.Result, row.Reason, row.AtUtc));
+        V31Contract.AssertSentence(new SourceRefusal(id, row.Reason!, ""));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "sent link-only")], row.Attempts);
+        Assert.Single(host.Sends);
+        Assert.Equal(0, result.Failed);
+        Assert.Equal(result.Rows, recorder.Deliveries);
+        AssertTheRecordsContractHolds(row);
+    }
+
+    [Fact]
+    public async Task AJobWhoseEveryDeliverableIsBlocked_SendsTheLinkOnlyEmail()
+    {
+        // D19, ruled, and the controller's ruling on Task 22's review: nothing released, and a deliverable blocked or held:
+        // one link-only send for the job (email, as one of them lists it), carrying their labels and never their text; each
+        // mail destination each lists gets a row from that send. An emr-only one and a skipped one are not in it.
+        IReadOnlyList<DeliverableOutcome> outcomes =
+        [
+            Outcome("deliverable.note", ["pdf"], DeliverableState.Blocked),
+            Outcome("deliverable.kept", ["pdf"], DeliverableState.Skipped),
+            Outcome("deliverable.emr_copy", ["emr"], DeliverableState.Blocked),
+            Outcome("deliverable.patient.patient_letter", ["email", "pdf", "emr"], DeliverableState.Held, folder: "patient"),
+        ];
+
+        var send = Assert.Single(DeliveryPlan.Sends(outcomes));
+
+        Assert.Equal(("email", true, null, "", 1), (send.Kind, send.EveryDeliverableBlocked, send.Bundle, send.Folder, send.Attempt));
+        Assert.Equal(["deliverable.note", "deliverable.patient.patient_letter"], send.Documents.Select(d => d.Deliverable));
+        Assert.All(send.Documents, d =>
+        {
+            Assert.Equal($"Label of {d.Deliverable}", d.Label);
+            Assert.Equal("", d.Text);
+        });
+
+        var host = new FakeDeliveryHost();
+        var (result, recorder) = await RunAsync(new RunLimits(), host, outcomes);
+
+        Assert.Single(host.Sends);
+        Assert.Equal(
+            ["delivery:deliverable.note/pdf", "delivery:deliverable.patient.patient_letter/email", "delivery:deliverable.patient.patient_letter/pdf"],
+            result.Rows.Select(r => r.Key));
+        Assert.Equal(["pdf", "email", "pdf"], result.Rows.Select(r => r.Kind));
+        Assert.All(result.Rows, r =>
+        {
+            Assert.Equal(("sent", "every deliverable blocked", FakeDeliveryHost.Start), (r.Result, r.Reason, r.AtUtc));
+            V31Contract.AssertSentence(new SourceRefusal("A10-056", r.Reason!, ""));
+            Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "sent link-only")], r.Attempts);
+            AssertTheRecordsContractHolds(r);
+        });
+        Assert.Equal(result.Rows, recorder.Deliveries);
+
+        // pdf only: the send is pdf's
+        Assert.Equal("pdf", Assert.Single(DeliveryPlan.Sends([outcomes[0]])).Kind);
+
+        // the one send not going: each row says it in its own kind
+        var failing = new FakeDeliveryHost().Script("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.NotSetUp, null));
+        var (notSent, _) = await RunAsync(new RunLimits(), failing, outcomes);
+        Assert.Equal(
+            ["not sent: PDF isn't set up for this account", "not sent: Email isn't set up for this account", "not sent: PDF isn't set up for this account"],
+            notSent.Rows.Select(r => r.Reason));
+
+        // a job with one deliverable released sends that one only, as before; one with nothing blocked or held sends nothing
+        Assert.Equal(["delivery:deliverable.letter/pdf"], DeliveryPlan.Sends([.. outcomes, Outcome("deliverable.letter", ["pdf"])]).Select(FakeDeliveryHost.NameOf));
+        Assert.All(DeliveryPlan.Sends([.. outcomes, Outcome("deliverable.letter", ["pdf"])]), s => Assert.False(s.EveryDeliverableBlocked));
+        Assert.Empty(DeliveryPlan.Sends([Outcome("deliverable.kept", ["pdf"], DeliverableState.Skipped), Outcome("deliverable.emr_copy", ["emr"], DeliverableState.Blocked)]));
+
+        // an orchestration started before this build (no Delivery in its input) replays without it: no send, no row
+        Assert.Empty(DeliveryPlan.Sends(outcomes, blockedEmail: false));
+        var (old, oldRecorder) = await RunAsync(new RunLimits(), new FakeDeliveryHost(), outcomes, blockedEmail: false);
+        Assert.Empty(old.Rows);
+        Assert.Empty(oldRecorder.Deliveries);
+    }
+
+    /// <summary>
+    /// D17 (the record's contract, provenance-record.md § 6.10 and § 6.13): the row has exactly the delivery row's members, its
+    /// result is one of the three, a <c>sent link-only</c> attempt and its reason are words the contract lists.
+    /// </summary>
+    private static void AssertTheRecordsContractHolds(DeliveryRow row)
+    {
+        Assert.Equal(["key", "deliverable", "kind", "result", "reason", "atUtc", "attempts"], row.ToJson().Select(m => m.Key));
+        Assert.Contains(row.Result, new[] { "sent", "not sent", "failed" });
+        var contract = File.ReadAllText(Path.Combine(RepoRoot(), "external", "consultologist-provenance", "provenance-record.md"));
+        var section = contract[contract.IndexOf("## 6. Storage 12", StringComparison.Ordinal)..];
+        var deliveryRow = section[section.IndexOf("**A delivery row**", StringComparison.Ordinal)..];
+        deliveryRow = deliveryRow[..deliveryRow.IndexOf("**Replay:**", StringComparison.Ordinal)];
+        Assert.All(row.Attempts, a => Assert.Contains($"`{a.Outcome}`", deliveryRow, StringComparison.Ordinal));
+        if (row.Reason is { } reason)
+        {
+            var recorded = section[section.IndexOf("### 6.13 Recorded sentences", StringComparison.Ordinal)..];
+            Assert.Contains($"*{reason}*", recorded, StringComparison.Ordinal);
+            Assert.Contains($"*{reason}*", deliveryRow, StringComparison.Ordinal);
+        }
+    }
+
+    private static string RepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "Consultologist.sln")))
+            directory = directory.Parent;
+        return directory?.FullName ?? throw new InvalidOperationException("The repository root was not found.");
+    }
+
     [Fact]
     public void KindWords_AndKeys_AreD13s()
     {
@@ -331,10 +448,10 @@ public class DeliveryRunnerTests
         new(key, $"Label of {key}", "plaintext", folder, state, null, null, Letter, CanonicalJson.HashText(Letter), delivery, bundle);
 
     private static async Task<(DeliveryResult Result, ListRecorder Recorder)> RunAsync(
-        RunLimits limits, FakeDeliveryHost host, IReadOnlyList<DeliverableOutcome> outcomes)
+        RunLimits limits, FakeDeliveryHost host, IReadOnlyList<DeliverableOutcome> outcomes, bool blockedEmail = true)
     {
         var recorder = new ListRecorder();
-        var result = await FakeDeliveryHost.Drive(() => new DeliveryRunner(limits, host, recorder).RunAsync(outcomes));
+        var result = await FakeDeliveryHost.Drive(() => new DeliveryRunner(limits, host, recorder).RunAsync(outcomes, blockedEmail));
         return (result, recorder);
     }
 }

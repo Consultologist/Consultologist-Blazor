@@ -196,9 +196,10 @@ public sealed partial class ScopeTree
     /// <list type="bullet">
     /// <item><c>node.&lt;id&gt;</c>, <c>check.&lt;id&gt;</c>: the visible node (<see cref="ScopeFrame.Visible"/>), a
     /// <see cref="ScopeHeadKind.Format"/> head of two with its format, or a <see cref="ScopeHeadKind.Value"/> head of three
-    /// for <c>.state</c>, a loop's <c>.items</c> and <c>.stopped</c>, a while's <c>.stopped</c>, <c>.passes</c> and
-    /// <c>.history</c> (D14); a node hidden inside a loop is S04-039; inside a function, a check or a node outside it is
-    /// S04-051; anything else is <see cref="ScopeHeadKind.Unknown"/>.</item>
+    /// for <c>.state</c>, a loop's <c>.items</c>, <c>.stopped</c> and <c>.content</c> (<c>markdown_block</c>, #1507
+    /// D23; a flow's whose <c>ret</c> chain reaches a <c>for</c> too, <see cref="RenderedContent"/>), a while's
+    /// <c>.stopped</c>, <c>.passes</c> and <c>.history</c> (D14); a node hidden inside a loop is S04-039; inside a
+    /// function, a check or a node outside it is S04-051; anything else is <see cref="ScopeHeadKind.Unknown"/>.</item>
     /// <item><c>input.&lt;id&gt;</c> and <c>run.&lt;fact&gt;</c>: as <see cref="PackageScope"/> gives them; inside a
     /// function S04-050 and S04-051.</item>
     /// <item><c>param.&lt;id&gt;</c>: a parameter of the enclosing function, a Format head of two; otherwise unknown.</item>
@@ -314,6 +315,10 @@ public sealed partial class ScopeTree
         {
             ("state", _) => Head(ScopeHeadKind.Value, key, length, Enum(States), nullable),
             ("items", SourceFor loop) => Head(ScopeHeadKind.Value, key, length, FormatTypes.ListOf(Element(loop)), nullable),
+            // #1507 (D23): a for loop's .content is the standard rendering, markdown_block whatever its items' format, and a
+            // flow whose ret chain reaches a for holds that rendering (Task 24's fix round 1)
+            ("content", _) when RenderedContent(node) is { } content =>
+                Head(ScopeHeadKind.Value, key, length, content, nullable || !AlwaysValued(node)),
             ("stopped", SourceFor) => Head(ScopeHeadKind.Value, key, length, Enum(["until", "bound", "end"]), nullable),
             ("stopped", SourceWhile) => Head(ScopeHeadKind.Value, key, length, Enum(["check", "until", "bound"]), nullable),
             ("passes", SourceWhile) => Head(ScopeHeadKind.Value, key, length, Integer(), nullable),
@@ -482,6 +487,51 @@ public sealed partial class ScopeTree
     /// <summary>What <c>.content</c> of a value of <paramref name="format"/> is (D10): a text format itself, otherwise plaintext.</summary>
     private static JsonNode ContentOf(JsonNode format, FormatSet formats) =>
         JsonValue.Create(FormatTypes.TextKind(format, formats) ?? "plaintext");
+
+    /// <summary>
+    /// #1507 (D23; part 04 § 2.5, part 05 § 5.3): what <c>.content</c> of a <c>for</c> loop is, whatever its items'
+    /// format: the standard rendering (<c>## &lt;item name&gt;</c>, the item's text, joined by blank lines) that keeps
+    /// 30's bytes, typed <c>markdown_block</c>. A <c>while</c>'s is its last pass's <c>ret</c>'s (§ 3): see
+    /// <see cref="RenderedContent"/>.
+    /// </summary>
+    private static JsonNode LoopContent() => JsonValue.Create("markdown_block");
+
+    /// <summary>
+    /// #1507 (D23; Task 24's fix round 1): what <c>.content</c> of <paramref name="node"/> is when a <c>for</c> gives its
+    /// text, else null (D10 gives it, from the node's format). A flow's <c>.content</c> is its <c>ret</c>'s (part 04 §§ 2.6,
+    /// 3, 5), so the type follows the <c>ret</c> chain: a <c>for</c> is <see cref="LoopContent"/>; a <c>while</c> is its
+    /// <c>ret</c>'s; an <c>if</c> or a <c>case</c> is the union of its branches' <c>ret</c>s' (D10's for a branch with no
+    /// <c>for</c>), so branches that differ give a union a Markdown deliverable escapes (R10). Null when no <c>ret</c> on
+    /// the chain is a <c>for</c>, and for a leaf. The chain only descends into bodies, so it ends.
+    /// </summary>
+    private JsonNode? RenderedContent(SourceNode node)
+    {
+        switch (node)
+        {
+            case SourceFor:
+                return LoopContent();
+            case SourceWhile loop:
+                return RetOf(loop.Body) is { } ret ? RenderedContent(ret) : null;
+            case SourceIf or SourceCase:
+                var rets = Blocks(node).Select(RetOf).OfType<SourceNode>().ToList();
+                var rendered = rets.Select(RenderedContent).ToList();
+                if (rendered.All(r => r is null))
+                    return null;
+                var formats = FormatsOf(FrameOf(node));
+                var members = rets
+                    .Select((ret, i) => rendered[i] ?? (FormatOf(ret) is { } format ? ContentOf(format, formats) : null))
+                    .OfType<JsonNode>()
+                    .Select(Schema)
+                    .ToList();
+                return FormatTypes.UnionOf(members, formats);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>The node <paramref name="block"/>'s <c>ret</c> names among its nodes, or null.</summary>
+    private static SourceNode? RetOf(SourceBlock block) =>
+        block.Ret is { } ret ? block.Nodes.FirstOrDefault(n => n.Key == ret) : null;
 
     private static JsonNode OrNull(JsonNode format, FormatSet formats) =>
         FormatTypes.UnionOf([Schema(format), new JsonObject { ["type"] = "null" }], formats)!;

@@ -1,0 +1,40 @@
+{
+  "kind": "case",
+  "label": "A line in the chosen tone",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "case": "input.tone.value",
+  "branches": [
+    {
+      "when": [
+        "formal"
+      ],
+      "nodes": [
+        "formal_line"
+      ],
+      "ret": "node.tone_case.formal_line"
+    },
+    {
+      "when": [
+        "plain"
+      ],
+      "nodes": [
+        "plain_line"
+      ],
+      "ret": "node.tone_case.plain_line"
+    },
+    {
+      "when": [
+        "none"
+      ],
+      "nodes": [],
+      "ret": null
+    }
+  ],
+  "else": null
+}

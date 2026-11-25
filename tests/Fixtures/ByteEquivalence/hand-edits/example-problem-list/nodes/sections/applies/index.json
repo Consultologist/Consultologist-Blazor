@@ -1,0 +1,38 @@
+{
+  "kind": "if",
+  "label": "The follow-up plan only when a reassessment is arranged",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "if": {
+    "or": [
+      {
+        "!==": [
+          {
+            "var": "item.id"
+          },
+          "follow_up_plan"
+        ]
+      },
+      {
+        "===": [
+          {
+            "var": "node.follow_up.value.value"
+          },
+          "yes"
+        ]
+      }
+    ]
+  },
+  "then": {
+    "nodes": [
+      "section_draft"
+    ],
+    "ret": "node.sections.applies.section_draft"
+  },
+  "else": null
+}

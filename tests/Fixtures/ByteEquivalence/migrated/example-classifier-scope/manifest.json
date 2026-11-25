@@ -1,0 +1,23 @@
+{
+  "name": "example-classifier-scope",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Scope classifier demo",
+  "description": [
+    "A demonstration of what specVersion 10 opened: a classifier reads the referral and answers in_scope, out_of_scope or needs_information; the package then produces a plan, a decline letter or a request for further information — one document, decided at the boundary rather than asked at intake. Not intended for clinical use."
+  ],
+  "tags": [
+    "demo",
+    "classifier"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    }
+  }
+}

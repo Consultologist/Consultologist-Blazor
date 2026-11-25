@@ -1,0 +1,35 @@
+{
+  "name": "example-prior-letters",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Prior letters demo",
+  "description": [
+    "A demonstration of a loop that stops early, which specVersion 30 opened: the prior letters are read one at a time, in the order given, and the loop stops after the first letter that answers the consult's referral question; the letters after it are kept, marked not run. An assessment then reads what the letters said. Not intended for clinical use."
+  ],
+  "tags": [
+    "demo",
+    "prior-letters"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "prior_letters": {
+      "label": "Prior letters",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": false,
+      "channel": null
+    }
+  }
+}

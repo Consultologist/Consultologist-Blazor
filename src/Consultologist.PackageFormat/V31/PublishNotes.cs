@@ -64,6 +64,19 @@ public static class PublishNotes
         return notes;
     }
 
+    /// <summary>
+    /// #1507 (area 10, Task 15; part 10 § 3.2, D14): the agent calls of <paramref name="package"/>'s worst case, as S04-080
+    /// counts them against <paramref name="limits"/> (each agent once for every run of the bodies around it, saturating).
+    /// </summary>
+    internal static long WorstCaseCalls(SourcePackage package, Resolution resolution, PublishLimits limits)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        ArgumentNullException.ThrowIfNull(resolution);
+        ArgumentNullException.ThrowIfNull(limits);
+        var walk = new Walk(resolution, limits);
+        return Add(walk.Total(package.Nodes.Nodes), walk.Total(package.Checks.Nodes));
+    }
+
     private static long Add(long a, long b) => a > long.MaxValue - b ? long.MaxValue : a + b;
 
     private static long Times(long a, long b) => a != 0 && b > long.MaxValue / a ? long.MaxValue : a * b;

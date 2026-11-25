@@ -1,0 +1,20 @@
+{
+  "description": null,
+  "items": [
+    "prepended",
+    "appended",
+    "both",
+    "gated",
+    "optional",
+    "authored",
+    "sections_note",
+    "signed_letter",
+    "review_summary",
+    "echoes",
+    "signed_only"
+  ],
+  "delivery": [
+    "pdf"
+  ],
+  "bundle": null
+}

@@ -56,6 +56,46 @@ public class FormatValuesTests
     }
 
     [Fact]
+    public void AMarkdownInlineText_HoldsNoLineEnding_AtAnyDepth()
+    {
+        // #1507, 2026-11-22 (2), 3 (R10) and D21: markdown_inline sits inside a line (part 02 § 5), so it holds no \n or \r;
+        // plain text and block Markdown may. A value wrong only in that has the fault x-markdown where it fails.
+        Assert.True(Check("\"Seen by **Dr A. Sample**.\"", "\"markdown_inline\"").Valid);
+        Assert.True(Check("\"Margaret Okafor\\nDr A. Sample\"", "\"plaintext\"").Valid);
+        Assert.True(Check("\"## Plan\\n\\nRest.\"", "\"markdown_block\"").Valid);
+
+        foreach (var broken in new[] { "\"a\\nb\"", "\"a\\r\\nb\"", "\"a\\r\"", "\"\\n\"" })
+        {
+            var at = Check(broken, "\"markdown_inline\"");
+            Assert.True(at.BreaksALine, broken);
+            Assert.Equal("|x-markdown", Faults(at));
+        }
+
+        const string nested = """
+            { "type": "object", "additionalProperties": false, "required": ["lines"],
+              "properties": { "lines": { "type": "array", "items": { "anyOf": [ { "$ref": "markdown_inline" }, { "type": "null" } ] } } } }
+            """;
+        Assert.True(Check("""{ "lines": ["*one*", null] }""", nested).Valid);
+        var deep = Check("""{ "lines": ["*one*", "two\nthree"] }""", nested);
+        Assert.True(deep.BreaksALine);
+        Assert.Equal("/lines/1|x-markdown", Faults(deep));
+
+        // A value that does not fit for another reason keeps its own fault.
+        var other = Check("""{ "lines": [5, "two\nthree"] }""", nested);
+        Assert.False(other.Valid);
+        Assert.False(other.BreaksALine);
+
+        // #1507 final review C1: a nullable type-array markdown_inline takes null (the rule holds only a string); a text
+        // holding a line ending still breaks it.
+        const string nullable = """{ "type": ["string", "null"], "contentMediaType": "text/markdown", "x-markdown": "inline" }""";
+        var none = Check("null", nullable);
+        Assert.True(none.Valid, Faults(none));
+        Assert.False(none.BreaksALine);
+        Assert.True(Check("\"*one*\"", nullable).Valid);
+        Assert.True(Check("\"two\\nthree\"", nullable).BreaksALine);
+    }
+
+    [Fact]
     public void AnEnumValue_MustBeListed_PlainOrLabelled()
     {
         const string plain = """{ "type": "string", "enum": ["mild", "severe"] }""";

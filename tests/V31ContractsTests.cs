@@ -5,6 +5,7 @@ using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.Api.Tests.V31Source;
+using Corvus.Text.Json.Validator;
 
 namespace Consultologist.Api.Tests;
 
@@ -156,6 +157,66 @@ public class V31ContractsTests
             var schema = Json(PackageFormat("v31", "schemas", name + ".schema.json"));
             Assert.Equal($"urn:consultologist:spec:31:schema:{name}", (string)schema["$id"]!);
         }
+    }
+
+    /// <summary>The pinned schema of a file kind, with the schemas it refers to.</summary>
+    internal static JsonSchema SchemaOf(string name)
+    {
+        List<AdditionalSchemaFile> files =
+        [
+            new("urn:consultologist:spec:31:schema:common", PackageFormat("v31", "schemas", "common.schema.json")),
+            new("urn:consultologist:spec:31:dialect", PackageFormat("v31", "dialect.schema.json")),
+            new($"urn:consultologist:spec:31:schema:{name}", PackageFormat("v31", "schemas", name + ".schema.json")),
+        ];
+        var options = new JsonSchema.Options(
+            additionalSchemaFiles: files,
+            allowFileSystemAndHttpResolution: false,
+            defaultDialect: Corvus.Text.Json.RuntimeEvaluator.JsonSchemaDialect.Draft202012,
+            alwaysAssertFormat: false,
+            additionalDocumentResolver: null);
+        return JsonSchema.FromText(
+            $"{{ \"$ref\": \"urn:consultologist:spec:31:schema:{name}\" }}",
+            $"urn:consultologist:spec:31:schema:{name}-instance", options, false);
+    }
+
+    private static JsonNode ExampleInstance(string schema, string file) =>
+        Json(PackageFormat("v31", "conformance", "schemas", schema, file))["instance"]!.DeepClone();
+
+    /// <summary>#1507 R3 (the owner, 2026-11-21): <c>{ "state": "skipped" }</c> alone is an expectation.</summary>
+    [Fact]
+    public void ATestExpectation_MayBeASkippedStateAlone()
+    {
+        var schema = SchemaOf("test");
+
+        var skipped = ExampleInstance("test", "valid-minimal.json");
+        skipped["expect"] = JsonNode.Parse("""{ "deliverables": { "deliverable.letter": { "state": "skipped" } } }""");
+        Assert.True(schema.Validate(skipped.ToJsonString(), null), "{ \"state\": \"skipped\" } alone is refused.");
+
+        var released = ExampleInstance("test", "valid-minimal.json");
+        released["expect"] = JsonNode.Parse("""{ "deliverables": { "deliverable.letter": { "state": "released" } } }""");
+        Assert.False(schema.Validate(released.ToJsonString(), null), "{ \"state\": \"released\" } alone is accepted.");
+    }
+
+    /// <summary>#1507 D9: the migration report lists its notices.</summary>
+    [Fact]
+    public void TheMigrationReport_ListsItsNotices()
+    {
+        var schema = SchemaOf("migration-report");
+
+        var report = ExampleInstance("migration-report", "valid-empty.json");
+        Assert.True(report.AsObject().ContainsKey("notices"), "valid-empty.json has no notices.");
+        Assert.True(schema.Validate(report.ToJsonString(), null));
+
+        report["notices"] = JsonNode.Parse("""["Renamed loop 'parts' to 'sections': 'parts' is reserved at 31."]""");
+        Assert.True(schema.Validate(report.ToJsonString(), null));
+
+        var without = report.DeepClone().AsObject();
+        without.Remove("notices");
+        Assert.False(schema.Validate(without.ToJsonString(), null), "A report without notices is accepted.");
+
+        var notStrings = report.DeepClone().AsObject();
+        notStrings["notices"] = JsonNode.Parse("[1]");
+        Assert.False(schema.Validate(notStrings.ToJsonString(), null), "A notice that is not a string is accepted.");
     }
 
     [Fact]

@@ -1,0 +1,7 @@
+{
+  "notices": [
+    "Format 'letter_check', field 'note' holds free text; consider a text format."
+  ],
+  "handEdits": [],
+  "refusals": []
+}

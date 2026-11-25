@@ -1,0 +1,18 @@
+{
+  "description": null,
+  "items": [
+    "counselling",
+    "house_style",
+    "silent_reminder",
+    "section_caveat",
+    "table_note",
+    "preamble",
+    "sign_off",
+    "wrap_up",
+    "header_line",
+    "followup_only",
+    "brief_plan",
+    "follow_up_reminder",
+    "notes"
+  ]
+}

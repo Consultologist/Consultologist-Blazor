@@ -1,7 +1,9 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Auth;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.Api.Tests.V31Templates;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
@@ -12,7 +14,8 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// #1503 (specVersion 31, area 06; part 09 §§ 1.2 step 6, 5.3, 7.2; part 02 § 8; part 06 § 10.4; R1, R4, R5; D6): what a 31
 /// job's start checks, as the Create page will: the inputs against the plan (required, blank, formats, numeric enums, empty
 /// lists), the profile fields <c>needs.profile</c> lists and the account's time zone, and the run facts that follow from the
-/// start. Content is fictional (Margaret Okafor, Dr A. Sample).
+/// start; and (#1507, R7) a <c>MacroChoices</c> entry, keyed by a macro, set as the boolean input that macro's <c>if</c> reads.
+/// Content is fictional (Margaret Okafor, Dr A. Sample).
 /// </summary>
 public class V31StartChecksTests
 {
@@ -20,7 +23,7 @@ public class V31StartChecksTests
 
     private static readonly IReadOnlyDictionary<string, string?> NoProfile = new Dictionary<string, string?>(StringComparer.Ordinal);
 
-    private const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
+    internal const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
 
     [Fact]
     public void AMissingRequiredInput_IsRefused()
@@ -144,6 +147,32 @@ public class V31StartChecksTests
             ["Input 'sections' was given a value that isn't its format.", "Input 'include_billing' was given a value that isn't boolean."],
             refusals.Select(r => r.Sentence));
         Assert.All(refusals, V31Contract.AssertSentence);
+    }
+
+    [Theory]
+    [InlineData("Seen by **Dr A. Sample** in clinic.", null)]
+    [InlineData("Seen by **Dr A. Sample**\nin clinic.", "Input 'headline' was given a value that isn't its format: markdown_inline text sits inside a line and holds no line ending.")]
+    [InlineData("Seen by **Dr A. Sample**\r\n", "Input 'headline' was given a value that isn't its format: markdown_inline text sits inside a line and holds no line ending.")]
+    public void AMarkdownInlineValue_IsOneLine(string line, string? sentence)
+    {
+        // #1507, 2026-11-22 (2), 3 (R10) and D21: a markdown_inline value holds no line ending (part 02 § 5), at any depth
+        // of an input's value; one that holds one does not fit its format and refuses the start with A10-052.
+        var supplied = Valid();
+        supplied["headline"] = new JsonObject { ["line"] = line };
+
+        var (inputs, refusals) = V31StartChecks.Inputs(Plan(headline: true), supplied, new JsonObject(), NoProfile);
+
+        if (sentence is null)
+        {
+            Assert.Empty(refusals);
+            Assert.Equal(line, (string?)inputs!.Inputs["headline"]!["value"]!["line"]);
+            return;
+        }
+
+        Assert.Null(inputs);
+        var refusal = Assert.Single(refusals);
+        Assert.Equal(("A10-052", sentence), (refusal.Id, refusal.Sentence));
+        V31Contract.AssertSentence(refusal);
     }
 
     [Fact]
@@ -376,7 +405,7 @@ public class V31StartChecksTests
         fields.ToDictionary(f => f.Field, f => f.Value, StringComparer.Ordinal);
 
     /// <summary>Every required input supplied, valid; every optional one left out.</summary>
-    private static Dictionary<string, JsonNode?> Valid() => new(StringComparer.Ordinal)
+    internal static Dictionary<string, JsonNode?> Valid() => new(StringComparer.Ordinal)
     {
         ["consult_draft"] = Draft,
         ["sections"] = JsonNode.Parse("""[{"title":"History","kind":"narrative"}]"""),
@@ -388,7 +417,7 @@ public class V31StartChecksTests
     /// <c>string</c>), <c>dose</c> (an optional enum of numbers, R4) and <c>kind</c> (an optional labelled choice), and with
     /// <paramref name="needs"/> as its <c>needs.profile</c> and <paramref name="facts"/> as its <c>run</c>.
     /// </summary>
-    private static RunPlan Plan(string[]? needs = null, string[]? facts = null, string? deliverableIf = null)
+    internal static RunPlan Plan(string[]? needs = null, string[]? facts = null, string? deliverableIf = null, bool headline = false)
     {
         var pair = CompiledGoldenTests.Published(CompiledGoldenTests.Cases().Single(c => c.Name == "conditional"));
         var document = JsonNode.Parse(pair.Resolve)!.AsObject();
@@ -403,6 +432,18 @@ public class V31StartChecksTests
             """{ "type": "string", "oneOf": [ { "const": "new", "title": "New patient" }, { "const": "follow_up", "title": "Follow-up" } ] }""",
             required: false);
         document["inputOrder"] = new JsonArray("consult_draft", "sections", "include_billing", "notes", "code", "dose", "kind");
+        if (headline)
+        {
+            // R10, D21: an object input with a markdown_inline field (an input is never markdown_inline itself, S02-040).
+            document["formats"]!["$defs"]!["markdown_inline"] = JsonNode.Parse(
+                """{ "$id": "urn:consultologist:spec:31:format:markdown_inline", "$schema": "urn:consultologist:spec:31:dialect", "type": "string", "contentMediaType": "text/markdown", "x-markdown": "inline" }""");
+            inputs["headline"] = Input(
+                "Headline",
+                """{ "type": "object", "properties": { "line": { "$ref": "#/$defs/markdown_inline", "title": "Line" } }, "required": ["line"], "additionalProperties": false }""",
+                required: false);
+            document["inputOrder"]!.AsArray().Add("headline");
+        }
+
         document["needs"] = new JsonObject { ["profile"] = new JsonArray((needs ?? []).Select(n => (JsonNode?)n).ToArray()) };
         document["run"] = new JsonArray((facts ?? []).Select(f => (JsonNode?)f).ToArray());
         if (deliverableIf != null)
@@ -416,6 +457,106 @@ public class V31StartChecksTests
         var (plan, refusal) = RunPlan.Build(text, CanonicalJson.HashText(text), pair.LockHash, null);
         Assert.True(plan != null, refusal?.Sentence);
         return plan!;
+    }
+
+    // ---- MacroChoices (#1507, ruled by the owner on #1507, 2026-11-22, 3; part 10 § 1.3; R7) ---------------------
+
+    /// <summary>
+    /// A 31 package holding what the migration wrote for <c>example-macros</c> with an input <c>letrozole</c> and the
+    /// optional macro <c>letrozole</c> (<see cref="V31Migration.MigrateMacrosTests.WithLetrozole"/>): the inputs
+    /// <c>letrozole</c> and <c>letrozole_macro</c>, the macro file whose <c>if</c> reads <c>letrozole_macro</c>, and an agent
+    /// placing it; with <paramref name="more"/> macros besides, each <c>(id, its if)</c>.
+    /// </summary>
+    internal static RunPlan Migrated(params (string Id, string If)[] more)
+    {
+        var migrated = V31Migration.MigrateMacrosTests.WithLetrozole();
+        var inputs = JsonNode.Parse(migrated.ManifestJson)!["inputs"]!;
+        var files = V31Templates.TemplateFixture.Package()
+            .WithJson("manifest.json", m =>
+            {
+                foreach (var id in new[] { "letrozole", "letrozole_macro", "include_counselling" })
+                    m["inputs"]![id] = inputs[id]!.DeepClone();
+            })
+            .Listed("macros/index.json", "letrozole")
+            .With("macros/letrozole.md", migrated.Files["macros/letrozole.md"]);
+        // The agent takes the migrated macro's format (markdown_block: summary is prose a deliverable composes, R9), and so do the others.
+        var format = V31Migration.MigrateMacrosTests.FormatOf(migrated.Files["macros/letrozole.md"]);
+        var placements = "{{ macro.letrozole }}\n";
+        foreach (var (id, condition) in more)
+        {
+            files.Listed("macros/index.json", id).With($"macros/{id}.md", SourceFixture.Md(
+                $"{{ \"label\": \"Macro {id}\", \"description\": null, \"if\": {condition}, \"format\": {format}, "
+                + $"\"instruction\": [\"Place {{{{ macro.{id}.content }}}} at the end of the plan.\"] }}",
+                "Reviewed with Margaret Okafor.\n"));
+            placements += $"{{{{ macro.{id} }}}}\n";
+        }
+
+        return RunFixture.Plan(V31Templates.TemplateFixture.WithAgent(files, "draft", "Draft the plan for Margaret Okafor.\n" + placements, format));
+    }
+
+    private static readonly IReadOnlyDictionary<string, JsonNode?> NothingSent = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AChoiceKeyedByTheMacro_SetsTheInputItsIfReads(bool choice)
+    {
+        var plan = Migrated();
+        Assert.Equal("""{"===":[{"var":"input.letrozole_macro.value"},true]}""", plan.Document["macros"]!["macro.letrozole"]!["if"]!.ToJsonString());
+
+        var (supplied, refusals) = V31StartChecks.Choices(plan, NothingSent, new Dictionary<string, bool> { ["letrozole"] = choice });
+
+        Assert.Empty(refusals);
+        Assert.Equal(choice, (bool?)supplied["letrozole_macro"]);
+        Assert.False(supplied.ContainsKey("letrozole")); // the input of the macro's id is left alone
+
+        // Sent in Inputs too: the same value is accepted; another is A07-016, naming the input the entry sets.
+        var same = new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["letrozole_macro"] = choice };
+        Assert.Empty(V31StartChecks.Choices(plan, same, new Dictionary<string, bool> { ["letrozole"] = choice }).Refusals);
+        var other = new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["letrozole_macro"] = !choice };
+        var refusal = Assert.Single(V31StartChecks.Choices(plan, other, new Dictionary<string, bool> { ["letrozole"] = choice }).Refusals);
+        Assert.Equal(("A07-016", "Input 'letrozole_macro' is given one value in Inputs and another in MacroChoices; send it once."), (refusal.Id, refusal.Sentence));
+        V31Contract.AssertSentence(refusal);
+
+        // The merged inputs start the run with the input the macro reads.
+        var (inputs, inputRefusals) = V31StartChecks.Inputs(
+            plan, new Dictionary<string, JsonNode?>(supplied, StringComparer.Ordinal) { ["consult_draft"] = Draft }, new JsonObject(), NoProfile);
+        Assert.Empty(inputRefusals);
+        Assert.Equal(choice, (bool?)inputs!.Inputs["letrozole_macro"]!["value"]);
+        Assert.False(inputs.Inputs.ContainsKey("letrozole"));
+    }
+
+    [Theory]
+    [InlineData("null")]                                                                                                     // no if
+    [InlineData("""{ "!==": [{ "var": "input.consult_draft.content" }, null] }""")]                                         // a text input, no boolean
+    [InlineData("""{ "and": [{ "===": [{ "var": "input.letrozole.value" }, true] }, { "===": [{ "var": "input.include_counselling.value" }, true] }] }""")] // two
+    public void AChoiceForAMacroWhoseIfReadsNoOrTwoBooleanInputs_IsRefused(string condition)
+    {
+        var plan = Migrated(("tamoxifen", condition));
+
+        var (supplied, refusals) = V31StartChecks.Choices(plan, NothingSent, new Dictionary<string, bool> { ["tamoxifen"] = true });
+
+        var refusal = Assert.Single(refusals);
+        Assert.Equal(
+            ("A10-044", "MacroChoices names macro 'tamoxifen', whose if does not read exactly one boolean input; send the input in Inputs instead."),
+            (refusal.Id, refusal.Sentence));
+        V31Contract.AssertSentence(refusal);
+        Assert.Empty(supplied);
+    }
+
+    [Theory]
+    [InlineData("anastrozole")]       // no macro, no input
+    [InlineData("letrozole_macro")]   // a boolean input, but no macro
+    public void AChoiceNamingNoMacro_IsRefused(string id)
+    {
+        var plan = Migrated();
+
+        var (supplied, refusals) = V31StartChecks.Choices(plan, NothingSent, new Dictionary<string, bool> { [id] = true });
+
+        var refusal = Assert.Single(refusals);
+        Assert.Equal(("A10-043", $"MacroChoices names '{id}', which is not a macro of the package."), (refusal.Id, refusal.Sentence));
+        V31Contract.AssertSentence(refusal);
+        Assert.Empty(supplied);
     }
 
     private static JsonObject Input(string label, string format, bool required) => new()

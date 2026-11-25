@@ -1,0 +1,42 @@
+{
+  "description": [
+    "The migration's snapshot (chapter 10 § 10.12): the migrated package run offline on fictional inputs and generated replies,",
+    "its prompts and deliverables pinned by hash."
+  ],
+  "inputs": {
+    "consult_draft": "Stub reply for input.consult_draft (2796a5cc).",
+    "prior_letters": [
+      "stub 22bffa9f",
+      "stub c5521941"
+    ]
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.assessment": "Stub reply for node.assessment (5a8ea4bd).",
+    "node.letters.letter_summary:1": "Stub reply for node.letters.letter_summary:1 (d5963b14).",
+    "node.letters.read_letter:1": {
+      "answers_question": true,
+      "note": "stub e5740129"
+    }
+  },
+  "expect": {
+    "prompts": {
+      "node.letters.read_letter:1": {
+        "hash": "sha256:ce3bd76c7799d1a01fb6cb0c0cd807bf03880c9032ee3178c0707cf169126019"
+      },
+      "node.letters.letter_summary:1": {
+        "hash": "sha256:0866958f3531ebf50823d28e06cc80fd65168d13f4109131e572d3d59bfc2b15"
+      },
+      "node.assessment": {
+        "hash": "sha256:2c7e36a371fb12ed0b25c4949aff7d380d3265c20749323060d4b204c4fa861e"
+      }
+    },
+    "deliverables": {
+      "deliverable.note": {
+        "state": "released",
+        "hash": "sha256:3d50f87b12149ff147cdbceaa1a0f2eb1b14a6af22064163b1205682a17c81b1"
+      }
+    }
+  }
+}

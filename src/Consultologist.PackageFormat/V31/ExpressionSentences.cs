@@ -303,8 +303,11 @@ internal static class ExpressionSentences
         return pointer.ToString();
     }
 
-    /// <summary>How many container levels <paramref name="node"/> holds, itself included, counted no further than one past <see cref="SourceBounds.JsonDepth"/>.</summary>
-    private static int Depth(JsonNode? node, int bound = SourceBounds.JsonDepth + 1)
+    /// <summary>
+    /// How many container levels <paramref name="node"/> holds, itself included, counted no further than one past
+    /// <see cref="SourceBounds.JsonDepth"/>. #1507 (area 10): the converter measures its written rule with it.
+    /// </summary>
+    internal static int Depth(JsonNode? node, int bound = SourceBounds.JsonDepth + 1)
     {
         if (bound <= 0 || node is not JsonObject and not JsonArray)
             return 0;

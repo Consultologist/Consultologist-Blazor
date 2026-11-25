@@ -118,8 +118,9 @@ public sealed partial class ScopeTree
     /// <summary>
     /// The element of <paramref name="loop"/>'s <c>.items</c> (part 04 § 2.6; D14), an inline object schema:
     /// <c>item</c> (its <c>id</c>, and its <c>value</c> when the source is typed), <c>label</c>, <c>state</c>,
-    /// <c>reason</c>, <c>value</c> and <c>content</c> (of the loop's element, nullable), and <c>nodes</c>, each body
-    /// node's <c>value</c>, <c>content</c> (nullable) and <c>state</c>.
+    /// <c>reason</c>, <c>value</c> and <c>content</c> (of the loop's element, nullable; its <c>ret</c>'s
+    /// <see cref="RenderedContent"/> when a <c>for</c> gives it, #1507 D23), and <c>nodes</c>, each body node's
+    /// <c>value</c>, <c>content</c> (nullable; <see cref="RenderedContent"/> likewise) and <c>state</c>.
     /// </summary>
     private JsonObject Element(SourceFor loop)
     {
@@ -138,7 +139,7 @@ public sealed partial class ScopeTree
         if (FormatOf(loop) is { } declared && ExpressionChecker.ItemsOf(declared, formats) is { } value)
         {
             properties["value"] = OrNull(value, formats);
-            properties["content"] = OrNull(ContentOf(value, formats), formats);
+            properties["content"] = OrNull((RetOf(loop.Body) is { } ret ? RenderedContent(ret) : null) ?? ContentOf(value, formats), formats);
         }
 
         var nodes = new JsonObject();
@@ -148,7 +149,7 @@ public sealed partial class ScopeTree
             if (FormatOf(node) is { } format)
             {
                 outputs["value"] = OrNull(format, formats);
-                outputs["content"] = OrNull(ContentOf(format, formats), formats);
+                outputs["content"] = OrNull(RenderedContent(node) ?? ContentOf(format, formats), formats);
             }
 
             outputs["state"] = Enum(States);

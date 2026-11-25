@@ -1,0 +1,14 @@
+{
+  "description": null,
+  "items": [
+    "note",
+    "senior_review",
+    "long_stay_summary",
+    "notes_digest",
+    "notes_index"
+  ],
+  "delivery": [
+    "pdf"
+  ],
+  "bundle": null
+}

@@ -8,7 +8,10 @@ engine runs (`RunPlan`, `PlanRunner`, the seams) is described in
 the template language the activities run, the 31 agents catalogue and `MacroChoices` at a 31 start; the library's
 side is "specVersion 31: templates" in the same guide. Area 08 (#1505) added what a job does after its run: the
 deliverables' outcomes, delivery, the operator's alerts and the engine-fault log; the library's side is
-"specVersion 31: checks, deliverables and delivery" in the same guide.*
+"specVersion 31: checks, deliverables and delivery" in the same guide. Area 10 (#1507) migrates 30 packages to 31 in the
+library ("specVersion 31: migration" in the same guide); by the owner's rulings it also changed what the engine does at
+a 31 start (`MacroChoices` keyed by a macro's id), in delivery (`pdf` falls back to the link-only email) and in the
+weekly summary (the hand-edits line).*
 
 This page is for whoever deploys and operates the engine. It covers:
 
@@ -133,7 +136,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    the chosen one, else `"default"`. Both are `null` when the package reads no signature. A 5–30 start ignores
    the member.
 4. **The checks.** `V31StartChecks.Account` gives S06-031 and S06-032 for the profile, then S06-008 for a zone
-   that is blank or not an IANA zone the machine knows. `V31StartChecks.Inputs` gives the input refusals:
+   that is blank or not an IANA zone the machine knows. `V31StartChecks.Inputs` gives the input refusals (since #1507
+   it calls the library's `RunInputsBuilder.Build`, which the offline run of a migrated package starts with too):
    - **A06-011** *"Input '<id>' is required; fill it in to run this workflow."* for a required input that is
      absent, `null` or blank, whatever its format (R5);
    - **A06-012** *"Input '<id>' was given a value that isn't <format>."* (numeric enums included, R4);
@@ -147,8 +151,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    no deliverable can exist (R8, #1505). That is when the package has deliverables and every one has an `if`, each
    `if` reads only `input.*` and the run facts the start knows (`run.id`, `run.engine` and `run.package`), and each
    is false or `null` on the start's inputs. An `if` that reads anything else, or that fails, is left to the run.
-   `V31StartChecks.NoDeliverableCanExist` decides it, a rule that holds `matches` inline, since no replay exists at
-   a start. The detail names each deliverable by label with its printed `if` (S03-001), and nothing it read.
+   `V31StartChecks.NoDeliverableCanExist` decides it (through `RunInputsBuilder.NoDeliverableCanExist`, since #1507),
+   a rule that holds `matches` inline, since no replay exists at a start. The detail names each deliverable by label with its printed `if` (S03-001), and nothing it read.
 5. **The held inputs.** The inputs document
    (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`) is written where the
    job's held inputs live: `org-job-inputs` or `personal-job-inputs`, `{appUserId}/{jobId}.json`. The retention
@@ -161,14 +165,19 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
 
 A 31 start failure's History line is "Not started".
 
-**Macro choices.** A per-run choice is an optional boolean input that takes the macro's id (part 05 § 8.2), so a
-31 start reads each `MacroChoices` entry `<id>: <bool>` as the value of the package's boolean input `<id>`, exactly
-as if the request had sent that input (#1504, ruled by the owner). An id that is no boolean input of the package is
-refused, *"MacroChoices names '<id>', which is not a boolean input of the package."* (A07-015). A07-015 quotes the
-caller's id, so the email sender is not told it, as with A06-013. An input sent both ways with different values is
+**Macro choices.** A per-run choice is an optional boolean input that the macro's `if` reads (part 05 § 8.2), so a
+31 start reads each `MacroChoices` entry `<id>: <bool>`, keyed by a macro's id as at 30, as the value of the one boolean
+input that macro's `if` reads, exactly as if the request had sent that input (#1507, ruled by the owner 2026-11-22; part
+10 § 1.3). The input may have another id: a migrated `letrozole` whose id an input already had reads
+`letrozole_macro`, which the entry sets, leaving the input `letrozole` alone. An id that names no macro of the package is
+refused, *"MacroChoices names '<id>', which is not a macro of the package."* (A10-043), which quotes the caller's id, so
+the email sender is not told it, as with A06-013. A macro whose `if` reads no boolean input, or more than one, is
+refused, *"MacroChoices names macro '<id>', whose if does not read exactly one boolean input; send the input in Inputs
+instead."* (A10-044). An input sent both ways with different values is
 refused, *"Input '<id>' is given one value in Inputs and another in MacroChoices; send it once."* (A07-016); the same
-value sent both ways is accepted, and an input sent as `null` counts as not sent. `V31StartChecks.Choices` does this; its
-refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
+value sent both ways is accepted, and an input sent as `null` counts as not sent. `V31StartChecks.Choices` does this,
+through the library's `RunInputsBuilder.Choices`, which the byte-equivalence comparison reads a 30 scenario's choices
+with; its refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
 
 **Not read at 31 yet.** A 31 start reads typed inputs, documents and macro choices only. These request members are
 not read, so an input sent only through one of them reads as missing (A06-011):
@@ -328,8 +337,10 @@ and hashes of the two texts. #1506: both activities write the text only they hol
 ## Delivery
 
 *Part 06 § 8 and part 09 § 3.8, with #1505's decisions D10 to D13.* A job whose run completed delivers its
-**released** deliverables to the destinations their folders list in `delivery`. A job with nothing to send (every
-deliverable held, skipped, blocked, or delivered nowhere) never enters delivery. A job that failed delivers nothing,
+**released** deliverables to the destinations their folders list in `delivery`. A job that released nothing, with a
+deliverable blocked or held that a mail kind (`email`, `pdf`) delivers, still sends the link-only email, as 30's reply
+did (#1507 D19, ruled by the owner, below). A job with nothing to send (every deliverable skipped, or delivered nowhere,
+or blocked or held with no mail kind) never enters delivery. A job that failed delivers nothing,
 and records each destination of each released deliverable *not sent: the job failed* (S06-038).
 
 **The `delivering` status.** `ConsultGenerationJobStatuses.Delivering` (`"delivering"`) is set from `running` only,
@@ -362,17 +373,39 @@ already has:
 
 | Kind | Set up when | What it sends |
 |---|---|---|
-| `email` | the mailbox is configured (`EmailIntake__MailboxAddress` and `EmailIntake__AppBaseUrl`), the account has `delivery.address`, and `delivery.emailPdf` is not `false` | today's link-only message (the 5–30 reply's `EmailIntakeReply.Compose`: boilerplate and the History link), nothing attached. A bundle's one message names each document by label |
-| `pdf` | `email` is set up and the account has a `delivery.documentPassword` | the same message with the deliverable as a password-protected PDF (`ConsultDocumentPdf`). A bundle's is one `.zip` holding each PDF. Attachments past the 5–30 reply's budget (2 MiB) fail the attempt `too-large` |
+| `email` | the mailbox is configured (`EmailIntake__MailboxAddress` and `EmailIntake__AppBaseUrl`), the job's start had a delivery address, and `delivery.emailPdf` was not `false` at the start | today's link-only message (the 5–30 reply's `EmailIntakeReply.Compose`: boilerplate and the History link), nothing attached. A bundle's one message names each document by label |
+| `pdf` | `email` is set up | the same message with the deliverable as a password-protected PDF (`ConsultDocumentPdf`). A bundle's is one `.zip` holding each PDF. With no `delivery.documentPassword`, or attachments past the 5–30 reply's budget (2 MiB), the 5–30 reply's link-only message for that case instead, nothing attached: `sent`, its attempt `sent link-only` (#1507 R8, D17) |
 | `emr` | **never, in this build** | nothing: no write-back exists |
 | `zip` | **never, in this build** | nothing: no protected archive exists |
 
 **`emr` and `zip` have no channel yet.** No account can set them up, so each destination is recorded *not sent: EMR
 isn't set up for this account* or *…Zip…* (S08-006), final at once and never retried. The mapping's home in the
-account is still to design (#1505 D10, flagged for the owner; #1408 item 9). A folder asking `["email", "pdf"]` for
-an account with an address and no document password gets one row `sent` and one `not sent`, and nothing is retried
-for the second. The settings are read at the attempt, inside the activity, so a replay reads the stored outcome and a
-retry can see a setting changed between attempts.
+account is still to design (#1505 D10, flagged for the owner; #1408 item 9). A folder asking `["email", "emr"]` for
+an account with an address gets one row `sent` and one `not sent`, and nothing is retried for the second. A folder
+asking `["email", "pdf"]` for an account with an address and no document password gets two rows `sent`: the `email`
+one as asked, the `pdf` one the link-only email, its attempt `sent link-only` and its reason `no document password`
+(#1507 R8).
+
+**The settings are read at the start (#1507 R8, D18).** As a 5–30 job does (#518: *"a choice changed mid-run does not
+change what was promised"*), the delivery address and `delivery.emailPdf` are read once, when the job starts: the
+starter carries its origin's `ReplyToAddress` (the account's verified delivery address, or the email door's sender) and
+`EmailRequested` in the orchestration's input (`ConsultGenerationOrchestrationInputV31.Delivery`, a
+`V31DeliverySettings`), and every attempt, retries included, uses them (`DeliverV31Input.Delivery`). The document
+password is read at the attempt, inside the activity, as the 5–30 reply reads it at reply time, so no secret enters the
+orchestration's history. An orchestration started before this build has no `Delivery` (the member is optional), and
+its channels read the address and `delivery.emailPdf` at the attempt, as area 08's build did.
+
+**Every deliverable blocked (#1507 D19, ruled by the owner on #1507, 2026-11-22T21:38Z).** A job that completes having
+released nothing, with a deliverable blocked or held that a mail kind (`email`, `pdf`) delivers, enters `delivering`
+and sends 30's link-only message once for the job (`DeliveryPlan.Sends`, `DeliverySend.EveryDeliverableBlocked`; by
+the `email` channel when one of them lists `email`, else by `pdf`): the completed reply
+with *"No document could be sent: <labels> <was | were> not released."* (A10-057) after its opening, the History link,
+nothing attached and no password needed. Its send carries each document's label and no text. Each `email` or `pdf`
+destination each of them lists gets a row from that one send (a `failed` or `not sent` one naming its own kind):
+`sent`, its attempt `sent link-only`, its reason `every deliverable blocked`; the deliverable's own `delivery` stays
+`[]`, and the canonical record gathers the row under it. Only an orchestration this build started sends it: one
+started before (no `Delivery` in its input) replays the calls it made then, and never entered `delivering` for such a
+job (`DeliveryRunner.RunAsync(outcomes, blockedEmail)`).
 
 **Bundles (#1505 D11).** A folder with `bundle: "zip"` makes one send per kind for all its released deliverables, in
 plan order, and each deliverable still gets its own delivery row with the send's result. A folder with nothing
@@ -380,8 +413,10 @@ released sends nothing.
 
 **The rows (#1505 D13).** A delivery row's key is `delivery:<deliverable key>/<kind>`. Its `reason` is S08-006's
 sentence for a kind not set up, `not sent: the job failed` for a failed job, `failed: <kind>` after the attempts or
-the window, and `null` when sent. A row records each attempt with its start time and `sent` or
-`failed: <error kind>`, where the error kind is `unreachable`, `error`, `too-large` or `window`. `StoredRunRecorder`
+the window, why a `sent` row went as the link-only email (#1507 D17, D19: `no document password`, `attachments over
+the budget`, `every deliverable blocked`, A10-054 to A10-056), and `null` for any other `sent`. A row records each
+attempt with its start time and `sent`, `sent link-only` or `failed: <error kind>`, where the error kind is
+`unreachable`, `error` or `window` (`too-large` is no longer given: a set over the budget is sent link-only). `StoredRunRecorder`
 counts the rows on the entity as `delivery:sent`, `delivery:not sent` and `delivery:failed`, apart from the run's row
 states, so a failed delivery is never counted as a failed run row, and stores them with the record's rows.
 
@@ -517,9 +552,24 @@ NCRONTAB value, for example `0 0 7 * * 1`. **Unset, the function is disabled** a
 text retention timer is. It reads nothing unless the engine runs 31 (`WorkflowPackages__PreviewSpecVersions`
 admits it), even with the schedule set. It lists every account's jobs from the job index that ended in the 7 days
 before the run, at every version, and mails `Jobs`, `Failures`, the p50 and p90 of the durations (nearest rank) and
-two lines areas 09 and 10 fill: `Largest record` and `Outstanding migration hand edits` read *not measured in this
-build* (the record's size per job is logged when it is sealed, below, for the gate to read; the summary does not
-read it yet). With no alert address it is only logged, as counts.
+two lines areas 09 and 10 fill. `Largest record` reads *not measured in this build* (area 11's, #1508; the record's
+size per job is logged when it is sealed, below, for the gate to read; the summary does not read it yet). With no
+alert address it is only logged, as counts.
+
+**The migration line** (#1507, R11, D22; `OutstandingHandEdits`) is computed by the summary itself, in its timer
+function, never in an orchestration. Each account's active package is the one a consult would run (the pin
+resolver, as the pin health report reads it). Each distinct package is read once as stored
+(`IWorkflowPackageSources.ReadSourceAsync`: the stored `manifest.json` text and, below 31, the files the load gathers),
+and a package below 31 is migrated in memory by `WorkflowPackageMigration30To31.Migrate` against the bundled 31 type
+registry (`PublishedTypeRegistry`, read on first use from `package-format/v31/` and `agents/v31/` in the app's
+output), nothing written. The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
+migrate`: `<n>` the hand-edit notices summed, `<p>` the packages with at least one, `<q>` the packages the migration
+refused or failed on. A package at 31 is not counted. A pin or a package that cannot be read fails alone (a stale
+pin is a normal state): the rest are counted on that line, and A10-059 follows it, `Outstanding migration hand edits:
+<k> of the accounts' active packages could not be read and are not counted.`; when none could be read, A10-059
+stands alone, never a line of zeros. When the registry cannot be read while a package is below 31, A10-058 stands
+alone: `Outstanding migration hand edits: not counted; the type registry could not be read.` The summary still goes
+out, and the lines and the log carry counts only, none for what was not read.
 
 ## The engine-fault log (A08-006)
 

@@ -137,6 +137,108 @@ internal static class V31Contract
         ["A09-002"] = "The job's record of '<row key>' is larger than this engine stores. Tell the operator.",
     };
 
+    /// <summary>
+    /// #1507: area 10's own sentences (<c>A10-NNN</c>), as plan area-10-migration lists them, each added by the task that
+    /// first says it (A10-008: a <c>!x</c> on text that became <c>blank(x)</c>, part 10 § 2.3, R1; A10-012, A10-015,
+    /// A10-016, A10-017 and A10-018: the migration's gates and the chain's rung refusals, part 10 § 1.1, § 1.4, D2; A10-019 and
+    /// A10-020: a 30 file or package that does not read; A10-021: a package format's free-text field, part 02 § 11; A10-022
+    /// to A10-025: the reasons of the first pass's hand edits, part 10 § 1.4; A10-026: a lone carriage return made a line end,
+    /// part 01 § 2.4; A10-013 and A10-027 to A10-032: the nodes pass's notices and reasons, part 10 § 1.2, D16, the Task 4
+    /// ruling on size, part 04 § 5.2, part 02 § 3.3; A10-006, A10-033 and A10-034: the renames pass, part 10 § 1.9, part 01 §§ 6 and 7, D6;
+    /// A10-001, A10-005 and A10-035 to A10-039: the templates pass's reasons, part 10 § 1.2, § 1.4, part 05 §§ 2, 3.1, 7, R6;
+    /// A10-003, A10-004, A10-007, A10-040 to A10-042 and A10-045: the macros pass, part 10 §§ 1.3, 1.4, part 05 § 8, D3 to D5;
+    /// A10-043 and A10-044: a MacroChoices entry the 31 start refuses, part 10 § 1.3, R7; A10-002, A10-047 and A10-048: a deliverable
+    /// macro with a condition, one naming no single macro, a snippet copy's id, the deliverables pass, part 10 § 1.4, D3, D4;
+    /// A10-046: a check inside a node flow, the checks pass, part 06 §§ 1, 3; A10-010: a 30 reproducible claim the derived-flags
+    /// pass did not write, part 02 § 11; A10-049: flags derived without a hand-edited body, D15; A10-050: a trim compared with
+    /// "" that became blank and answers otherwise for a null text, part 05 § 7, an unruled difference listed for the owner; A10-051: a macro placed in a snippet folder's item, part 05 § 6.2, A07-012; A10-052: a markdown_inline value, a reply or
+    /// an input's, that holds a line ending, part 02 § 5, R10, D21; A10-053: a composed if or case whose branches mix
+    /// Markdown and plain text, R9, D20; A10-054 to A10-056: why a delivery went as the link-only email, the delivery row's
+    /// reason, part 06 § 8, R8, D17, D19; A10-057: the link-only email's line when every deliverable is blocked, D19; A10-058:
+    /// the weekly summary's hand-edits line when its figures could not be read, part 09 § 3.9, R11, D22; A10-059: the line
+    /// after it counting the accounts' active packages that could not be read, R11, D22, Task 23 fix round 1; A10-011, A10-060
+    /// and A10-061: why a migrated package carries no snapshot test, part 10 § 4, part 07 § 8.4, D13, Task 14; A10-014: the
+    /// migration report's worst-case note, part 10 § 3.2, D14; A10-062: the offline run's start refused because no
+    /// deliverable can exist, in the 30 and 31 starts' words, R8; A10-063: the report's notice that each deliverable is
+    /// delivered in a message of its own, R8, Task 15; A10-064: a classifier's with values, written at the end of its
+    /// prompt, D16, Task 15 fix round 1; A10-065: a package format named like a 31 built-in or catalogue format, renamed,
+    /// S01-034, D34; A10-066: a checkFirst while whose check reads its own body, a hand edit, A06-002, D34; A10-067: a
+    /// migrated macro choice whose if reads another boolean input, refused in MacroChoices at a 31 start, R7, D34; A10-068:
+    /// white-space marks rewritten as 31 has them, part 05 § 2.6, D34; A10-069: a
+    /// snippet folder's chosen item format that cannot be used, A10-033's sibling, D34).
+    /// </summary>
+    private static readonly Dictionary<string, string> MigrationAreaSentences = new()
+    {
+        ["A10-001"] = "the body's if at line <n> does more than choose text to show; write it as parts with their own if.",
+        ["A10-002"] = "macro '<id>' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+        ["A10-003"] = "macro '<id>' was placed <before | after | before and after> the reply by the engine; say in its instruction where the model writes its marker.",
+        ["A10-004"] = "macro '<id>' is read both as fixed text and as an instruction; split it into a snippet and a macro.",
+        ["A10-005"] = "the template uses <construct> at line <n>, which the 31 dialect doesn't have; rewrite it.",
+        ["A10-006"] = "Renamed <kind> '<id>' to '<new id>': '<id>' is reserved at 31.",
+        ["A10-007"] = "Macro '<id>' is now offered by the input '<input id>'.",
+        ["A10-008"] = "<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.",
+        ["A10-010"] = "Node '<id>' declared reproducible <true | false> at 30; <true | false> is written, as its reads give it.",
+        ["A10-011"] = "No snapshot test was written: hand edits remain.",
+        ["A10-012"] = "The package is at specVersion <n>; migration starts at 5.",
+        ["A10-013"] = "Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.",
+        ["A10-014"] = "<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes.",
+        ["A10-015"] = "The package is already at specVersion <n>.",
+        ["A10-016"] = "The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.",
+        ["A10-017"] = "At specVersion <n>: <refusal>",
+        ["A10-018"] = "At specVersion <n>: the rung could not read this package; fix the manifest, then migrate.",
+        ["A10-019"] = "The file '<file>' does not read: <fault>; fix it, then migrate.",
+        ["A10-020"] = "The package does not read at specVersion 30; fix it, then migrate.",
+        ["A10-021"] = "Format '<id>', field '<field>' holds free text; consider a text format.",
+        ["A10-022"] = "a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.",
+        ["A10-023"] = "the input takes one of several types, which a 31 input cannot; choose one format.",
+        ["A10-024"] = "the field takes one of several types, which 31 writes as an anyOf; choose one.",
+        ["A10-025"] = "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.",
+        ["A10-026"] = "<file>: a carriage return that didn't end a line became a line end.",
+        ["A10-027"] = "<file>, <member>: size(<list>) is null when <list> is null, where 30 counted 0.",
+        ["A10-028"] = "the case switches on <subject>, whose values 31 cannot list; switch on an enumerated string.",
+        ["A10-029"] = "<subject> can be null, which a 31 case sends to its else; add an else body.",
+        ["A10-030"] = "Node '<id>' declared <member> at 30, which 31 has no member for; it was dropped.",
+        ["A10-031"] = "a package format's root is an object or a list at 31; make it one, or use a registry format.",
+        ["A10-032"] = "the case switches on classifier '<id>', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.",
+        ["A10-033"] = "The chosen rename of '<id>' to '<new id>' cannot be made: '<new id>' <is already taken | is not a 31 id>; choose another.",
+        ["A10-034"] = "Renamed <kind> '<id>' to '<new id>': an id is at most 64 characters at 31.",
+        ["A10-035"] = "the body's if at line <n> decides what a <snippet | macro | rendered node> body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.",
+        ["A10-036"] = "macro '<id>' is placed under different conditions in <files>; a macro has one if, so place it under one condition, or split it into one macro per condition.",
+        ["A10-037"] = "the template writes <path> at line <n>, which is <an object | a list> at 31; read a member, loop over it or pipe it into a renderer.",
+        ["A10-038"] = "the template can't be read at line <n>; close every tag, if and for.",
+        ["A10-039"] = "the template reads <path> at line <n>, which a 31 <prompt | rendered node | macro body | deliverable> doesn't read; rewrite it.",
+        ["A10-040"] = "macro '<id>' is read as fixed text at line <n>, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.",
+        ["A10-041"] = "the body places macro '<id>', which a 31 macro body cannot; place it in the prompt instead.",
+        ["A10-042"] = "the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.",
+        ["A10-043"] = "MacroChoices names '<id>', which is not a macro of the package.",
+        ["A10-044"] = "MacroChoices names macro '<id>', whose if does not read exactly one boolean input; send the input in Inputs instead.",
+        ["A10-045"] = "macro '<id>' is read as fixed text at line <n>, but a macro folder's item is never fixed text at 31; place its text as a snippet.",
+        ["A10-046"] = "check '<id>' ran inside the <for | while | if | case> node '<flow>' at 30, but a 31 check is never inside a node flow; take it out of this list and gate checks/<id>.md with an if, or make it a check loop over the loop's .items.",
+        ["A10-047"] = "'<id>' is placed on this deliverable but is not a single macro of the package; place a snippet here instead.",
+        ["A10-048"] = "Macro '<id>' is read on deliverables as the snippet '<new id>': a snippet '<id>' already exists.",
+        ["A10-049"] = "<file>: <flags> <is | are> written false without the bodies that need a hand edit; check <it | them> once the edits are made.",
+        ["A10-050"] = "<file>, <member>: '<comparison>' became <rule>; it now <also holds | no longer holds> when <path> is null.",
+        ["A10-051"] = "macro '<id>' is placed at line <n>, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.",
+        ["A10-052"] = "<Node '<id>' gave a reply | Input '<id>' was given a value> that isn't <format>: markdown_inline text sits inside a line and holds no line ending.",
+        ["A10-053"] = "the <if | case> '<id>' that a deliverable composes returns Markdown from one branch and plain text from another, which the deliverable would escape as one string; give its branches one text format, then write that format here and on each flow that returns this one.",
+        ["A10-054"] = "no document password",
+        ["A10-055"] = "attachments over the budget",
+        ["A10-056"] = "every deliverable blocked",
+        ["A10-057"] = "No document could be sent: <labels> <was | were> not released.",
+        ["A10-058"] = "Outstanding migration hand edits: not counted; <the type registry | the accounts' active packages> could not be read.",
+        ["A10-059"] = "Outstanding migration hand edits: <k> of the accounts' active packages could not be read and are not counted.",
+        ["A10-060"] = "No snapshot test was written: tests/migration_snapshot.json would take the package past SourceBounds.<fileBytes | totalBytes | files>.",
+        ["A10-061"] = "No snapshot test was written: the migrated package <does not publish: <sentences> | is refused at its run's start | fails its offline run | times out in its offline run | cannot be run offline>.",
+        ["A10-062"] = "No document applies to these inputs. <documents>",
+        ["A10-063"] = "Each deliverable is now delivered by pdf in a message of its own, where 30 sent one message for the job.",
+        ["A10-064"] = "Node '<id>' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.",
+        ["A10-065"] = "Renamed format '<id>' to '<new id>': '<id>' is the name of a <built-in | catalogue> format at 31.",
+        ["A10-066"] = "the check reads the loop's own nodes (<ids>), which have no value before the first pass; check after the pass, or read a value from outside the loop.",
+        ["A10-067"] = "Macro '<id>' is chosen per run by the input '<input id>', but its if reads another boolean input, so a MacroChoices entry for '<id>' is refused at 31; send the input '<input id>' in Inputs instead.",
+        ["A10-068"] = "<file>: the white-space marks at <line <n> | lines <list>> of the 30 body became 31's (- is ~; a placement keeps only a {{~ alone on its line), so line endings beside them are now kept.",
+        ["A10-069"] = "The chosen format '<format>' for snippet folder '<id>' cannot be used: '<format>' <is already taken | is not a 31 id>; choose another.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -275,6 +377,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A09-", StringComparison.Ordinal))
         {
             Assert.True(RecordAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A10-", StringComparison.Ordinal))
+        {
+            Assert.True(MigrationAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

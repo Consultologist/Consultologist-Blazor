@@ -53,11 +53,15 @@ public sealed class DeliveryChannels
 /// <summary>
 /// #1505 (specVersion 31, area 08; D10, D11): what the email and the PDF channel share. A kind is set up when the mailbox is
 /// configured (<c>EmailIntake:MailboxAddress</c> and <c>EmailIntake:AppBaseUrl</c>, as the 5–30 reply reads them), the
-/// account has a delivery address, and its <c>delivery.emailPdf</c> is not <c>false</c>; the settings are read at the
-/// attempt, and the activity's outcome is in the orchestration's history, so a replay reads what the attempt found. The
-/// message is a fresh one whose body is boilerplate, the documents' labels (package text) and the History link
-/// (<see cref="EmailIntakeReply.Compose"/>), never a document's text. A fault of the mailbox or of a render is a failed send:
-/// <c>unreachable</c> when the mail service could not be reached, else <c>error</c>; only the exception's type is logged.
+/// job has a delivery address, and the account had not turned <c>delivery.emailPdf</c> off. #1507 (area 10; R8, D18): the
+/// address and <c>delivery.emailPdf</c> are the ones the job's start read (<see cref="DeliverV31Input.Delivery"/>), as a
+/// 5–30 job's are (#518); a job started before that build carries none, and they are read at the attempt as before. The
+/// activity's outcome is in the orchestration's history, so a replay reads what the attempt found. The message is a fresh
+/// one whose body is boilerplate, the documents' labels (package text) and the History link
+/// (<see cref="EmailIntakeReply.Compose"/>), never a document's text. #1507 (D19): the send of a job whose every deliverable
+/// is blocked is 30's link-only message saying no document could be sent (<see cref="NoDocumentSent"/>), by either kind,
+/// <c>sent</c> link-only. A fault of the mailbox or of a render is a failed send: <c>unreachable</c> when the mail service
+/// could not be reached, else <c>error</c>; only the exception's type is logged.
 /// </summary>
 internal abstract class MailDeliveryChannel(
     IGraphMailClient mail, IAccountSettingsStore settings, IConfiguration configuration, ILogger logger) : IDeliveryChannel
@@ -81,17 +85,17 @@ internal abstract class MailDeliveryChannel(
             if (string.IsNullOrWhiteSpace(mailbox) || string.IsNullOrWhiteSpace(appBaseUrl))
                 return NotSetUp;
 
-            var address = (await settings.GetAsync(input.AppUserId, AccountSettingKeys.DeliveryAddress, ct))?.Value;
-            var emailPdf = (await settings.GetAsync(input.AppUserId, AccountSettingKeys.EmailPdf, ct))?.Value;
-            if (string.IsNullOrWhiteSpace(address) || DeliveryAddress.EmailPdfOf(emailPdf) == false)
+            var (address, emailRequested) = input.Delivery is { } atStart
+                ? (atStart.Address, atStart.EmailRequested)
+                : await AtTheAttemptAsync(input.AppUserId, ct);
+            if (string.IsNullOrWhiteSpace(address) || !emailRequested)
                 return NotSetUp;
 
-            var message = await ComposeAsync(input, appBaseUrl, ct);
-            if (message.Outcome is { } outcome)
-                return outcome;
-
-            await mail.SendMailAsync(mailbox, address, message.Subject!, message.Body!, ct, message.Attachments);
-            return new DeliverySendOutcome(DeliverySendResult.Sent, null);
+            var message = input.Send.EveryDeliverableBlocked
+                ? Blocked(input, appBaseUrl)
+                : await ComposeAsync(input, appBaseUrl, ct);
+            await mail.SendMailAsync(mailbox, address, message.Subject, message.Body, ct, message.Attachments);
+            return new DeliverySendOutcome(DeliverySendResult.Sent, null, message.LinkOnly);
         }
         catch (Exception ex)
         {
@@ -103,7 +107,35 @@ internal abstract class MailDeliveryChannel(
         }
     }
 
-    /// <summary>The message of <paramref name="input"/>'s send, or the outcome that ends the attempt before it is sent.</summary>
+    /// <summary>
+    /// #1507 (A10-057; D19): the line a job whose every deliverable is blocked says after the opening: the documents by
+    /// label (package text), never their text.
+    /// </summary>
+    internal static string NoDocumentSent(IReadOnlyList<string> labels) =>
+        $"No document could be sent: {string.Join(", ", labels)} {(labels.Count == 1 ? "was" : "were")} not released.";
+
+    /// <summary>
+    /// #1507 (D19, ruled by the owner on #1507, 2026-11-22T21:38Z): the link-only message of a job whose every deliverable is
+    /// blocked, as 30's reply still went out: <see cref="EmailIntakeReply.Compose"/>'s completed message, nothing attached,
+    /// <see cref="NoDocumentSent"/> after its opening.
+    /// </summary>
+    private static Message Blocked(DeliverV31Input input, string appBaseUrl)
+    {
+        var (subject, body) = EmailIntakeReply.Compose(appBaseUrl, input.JobId, ConsultGenerationJobStatuses.Completed);
+        if (body.StartsWith(Opening, StringComparison.Ordinal))
+            body = Opening + NoDocumentSent(input.Send.Documents.Select(d => d.Label).ToList()) + "\n\n" + body[Opening.Length..];
+        return new Message(subject, body, null, LinkOnly: DeliveryPlan.EveryDeliverableBlocked);
+    }
+
+    /// <summary>The delivery address and <c>delivery.emailPdf</c> as the account has them now: a job started before #1507's D18.</summary>
+    private async Task<(string? Address, bool EmailRequested)> AtTheAttemptAsync(string appUserId, CancellationToken ct)
+    {
+        var address = (await settings.GetAsync(appUserId, AccountSettingKeys.DeliveryAddress, ct))?.Value;
+        var emailPdf = (await settings.GetAsync(appUserId, AccountSettingKeys.EmailPdf, ct))?.Value;
+        return (address, DeliveryAddress.EmailPdfOf(emailPdf) != false);
+    }
+
+    /// <summary>The message of <paramref name="input"/>'s send.</summary>
     protected abstract Task<Message> ComposeAsync(DeliverV31Input input, string appBaseUrl, CancellationToken ct);
 
     /// <summary>The kind is not set up for this account.</summary>
@@ -116,8 +148,12 @@ internal abstract class MailDeliveryChannel(
     protected static string FileId(string deliverable) =>
         deliverable.StartsWith("deliverable.", StringComparison.Ordinal) ? deliverable["deliverable.".Length..] : deliverable;
 
-    /// <summary>A message to send, or (with <see cref="Outcome"/> set) none, the attempt ending so.</summary>
-    protected sealed record Message(string? Subject, string? Body, IReadOnlyList<GraphMailAttachment>? Attachments, DeliverySendOutcome? Outcome = null);
+    /// <summary>
+    /// A message to send (#1507, R8: every attempt that is set up sends one). #1507 (D17, D19):
+    /// <see cref="LinkOnly"/> says why a message is the link-only email in place of what was asked.
+    /// </summary>
+    protected sealed record Message(
+        string Subject, string Body, IReadOnlyList<GraphMailAttachment>? Attachments, string? LinkOnly = null);
 }
 
 /// <summary>
@@ -141,12 +177,14 @@ internal sealed class EmailDeliveryChannel(
 }
 
 /// <summary>
-/// #1505 (specVersion 31, area 08; D10, D11): <c>pdf</c>: set up when <c>email</c> is and the account has a document
-/// password; the message (<see cref="EmailIntakeReply.Compose"/> naming what is attached) carries each document as a
-/// password-protected PDF (<see cref="ConsultDocumentPdf.Render"/>), or, for a bundle, one <c>.zip</c> holding each. A
-/// document's text is Markdown first: a <c>plaintext</c> one escaped (<see cref="MarkdownEscape"/>), a Markdown one as it
-/// is, an object one its JSON in a fenced block. Attachments over the 5–30 reply's budget
-/// (<see cref="SendEmailIntakeReplyActivity.MaxAttachmentBytes"/>) are not sent: the attempt fails <c>too-large</c>.
+/// #1505 (specVersion 31, area 08; D10, D11): <c>pdf</c>: set up when <c>email</c> is; the message
+/// (<see cref="EmailIntakeReply.Compose"/> naming what is attached) carries each document as a password-protected PDF
+/// (<see cref="ConsultDocumentPdf.Render"/>), or, for a bundle, one <c>.zip</c> holding each. A document's text is Markdown
+/// first: a <c>plaintext</c> one escaped (<see cref="MarkdownEscape"/>), a Markdown one as it is, an object one its JSON in a
+/// fenced block. #1507 (area 10; R8, ruled by the owner on #1507, 2026-11-22; D17): as the 5–30 reply does, the document
+/// password is read at the attempt, and with none, or with attachments over the 5–30 reply's budget
+/// (<see cref="SendEmailIntakeReplyActivity.MaxAttachmentBytes"/>, the set dropped whole), the attempt sends 30's link-only
+/// message for that case, nothing attached, <c>sent</c> link-only with A10-054 or A10-055.
 /// </summary>
 internal sealed class PdfDeliveryChannel(
     IGraphMailClient mail, IAccountSettingsStore settings, IConfiguration configuration, ILogger<PdfDeliveryChannel> logger)
@@ -161,7 +199,11 @@ internal sealed class PdfDeliveryChannel(
     {
         var password = (await Settings.GetAsync(input.AppUserId, AccountSettingKeys.DeliveryPassword, ct))?.Value;
         if (string.IsNullOrEmpty(password))
-            return new Message(null, null, null, NotSetUp);
+        {
+            // 30: "Explicit over default: no password → link-only reply."
+            var (linkSubject, linkBody) = EmailIntakeReply.Compose(appBaseUrl, input.JobId, ConsultGenerationJobStatuses.Completed);
+            return new Message(linkSubject, linkBody, null, LinkOnly: DeliveryPlan.NoDocumentPassword);
+        }
 
         var send = input.Send;
         var prefix = JobIdPrefix(input.JobId);
@@ -178,9 +220,12 @@ internal sealed class PdfDeliveryChannel(
         if (bytes > AttachmentBudget)
         {
             Logger.LogWarning(
-                "V31 delivery attachments exceed the message budget. JobId={JobId}, Documents={Documents}, Bytes={Bytes}",
+                "V31 delivery attachments exceed the message budget; sending link-only. JobId={JobId}, Documents={Documents}, Bytes={Bytes}",
                 input.JobId, send.Documents.Count, bytes);
-            return new Message(null, null, null, new DeliverySendOutcome(DeliverySendResult.Failed, "too-large"));
+            // 30: a set over the budget travels not at all, and the reply says the documents were too large
+            var (overSubject, overBody) = EmailIntakeReply.Compose(
+                appBaseUrl, input.JobId, ConsultGenerationJobStatuses.Completed, [], omittedForSize: true);
+            return new Message(overSubject, overBody, null, LinkOnly: DeliveryPlan.OverTheBudget);
         }
 
         var (subject, body) = EmailIntakeReply.Compose(

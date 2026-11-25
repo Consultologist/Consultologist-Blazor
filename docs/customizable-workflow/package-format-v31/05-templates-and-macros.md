@@ -215,6 +215,7 @@ author's: no rule on how it starts or ends
 | `-` on a placement (`{{- x }}`, `{{ x -}}`) | refused: it removes blank lines between paragraphs |
 | `{{~ x }}` inside a line | refused: it removes the space the author wrote before it |
 | `{{~ x }}` with text after it on its line | refused: a block placement stands alone on its line |
+| `{{ x }}` inside an `if` or a `for` | refused (A07-009): a placement's decision is recorded once, so it is made by the unit's own `if`, not by a tag around it; the migration unrolls or hoists what 30 wrote ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647); part 10 § 1.2) |
 
 Scriban's markers, as tested on 7.2.5: `~` removes spaces and tabs on its side, and on the right
 also the one newline ending the line; `-` removes all whitespace on its side, blank lines
@@ -632,7 +633,7 @@ record shows which was false. The folder is a namespace: `macro.<folder>.<id>`
 - **A per-run choice input takes the macro's id and label** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)), and is joined
   with `and` to any existing `if`. The Create page shows three states (unset, yes, no), and unset
   is sent as `null`. A migrated choice whose id is already an input's id gets the suffix
-  `_macro` (`letrozole` → `letrozole_macro`), reported by the migration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
+  `_macro` (`letrozole` → `letrozole_macro`), reported by the migration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)). A `MacroChoices` entry keyed by a macro's id sets the one boolean input that macro's `if` reads ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647); part 10 § 1.3).
 - One classifier per macro, per node, per item. A classifier answering several questions is
   #1416 (Milestone 40).
 
@@ -791,7 +792,7 @@ text is recorded by hash under the node that placed it.
 | `concept_bullets`, `concept_context` are C#, piped the node: `node.x \| concept_bullets` | renderers are templates in `renderers/`, piped `.value`: `node.x.value \| renderer.concept_bullets` |
 | a snippet header holds `label`, which names folder items | a single snippet has `label`, `description`, `if` and `format`; a folder item's header is typed data, with no `if`; `itemLabel` names items |
 | `{{ snippet.x.content }}`, placed in prompts and deliverables | unchanged, now a placement (§ 2.6); also placed in parts' text and macro instructions, under the guard |
-| `prose`, and the `agent_*` formats | the plain format of the same shape (`plaintext`, `markdown_block`, `markdown_inline`); the node's `producer` says a model wrote it ([Part 02](02-types-and-inputs.md#13-producer)) |
+| `prose`, and the `agent_*` formats | the plain format of the same shape (`plaintext`, `markdown_block`, `markdown_inline`), `prose` a deliverable composes being `markdown_block` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968); [part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)); the node's `producer` says a model wrote it ([Part 02](02-types-and-inputs.md#13-producer)) |
 | a macro's `instruction` is one string, often "if …, otherwise nothing"; the prompt places `{{ macro.x.prompt }}` | `instruction` is lines saying only where, with the marker; `if` decides whether; `{{ macro.x }}` |
 | `at: before`, `after`, `append`, item-level placements, deliverable macros | removed: fixed text is a snippet read in the deliverable template |
 | optional at most once, required exactly once | triggered exactly once, untriggered never |

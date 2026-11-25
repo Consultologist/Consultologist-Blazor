@@ -1,0 +1,1815 @@
+{
+  "converted": [
+    {
+      "id": "composer-gates.patient_copy.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.audience.value"
+          },
+          "patient"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.audience.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-macros.section_draft.section_close.if",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'item.value.title != \"Plan\"' compares item.value.title (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
+    },
+    {
+      "id": "composer-macros.gated.review_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.visit.value"
+          },
+          "review"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.visit.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-macros.review_summary.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.visit.value"
+          },
+          "review"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.visit.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-macros.new_visit_note.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.visit.value"
+          },
+          "new"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.visit.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.topic_gate.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.value.kind"
+          },
+          "drafted"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.value.kind"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.refine.while",
+      "logic": {
+        "===": [
+          {
+            "var": "input.redraft.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.redraft.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.refine.until",
+      "logic": {
+        "===": [
+          {
+            "var": "node.judge.value.verdict"
+          },
+          "good"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.judge.value.verdict"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.plan_gate.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.include_plan.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.include_plan.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.tone_case.case",
+      "logic": {
+        "var": "input.tone.value"
+      },
+      "resultFormat": "string {formal, plain, none}",
+      "reads": [
+        "input.tone.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "composer-sources.topic_tally.let",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand.",
+        "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.size, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "example-classifier-scope.plan.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.scope.value.value"
+          },
+          "in_scope"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.scope.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-classifier-scope.decline_letter.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.scope.value.value"
+          },
+          "out_of_scope"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.scope.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-classifier-scope.information_request.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.scope.value.value"
+          },
+          "needs_information"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.scope.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-documents.consult_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.encounter_kind.value"
+          },
+          "new_patient"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.encounter_kind.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-documents.progress_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.encounter_kind.value"
+          },
+          "follow_up"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.encounter_kind.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-sections.route.case",
+      "logic": {
+        "var": "item.value.kind"
+      },
+      "resultFormat": "string {narrative, table, omit}",
+      "reads": [
+        "item.value.kind"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-sections.narrative_only.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.value.kind"
+          },
+          "narrative"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.value.kind"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-conditional-sections.applies.if",
+      "logic": {
+        "or": [
+          {
+            "!==": [
+              {
+                "var": "item.id"
+              },
+              "billing"
+            ]
+          },
+          {
+            "===": [
+              {
+                "var": "input.include_billing.value"
+              },
+              true
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.id",
+        "input.include_billing.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.standing_draft.counselling.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.id"
+          },
+          "assessment_plan"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.id"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.route.case",
+      "logic": {
+        "var": "item.value.kind"
+      },
+      "resultFormat": "string {narrative, table, omit}",
+      "reads": [
+        "item.value.kind"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.narrative_draft.section_caveat.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.consult_note.header_line.if",
+      "logic": {
+        "!==": [
+          {
+            "var": "input.note_type.value"
+          },
+          "discharge_summary"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.consult_note.followup_only.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "follow_up"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.brief_plan.md.if",
+      "logic": {
+        "and": [
+          {
+            "or": [
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "consult"
+                ]
+              },
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "follow_up"
+                ]
+              }
+            ]
+          },
+          {
+            "!==": [
+              {
+                "var": "input.include_counselling.value"
+              },
+              true
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value",
+        "input.include_counselling.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.counselling.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros.followup_only.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.standing_draft.counselling.if",
+      "logic": {
+        "===": [
+          {
+            "var": "item.id"
+          },
+          "assessment_plan"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.id"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.route.case",
+      "logic": {
+        "var": "item.value.kind"
+      },
+      "resultFormat": "string {narrative, table, omit}",
+      "reads": [
+        "item.value.kind"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.narrative_draft.section_caveat.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.consult_note.header_line.if",
+      "logic": {
+        "!==": [
+          {
+            "var": "input.note_type.value"
+          },
+          "discharge_summary"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.consult_note.followup_only.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "follow_up"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.brief_plan.md.if",
+      "logic": {
+        "and": [
+          {
+            "or": [
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "consult"
+                ]
+              },
+              {
+                "===": [
+                  {
+                    "var": "input.note_type.value"
+                  },
+                  "follow_up"
+                ]
+              }
+            ]
+          },
+          {
+            "!==": [
+              {
+                "var": "input.include_counselling.value"
+              },
+              true
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value",
+        "input.include_counselling.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.counselling.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-macros-warnings.followup_only.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.note_type.value"
+          },
+          "consult"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.note_type.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-nested-note.section_count.let",
+      "logic": {
+        "size": [
+          {
+            "var": "node.plan.value.sections"
+          }
+        ]
+      },
+      "resultFormat": "integer",
+      "reads": [
+        "node.plan.value.sections"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-nested-note.refine.while",
+      "logic": {
+        "!==": [
+          {
+            "var": "node.judge.value.verdict"
+          },
+          "good"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.judge.value.verdict"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-prior-letters.letters.until",
+      "logic": {
+        "===": [
+          {
+            "var": "node.read_letter.value.answers_question"
+          },
+          true
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.read_letter.value.answers_question"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-problem-list.follow_up_plan.md.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.follow_up.value.value"
+          },
+          "yes"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.follow_up.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-structured-intake.senior_review.if",
+      "logic": {
+        ">=": [
+          {
+            "var": "input.patient.value.age"
+          },
+          65
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.patient.value.age"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-structured-intake.long_stay_summary.if",
+      "logic": {
+        ">": [
+          {
+            "var": "input.length_of_stay.value"
+          },
+          7
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.length_of_stay.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-structured-intake.notes_index.if",
+      "logic": {
+        ">": [
+          {
+            "size": [
+              {
+                "var": "input.prior_notes.value"
+              }
+            ]
+          },
+          2
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.prior_notes.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-v12-constructs.consult.formal_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.tone.value.value"
+          },
+          "formal"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.tone.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "example-v12-constructs.consult.friendly_note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.tone.value.value"
+          },
+          "friendly"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.tone.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.read.node-value",
+      "logic": {
+        "===": [
+          {
+            "var": "node.triage.value.priority"
+          },
+          "high"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.triage.value.priority"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.read.node-content",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'node.summary.content == \"Reviewed in clinic.\"' compares node.summary.content (plaintext | null) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
+    },
+    {
+      "id": "row.read.item-id",
+      "logic": {
+        "===": [
+          {
+            "var": "item.id"
+          },
+          "plan"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.id"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.read.item-value",
+      "logic": {
+        "===": [
+          {
+            "var": "item.value.kind"
+          },
+          "table"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.value.kind"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.read.pass-number",
+      "logic": {
+        ">=": [
+          {
+            "var": "pass.number"
+          },
+          2
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "pass.number"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.read.run-date",
+      "logic": {
+        "===": [
+          {
+            "var": "run.date"
+          },
+          "2026-11-10"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "run.date"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.input.x",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'input.reason == \"Breathlessness\"' compares input.reason.content (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
+    },
+    {
+      "id": "row.input.x-y",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'input.patient.name == \"Margaret Okafor\"' compares input.patient.value.name (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
+    },
+    {
+      "id": "row.eq",
+      "logic": {
+        "===": [
+          {
+            "var": "input.kind.value"
+          },
+          "new"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.kind.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.ne",
+      "logic": {
+        "!==": [
+          {
+            "var": "input.kind.value"
+          },
+          "new"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.kind.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.lt",
+      "logic": {
+        "<": [
+          {
+            "var": "input.age.value"
+          },
+          18
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.le",
+      "logic": {
+        "<=": [
+          {
+            "var": "input.age.value"
+          },
+          18
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.gt",
+      "logic": {
+        ">": [
+          {
+            "var": "input.age.value"
+          },
+          65
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.ge",
+      "logic": {
+        ">=": [
+          {
+            "var": "input.age.value"
+          },
+          65
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.and3",
+      "logic": {
+        "and": [
+          {
+            "var": "input.urgent.value"
+          },
+          {
+            "===": [
+              {
+                "var": "input.kind.value"
+              },
+              "new"
+            ]
+          },
+          {
+            ">": [
+              {
+                "var": "input.age.value"
+              },
+              65
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.urgent.value",
+        "input.kind.value",
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.or3",
+      "logic": {
+        "or": [
+          {
+            "var": "input.urgent.value"
+          },
+          {
+            "===": [
+              {
+                "var": "input.kind.value"
+              },
+              "review"
+            ]
+          },
+          {
+            "<": [
+              {
+                "var": "input.age.value"
+              },
+              18
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.urgent.value",
+        "input.kind.value",
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.not-boolean",
+      "logic": {
+        "!": [
+          {
+            "var": "input.urgent.value"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.urgent.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.not-text.node",
+      "logic": {
+        "blank": [
+          {
+            "var": "node.summary.content"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.summary.content"
+      ],
+      "blankConversions": [
+        "node.summary.content"
+      ],
+      "blanks": [
+        {
+          "written": "node.summary.content",
+          "printed": "node.summary.content"
+        }
+      ],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.not-text.input",
+      "logic": {
+        "blank": [
+          {
+            "var": "input.reason.content"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [
+        "input.reason.content"
+      ],
+      "blanks": [
+        {
+          "written": "input.reason",
+          "printed": "input.reason.content"
+        }
+      ],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.add",
+      "logic": {
+        ">": [
+          {
+            "+": [
+              {
+                "var": "input.age.value"
+              },
+              1
+            ]
+          },
+          65
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.subtract",
+      "logic": {
+        "<": [
+          {
+            "-": [
+              {
+                "var": "input.age.value"
+              },
+              1
+            ]
+          },
+          18
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.multiply",
+      "logic": {
+        ">=": [
+          {
+            "*": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          100
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.divide",
+      "logic": {
+        "<=": [
+          {
+            "/": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          30
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.divide.half",
+      "logic": {
+        "===": [
+          {
+            "/": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          1.5
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.modulo",
+      "logic": {
+        "===": [
+          {
+            "%": [
+              {
+                "var": "input.age.value"
+              },
+              2
+            ]
+          },
+          0
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.size.pipe",
+      "logic": {
+        ">": [
+          {
+            "size": [
+              {
+                "var": "input.problems.value"
+              }
+            ]
+          },
+          1
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.problems.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.size.member",
+      "logic": {
+        "===": [
+          {
+            "size": [
+              {
+                "var": "input.problems.value"
+              }
+            ]
+          },
+          0
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.problems.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.downcase",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition '(string.downcase input.reason) == \"breathlessness\"' compares lower(input.reason.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
+    },
+    {
+      "id": "row.strip.input",
+      "logic": {
+        "blank": [
+          {
+            "var": "input.reason.content"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.strip.node",
+      "logic": {
+        "blank": [
+          {
+            "var": "node.summary.content"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.summary.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [
+        {
+          "written": "trim(node.summary.content) = \"\"",
+          "printed": "blank(node.summary.content)"
+        }
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.strip.input-field",
+      "logic": {
+        "blank": [
+          {
+            "var": "input.patient.value.name"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.patient.value.name"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [
+        {
+          "written": "trim(input.patient.value.name) = \"\"",
+          "printed": "blank(input.patient.value.name)"
+        }
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.starts-with",
+      "logic": {
+        "starts_with": [
+          {
+            "var": "input.reason.content"
+          },
+          "Breath"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.ends-with",
+      "logic": {
+        "ends_with": [
+          {
+            "var": "input.reason.content"
+          },
+          "ness"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.contains",
+      "logic": {
+        "in": [
+          "less",
+          {
+            "var": "input.reason.content"
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.date-parse.lt",
+      "logic": {
+        "<": [
+          {
+            "var": "input.seen_on.value"
+          },
+          "2026-11-10"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.seen_on.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.date-parse.eq",
+      "logic": {
+        "===": [
+          {
+            "var": "input.seen_on.value"
+          },
+          "2026-11-10"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.seen_on.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.literal.number",
+      "logic": {
+        "===": [
+          {
+            "var": "input.age.value"
+          },
+          65
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.age.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.literal.true",
+      "logic": {
+        "===": [
+          {
+            "var": "input.urgent.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.urgent.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.literal.false",
+      "logic": {
+        "===": [
+          {
+            "var": "input.urgent.value"
+          },
+          false
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.urgent.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.literal.string",
+      "logic": {
+        "===": [
+          {
+            "var": "input.kind.value"
+          },
+          "review"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.kind.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": []
+    },
+    {
+      "id": "row.let-object",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "Computed node '{ priority: node.triage.value.priority, age: input.age }' builds triage_summary with age as number | null; the format declares it number."
+      ]
+    },
+    {
+      "id": "row.let-array",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "Computed node '{ reasons: [input.reason, node.summary.content] }' mixes markdown_block | null and plaintext | null in a list; they have one type."
+      ]
+    },
+    {
+      "id": "refuse.builtin.upcase",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition '(string.upcase input.reason) == \"BREATHLESSNESS\"' uses string.upcase, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.builtin.round",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition '(math.round input.age) == 65' uses math.round, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.builtin.first",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition '(input.problems | array.first) == \"\"' uses array.first, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.text-less-than",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'input.reason < \"m\"' orders input.reason.content (markdown_block | null); <, >, ≤ and ≥ compare numbers or dates."
+      ]
+    },
+    {
+      "id": "refuse.profile",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'profile.name == \"Dr A. Sample\"' reads profile.name; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."
+      ]
+    },
+    {
+      "id": "refuse.assignment",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'x = 1' uses an assignment, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.template",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition '{{ input.kind }}' uses a template, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    },
+    {
+      "id": "refuse.two-statements",
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "notices": [
+        "The condition 'input.urgent; input.kind == \"new\"' uses more than one statement, which has no JSON Logic form at 31: rewrite it by hand."
+      ]
+    }
+  ]
+}

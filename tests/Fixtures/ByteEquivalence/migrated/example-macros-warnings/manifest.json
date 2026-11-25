@@ -1,0 +1,80 @@
+{
+  "name": "example-macros-warnings",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": null,
+  "description": [
+    "The example-macros package carrying the three states a published package can show only as validator warnings — an instruction that reads its own macro's .content, a text case branch on an undeclared value, and a text test that is always true. Otherwise identical to example-macros. Not intended for clinical use."
+  ],
+  "tags": [],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "note_type": {
+      "label": "Note type",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "consult",
+          "follow_up",
+          "discharge_summary"
+        ]
+      },
+      "required": true,
+      "channel": null
+    },
+    "include_counselling": {
+      "label": "Include side-effect counselling",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    },
+    "sections": {
+      "label": "Sections to produce",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "kind"
+          ],
+          "properties": {
+            "title": {
+              "$ref": "markdown_block",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "narrative",
+                "table",
+                "omit"
+              ],
+              "title": "Kind"
+            }
+          }
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "follow_up_reminder": {
+      "label": "Follow-up reminder",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    }
+  }
+}

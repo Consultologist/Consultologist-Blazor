@@ -1,0 +1,47 @@
+{
+  "name": "composer-gates",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Composer gates fixture",
+  "description": [
+    "A byte-equivalence fixture (#1498): what decides whether a deliverable is composed — two deliverables over the same nodes, a deliverable's if, a terms_subset check that passes or refuses with its failWith sentence, and a prompt that reads another deliverable's composed text. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "problems": {
+      "label": "Problem list",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "audience": {
+      "label": "Audience",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "clinician",
+          "patient"
+        ]
+      },
+      "required": true,
+      "channel": null
+    }
+  }
+}

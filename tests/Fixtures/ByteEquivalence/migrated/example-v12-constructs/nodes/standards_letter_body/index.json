@@ -1,0 +1,26 @@
+{
+  "kind": "for",
+  "label": "Standards — acknowledgement body",
+  "description": null,
+  "format": {
+    "type": "array",
+    "items": {
+      "$ref": "plaintext"
+    }
+  },
+  "reproducible": true,
+  "producer": "computed",
+  "modelDerived": false,
+  "runDependent": false,
+  "profileCarrying": false,
+  "in": "snippet.standards",
+  "parallel": true,
+  "maxParallel": null,
+  "until": null,
+  "max": null,
+  "itemLabel": "title",
+  "nodes": [
+    "letter_body"
+  ],
+  "ret": "node.standards_letter_body.letter_body"
+}

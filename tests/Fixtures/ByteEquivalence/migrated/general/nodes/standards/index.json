@@ -1,0 +1,28 @@
+{
+  "kind": "for",
+  "label": "Standards",
+  "description": null,
+  "format": {
+    "type": "array",
+    "items": {
+      "$ref": "markdown_block"
+    }
+  },
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "in": "snippet.standards",
+  "parallel": true,
+  "maxParallel": null,
+  "until": null,
+  "max": null,
+  "itemLabel": "title",
+  "nodes": [
+    "section_instructions",
+    "patient_section_draft",
+    "standard_section_draft"
+  ],
+  "ret": "node.standards.section_instructions"
+}

@@ -203,6 +203,27 @@ public class V31JobStartTests
         Assert.Equal(pair.ResolveHash, state.ResolveHash);
     }
 
+    [Theory]
+    [InlineData("dr.sample@example.com", true)]
+    [InlineData("dr.sample@example.com", false)]
+    [InlineData(null, true)]
+    public async Task TheDeliverySettings_AreReadAtTheStart(string? address, bool emailRequested)
+    {
+        // #1507 (R8, D18): the delivery address and delivery.emailPdf, as the start's origin read them (#518), travel in the
+        // orchestration's input; the document password does not (it is read at the attempt)
+        var start = new Start(preview: "31");
+        var packageRef = start.Put("nested-note");
+
+        var outcome = await start.RunAsync(
+            new ConsultGenerationRequest(null, RefText(packageRef), Inputs: Text(Draft)),
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, ReplyToAddress: address, EmailRequested: emailRequested));
+
+        Assert.Null(outcome.Error);
+        var input = Assert.IsType<ConsultGenerationOrchestrationInputV31>(Assert.Single(start.Scheduled).Input);
+        Assert.Equal(new V31DeliverySettings(address, emailRequested), input.Delivery);
+        Assert.DoesNotContain("Password", JsonSerializer.Serialize(input), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task ALoadRefusal_IsARecordedStartFailure()
     {
@@ -394,7 +415,7 @@ public class V31JobStartTests
         Assert.Equal("[]", Assert.Single(at31Empty.Inputs.Documents).Value["inputs"]!["prior_letters"]!["value"]!.ToJsonString());
     }
 
-    // ---- MacroChoices (#1504, ruled by the owner on #1504, ruling 6; part 05 § 8.2) ----------------------------
+    // ---- MacroChoices (#1504; keyed by the macro, ruled by the owner on #1507, 2026-11-22, 3; part 05 § 8.2) -----
 
     [Theory]
     [InlineData(true)]
@@ -438,16 +459,16 @@ public class V31JobStartTests
     [Theory]
     [InlineData("tamoxifen")]
     [InlineData("consult_draft")]
-    public async Task AMacroChoiceNamingNoBooleanInput_IsRefused(string id)
+    public async Task AMacroChoiceNamingNoMacro_IsRefused(string id)
     {
-        // an id the package does not declare, and a declared input that is text
+        // #1507 (R7): an entry is keyed by a macro; an id the package does not declare, and a declared input, name none.
         var start = new Start(preview: "31");
         var packageRef = start.PutChoices();
 
         var outcome = await start.RunAsync(WithChoices(packageRef, Text(Draft), (id, true)));
 
-        var sentence = $"MacroChoices names '{id}', which is not a boolean input of the package.";
-        V31Contract.AssertSentence(new SourceRefusal("A07-015", sentence, ""));
+        var sentence = $"MacroChoices names '{id}', which is not a macro of the package.";
+        V31Contract.AssertSentence(new SourceRefusal("A10-043", sentence, ""));
         Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
         Assert.Equal(sentence, outcome.ErrorDetail);
         Assert.Null(outcome.SenderSafeDetail); // it quotes the caller's own id, as A06-013 does
@@ -1101,7 +1122,10 @@ public class V31JobStartTests
             RunAsync(new ConsultGenerationRequest(null, RefText(packageRef), Inputs: inputs));
 
         public Task<ConsultGenerationJobStartOutcome> RunAsync(ConsultGenerationRequest request) =>
-            _starter.StartAsync(Client, request, "user-1", new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+            RunAsync(request, new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App));
+
+        public Task<ConsultGenerationJobStartOutcome> RunAsync(ConsultGenerationRequest request, ConsultGenerationJobOrigin origin) =>
+            _starter.StartAsync(Client, request, "user-1", origin, CancellationToken.None);
     }
 
     /// <summary>The 31 store, its calls counted.</summary>

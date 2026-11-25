@@ -19,6 +19,7 @@ public class ResolvedScopeTests
         "nested" => ResolveFixture.NestedNote(),
         "conditional" => ResolveFixture.Conditional(),
         "functions" => ResolveFixture.Functions(),
+        "flows" => ResolveFixture.LoopFlows(),
         // plan runs only when the draft is not blank, and stamp reads it
         "gated" => Minimal()
             .WithJson("nodes/plan.md", h => h["if"] = System.Text.Json.Nodes.JsonNode.Parse(
@@ -102,6 +103,78 @@ public class ResolvedScopeTests
         Assert.Equal(type, TypeStrings.Print(resolved.Format, formats));
         Assert.Equal(nullable, resolved.Nullable);
         Assert.Null(resolved.Refusal);
+    }
+
+    public static TheoryData<string, string, string, string?, int, string, bool> LoopContentCases => new()
+    {
+        // #1507 (D23; part 04 § 2.5, part 05 § 5.3): a for loop's .content is the standard rendering (## <item name>, the
+        // item's text, joined by blank lines), typed markdown_block whatever its items' format: sections returns
+        // list<list<plaintext>>, paragraphs and standards list<plaintext>; read from outside, from inside another loop's
+        // body, and from the checks
+        { "nested", "root", "node.sections.content", "node.sections", 3, "markdown_block", false },
+        { "nested", "node.sections.outline", "node.paragraphs.content", "node.sections.paragraphs", 3, "markdown_block", false },
+        { "functions", "checks", "node.standards.content", "node.standards", 3, "markdown_block", false },
+        // a check loop's, and a for read through a while's pass
+        { "functions", "checks", "check.section_coverage.content", "check.section_coverage", 3, "markdown_block", false },
+        { "flows", "node.redo.redo_loop", "pass.node.redo_loop.content", null, 4, "markdown_block", false },
+        // Task 24's fix round 1: a flow's .content is its ret's (part 04 §§ 3, 5), so a flow whose ret chain reaches a for
+        // holds that loop's rendering: an if, a case and a while whose rets are fors
+        { "flows", "root", "node.pick.content", "node.pick", 3, "markdown_block", false },
+        { "flows", "root", "node.choose.content", "node.choose", 3, "markdown_block", false },
+        { "flows", "root", "node.redo.content", "node.redo", 3, "markdown_block", false },
+        // branches that differ (a for, a plain-text leaf) give the union, which a Markdown deliverable escapes (R10)
+        { "flows", "root", "node.mixed.content", "node.mixed", 3, "markdown_block | plaintext", false },
+    };
+
+    [Theory]
+    [MemberData(nameof(LoopContentCases))]
+    public void ALoopsContent_IsMarkdownBlock(string fixture, string at, string reference, string? key, int length, string type, bool nullable)
+    {
+        var (package, types, tree) = ResolveFixture.Tree(Fixture(fixture));
+        var (frame, formats) = At(package, types, tree, at);
+
+        var resolved = tree.Resolve(ReferenceString.Parse(reference)!, frame, "Node 'x'", "nodes/x.md", true);
+
+        Assert.Equal((ScopeHeadKind.Value, key, length, nullable), (resolved.Kind, resolved.Key, resolved.Length, resolved.Nullable));
+        Assert.Equal(type, TypeStrings.Print(resolved.Format, formats));
+        Assert.Null(resolved.Refusal);
+    }
+
+    [Fact]
+    public void ALoopsContent_LeavesEveryOtherContentAsItWas()
+    {
+        // D23 and Task 24's fix round 1 change only what a for gives: a while's .content whose ret is a leaf, and an
+        // object-valued node's, are typed as before (D10).
+        var (_, types, tree) = ResolveFixture.Tree(ResolveFixture.NestedNote());
+        var formats = types.Formats;
+
+        string Typed(string reference)
+        {
+            var resolved = tree.Resolve(ReferenceString.Parse(reference)!, tree.PackageRoot, "Node 'x'", "nodes/x.md", true);
+            Assert.Equal((ScopeHeadKind.Format, 2), (resolved.Kind, resolved.Length));
+            var read = FormatReads.Read(resolved.Format, ["content"], formats);
+            Assert.Equal(ReadFault.None, read.Fault);
+            return TypeStrings.Print(read.Format, formats);
+        }
+
+        Assert.Equal("plaintext", Typed("node.refine.content"));   // a while whose ret is a plain-text leaf
+        Assert.Equal("plaintext", Typed("node.plan.content"));     // an object (section_plan)
+
+        // through .items: an item's .content is its ret's, here the inner for paragraphs, so markdown_block (fix round 1);
+        // a leaf's is its format's text (D10); an inner for's is its own, markdown_block; each nullable
+        var items = tree.Resolve(ReferenceString.Parse("node.sections.items")!, tree.PackageRoot, "Node 'x'", "nodes/x.md", true);
+        var element = ExpressionChecker.ItemsOf(items.Format!, formats);
+        string Field(params string[] fields) =>
+            TypeStrings.Print(FormatReads.Read(element, ["value", .. fields], formats).Format, formats);
+        Assert.Equal("markdown_block | null", Field("content"));
+        Assert.Equal("plaintext | null", Field("nodes", "outline", "content"));
+        Assert.Equal("markdown_block | null", Field("nodes", "paragraphs", "content"));
+
+        // an outer for's item whose ret is an inner for (visits over points): markdown_block, nullable
+        var (_, flowTypes, flowTree) = ResolveFixture.Tree(ResolveFixture.LoopFlows());
+        var visits = flowTree.Resolve(ReferenceString.Parse("node.visits.items")!, flowTree.PackageRoot, "Node 'x'", "nodes/x.md", true);
+        var visit = ExpressionChecker.ItemsOf(visits.Format!, flowTypes.Formats);
+        Assert.Equal("markdown_block | null", TypeStrings.Print(FormatReads.Read(visit, ["value", "content"], flowTypes.Formats).Format, flowTypes.Formats));
     }
 
     [Fact]

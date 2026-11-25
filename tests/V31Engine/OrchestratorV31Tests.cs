@@ -8,6 +8,7 @@ using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using Microsoft.Extensions.Configuration;
 using NSubstitute;
 
 namespace Consultologist.Api.Tests.V31Engine;
@@ -554,7 +555,7 @@ public class OrchestratorV31Tests
         // the letter reads nothing, so it is released before the plan's agent fails the job: it is recorded not sent
         var job = V31Job.Of(CheckedNote("checked-note, the letter fixed text", files => files.With(
             "deliverables/patient/patient_letter.md",
-            SourceFixture.Text(files, "deliverables/patient/patient_letter.md").Replace("{{ node.sections.content }}\n\n", "", StringComparison.Ordinal))));
+            SourceFixture.Text(files, "deliverables/patient/patient_letter.md").Replace("{{ for s in node.sections.value }}{{ s }}\n\n{{ end }}", "", StringComparison.Ordinal))));
         var stub = job.Agent;
         job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
         var context = job.Context();
@@ -586,6 +587,140 @@ public class OrchestratorV31Tests
         Assert.NotEmpty(sends);
         Assert.DoesNotContain(sends, s => s.Input.Send.Kind == "emr");
         Assert.DoesNotContain(sends, s => s.Input.Send.Documents.Any(d => d.Deliverable == "deliverable.note"));
+    }
+
+    // ---- #1507 (area 10; R8, ruled by the owner on #1507, 2026-11-22; D18, D19): delivery keeps 30's promise ------------
+
+    [Fact]
+    public async Task TheDeliverySettings_AreReadAtTheStart()
+    {
+        // D18: the address and delivery.emailPdf the start read travel in the orchestration's input to every attempt; the
+        // account's document password, set and used by the real PDF channel, is read at the attempt and never crosses into
+        // the orchestration's input or any activity's
+        var job = V31Job.Of("checked-note");
+        var (mail, settings) = RealChannels(job);
+        settings.GetAsync("user-1", Consultologist.Api.Auth.AccountSettingKeys.DeliveryPassword, Arg.Any<CancellationToken>())
+            .Returns(new Consultologist.Api.Auth.AccountSetting(Consultologist.Api.Auth.AccountSettingKeys.DeliveryPassword, "correct-horse-battery-16", "text/plain", DateTimeOffset.UnixEpoch));
+        var atStart = new V31DeliverySettings("dr.sample@example.com", true);
+        var context = job.Context(job.Input() with { Delivery = atStart });
+
+        await V31Job.RunAsync(context);
+
+        var sends = Sends(context);
+        Assert.Equal(2, sends.Count);
+        Assert.All(sends, s => Assert.Equal(atStart, s.Input.Delivery));
+        Assert.Equal(2, mail.ReceivedCalls().Count());
+        Assert.NotNull(mail.ReceivedCalls().Last().GetArguments()[5]);
+        await settings.Received(1).GetAsync("user-1", Consultologist.Api.Auth.AccountSettingKeys.DeliveryPassword, Arg.Any<CancellationToken>());
+        Assert.DoesNotContain("correct-horse", JsonSerializer.Serialize(job.Input() with { Delivery = atStart }), StringComparison.Ordinal);
+        Assert.All(context.Calls, c => Assert.DoesNotContain("correct-horse", c.InputJson, StringComparison.Ordinal));
+
+        // an orchestration input written before the member existed reads it null, and replays as area 08's build ran it
+        var before = JsonNode.Parse(JsonSerializer.Serialize(job.Input()))!.AsObject();
+        before.Remove("Delivery");
+        Assert.Null(JsonSerializer.Deserialize<ConsultGenerationOrchestrationInputV31>(before.ToJsonString())!.Delivery);
+    }
+
+    [Theory]
+    [InlineData("pdf")]
+    [InlineData("email, pdf")]
+    public async Task AJobWhoseEveryDeliverableIsBlocked_SendsTheLinkOnlyEmail(string letterKinds)
+    {
+        // D19, ruled: checked-note delivering pdf (as a migrated package does), its note blocked by proofread and its letter
+        // held empty. The job still enters delivering and sends one link-only message by the real channel (one per job, the
+        // controller's ruling, also when the letter lists email and pdf): no clinical text, the labels and the History link;
+        // each listed mail destination's row is sent from that one send, its attempt sent link-only, its reason the ruling's.
+        var job = V31Job.Of(AllBlocked(letterKinds.Split(", ")));
+        var (mail, settings) = RealChannels(job);
+        var context = job.Context(job.Input() with { Delivery = new V31DeliverySettings("dr.sample@example.com", true) });
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal((1, 1), (job.State.V31Progress!.States["blocked"], job.State.V31Progress.States["held"]));
+        var send = Assert.Single(Sends(context)).Input.Send;
+        Assert.Equal((letterKinds == "pdf" ? "pdf" : "email", true), (send.Kind, send.EveryDeliverableBlocked));
+        Assert.Equal([("deliverable.note", "Consultation note", ""), ("deliverable.patient.patient_letter", "Letter to the patient", "")],
+            send.Documents.Select(d => (d.Deliverable, d.Label, d.Text)));
+
+        var call = Assert.Single(mail.ReceivedCalls());
+        var body = (string)call.GetArguments()[3]!;
+        Assert.Equal("dr.sample@example.com", call.GetArguments()[1]);
+        Assert.Null(call.GetArguments()[5]);
+        Assert.Contains("No document could be sent: Consultation note, Letter to the patient were not released.", body, StringComparison.Ordinal);
+        Assert.Contains($"https://app.example.com/history/{V31Job.JobId}", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Okafor", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("## Sections", body, StringComparison.Ordinal);
+        await settings.DidNotReceive().GetAsync(Arg.Any<string>(), Consultologist.Api.Auth.AccountSettingKeys.DeliveryPassword, Arg.Any<CancellationToken>());
+
+        Assert.Equal(
+            [ConsultGenerationJobStatuses.Running, ConsultGenerationJobStatuses.Delivering, ConsultGenerationJobStatuses.Completed],
+            Statuses(context));
+        var kinds = letterKinds.Split(", ");
+        Assert.Equal(1 + kinds.Length, job.State.V31Progress.States["delivery:sent"]);
+        Assert.Empty(job.Alerts);
+
+        // the sealed record gathers each row under its deliverable, whose own delivery list stays [] (it was not released)
+        var record = JsonNode.Parse((await job.Blobs.ReadRecordAsync(V31Job.AccountKind, "user-1", V31Job.JobId, CancellationToken.None))!)!;
+        foreach (var deliverable in record["deliverables"]!.AsArray())
+        {
+            Assert.Empty(deliverable!["delivery"]!.AsArray());
+            var rows = deliverable["deliveries"]!.AsArray();
+            var expected = (string?)deliverable["key"] == "deliverable.note" ? ["pdf"] : kinds;
+            Assert.Equal(expected.Select(k => $"delivery:{deliverable["key"]}/{k}"), rows.Select(r => (string?)r!["key"]));
+            Assert.All(rows, row =>
+            {
+                Assert.Equal(("sent", "every deliverable blocked"), ((string?)row!["result"], (string?)row["reason"]));
+                Assert.Equal("sent link-only", (string?)Assert.Single(row["attempts"]!.AsArray())!["outcome"]);
+            });
+        }
+    }
+
+    [Fact]
+    public async Task AnOrchestrationStartedBeforeThisBuild_WithEveryDeliverableBlocked_NeverEntersDelivering()
+    {
+        // Task 22 fix round 1: an input with no Delivery (started by area 08's build) replays the calls that build made: a
+        // job that released nothing never entered delivering, so it sends nothing and goes straight to its finalize and seal
+        var job = V31Job.Of(AllBlocked(["pdf"]));
+        var (mail, _) = RealChannels(job);
+        var context = job.Context(job.Input());
+        Assert.Null(job.Input().Delivery);
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.DoesNotContain(context.Calls, c => c.Name == nameof(ConsultGenerationJobEntity.MarkDelivering));
+        Assert.Empty(Sends(context));
+        Assert.Empty(mail.ReceivedCalls());
+        Assert.Equal([ConsultGenerationJobStatuses.Running, ConsultGenerationJobStatuses.Completed], Statuses(context));
+        Assert.DoesNotContain(job.State.V31Progress!.States.Keys, state => state.StartsWith("delivery:", StringComparison.Ordinal));
+    }
+
+    /// <summary>D19: checked-note with its note blocked (delivering pdf) and its letter held empty, delivering <paramref name="letterKinds"/>.</summary>
+    private static CompiledGoldenTests.GoldenCase AllBlocked(string[] letterKinds) =>
+        CheckedNote($"checked-note, every deliverable blocked, the letter by {string.Join(" and ", letterKinds)}", files => files
+            .WithJson("deliverables/index.json", h => h["delivery"] = new JsonArray("pdf"))
+            .WithJson("deliverables/patient/index.json", h => h["delivery"] = new JsonArray([.. letterKinds.Select(k => (JsonNode?)k)]))
+            .With("deliverables/patient/patient_letter.md", SourceFixture.Text(files, "deliverables/patient/patient_letter.md")
+                .Replace("Dear Margaret Okafor,\n\nThis is what we talked about at your visit.\n\n{{ for s in node.sections.value }}{{ s }}\n\n{{ end }}Dr A. Sample\n", "{{ \"\" }}\n", StringComparison.Ordinal)));
+
+    /// <summary>#1507: the job's deliver-v31 answered by the real activity and channels over a mailbox and settings substitute.</summary>
+    private static (Consultologist.Api.Email.IGraphMailClient Mail, Consultologist.Api.Auth.IAccountSettingsStore Settings) RealChannels(V31Job job)
+    {
+        var mail = Substitute.For<Consultologist.Api.Email.IGraphMailClient>();
+        var settings = Substitute.For<Consultologist.Api.Auth.IAccountSettingsStore>();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["EmailIntake:MailboxAddress"] = "consults@example.com",
+                ["EmailIntake:AppBaseUrl"] = "https://app.example.com",
+            })
+            .Build();
+        var activity = new DeliverV31Activity(
+            new DeliveryChannels(mail, settings, configuration, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<DeliverV31Activity>.Instance);
+        job.Deliver = input => activity.RunAsync(input, CancellationToken.None).GetAwaiter().GetResult();
+        return (mail, settings);
     }
 
     // ---- #1505 (area 08; part 09 § 3.9; D14): alerts for the operator -------------------------------------------------

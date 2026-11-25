@@ -1,0 +1,14 @@
+{
+  "description": null,
+  "items": [
+    "letterhead",
+    "reference_line",
+    "closing_line",
+    "second_closing",
+    "review_leaflet",
+    "author_line",
+    "cc_line",
+    "body_echo",
+    "visit_echo"
+  ]
+}

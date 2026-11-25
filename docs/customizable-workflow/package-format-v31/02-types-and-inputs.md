@@ -437,7 +437,7 @@ are content** meant to be read or composed, and always carry a media type
 | object formats | structured data | omitted | omitted |
 
 Each is the same format whether a model or a template wrote the value (§ 1.3); 30's `prose` becomes
-`plaintext` (§ 11). A `block` Markdown text stands on its own lines; an `inline` one sits inside a
+`plaintext`, or `markdown_block` where a deliverable composes it (§ 11, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)). A `block` Markdown text stands on its own lines; an `inline` one sits inside a
 line.
 
 ### 5.1 The annotations
@@ -867,7 +867,7 @@ Mechanical, in `WorkflowPackageMigration30To31` ([part 10](10-migration-and-tool
 | At 30 | At 31 |
 |---|---|
 | every node | gains `kind`; `format` becomes its return type; `reproducible` written with the derived value (§ 1.1); `producer` written from its kind (§ 1.3); `modelDerived`, `runDependent` and `profileCarrying` written with the derived values (§ 1.2, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
-| `"format": "prose"`, `agent_*` | the plain format of the same shape: `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
+| `"format": "prose"`, `agent_*` | the plain format of the same shape: `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)); `prose` that a deliverable composes, followed through flows to every leaf, is `markdown_block`, and prose that only prompts read stays `plaintext` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369); part 10 § 1.2) |
 | a package or catalogue object format | keeps its name |
 | a `rendered` format | `kind: rendered`, a text format |
 | a `let` with `type` | `kind: computed`, `format` from `type`, `expression` in JSON Logic (#1447) |

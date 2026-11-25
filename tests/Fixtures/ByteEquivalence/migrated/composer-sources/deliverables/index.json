@@ -1,0 +1,19 @@
+{
+  "description": null,
+  "items": [
+    "single",
+    "pair",
+    "topics",
+    "sections",
+    "summary",
+    "plan",
+    "tone_line",
+    "tally",
+    "summary_then_opening",
+    "topics_then_opening"
+  ],
+  "delivery": [
+    "pdf"
+  ],
+  "bundle": null
+}

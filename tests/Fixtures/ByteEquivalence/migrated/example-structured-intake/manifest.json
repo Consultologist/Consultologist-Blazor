@@ -1,0 +1,74 @@
+{
+  "name": "example-structured-intake",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Structured intake demo",
+  "description": [
+    "A demonstration of what specVersion 9 opened: an array of prior notes fanned per element (leave it empty to see the empty-fan refusal), a patient object read by path, a number driving an ordering comparison, and a deliverable gated on count(). Not intended for clinical use."
+  ],
+  "tags": [
+    "demo",
+    "structured-intake"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "prior_notes": {
+      "label": "Prior notes",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": false,
+      "channel": null
+    },
+    "patient": {
+      "label": "Patient record",
+      "description": null,
+      "format": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "age",
+          "sex"
+        ],
+        "properties": {
+          "age": {
+            "type": "number",
+            "title": "Age"
+          },
+          "sex": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "female",
+              "male",
+              null
+            ],
+            "title": "Sex"
+          }
+        }
+      },
+      "required": false,
+      "channel": null
+    },
+    "length_of_stay": {
+      "label": "Length of stay (days)",
+      "description": null,
+      "format": "number",
+      "required": false,
+      "channel": null
+    }
+  }
+}

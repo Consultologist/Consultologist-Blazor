@@ -1,0 +1,231 @@
+{
+  "description": [
+    "The migration's snapshot (chapter 10 § 10.12): the migrated package run offline on fictional inputs and generated replies,",
+    "its prompts and deliverables pinned by hash."
+  ],
+  "inputs": {
+    "consult_draft": "Stub reply for input.consult_draft (2796a5cc)."
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.create_patient_trajectory": {
+      "concepts": [
+        {
+          "id": "stub a4d5747b",
+          "isActive": false,
+          "isSnomedConcept": false,
+          "source": "stub 63301836",
+          "support": "stub b9820772",
+          "term": "stub f71c0ea2",
+          "type": "stub a9c12590"
+        },
+        {
+          "id": "stub d962215a",
+          "isActive": false,
+          "isSnomedConcept": false,
+          "source": "stub 0c0db4cb",
+          "support": "stub 8263e290",
+          "term": "stub f64443aa",
+          "type": "stub 9b768b56"
+        },
+        {
+          "id": "stub 9412cec8",
+          "isActive": true,
+          "isSnomedConcept": false,
+          "source": "stub d2398ef7",
+          "support": "stub b8a6042a",
+          "term": "stub 2faf9d2b",
+          "type": "stub 2d246915"
+        }
+      ]
+    },
+    "node.create_typical_trajectory": {
+      "concepts": [
+        {
+          "id": "stub b202b867",
+          "isActive": false,
+          "isSnomedConcept": false,
+          "source": "stub 08ba5f0d",
+          "support": "stub 2b1bec70",
+          "term": "stub 23939a04",
+          "type": "stub c788952d"
+        },
+        {
+          "id": "stub 98d8f19a",
+          "isActive": false,
+          "isSnomedConcept": true,
+          "source": "stub d4657f46",
+          "support": "stub fe0bf3d2",
+          "term": "stub 3e3af611",
+          "type": "stub 2a630d01"
+        },
+        {
+          "id": "stub 55c7c2dc",
+          "isActive": true,
+          "isSnomedConcept": false,
+          "source": "stub dfd0e853",
+          "support": "stub a58ef5fd",
+          "term": "stub 87b2b04a",
+          "type": "stub b5aaef4f"
+        }
+      ]
+    },
+    "node.extract_patient_concepts": {
+      "concepts": [
+        {
+          "id": "stub 474521be",
+          "isActive": false,
+          "isSnomedConcept": true,
+          "source": "stub 16bf1266",
+          "support": "stub 52928540",
+          "term": "stub 50458320",
+          "type": "stub 498da2c9"
+        }
+      ]
+    },
+    "node.identify_problem": {
+      "concepts": [
+        {
+          "id": "stub a0fb9c30",
+          "isActive": false,
+          "isSnomedConcept": false,
+          "source": "stub 16b42981",
+          "support": "stub 898a230c",
+          "term": "stub 22aaafbf",
+          "type": "stub 77f2d97c"
+        }
+      ]
+    },
+    "node.standards.patient_section_draft:allergies": "Stub reply for node.standards.patient_section_draft:allergies (033a350a).",
+    "node.standards.patient_section_draft:assessment_plan": "Stub reply for node.standards.patient_section_draft:assessment_plan (d706346b).",
+    "node.standards.patient_section_draft:exam": "Stub reply for node.standards.patient_section_draft:exam (05b63ac3).",
+    "node.standards.patient_section_draft:family_history": "Stub reply for node.standards.patient_section_draft:family_history (03b50452).",
+    "node.standards.patient_section_draft:hpi": "Stub reply for node.standards.patient_section_draft:hpi (73e7d7e6).",
+    "node.standards.patient_section_draft:investigations": "Stub reply for node.standards.patient_section_draft:investigations (f5e29e49).",
+    "node.standards.patient_section_draft:medications": "Stub reply for node.standards.patient_section_draft:medications (5fc0bade).",
+    "node.standards.patient_section_draft:pmh": "Stub reply for node.standards.patient_section_draft:pmh (41dd9826).",
+    "node.standards.patient_section_draft:social_history": "Stub reply for node.standards.patient_section_draft:social_history (a8f102e4).",
+    "node.standards.section_instructions:allergies": "Stub reply for node.standards.section_instructions:allergies (4e218e43).",
+    "node.standards.section_instructions:assessment_plan": "Stub reply for node.standards.section_instructions:assessment_plan (2e979bc4).",
+    "node.standards.section_instructions:exam": "Stub reply for node.standards.section_instructions:exam (8789e22a).",
+    "node.standards.section_instructions:family_history": "Stub reply for node.standards.section_instructions:family_history (1d4051e5).",
+    "node.standards.section_instructions:hpi": "Stub reply for node.standards.section_instructions:hpi (c980f6f0).",
+    "node.standards.section_instructions:investigations": "Stub reply for node.standards.section_instructions:investigations (6914f6c6).",
+    "node.standards.section_instructions:medications": "Stub reply for node.standards.section_instructions:medications (9e8cb502).",
+    "node.standards.section_instructions:pmh": "Stub reply for node.standards.section_instructions:pmh (de04ca37).",
+    "node.standards.section_instructions:social_history": "Stub reply for node.standards.section_instructions:social_history (6b8fc14d).",
+    "node.standards.standard_section_draft:allergies": "Stub reply for node.standards.standard_section_draft:allergies (84dd7a34).",
+    "node.standards.standard_section_draft:assessment_plan": "Stub reply for node.standards.standard_section_draft:assessment_plan (e926c0d6).",
+    "node.standards.standard_section_draft:exam": "Stub reply for node.standards.standard_section_draft:exam (b26c6cd5).",
+    "node.standards.standard_section_draft:family_history": "Stub reply for node.standards.standard_section_draft:family_history (b249262e).",
+    "node.standards.standard_section_draft:hpi": "Stub reply for node.standards.standard_section_draft:hpi (e8710900).",
+    "node.standards.standard_section_draft:investigations": "Stub reply for node.standards.standard_section_draft:investigations (6ed74e88).",
+    "node.standards.standard_section_draft:medications": "Stub reply for node.standards.standard_section_draft:medications (64ff1f28).",
+    "node.standards.standard_section_draft:pmh": "Stub reply for node.standards.standard_section_draft:pmh (df4e5781).",
+    "node.standards.standard_section_draft:social_history": "Stub reply for node.standards.standard_section_draft:social_history (c9ed7f0f)."
+  },
+  "expect": {
+    "prompts": {
+      "node.extract_patient_concepts": {
+        "hash": "sha256:57f136b1f0331855ff909e5477a26d904555c9822cd27e412c21d351c6ec9caa"
+      },
+      "node.identify_problem": {
+        "hash": "sha256:a8ceec0af49e48e00c7118f910d9ee9bcf694a2f9f7b604ccec634e36130ffd6"
+      },
+      "node.create_typical_trajectory": {
+        "hash": "sha256:eedde1dcd7822999e5a6e051e7906363f902085bd16d236bef07bedabd707208"
+      },
+      "node.create_patient_trajectory": {
+        "hash": "sha256:93b279eecee439ec9ba106fb12a20db6b3176139949286478f44624011d9ce64"
+      },
+      "node.standards.standard_section_draft:hpi": {
+        "hash": "sha256:89b8bfe7bb55b50037912b724357aa5db78aa213fa726c413c545d8cb77944b0"
+      },
+      "node.standards.standard_section_draft:pmh": {
+        "hash": "sha256:60cba0e7faa8e458220fccfcafda3922008191d0272142910ae459e9b167ad1e"
+      },
+      "node.standards.standard_section_draft:medications": {
+        "hash": "sha256:450c6b77ae49309bd90d8ae38ea249023de3b1b88804c1888590ee862a37716f"
+      },
+      "node.standards.standard_section_draft:allergies": {
+        "hash": "sha256:0ed7b1ba6ca6bca5202b3a81879ab1b98219d24e0800e83c0416cbcfb666130a"
+      },
+      "node.standards.standard_section_draft:social_history": {
+        "hash": "sha256:ad9a12f90121715ecc81a30e1859456c96eaf75789f684b291f25096f207e4a9"
+      },
+      "node.standards.standard_section_draft:family_history": {
+        "hash": "sha256:61c63d94917bfda956d7e0dc685823fc6aa213fbb8fc742c3935addf56ea74ce"
+      },
+      "node.standards.standard_section_draft:exam": {
+        "hash": "sha256:2cc2082aad0ecb3df0124bb8822165c777c2a6bd464ffb7c5d11c610f88ff4dd"
+      },
+      "node.standards.standard_section_draft:investigations": {
+        "hash": "sha256:fea21f006c4ad78455a1b7cf7fc1535221b6dc2b9f041e9031a453540306ae56"
+      },
+      "node.standards.standard_section_draft:assessment_plan": {
+        "hash": "sha256:5e6c07c4f37caa6b553709e57c2ed4d5a120c981b0ef3349645fe87e1801b11a"
+      },
+      "node.standards.patient_section_draft:hpi": {
+        "hash": "sha256:b6f57ba43cd8b4ef8ecb68e6bf53652b9212ec09f5a6a04b8d81d470f7b36e34"
+      },
+      "node.standards.patient_section_draft:pmh": {
+        "hash": "sha256:628442114fd87b241f1dbfc70ef13dee02f52270461e6b1db569944cb96ac134"
+      },
+      "node.standards.patient_section_draft:medications": {
+        "hash": "sha256:ffb4702df2818a187de93ddb1582e14597b398eb8e0b5f432f7abed273355798"
+      },
+      "node.standards.patient_section_draft:allergies": {
+        "hash": "sha256:ce6a80b53d4478a62de39285bcca7997721d0920515917167b3ce7db9695a397"
+      },
+      "node.standards.patient_section_draft:social_history": {
+        "hash": "sha256:a8bb4b6e4650e60ffed4a032d79cd493ec3a7b70d5e7dce8fb86ab759b048890"
+      },
+      "node.standards.patient_section_draft:family_history": {
+        "hash": "sha256:8356a90f780ea2caf627c63fca7c7dce4370f170b1950da336c7d9bf1d7d18fe"
+      },
+      "node.standards.patient_section_draft:exam": {
+        "hash": "sha256:6e6ab0439177876f9df4cae4e06d02e37c32c24b50aefe207098e6ba20b19c67"
+      },
+      "node.standards.patient_section_draft:investigations": {
+        "hash": "sha256:a3a132a4d89bce3ecf6c441bf064a6797ad7e95712e88f13b62d40d958973712"
+      },
+      "node.standards.patient_section_draft:assessment_plan": {
+        "hash": "sha256:1d58ed27c148e420211af9fe79470d193ce0ab1b06d2c48ca952ff21159a8ac8"
+      },
+      "node.standards.section_instructions:hpi": {
+        "hash": "sha256:6b3734984f8fbaf04e3d30b3df2ddd40ab60cec54f756eea672f72ede7f78181"
+      },
+      "node.standards.section_instructions:pmh": {
+        "hash": "sha256:5b14c01231bb362a186d7d7fac0c5f04c8036ccc26439c3d3657025652d8971d"
+      },
+      "node.standards.section_instructions:medications": {
+        "hash": "sha256:9a6899906e82e433a6771113dd8d5f9ccdea85e01db0b48c647630f11a0b1687"
+      },
+      "node.standards.section_instructions:allergies": {
+        "hash": "sha256:d8955263c81d5c76aa04fdfa8ab857f6ec64801ee9c7689172d91512219208c3"
+      },
+      "node.standards.section_instructions:social_history": {
+        "hash": "sha256:5769db428e7abe9933c6c0d1fd0da6901ed5674c3b037a907a8ce63e0086929a"
+      },
+      "node.standards.section_instructions:family_history": {
+        "hash": "sha256:aeaed6aa46e1c40a36f75853edbe7a789a293b0c13dea615d57559540fcf1944"
+      },
+      "node.standards.section_instructions:exam": {
+        "hash": "sha256:d6b2c5fae6235895ddeed7fede41f7bf233ab3caf9aff0737c939ef01b4c6115"
+      },
+      "node.standards.section_instructions:investigations": {
+        "hash": "sha256:622d0a3f43258ff98f35d91d79f806a19548d00ba36438506523ba902fb89acf"
+      },
+      "node.standards.section_instructions:assessment_plan": {
+        "hash": "sha256:9d6e6bb76a431598c548ca1415d6ac6fc98ddf57053cc154b278a77f475cb732"
+      }
+    },
+    "deliverables": {
+      "deliverable.consult": {
+        "state": "released",
+        "hash": "sha256:4185a4770adc466849a66aa035b38228483c5e1923f722f335c8ba3f20c2c12b"
+      }
+    }
+  }
+}
