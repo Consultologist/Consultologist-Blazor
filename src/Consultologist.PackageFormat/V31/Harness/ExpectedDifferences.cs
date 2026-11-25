@@ -242,12 +242,17 @@ public static class ExpectedDifferences
     /// <summary>
     /// R4 item 3: a 31 deliverable its check refused (blocked) reads as <c>null</c> in the rest of the job, so 30's text,
     /// where it held that deliverable's composed text, is 31's with that text left out: 30's text with each such
-    /// deliverable's composed text (31's, kept for the record) taken out. Only a deliverable composed with a text.
+    /// deliverable's composed text (31's, kept for the record) taken out. Only a deliverable composed with a text, and only
+    /// one the compared row reads at 31 (<c>deliverable.&lt;id&gt;.content</c> among <see cref="RowReads"/>; final review
+    /// B1): a text equal to the blocked one that a row composes on its own is not withheld, and a row that lost it is
+    /// unexpected. Part 06 § 6.7 lets only checks read a deliverable at 31, so a published package's compared rows never do.
     /// </summary>
     private static (string Old, string New)? Withheld(DifferenceContext c, string old, string now)
     {
+        var reads = RowReads(c);
         var withheld = old;
-        foreach (var blocked in c.Run31.Deliverables.Where(d => d.State == DeliverableState.Blocked && d.Key != c.Key31))
+        foreach (var blocked in c.Run31.Deliverables.Where(d => d.State == DeliverableState.Blocked && d.Key != c.Key31
+                     && reads.Any(r => r == d.Key + ".content" || r.StartsWith(d.Key + ".content.", StringComparison.Ordinal))))
         {
             if (blocked.Text is { Length: > 0 } text && withheld.Contains(text, StringComparison.Ordinal))
                 withheld = withheld.Replace(text, "", StringComparison.Ordinal);
@@ -255,6 +260,33 @@ public static class ExpectedDifferences
 
         return withheld == old ? null : (withheld, now);
     }
+
+    /// <summary>
+    /// Every path the compared row reads at 31: its plan entry's reads (<see cref="PlanEntry.Reads"/>), and the reads the
+    /// compiled document records for each snippet or macro it places (<see cref="PlanEntry.Placements"/>, nested ones
+    /// included). Empty for the status, or a key the plan has no entry for.
+    /// </summary>
+    private static HashSet<string> RowReads(DifferenceContext c)
+    {
+        var reads = new HashSet<string>(StringComparer.Ordinal);
+        if (c.Key31 is not { } key || !c.Plan.Entries.TryGetValue(EntryOf(key), out var entry))
+            return reads;
+        reads.UnionWith(entry.Reads);
+        foreach (var placement in entry.Placements)
+        {
+            var placed = c.Plan.Document["snippets"]?[placement.Site] ?? c.Plan.Document["macros"]?[placement.Site];
+            foreach (var read in placed?["reads"] as JsonArray ?? [])
+            {
+                if (SourceLayout.Text(read) is { } path)
+                    reads.Add(path);
+            }
+        }
+
+        return reads;
+    }
+
+    /// <summary>The entry of a row key: the key before its first <c>:</c> (an instance) or <c>#</c> (a part).</summary>
+    private static string EntryOf(string rowKey) => rowKey.IndexOfAny([':', '#']) is var end and >= 0 ? rowKey[..end] : rowKey;
 
     /// <summary>
     /// Part 06 § 6.4's escape undone (<see cref="MarkdownEscape"/>): a backslash before an ASCII punctuation character
@@ -870,7 +902,6 @@ public static class ExpectedDifferences
     /// <summary>Whether a gate decided for row <paramref name="owner"/> gates the row <paramref name="key"/>: it is that row, or a flow instance around it.</summary>
     private static bool Gates(string owner, string key)
     {
-        static string EntryOf(string rowKey) => rowKey.IndexOfAny([':', '#']) is var end and >= 0 ? rowKey[..end] : rowKey;
         return owner == key || EntryOf(key).StartsWith(EntryOf(owner) + ".", StringComparison.Ordinal);
     }
 }
