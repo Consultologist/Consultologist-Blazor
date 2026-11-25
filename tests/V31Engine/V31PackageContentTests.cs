@@ -63,14 +63,23 @@ public class V31PackageContentTests
     /// The nested note published by <see cref="PackagePublish.RunAsync"/> (a diagram given, and the operator's migration
     /// report when <paramref name="migrated"/>) and written by <see cref="V31RegistryWriter"/> into <paramref name="registry"/>.
     /// </summary>
-    private static async Task<Stored> PublishAsync(FakeRegistry registry, bool migrated = false)
+    private static async Task<Stored> PublishAsync(FakeRegistry registry, bool migrated = false, string? name = null)
     {
+        var upload = ResolveFixture.NestedNote();
+        if (name != null)
+        {
+            // D2: the registry's name written into manifest.json, as the publisher writes it.
+            var manifest = JsonNode.Parse(SourceFixture.Text(upload, "manifest.json"))!.AsObject();
+            manifest["name"] = name;
+            upload["manifest.json"] = Utf8NoBom.GetBytes(manifest.ToJsonString());
+        }
+
         var options = new PublishOptions(
             Types.Registry, V31Job.Toolchain.Value.Current(), Limits.PublishLimits, V31PackagePublisher.ByApi, new FixedClock(Now),
             Diagram: _ => "flowchart TD\n  plan --> refine\n",
             MigrationReport: migrated ? MigrationReport : null,
             MigratedFrom: migrated ? "v2026.11.1" : null);
-        var outcome = await PackagePublish.RunAsync(ResolveFixture.NestedNote(), options);
+        var outcome = await PackagePublish.RunAsync(upload, options);
         Assert.True(outcome.Published, string.Join("\n", outcome.Report.Refusals.Select(r => r.Sentence)));
 
         var package = JsonNode.Parse(outcome.Compiled!.Resolve)!["package"]!;
@@ -155,6 +164,75 @@ public class V31PackageContentTests
         Assert.Equal("Workflow package is not accessible from this account.", (string)Body(response)["error"]!);
         Assert.Empty(rig.Registry.Reads);
         await rig.Store.DidNotReceiveWithAnyArgs().ResolveAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task Content_OfTheAccountsOwnPrivatePackage_IsServed()
+    {
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry, name: "acct-0123456789ab");
+        rig.Ownership.OwnsAsync(AppUserId, stored.Ref.Name, Arg.Any<CancellationToken>()).Returns(true);
+
+        var response = await rig.ContentAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var content = ContentOf(response);
+        Assert.Equal(("acct-0123456789ab", 31), (content.Name, content.SpecVersion));
+        Assert.Equal(stored.Text("nodes/plan.md"), content.Files["nodes/plan.md"]);
+        Assert.Equal(stored.Stamp.ResolveHash, CanonicalJson.HashText(Canonical(content.Resolve!.Value)));
+        await rig.Ownership.Received().OwnsAsync(AppUserId, stored.Ref.Name, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Content_OfAVersionThisEngineWillNotRun_IsStillServed()
+    {
+        // A version published under a toolchain this engine no longer runs: its pair verifies against the stamp, so it is
+        // published, and the read-only Editor and History show it (part 09 § 8.2, part 07 § 6); only a start refuses it.
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry);
+        var resolvePath = FakeRegistry.PathOf(stored.Ref, CompiledPackage.ResolveFile);
+        var lockPath = FakeRegistry.PathOf(stored.Ref, ResolveCompiler.LockFile);
+        var resolve = JsonNode.Parse(rig.Registry.Blobs[resolvePath])!.AsObject();
+        resolve["requires"]!["kinds"]!.AsArray().Add("teleport");
+        var resolveText = CanonicalJson.Write(resolve);
+        var @lock = JsonNode.Parse(rig.Registry.Blobs[lockPath])!.AsObject();
+        @lock["resolve"]!["hash"] = CanonicalJson.HashText(resolveText);
+        var lockText = CanonicalJson.Write(@lock);
+        rig.Registry.Blobs[resolvePath] = Utf8NoBom.GetBytes(resolveText);
+        rig.Registry.Blobs[lockPath] = Utf8NoBom.GetBytes(lockText);
+        rig.Registry.Blobs[FakeRegistry.PathOf(stored.Ref, PublishedStamp.FileName)] =
+            Utf8NoBom.GetBytes(new PublishedStamp(CanonicalJson.HashText(resolveText), CanonicalJson.HashText(lockText)).ToJson());
+        var load = await rig.Compiled.TryLoadAsync(stored.Ref, CancellationToken.None);
+        Assert.Equal("S07-004", load!.RefusalId);
+
+        var response = await rig.ContentAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var content = ContentOf(response);
+        Assert.Equal(resolveText, Canonical(content.Resolve!.Value));
+        Assert.Equal(lockText, Canonical(content.Lock!.Value));
+        Assert.Equal(stored.Text("nodes/plan.md"), content.Files["nodes/plan.md"]);
+        await rig.Store.DidNotReceiveWithAnyArgs().ResolveAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task Content_OfAVersionWhoseLockDoesNotMatch_IsS09014_As400()
+    {
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry);
+        var lockPath = FakeRegistry.PathOf(stored.Ref, ResolveCompiler.LockFile);
+        var @lock = JsonNode.Parse(rig.Registry.Blobs[lockPath])!.AsObject();
+        @lock["resolve"]!["hash"] = CanonicalJson.HashText("{}");
+        var lockText = CanonicalJson.Write(@lock);
+        rig.Registry.Blobs[lockPath] = Utf8NoBom.GetBytes(lockText);
+        rig.Registry.Blobs[FakeRegistry.PathOf(stored.Ref, PublishedStamp.FileName)] =
+            Utf8NoBom.GetBytes(new PublishedStamp(stored.Stamp.ResolveHash, CanonicalJson.HashText(lockText)).ToJson());
+
+        var response = await rig.ContentAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(CompiledPackageStore.LockMismatch(stored.Ref.Name, stored.Ref.Version), (string)Body(response)["error"]!);
+        Assert.Null(Body(response)["Files"]);
     }
 
     [Fact]
@@ -401,16 +479,18 @@ public class V31PackageContentTests
         public Rig(string? preview = "31")
         {
             var admission = SpecVersionAdmissionTests.With(preview);
-            var compiled = new CompiledPackageStore(Registry, Registry, ThisEngine, admission, new EngineLimitSettings(new ConfigurationBuilder().Build()));
+            Compiled = new CompiledPackageStore(Registry, Registry, ThisEngine, admission, new EngineLimitSettings(new ConfigurationBuilder().Build()));
             var authorizer = Substitute.For<IAccountAuthorizer>();
             authorizer.AuthorizeAsync(Arg.Any<HttpRequestData>(), Arg.Any<CancellationToken>()).Returns(AdminDrainTests.Admin.Account(AppUserId));
             Functions = new WorkflowPackages(
                 Store, Substitute.For<IWorkflowPackagePinResolver>(), publisher: null!,
                 new WorkflowPackageIngestor(OutputContractCatalog.Load(), admission, Types), lineage: null!, containerFactory: null!,
-                authorizer, Ownership, NullLogger<WorkflowPackages>.Instance, compiled, admission, Registry);
+                authorizer, Ownership, NullLogger<WorkflowPackages>.Instance, Compiled, admission, Registry);
         }
 
         public FakeRegistry Registry { get; } = new();
+
+        public CompiledPackageStore Compiled { get; }
 
         public IWorkflowPackageStore Store { get; } = Substitute.For<IWorkflowPackageStore>();
 

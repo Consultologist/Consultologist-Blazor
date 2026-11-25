@@ -436,18 +436,27 @@ public sealed class WorkflowPackages
         var packageRef = requested.Ref
             ?? await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
 
-        // #1508 (specVersion 31, area 11; part 09 § 8.2; D14): a version stamped 31 is served from its folder, on a
-        // deployment that runs 31 (the load reads nothing otherwise), after the access check above; a refusal of the load is
-        // its sentence. A version with no 31 stamp, or a registry that could not be read, is today's path's, as at Current.
+        // #1508 (specVersion 31, area 11; part 09 § 8.2; part 07 § 6; D14): a version stamped 31 is served from its folder,
+        // on a deployment that runs 31 (the load reads nothing otherwise), after the access check above, whenever its pair
+        // verifies against the stamp, whether or not this engine can run it (a requires refusal still serves: the author
+        // starts the next version from it). A pair absent or not matching the stamp is the load's sentence. A version with
+        // no 31 stamp, or a registry that could not be read, is today's path's, as at Current.
         var load = _compiled != null && _registry != null ? await _compiled.TryLoadAsync(packageRef, cancellationToken) : null;
         if (load is { Unreadable: false })
         {
-            if (load.Plan is { } plan)
+            if (!CompiledPackageStore.IsIntegrityRefusal(load.RefusalId) && load.Version is { } version)
             {
+                if (load.Plan == null)
+                {
+                    _logger.LogInformation(
+                        "Workflow package content served at 31 though this engine will not run it. Ref={Ref}, RefusalId={RefusalId}",
+                        packageRef, load.RefusalId);
+                }
+
                 WorkflowPackageContentResponse? content;
                 try
                 {
-                    content = await V31PackageContent.ReadAsync(_registry!, packageRef.Name, plan.Version, cancellationToken);
+                    content = await V31PackageContent.ReadAsync(_registry!, packageRef.Name, version, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -462,7 +471,7 @@ public sealed class WorkflowPackages
                 return content != null
                     ? await CreateJsonResponseAsync(req, HttpStatusCode.OK, content, cancellationToken)
                     : await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
-                        new { error = CompiledPackageStore.NotPublished(packageRef.Name, plan.Version) }, cancellationToken);
+                        new { error = CompiledPackageStore.NotPublished(packageRef.Name, version) }, cancellationToken);
             }
 
             _logger.LogWarning(

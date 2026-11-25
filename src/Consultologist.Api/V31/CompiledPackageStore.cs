@@ -209,8 +209,10 @@ public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory contai
 /// with 31 off. <paramref name="OperatorDetail"/> says what failed (the package, the version, the failure's type and status).
 /// #1506 (area 09; R4): with a plan, <paramref name="Lock"/> is the text of the version's verified <c>lock.json</c>, which a
 /// job's <c>versionsRan</c> is compared with member by member.
+/// #1508 (area 11, Task 19): <paramref name="Version"/>, the version the ref resolved to, on every load that is not
+/// <paramref name="Unreadable"/> (a refusal too), so a reader can serve a stamped version this engine will not run.
 /// </summary>
-public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false, string? Lock = null);
+public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false, string? Lock = null, string? Version = null);
 
 /// <summary>#1503 (specVersion 31, area 06; part 09 § 1.2 steps 1 to 5): loads a 31 version from its stamped pair.</summary>
 public interface ICompiledPackageStore
@@ -260,6 +262,13 @@ public sealed class CompiledPackageStore(
         if (!admission.Runs31)
             return null;
 
+        var (load, version) = await LoadAsync(packageRef, ct);
+        return load is { Unreadable: false } ? load with { Version = version } : load;
+    }
+
+    /// <summary>The load, and the version the ref resolved to (the ref's own when the resolution failed).</summary>
+    private async Task<(CompiledLoad? Load, string Version)> LoadAsync(WorkflowPackageRef packageRef, CancellationToken ct)
+    {
         var name = packageRef.Name;
         var version = packageRef.Version;
         PublishedStamp? stamp;
@@ -268,12 +277,12 @@ public sealed class CompiledPackageStore(
         {
             version = await versions.ResolveVersionAsync(packageRef, ct);
             if (_plans.TryGetValue($"{name}@{version}", out var cached))
-                return Loaded(cached);
+                return (Loaded(cached), version);
 
             var folder = $"{name}/{version}/";
             stamp = PublishedStamp.TryRead(Text(await files.TryReadAsync(name, folder + PublishedStamp.FileName, ct)));
             if (stamp == null)
-                return null;
+                return (null, version);
 
             resolveBytes = await files.TryReadAsync(name, folder + CompiledPackage.ResolveFile, ct);
             lockBytes = await files.TryReadAsync(name, folder + ResolveCompiler.LockFile, ct);
@@ -283,45 +292,45 @@ public sealed class CompiledPackageStore(
             // The registry could not be read: a pointer missing or invalid, a storage failure. Nothing is known of the
             // version, so nothing is refused; the failure's type and status are the operator's (never its message, which
             // can carry a URI).
-            return new CompiledLoad(null, null, null,
+            return (new CompiledLoad(null, null, null,
                 $"The registry could not be read for {name}@{version}: {ex.GetType().Name}{(ex is RequestFailedException failed ? $" {failed.Status}" : "")}.",
-                Unreadable: true);
+                Unreadable: true), version);
         }
 
         var key = $"{name}@{version}";
         if (resolveBytes == null || lockBytes == null)
-            return Refused(NotPublishedId, NotPublished(name, version), null);
+            return (Refused(NotPublishedId, NotPublished(name, version), null), version);
 
         if (CompiledPackage.Verify(name, version, resolveBytes, lockBytes, stamp.ResolveHash, stamp.LockHash) is { } mismatch)
-            return Shown(mismatch, name, version);
+            return (Shown(mismatch, name, version), version);
 
         // Verified: both are the canonical UTF-8 of a JSON document. Neither can be anything but an object here: Verify
         // reads the lock's resolve.hash and the document's lock member, which a non-object lacks, and refuses it (S07-017).
         // The check stays as the guard of the casts below.
         if (Parse(resolveBytes) is not JsonObject resolve || Parse(lockBytes) is not JsonObject @lock)
-            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
 
         // D4: a document declaring another spec version is S09-001; one not declaring it as publish writes is not publish's.
         if (!Declares(resolve, out var other))
-            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
         if (other is { } declared)
-            return Refused(NotSupportedId, admission.NotSupported(declared), null);
+            return (Refused(NotSupportedId, admission.NotSupported(declared), null), version);
 
         if (!Names(resolve, name, version) || !Names(@lock, name, version))
-            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
 
         // #1504 (R6): a document that is not what publish wrote (S07-006, an agent's version not an integer) is shown as S09-009.
         var lacking = RequiresCheck.Engine(resolve, @lock, engine.Value);
         if (lacking.FirstOrDefault(r => r.Id == S07HashId) is { } unwritten)
-            return Shown(unwritten, name, version);
+            return (Shown(unwritten, name, version), version);
         if (lacking.Count > 0)
-            return Refused(lacking[0].Id, lacking[0].Sentence, string.Join("\n", lacking.Select(r => r.Sentence)));
+            return (Refused(lacking[0].Id, lacking[0].Sentence, string.Join("\n", lacking.Select(r => r.Sentence))), version);
 
         var (plan, refusal) = RunPlan.Build(Utf8.GetString(resolveBytes), stamp.ResolveHash, stamp.LockHash, limits.RegexLimit);
         if (plan == null)
-            return Shown(refusal ?? ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(refusal ?? ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
 
-        return Loaded(_plans.GetOrAdd(key, (plan, Utf8.GetString(lockBytes))));
+        return (Loaded(_plans.GetOrAdd(key, (plan, Utf8.GetString(lockBytes)))), version);
     }
 
     /// <summary>A plan as a load answers it, with its lock's text.</summary>
@@ -335,6 +344,13 @@ public sealed class CompiledPackageStore(
         "S07-017" => Refused(S09LockId, LockMismatch(name, version), refusal.Sentence),
         _ => Refused(S09HashId, HashMismatch(name, version), refusal.Sentence),
     };
+
+    /// <summary>
+    /// #1508 (area 11, Task 19): whether a load refused with <paramref name="refusalId"/> because the stamped pair is absent
+    /// (A06-004) or does not verify against the stamp (S09-009, S09-014), so nothing of the version may be served. Any other
+    /// refusal comes after the pair verified: the version is published, only this engine will not run it.
+    /// </summary>
+    public static bool IsIntegrityRefusal(string? refusalId) => refusalId is S09HashId or S09LockId or NotPublishedId;
 
     /// <summary>A06-004 for <paramref name="name"/>@<paramref name="version"/>: stamped 31 without its compiled documents.</summary>
     public static string NotPublished(string name, string version) => $"Workflow {name}@{version} isn't published.";
