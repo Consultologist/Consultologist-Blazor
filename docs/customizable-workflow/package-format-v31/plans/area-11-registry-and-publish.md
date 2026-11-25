@@ -358,10 +358,10 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 **Files:** Modify `src/Consultologist.Api/V31/OperatorWeeklySummary.cs` (lines 15–39), the sealer (`RecordSealer`, where the size is logged at sealing); Test the existing summary tests in `tests/V31Engine/`.
 
-- [ ] **Step 1: Failing tests.** `TheLargestRecordLine_IsTheWeeksLargestSealedRecord` (`Largest record: <n> bytes, <rows> rows (job <id>)`, numbers in the invariant culture with thousands separators as the other lines write them); `WithNoSealedRecord_TheLineSaysNone`; `WhenTheSizesCannotBeRead_TheLineSaysSo_NeverZero` (as R11's line does).
-- [ ] **Step 2 to 3: Implement.** At sealing, write the record's byte length and row count on the job header (or the job index row the summary already reads: take whichever the summary's job query returns without a blob read per job); the summary takes the maximum over the week. No new table.
-- [ ] **Step 4: Run** the non-E2E suite; update `engine-v31.md` "Alerts and the weekly summary" (line 555).
-- [ ] **Step 5: Commit** `Api (#1508): the weekly summary measures the largest record`; push.
+- [x] **Step 1: Failing tests.** `TheLargestRecordLine_IsTheWeeksLargestSealedRecord` (`Largest record: <n> bytes, <rows> rows (job <id>)`, numbers in the invariant culture with thousands separators as the other lines write them); `WithNoSealedRecord_TheLineSaysNone`; `WhenTheSizesCannotBeRead_TheLineSaysSo_NeverZero` (as R11's line does).
+- [x] **Step 2 to 3: Implement.** At sealing, write the record's byte length and row count on the job header (or the job index row the summary already reads: take whichever the summary's job query returns without a blob read per job); the summary takes the maximum over the week. No new table.
+- [x] **Step 4: Run** the non-E2E suite; update `engine-v31.md` "Alerts and the weekly summary" (line 555).
+- [x] **Step 5: Commit** `Api (#1508): the weekly summary measures the largest record`; push.
 
 ## Part E: the contract's fixtures and the documents
 
