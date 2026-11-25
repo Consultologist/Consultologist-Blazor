@@ -233,7 +233,21 @@ internal static class MigrationSentences
         $"Renamed {kind} '{id}' to '{newId}': '{id}' is reserved at 31.";
 
     /// <summary>
-    /// S10-006 (part 10 § 1.9): <paramref name="id"/>'s suffixed form <paramref name="tried"/> (<c>&lt;id&gt;_&lt;kind&gt;</c>)
+    /// A10-065 (part 01 § 9.1, S01-034; part 10 § 1.9, D6; #1507 final review A1): the package format <paramref name="id"/>
+    /// has the name of a 31 <paramref name="registry"/> format (<see cref="BuiltIn"/> or <see cref="Catalogue"/>), which
+    /// 30 admitted and 31 refuses, and was renamed <paramref name="newId"/>: the hand choice, or the id with <c>_format</c>.
+    /// </summary>
+    public static string RenamedRegistryName(string id, string newId, string registry) =>
+        $"Renamed format '{id}' to '{newId}': '{id}' is the name of a {registry} format at 31.";
+
+    /// <summary>A10-065's word for a format of the registry's <c>v31/formats/</c>.</summary>
+    public const string BuiltIn = "built-in";
+
+    /// <summary>A10-065's word for a format of the agents catalogue.</summary>
+    public const string Catalogue = "catalogue";
+
+    /// <summary>
+    /// S10-006 (part 10 § 1.9):<paramref name="id"/>'s suffixed form <paramref name="tried"/> (<c>&lt;id&gt;_&lt;kind&gt;</c>)
     /// was already an id, so the rename took the first free numeric suffix, <paramref name="newId"/>.
     /// </summary>
     public static string RenameTaken(string id, string newId, string tried) =>

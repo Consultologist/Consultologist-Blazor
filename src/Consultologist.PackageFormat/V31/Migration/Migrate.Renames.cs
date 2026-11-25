@@ -22,6 +22,8 @@ internal static partial class Migrate
     /// flow, <c>_node</c> for a leaf, <c>_check</c> for a <c>terms_subset</c> node (a check at 31), <c>_input</c>,
     /// <c>_macro</c>, <c>_snippet</c> (also a macro that becomes a snippet, D4, D6), <c>_format</c> and
     /// <c>_deliverable</c> (A10-006).</item>
+    /// <item>A package format named like a 31 built-in or catalogue format (S01-034) is renamed as a reserved one is, with
+    /// <c>_format</c>, and said with A10-065 (final review A1).</item>
     /// <item>A suffixed id that is taken gets the first free number (<c>_2</c>, <c>_3</c>, …; S10-006).</item>
     /// <item>A long id is cut to 64 characters (A10-034). The id is always cut before a suffix or a number is added, so the
     /// whole is never past 64.</item>
@@ -181,14 +183,26 @@ internal static partial class Migrate
             var manifest = m.Manifest30;
             var files = m.Files30;
 
+            // Final review A1 (S01-034): a package format named like a 31 built-in or catalogue format, which 30 admits.
+            var registry = m.Options.Registry.Names;
+            string? RegistryName(string kind, string id) =>
+                kind != Format ? null
+                : registry.BuiltInFormats.Contains(id) ? MigrationSentences.BuiltIn
+                : registry.CatalogueFormats.Contains(id) ? MigrationSentences.Catalogue
+                : null;
+
             void Consider(string kind, string id, string suffix, HashSet<string> taken, Func<string, bool> fileTaken, string? folder = null, bool isFolder = false)
             {
-                if (SourceIds.Check(id, "") is null)
+                var registryName = RegistryName(kind, id);
+                if (SourceIds.Check(id, "") is null && registryName is null)
                     return;
 
                 var noun = kind switch { MacroItem => Macro, SnippetItem => Snippet, _ => kind };
                 string Shown(string x) => folder is null ? x : $"{folder}/{x}";
                 bool Free(string x) => !taken.Contains(x) && !fileTaken(x);
+                string Said(string newId) => registryName is null
+                    ? MigrationSentences.RenamedReserved(noun, Shown(id), Shown(newId))
+                    : MigrationSentences.RenamedRegistryName(id, newId, registryName);
                 string newId;
                 string notice;
                 if (m.Options.Renames?.GetValueOrDefault(id) is { } chosen)
@@ -201,7 +215,7 @@ internal static partial class Migrate
                     }
 
                     newId = chosen;
-                    notice = MigrationSentences.RenamedReserved(noun, Shown(id), Shown(newId));
+                    notice = Said(newId);
                 }
                 else if (id.Length > SourceBounds.IdLength)
                 {
@@ -213,7 +227,7 @@ internal static partial class Migrate
                     var first = Fit(id, "_" + suffix);
                     newId = Free(first) ? first : Numbered(id, "_" + suffix, Free);
                     notice = newId == first
-                        ? MigrationSentences.RenamedReserved(noun, Shown(id), Shown(newId))
+                        ? Said(newId)
                         : MigrationSentences.RenameTaken(Shown(id), Shown(newId), Shown(first));
                 }
 
