@@ -347,6 +347,14 @@ internal static class MigrationSentences
         $"Macro '{macro}' is now offered by the input '{input}'.";
 
     /// <summary>
+    /// A10-067 (R7, part 10 § 1.3, A10-044; #1507 final review A3): a notice: the optional macro <paramref name="macro"/> is
+    /// offered by the input <paramref name="input"/>, but its <c>if</c> also reads another boolean input, so a 31 start
+    /// refuses a <c>MacroChoices</c> entry keyed by the macro's id; the caller sends the input itself.
+    /// </summary>
+    public static string ChoiceRefusedAtStart(string macro, string input) =>
+        $"Macro '{macro}' is chosen per run by the input '{input}', but its if reads another boolean input, so a MacroChoices entry for '{macro}' is refused at 31; send the input '{input}' in Inputs instead.";
+
+    /// <summary>
     /// A10-040 (D4): a reason: a 30 body reads macro <paramref name="macro"/>'s <c>.content</c> (fixed text) at
     /// <paramref name="line"/>, but the macro does not become a snippet (it has an <c>if</c>, is optional, is a folder's, or is
     /// placed by a node instance or on a deliverable with a condition), and at 31 <c>macro.&lt;id&gt;.content</c> is a marker.

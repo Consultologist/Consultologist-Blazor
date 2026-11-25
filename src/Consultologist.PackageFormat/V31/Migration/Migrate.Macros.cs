@@ -176,11 +176,21 @@ internal static partial class Migrate
     {
         var name = label ?? key;
         var choice = (optional ?? header?.Optional) == true ? ChoiceInput(m, key, name) : null;
+        var gate = MacroIf(m, key, file, header?.If, choice, (defaultOn ?? header?.Default) == true, disagreeing);
+        if (choice is not null && ReadsAnotherBoolean(m, gate, choice))
+        {
+            // Final review A3 (R7): a MacroChoices entry maps to the one boolean input the macro's if reads; this if
+            // reads another too, so the 31 start refuses the entry (A10-044). The package publishes: a notice.
+            var notice = MigrationSentences.ChoiceRefusedAtStart(key, choice);
+            m.Notice(notice);
+            m.MacroInputs.Add(notice);
+        }
+
         return new JsonObject
         {
             ["label"] = name,
             ["description"] = null,
-            ["if"] = MacroIf(m, key, file, header?.If, choice, (defaultOn ?? header?.Default) == true, disagreeing),
+            ["if"] = gate,
             ["format"] = MacroFormat(m, key),
             ["instruction"] = byTheEngine.Contains(key) ? new JsonArray() : Instruction(m, key, file, instruction ?? header?.Instruction),
         };
@@ -229,6 +239,18 @@ internal static partial class Migrate
             _ => new JsonObject { ["and"] = new JsonArray([.. parts]) },
         };
     }
+
+    /// <summary>
+    /// Whether the macro's converted <paramref name="gate"/> reads a boolean input of the 31 manifest other than its
+    /// <paramref name="choice"/> input, as <see cref="Run.RunInputsBuilder.Choices"/> counts them (R7). A gate written as a
+    /// JSON string (A10-036, a hand edit) reads none.
+    /// </summary>
+    private static bool ReadsAnotherBoolean(Migrated m, JsonNode? gate, string choice) =>
+        gate is JsonObject
+        && JsonLogicShape.Paths(gate)
+            .Select(path => path.Split('.'))
+            .Any(path => path is ["input", var input, ..] && input != choice
+                && m.Manifest["inputs"]?[input]?["format"] is JsonValue format && format.TryGetValue<string>(out var f) && f == "boolean");
 
     /// <summary>
     /// Part 10 § 1.3, part 02 § 10: the optional boolean input that offers the optional macro <paramref name="key"/>,
