@@ -196,21 +196,37 @@ public class CompiledGoldenTests
         }
     }
 
-    [Fact]
-    public void ABundledEntry_WithAnUnnamedMember_DoesNotFitTheSchema()
+    [Theory]
+    [InlineData("macros", "nodes")]
+    [InlineData("macros", "macros")]
+    [InlineData("macros", "renderers")]
+    [InlineData("macros", "deliverables")]
+    [InlineData("checked-note", "checks")]
+    [InlineData("functions", "snippets")] // a snippet folder (a key of one segment)
+    [InlineData("functions", "functions")]
+    public void AnEntry_WithAnUnnamedMember_DoesNotFitTheSchema(string golden, string map)
     {
         var resolve = ResolveFixture.PinnedSchema("resolve");
-        var document = JsonNode.Parse(Published(Cases().Single(c => c.Name == "macros")).Resolve)!;
+        var document = JsonNode.Parse(Published(Cases().Single(c => c.Name == golden)).Resolve)!;
         Assert.True(resolve.Validate(document.ToJsonString(), null));
-        foreach (var map in new[] { "nodes", "checks", "macros", "renderers", "deliverables" })
-        {
-            var changed = document.DeepClone();
-            var entries = changed[map]!.AsObject();
-            if (entries.Count == 0)
-                continue; // the macros case has no check; every other map has an entry
-            entries.First().Value!["madeUp"] = 1;
-            Assert.False(resolve.Validate(changed.ToJsonString(), null), $"{map}: an unnamed member still fits.");
-        }
+        var changed = document.DeepClone();
+        var entry = changed[map]!.AsObject().First(e => map != "snippets" || e.Key.Count(c => c == '.') == 1).Value!;
+        entry["madeUp"] = 1;
+        Assert.False(resolve.Validate(changed.ToJsonString(), null), $"{map}: an unnamed member still fits.");
+    }
+
+    [Fact]
+    public void AFunctionsOwnNodesAndSnippetFolder_AreClosedToo_AndAFolderItemIsOpen()
+    {
+        var resolve = ResolveFixture.PinnedSchema("resolve");
+        var document = JsonNode.Parse(Published(Cases().Single(c => c.Name == "functions")).Resolve)!;
+        var item = document["snippets"]!.AsObject().First(e => e.Key.Count(c => c == '.') == 2).Value!;
+        item["fromTheFoldersFormat"] = 1;
+        Assert.True(resolve.Validate(document.ToJsonString(), null), "a folder item's own header member must fit.");
+
+        var function = document["functions"]!.AsObject().First().Value!;
+        function["nodes"]!.AsObject().First().Value!["madeUp"] = 1;
+        Assert.False(resolve.Validate(document.ToJsonString(), null), "a function's node entry is closed.");
     }
 
     [Fact]

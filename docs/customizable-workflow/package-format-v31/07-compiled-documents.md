@@ -256,8 +256,12 @@ computed node and a check also `expression`; a `call` also `function` and `with`
 holds `label`, `kind`, `description`, `format`, `if`, `check` and `whenEmpty`; a renderer `label`, `kind`,
 `description`, `input` and `format`; a macro `label`, `description`, `if`, `format` and `instruction`; a macro folder
 `description`, `items` and `if`; a snippet `label`, `description`, `if` and `format`; a snippet folder `description`,
-`items` and `format`. `resolve.schema.json` names each member once, and a member it does not name is refused. The one
-open entry is a snippet folder's item, whose header members are the folder's `format`'s own.
+`items` and `format`. A function holds `label`, `description`, `format`, `inputs`, `inputOrder` and `uses`, the
+derived members `id`, `parent`, `reads`, `runDependent`, `profileCarrying`, `modelDerived`, `formatHash`, `typeHash`,
+`ret`, `body` and `nodes` (its own flat map of entries), and its own `snippets`, `macros` and `renderers` maps, which
+are the package's. `resolve.schema.json` names each member once, and a member it does not name is refused. The one
+open entry is an item of a snippet folder (a `snippets` key of two segments, `snippet.<folder>.<id>`), whose header
+members are the folder's `format`'s own.
 
 A `placements` entry is `{ "site": "part.<id>" | "snippet.<id>" | "macro.<id>" | "macro-folder.<id>", "within": <the site whose text places it, or null for the body>, "if": <the unit's rule, its keys rooted for this entry's place, or null>, "plainConverts": [<boolean>…], "form": "block" | "inline" | null }`. `plainConverts` is that rule's, as above. `form` is a macro's marker form and `null` for the other kinds. A macro in a folder is preceded, once per entry, by a `macro-folder.<id>` entry, so the folder is decided wherever one of its macros may be. The engine decides what a prompt holds from this member alone; a snippet's, a macro's and a part's own `if` stay as written.
 
