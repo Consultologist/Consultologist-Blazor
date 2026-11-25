@@ -639,11 +639,11 @@ Tasks 20 to 23 build #1507's last comment ("Apply them before the area's remaini
 
 **Files:** `tests/V31Migration/MigrationVectorsExport.cs`; `~/Projects/consultologist-package-format`: `v31/conformance/migration-vectors/**`, `v31/conformance/index.json`, `README.md`, `scripts/check-v31.py` (a `migration-vectors` group: each case has `source/`, `expected/` and `notices.json`; `expected/manifest.json` is at 31; every `tests/migration_snapshot.json` validates against `test.schema.json`), `package-format-v31.md` chapter 12's line; this repo's pin; the area sentences in the conformance README.
 
-- [ ] **Step 1: Write the failing test** `ThePinnedVectors_AreWhatMigrateGives` (each case under the pinned `migration-vectors/` equals `Migrate` on its `source/` with its `options.json`), and the export test that does nothing without `CONFORMANCE_EXPORT_V31`.
-- [ ] **Step 2: Run; it fails** (the family is empty).
-- [ ] **Step 3: Export** a case per construct, small where possible: the three `composer-*` fixture packages, `example-nested-note` (renames, a `while`, a `let`, formats), `example-conditional-sections` (`case`, `labelField`), `example-macros` (macros, unroll, hoist, hand edits), `test/general` (a snippet folder, concept renderers, a deliverable macro), and one hand-built package for `_macro`, a union input and a refused condition. Each case: `source/` (the 30 files), `options.json` (renames, `whenEmpty`), `expected/` (the 31 files), `notices.json`, `about.txt`. Run `python3 scripts/check-v31.py`; commit and push there; move the pin.
-- [ ] **Step 4: Run** the area's tests and `--filter "FullyQualifiedName~V31Contracts|FullyQualifiedName~Conformance"`: green.
-- [ ] **Step 5: Commit and push.**
+- [x] **Step 1: Write the failing test** `ThePinnedVectors_AreWhatMigrateGives` (each case under the pinned `migration-vectors/` equals `Migrate` on its `source/` with its `options.json`), and the export test that does nothing without `CONFORMANCE_EXPORT_V31`.
+- [x] **Step 2: Run; it fails** (the family is empty).
+- [x] **Step 3: Export** a case per construct, small where possible: the three `composer-*` fixture packages, `example-nested-note` (renames, a `while`, a `let`, formats), `example-conditional-sections` (`case`, `labelField`), `example-macros` (macros, unroll, hoist, hand edits), `test/general` (a snippet folder, concept renderers, a deliverable macro), and one hand-built package for `_macro`, a union input and a refused condition. Each case: `source/` (the 30 files), `options.json` (renames, `whenEmpty`), `expected/` (the 31 files), `notices.json`, `about.txt`. Run `python3 scripts/check-v31.py`; commit and push there; move the pin.
+- [x] **Step 4: Run** the area's tests and `--filter "FullyQualifiedName~V31Contracts|FullyQualifiedName~Conformance"`: green.
+- [x] **Step 5: Commit and push.**
 
 ### Task 19: The guide, the fixture README and the coverage table
 
