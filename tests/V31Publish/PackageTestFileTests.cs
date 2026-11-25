@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Publish;
 using Consultologist.PackageFormat.V31.Run;
@@ -18,6 +19,35 @@ public class PackageTestFileTests
     private const string Path = "tests/two_sections.json";
 
     private static readonly RunPlan Plan = RunFixture.Plan(RunGoldenTests.Macros());
+
+    /// <summary>A package whose macro reads two profile fields (signature, name) and whose draft reads the run's date.</summary>
+    private static readonly RunPlan ProfilePlan = RunFixture.Plan(TemplateFixture.Package()
+        .WithMacro("signoff", "With thanks,\n{{ profile.signature }}\n{{ profile.name }}\n")
+        .WithAgent("draft", "Draft the note for Margaret Okafor on {{ run.date | date.to_string \"%d %B %Y\" }}.\n{{~ macro.signoff }}\n").RunDependent("nodes/draft.md")
+        .WithJson("nodes/draft.md", h => h["profileCarrying"] = true));
+
+    private static (PackageTestFile? Test, IReadOnlyList<SourceRefusal> Refusals) ReadWith(RunPlan plan, JsonObject json) =>
+        PackageTestFiles.Read(new SourceTest("two_sections", Path, json), json.ToJsonString(), plan);
+
+    private static JsonObject ValidFor(RunPlan plan)
+    {
+        var json = new JsonObject
+        {
+            ["description"] = null,
+            ["inputs"] = new JsonObject(),
+            ["profile"] = new JsonObject(),
+            ["run"] = new JsonObject(),
+            ["outputs"] = new JsonObject(),
+            ["expect"] = new JsonObject(),
+        };
+        foreach (var id in plan.InputOrder)
+            ((JsonObject)json["inputs"]!)[id] = null;
+        foreach (var field in plan.NeedsProfile.Distinct())
+            ((JsonObject)json["profile"]!)[field] = "Dr A. Sample";
+        foreach (var fact in plan.RunFacts.Select(f => f.StartsWith("run.", StringComparison.Ordinal) ? f[4..] : f).Distinct())
+            ((JsonObject)json["run"]!)[fact] = fact == "date" ? new JsonObject { ["value"] = "2026-11-16", ["timeZone"] = "America/Toronto" } : "x";
+        return json;
+    }
 
     private static JsonObject Valid()
     {
@@ -125,19 +155,46 @@ public class PackageTestFileTests
     [Fact]
     public void AProfileThatIsNotExactlyWhatThePackageReads_IsS07011_WithTheSortedFields()
     {
-        var needed = Plan.NeedsProfile.Distinct().Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(["name", "signature"], ProfilePlan.NeedsProfile.Distinct().Order(StringComparer.Ordinal));
+        Assert.Empty(ReadWith(ProfilePlan, ValidFor(ProfilePlan)).Refusals);
+
+        var fewer = ValidFor(ProfilePlan);
+        ((JsonObject)fewer["profile"]!).Remove("name");
+        var more = ValidFor(ProfilePlan);
+        ((JsonObject)more["profile"]!)["closing"] = "Kind regards,";
+        var none = ValidFor(ProfilePlan);
+        ((JsonObject)none["profile"]!).Clear();
+
+        foreach (var json in new[] { fewer, more, none })
+        {
+            var (test, refusals) = ReadWith(ProfilePlan, json);
+            Assert.Null(test);
+            var refusal = Assert.Single(refusals);
+            Assert.Equal("S07-011", refusal.Id);
+            Assert.Equal("Test 'two_sections' must give exactly the profile fields the workflow reads: name, signature.", refusal.Sentence);
+            Assert.Equal(Path, refusal.Path);
+            V31Contract.AssertSentence(refusal);
+        }
+
+        // a package that reads none: any field given is too many, and the sentence says none
         var extra = Valid();
         ((JsonObject)extra["profile"]!)["closing"] = "Kind regards,";
-        var fewer = Valid();
-        ((JsonObject)fewer["profile"]!).Clear();
+        Assert.EndsWith("the workflow reads: none.", Assert.Single(Refused(extra)).Sentence, StringComparison.Ordinal);
+    }
 
-        var cases = needed.Count == 0 ? new[] { extra } : new[] { extra, fewer };
-        foreach (var json in cases)
-        {
-            var refusals = Refused(json);
-            var refusal = Assert.Single(refusals, r => r.Id == "S07-011");
-            Assert.EndsWith(": " + (needed.Count == 0 ? "none" : string.Join(", ", needed)) + ".", refusal.Sentence, StringComparison.Ordinal);
-        }
+    [Fact]
+    public void AProfileValueThatIsNotText_IsA11005_ByPosition()
+    {
+        var json = ValidFor(ProfilePlan);
+        ((JsonObject)json["profile"]!)["signature"] = 7;
+
+        var (test, refusals) = ReadWith(ProfilePlan, json);
+
+        Assert.Null(test);
+        var refusal = Assert.Single(refusals);
+        Assert.Equal("A11-005", refusal.Id);
+        Assert.Equal("Test 'two_sections' profile is not written as the test grammar says: entry number 2 is not text.", refusal.Sentence);
+        V31Contract.AssertSentence(refusal);
     }
 
     [Fact]
@@ -184,23 +241,6 @@ public class PackageTestFileTests
 
         Assert.Equal("A11-005", refusal.Id);
         Assert.StartsWith("Test 'two_sections' run is not written as the test grammar says: date", refusal.Sentence, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AProfileValueThatIsNotText_IsA11005()
-    {
-        var json = Valid();
-        var field = Plan.NeedsProfile.FirstOrDefault();
-        if (field == null)
-        {
-            ((JsonObject)json["profile"]!)["name"] = 7;
-            Assert.Contains(Refused(json), r => r.Id == "S07-011");
-            return;
-        }
-
-        ((JsonObject)json["profile"]!)[field] = 7;
-        var refusal = Assert.Single(Refused(json));
-        Assert.Equal("A11-005", refusal.Id);
     }
 
     [Theory]
@@ -375,16 +415,34 @@ public class PackageTestFileTests
         var refusals = Refused(json);
 
         var ids = refusals.Select(r => r.Id).ToList();
-        Assert.Equal("S07-010", ids[0]);
-        Assert.True(ids.IndexOf("S07-011") > 0 || Plan.NeedsProfile.Contains("closing"));
+        Assert.Equal(["S07-010", "S07-011", "A11-005", "A11-005", "A11-005", "A11-005"], ids);
         var members = refusals.Where(r => r.Id == "A11-005").Select(r => r.Sentence.Split(' ')[2]).ToList();
         Assert.Equal(["run", "outputs", "expect.ran", "expect.values"], members);
     }
 
     [Fact]
-    public void NoSentence_RepeatsAValueOfTheFile()
+    public void AnInputTheFileListsAndThePackageDoesNotDeclare_IsA11005_ByPosition()
     {
         var json = Valid();
+        var inputs = (JsonObject)json["inputs"]!;
+        inputs["Margaret Okafor, 58"] = "x";
+        inputs[new string('k', 10_000)] = "y";
+
+        var refusal = Assert.Single(Refused(json));
+
+        Assert.Equal("A11-005", refusal.Id);
+        Assert.Equal($"Test 'two_sections' inputs is not written as the test grammar says: key number {Plan.InputOrder.Count + 1} is not a declared input.", refusal.Sentence);
+        Assert.DoesNotContain("Okafor", refusal.Sentence, StringComparison.Ordinal);
+        Assert.DoesNotContain("kkkk", refusal.Sentence, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NoSentence_RepeatsAValueOrAKeyOfTheFile()
+    {
+        var json = Valid();
+        ((JsonObject)json["inputs"]!)["Margaret Okafor"] = "x";
+        ((JsonObject)json["profile"]!)["Okafor_field"] = 7;
+        ((JsonObject)json["run"]!)["Okafor_fact"] = 7;
         ((JsonObject)json["outputs"]!)["Margaret Okafor"] = "x";
         ((JsonObject)json["expect"]!)["Dr A. Sample"] = JsonNode.Parse("[]");
         ((JsonObject)json["expect"]!)["values"] = JsonNode.Parse("""{"Margaret Okafor":"a"}""");
@@ -392,11 +450,25 @@ public class PackageTestFileTests
 
         var refusals = Refused(json);
 
+        Assert.True(refusals.Count >= 6);
         Assert.All(refusals, r =>
         {
             Assert.DoesNotContain("Okafor", r.Sentence, StringComparison.Ordinal);
             Assert.DoesNotContain("Sample", r.Sentence, StringComparison.Ordinal);
         });
+    }
+
+    [Fact]
+    public void ARunFactThatIsNotText_IsA11005_ByPosition()
+    {
+        var json = ValidFor(ProfilePlan);
+        ((JsonObject)json["run"]!)["Okafor_fact"] = 1;
+        var plain = ValidFor(Plan);
+        ((JsonObject)plain["run"]!)["id"] = 1;
+
+        Assert.Contains(Refused(plain), r => r.Id == "S07-012");
+        var (_, refusals) = ReadWith(ProfilePlan, json);
+        Assert.DoesNotContain(refusals, r => r.Sentence.Contains("Okafor", StringComparison.Ordinal));
     }
 
     [Fact]

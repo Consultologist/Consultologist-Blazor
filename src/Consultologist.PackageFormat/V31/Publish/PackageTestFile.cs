@@ -33,7 +33,6 @@ public static class PackageTestFiles
     private static readonly Regex CheckKey = new($@"\Acheck\.{Segment}(?:\.{Segment})*{Tail}\z", Options);
     private static readonly Regex DeliverableKey = new($@"\Adeliverable\.{Segment}(?:\.{Segment})*(?::{Item}(?:/{Item})*)?\z", Options);
     private static readonly Regex Sha256 = new(@"\Asha256:[0-9a-f]{64}\z", Options);
-    private static readonly Regex PlainName = new(@"\A[A-Za-z_][A-Za-z0-9_]{0,63}\z", Options);
 
     private static readonly string[] DeliverableStates = ["released", "held", "failed", "skipped", "blocked"];
 
@@ -75,6 +74,18 @@ public static class PackageTestFiles
             if (!inputs.ContainsKey(id))
                 refusals.Add(PackagePublishSentences.InputMissing(test.Id, id, test.Path));
         }
+
+        // A key the package does not declare would reach the start's own sentence (A06-013), which prints it: said here, by position.
+        var position = 0;
+        foreach (var (key, _) in inputs)
+        {
+            position++;
+            if (!plan.Inputs.ContainsKey(key))
+            {
+                grammar("inputs", $"key number {position} is not a declared input");
+                break;
+            }
+        }
     }
 
     private static void Profile(SourceTest test, RunPlan plan, List<SourceRefusal> refusals, Action<string, string> grammar)
@@ -85,11 +96,13 @@ public static class PackageTestFiles
         if (!SameSet(profile.Select(p => p.Key), needs))
             refusals.Add(PackagePublishSentences.ProfileMismatch(test.Id, needs, test.Path));
 
-        foreach (var (field, value) in profile)
+        var position = 0;
+        foreach (var (_, value) in profile)
         {
-            if (value is not JsonValue text || !text.TryGetValue<string>(out _))
+            position++;
+            if (!IsText(value))
             {
-                grammar("profile", $"{Name(field, "a field")} is not text");
+                grammar("profile", $"entry number {position} is not text");
                 break;
             }
         }
@@ -106,8 +119,10 @@ public static class PackageTestFiles
         if (!SameSet(run.Select(r => r.Key), facts))
             refusals.Add(PackagePublishSentences.RunMismatch(test.Id, facts, test.Path));
 
+        var position = 0;
         foreach (var (fact, value) in run)
         {
+            position++;
             if (fact == "date")
             {
                 if (!IsDate(value))
@@ -118,7 +133,7 @@ public static class PackageTestFiles
             }
             else if (value is not JsonValue text || !text.TryGetValue<string>(out _))
             {
-                grammar("run", $"{Name(fact, "a fact")} is not text");
+                grammar("run", $"entry number {position} is not text");
                 break;
             }
         }
@@ -283,7 +298,4 @@ public static class PackageTestFiles
     private static bool IsHash(JsonNode? node) => node is JsonValue v && v.TryGetValue<string>(out var text) && Sha256.IsMatch(text);
 
     private static bool IsInteger(JsonNode? node) => node is JsonValue v && v.TryGetValue<long>(out _);
-
-    /// <summary>A name the sentence may print: a plain identifier up to 64 characters, else <paramref name="otherwise"/> (a hostile name is never copied).</summary>
-    private static string Name(string name, string otherwise) => PlainName.IsMatch(name) ? $"'{name}'" : otherwise;
 }
