@@ -349,10 +349,10 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 **Files:** Create `scripts/check-workflow-package-v31.cs`, `scripts/rerender-workflow-packages-v31.cs` (file-based C# scripts, as `scripts/migrate-workflow-package.cs` is: copy how it references the library and the registries); Test `tests/V31Publish/ScriptsTests.cs` if the existing scripts have tests (follow `grep -rn "migrate-workflow-package" tests/`), else a section in the docs with the commands run and their output.
 
-- [ ] **Step 1: `check-workflow-package-v31.cs <folder> [--write <out folder> --version <tag> --published-by "ci <tag>"]`:** reads the folder as an upload, runs `PackagePublish.CheckAsync` (or `RunAsync` with `--write`, writing `Files` and `publish.json` into `<out folder>` for CI to upload and attach as Release assets), prints the report's canonical JSON, prints S07-015 for each evidence file found in the folder, and exits 1 on a refusal. Without `--version` the manifest's own `name` and `version` are used.
-- [ ] **Step 2: `rerender-workflow-packages-v31.cs <folder of name/version folders>`** per D11.
-- [ ] **Step 3: Run both** on a fixture exported from `tests/V31Resolve` (the `compiled-documents/macros/source` folder in `external/`): the check passes; a re-render of what `--write` wrote reports no difference; editing a stub in the written copy's test is reported.
-- [ ] **Step 4: Commit** `Scripts (#1508): check and publish a 31 package from a folder, and re-render the published corpus`; push.
+- [x] **Step 1: `check-workflow-package-v31.cs <folder> [--write <out folder> --version <tag> --published-by "ci <tag>"]`:** reads the folder as an upload, runs `PackagePublish.CheckAsync` (or `RunAsync` with `--write`, writing `Files` and `publish.json` into `<out folder>` for CI to upload and attach as Release assets), prints the report's canonical JSON, prints S07-015 for each evidence file found in the folder, and exits 1 on a refusal. Without `--version` the manifest's own `name` and `version` are used.
+- [x] **Step 2: `rerender-workflow-packages-v31.cs <folder of name/version folders>`** per D11.
+- [x] **Step 3: Run both** on a fixture exported from `tests/V31Resolve` (the `compiled-documents/macros/source` folder in `external/`): the check passes; a re-render of what `--write` wrote reports no difference; editing a stub in the written copy's test is reported.
+- [x] **Step 4: Commit** `Scripts (#1508): check and publish a 31 package from a folder, and re-render the published corpus`; push.
 
 ### Task 21: The weekly summary's largest record
 
