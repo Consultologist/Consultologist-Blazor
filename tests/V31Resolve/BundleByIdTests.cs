@@ -3,6 +3,7 @@ using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using static Consultologist.Api.Tests.V31Templates.MacroFixture;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
 namespace Consultologist.Api.Tests.V31Resolve;
@@ -85,7 +86,7 @@ public class BundleByIdTests
     [Fact]
     public void TheBundle_ValidatesAsOneCompoundDocument()
     {
-        // A standard 2020-12 validator, through the library's own (Corvus behind it), given the bundle and a $ref to
+        // A standard 2020-12 validator (Corvus, as the library's own validator runs it), given the bundle and a $ref to
         // one of its $ids, resolves every reference inside it by $id: no rewriting, no inlining.
         var formats = Resolve(Noted())["formats"]!.AsObject();
         var compound = new JsonObject
@@ -93,8 +94,7 @@ public class BundleByIdTests
             ["$defs"] = formats["$defs"]!.DeepClone(),
             ["$ref"] = $"{Package}:format:section_note",
         };
-        IFormatValueValidator library = new CorvusFormatValueValidator();
-        var validator = (CorvusFormatValueValidator)library;
+        var validator = new CorvusFormatValueValidator();
 
         Assert.True(validator.ValidateExpanded(Valid(), compound).Valid);
         var result = validator.ValidateExpanded(Invalid(), compound);
@@ -128,6 +128,14 @@ public class BundleByIdTests
             """);
         Assert.Equal("{\"properties\":{\"b\":{\"maxLength\":3,\"type\":\"string\"}},\"type\":\"object\"}",
             CanonicalJson.Write(new PlanFormats(bundle).Expand(JsonNode.Parse("{ \"$ref\": \"#/$defs/a\" }"))));
+
+        // A cycle through $ids (a to b to a) is the schema nothing fits.
+        var cycle = JsonNode.Parse($$"""
+            { "$defs": {
+              "a": { "$id": "{{Package}}:format:a", "type": "object", "properties": { "b": { "$ref": "{{Package}}:format:b" } } },
+              "b": { "$id": "{{Package}}:format:b", "type": "array", "items": { "$ref": "{{Package}}:format:a" } } } }
+            """);
+        Assert.Equal("false", new PlanFormats(cycle).Expand(JsonNode.Parse("{ \"$ref\": \"#/$defs/a\" }")).ToJsonString());
 
         // A $ref to an $id no entry has is the schema nothing fits.
         var unknown = new JsonObject { ["$defs"] = new JsonObject { ["a"] = JsonNode.Parse(
@@ -185,5 +193,30 @@ public class BundleByIdTests
         // A body's own run spot counts as before.
         Assert.Equal(["run-spots"], Features(TemplateFixture.Package()
             .WithRendered("stamp", "Seen {{ run.date | date.to_string \"%d %B %Y\" }}\n").RunDependent("nodes/stamp.md")));
+    }
+
+    [Fact]
+    public void APlacedMacroThatWritesRun_HasNoRunSpot_AsBefore()
+    {
+        // A macro's body is substituted into the reply: its run.* is filled in directly, with no spot in the placing body
+        // and none of its own (part 08: the macro row carries its own runNeutralHash), so it has never turned run-spots
+        // on, before this change or after.
+        var document = Resolve(TemplateFixture.Package()
+            .WithMacroOf("stamp", "Seen on {{ run.date | date.to_string \"%d %B %Y\" }}.\n", ["Close with {{ macro.stamp.content }}"])
+            .WithAgent("draft", "Draft the note for Dr A. Sample.\n{{~ macro.stamp }}\n")
+            .RunDependent("nodes/draft.md"));
+
+        Assert.Empty(document["macros"]!["macro.stamp"]!["runSpots"]!.AsArray());
+        Assert.Empty(document["nodes"]!["node.draft"]!["runSpots"]!.AsArray());
+        Assert.Equal(["macro-markers"], document["requires"]!["features"]!.AsArray().Select(f => (string)f!));
+    }
+
+    [Fact]
+    public void AnUnplacedMacroThatWritesRun_DoesNot()
+    {
+        var document = Resolve(TemplateFixture.Package()
+            .WithMacroOf("stamp", "Seen on {{ run.date | date.to_string \"%d %B %Y\" }}.\n", ["Close with {{ macro.stamp.content }}"]));
+
+        Assert.Empty(document["requires"]!["features"]!.AsArray());
     }
 }

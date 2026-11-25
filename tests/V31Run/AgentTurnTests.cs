@@ -348,6 +348,25 @@ public class AgentTurnTests
     }
 
     [Fact]
+    public void AFormatNamingAnother_IsSentAsPublishBuildsIt()
+    {
+        // #1508 (area 11, R2): in the bundle outline names plaintext by its $id; the sent copy and its hash are those of
+        // the format in its source scope, as before.
+        var files = CustomFormats();
+        var plan = RunFixture.Plan(files);
+        Assert.Equal("urn:consultologist:spec:31:format:plaintext",
+            (string?)plan.Document["formats"]!["$defs"]!["outline"]!["properties"]!["points"]!["items"]!["$ref"]);
+
+        var prepared = Prepared(AgentTurn.Prepare(plan, Call("node.outline_note", PlanScope()), 100_000, Rejects));
+
+        var (_, types, _) = ResolveFixture.Tree(files);
+        var expected = EnvelopedFormat.Of("outline", types.Formats, Rejects);
+        Assert.Equal(CanonicalJson.Write(expected.Sent), CanonicalJson.Write(prepared.Format!.Sent));
+        Assert.Equal(expected.Hash, prepared.Format.Hash);
+        Assert.Equal(expected.Hash, (string)prepared.Detail["sentFormatHash"]!);
+    }
+
+    [Fact]
     public void AFormatBinding_IsNotSentAFormat_ButItsHashIsRecorded()
     {
         var plan = RunFixture.Plan(CustomFormats().WithAgent("checker", "Is the plan for Margaret Okafor complete?\n\n{{ node.plan.content }}\n", "\"judgement\""));
