@@ -49,7 +49,7 @@ public static class SnapshotTest
 
     private static readonly string[] DescriptionLines =
     [
-        "The migration's snapshot (part 10 § 4): the migrated package run offline on fictional inputs and generated replies,",
+        "The migration's snapshot (chapter 10 § 10.12): the migrated package run offline on fictional inputs and generated replies,",
         "its prompts and deliverables pinned by hash.",
     ];
 
