@@ -1402,11 +1402,11 @@ package's level. `Scope` is `RunScope.Data` over exactly the entry's compiled `r
 
 | Seam | Here | Who plugs in |
 |---|---|---|
-| `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)`, `EvaluateAsync(RuleCall)` (area 08) | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's byte-equivalence run and area 11's in-package tests bring their own |
+| `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)`, `EvaluateAsync(RuleCall)` (area 08) | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's `OfflineHost` (`V31/Harness/`, the offline run of "migration" below), on which area 11's in-package tests will run |
 | `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, `DeliveryAsync(DeliveryRow)` and `NoticeAsync(RunNotice)` (area 08) and `FlushAsync()` (area 09, #1506), awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | the engine's `StoredRunRecorder` (area 09, which replaced `EntityRunRecorder`): it buffers a round's rows, decisions and delivery rows, and writes them at each flush to the record's table in one activity, then counts them on the job's entity; telemetry gets the key, state and hashes |
 | `AgentTurn`, `RenderTurn` (in the library, since area 07) | `AgentTurn.Prepare(plan, call, stepLimit, strictRejects)`, `AgentTurn.Finish(prepared, reply)`, `RenderTurn.Render(plan, call)` | the engine's two activities call them; area 07 removed the Api's `IBodyComposer` and `ScribanBodyComposer` (see "templates" below) |
 | A deliverable's outcome (area 08: `RunResult.Deliverables`) | `DeliveryRunner` takes the list | the engine's `DurableDeliveryHost` ("checks, deliverables and delivery" below) |
-| `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts`, `NoDeliverableCanExist` and `Signature` (area 08) | area 12's Create page, which calls the same checks |
+| `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts`, `NoDeliverableCanExist` and `Signature` (area 08), `Choices` (area 10); `Inputs`, `Choices` and `NoDeliverableCanExist` call the library's `RunInputsBuilder` (area 10), so the offline run starts alike | area 12's Create page, which calls the same checks |
 | `SpecVersionAdmission` (in the Api) | `Admits`, `Runs31`, `NotSupported` | area 11 (publish, import, `WorkflowPackages/Current`) |
 
 `RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail)`
@@ -1946,7 +1946,7 @@ rulings on #1504:
   deliverable's body as a dialect template and composes it.
 - **Area 09:** storing rows, sub-rows and decisions. This area puts them in `RunRow.Detail` and `RunDecision` under
   part 08's names. The engine's `StoredRunRecorder` (area 09, now built) stores them and passes only the hashes on to telemetry.
-- **Area 10:** converting a 30 package (part 05 § 10).
+- **Area 10: now built** ("migration" below): converting a 30 package (part 05 § 10).
 - **Area 11:** in-package test stubs, and the publish path that stores a pair.
 - **Area 12:** the Create page's three-state boolean for a per-run choice, and History's sub-rows.
 - **For the owner:** the 31 agents are attested against git, not Foundry, until the contracts are released (D9).
@@ -2082,8 +2082,16 @@ other template:
   already refused.
 
 A union is escaped as data in a Markdown deliverable and never S06-021; an enum or a date is escaped as a string;
-an output of several paths or an unknown snippet is neither judged nor escaped; `null` is never escaped. A
-`markdown_inline` output inside a line is not enforced: it is taken anywhere in a Markdown deliverable.
+an output of several paths or an unknown snippet is neither judged nor escaped; `null` is never escaped. #1507 (R10,
+formats fail closed): `SourceTemplates.Escaped` escapes every output whose format is not known to be Markdown
+(`markdown_block` or `markdown_inline`, alone or with `null`), an object or a list, so an untyped output (an
+interpolated string), a union, and a `plaintext | null` read (`TextKindOf` reads the text kind through the union) are
+escaped too, and a `plaintext` deliverable refuses a nullable Markdown read (S06-021). S06-022 finds a line's first
+character past spaces, tabs and the tags that write nothing (`if`, `else`, `end`, `for`), so `{{ if x }}# Heading` is
+refused; an output at the line's start is no marker. Where a `markdown_inline` output sits is not judged, but its
+value holds no line ending (D21): `CorvusFormatValueValidator.ValidateExpanded` holds every `markdown_inline` text of
+a value to no `\n` or `\r` (`FormatValueResult.BreaksALine`), so a reply fails with A10-052
+(`RunSentences.ReplyBreaksALine`) and an input refuses the start with it (`InputBreaksALine`).
 
 ### The escape (D7, R9)
 
@@ -2287,3 +2295,353 @@ the dialect and renderer goldens, the escape vectors, and `tests/V31Types/Golden
 `Operators__AlertAddress` and the mailbox are both set; the job-slow timer is a host timer on every 31 run (see [the
 engine at specVersion 31](engine-v31.md)). The 5–30 path, `SendEmailIntakeReplyActivity`,
 `ConsultGenerationOrchestrator` and `RecordDelivery` are read and reused, not changed in behaviour.
+
+## specVersion 31: migration (preview)
+
+*Area 10 of the Milestone 39 build (#1507). Built from
+[migration and tools](package-format-v31/10-migration-and-tools.md) (part 10) §§ 1 to 5 and
+[types and inputs](package-format-v31/02-types-and-inputs.md) § 11, with
+[the plan](package-format-v31/plans/area-10-migration.md) for the decisions (the owner's rulings R1 to R11 on #1507,
+the decisions D1 to D31) and for what the build left to the owner (its *Results*). The 30 side of every comparison is
+area 01's fixtures, described with this area's goldens in `tests/Fixtures/ByteEquivalence/README.md`. What the engine
+does for a migrated package (macro choices at a 31 start, the link-only email, the weekly summary's hand-edits line)
+is in [the engine at specVersion 31](engine-v31.md).*
+
+This area carries a specVersion 30 package to 31. It is four pure pieces of the library, with no Azure:
+
+1. the **converter**, from 30's Scriban conditions and `let`s to canonical JSON Logic (`WorkflowConditionConverter`);
+2. the **rewrite**, from a 30 manifest and its files to 31's folder of typed files, with notices and hand edits
+   (`WorkflowPackageMigration30To31`);
+3. the **offline run** of a compiled 31 package, deterministic and with stubbed replies (`V31.Harness.OfflineRun`);
+4. the **comparison** of that run with a 30 capture, written as `migration-report.json` (`V31.Harness.ByteEquivalence`,
+   `ExpectedDifferences`, `MigrationReport`).
+
+The script `scripts/migrate-workflow-package.cs --to 31` runs the rewrite on a folder. The operator's run over a folder
+of account packages is a test (D10). Nothing here publishes a migrated version, moves a pin or tells an owner: that is
+area 11's publish path and the user's deploy (part 10 § 1.5).
+
+### The converter (part 10 § 2)
+
+`WorkflowConditionConverter.FromScriban(expression, scope, kind = ConversionKind.Condition, declared = null)` is the
+one surface the migration and, at Milestone 41, the Editor share. It returns a `ConversionResult(Logic, ResultFormat,
+Reads, Notices)`:
+
+- `Logic` is the canonical JSON Logic, or `null` when it cannot convert;
+- `ResultFormat` is the type the 31 checker gives it, printed as `TypeStrings` prints it (`boolean` for a condition);
+- `Reads` are the 31 paths it reads as the checker lists them (`input.x.value`, `node.x.value`, `item.id`,
+  `pass.number`, `run.x`), each once, in written order;
+- `Notices` is one sentence per reason it cannot convert, and `NoticeIds` their ids (`S10-003`, or the checker's own).
+
+It works in three steps, and never throws on package text:
+
+1. **Read as 30 reads it.** A `{{` or `{%` outside a string literal is a template, refused with S10-003. The text is
+   parsed with `WorkflowConditionAt25.TryParse`, 30's own parser; one it refuses is S10-003 (`nothing`,
+   `more than one statement`, or `text that does not parse as one expression`).
+2. **Write the table** (`V31/Migration/ConditionTree.cs`), row by row of § 2.2 and nothing beyond it: a read is
+   `{ "var": … }` of its 31 path (an input read bare is `input.x.value`, or `input.x.content` for a text format; a
+   classifier's `.value` is `.value.value`); `==` and `!=` are `===` and `!==`; a chain of `&&` or `||` is one `and` or
+   `or`; `array.size` and `.size` on a list are `size`; `string.downcase`, `strip`, `starts_with`, `ends_with` and
+   `contains` are `lower`, `trim`, `starts_with`, `ends_with` and `in`; `date.parse` of a `YYYY-MM-DD` literal is the
+   literal; a `let`'s object is the `object` operation. Anything else is one S10-003 per construct. A rule nested past
+   `SourceBounds.JsonDepth` (counting the header that holds it) is S10-003 too.
+3. **Type it** (`V31/Migration/ConditionTyping.cs`) with area 04's `ExpressionChecker` over a `ConversionScope`. A
+   `Condition` must yield a boolean (S03-025); a `Value` (a `let`, a `case` subject) may yield any type, and is held to
+   `declared` when given (S03-026). A refusal is the checker's sentence, unchanged.
+
+**`!x` on text** becomes `blank(x)` (R1, § 2.3): each one is in `Blanks` (`x` as written at 30, as printed at 31, and
+its reads; `BlankConversions` holds the read paths), and the migration says A10-008 for it. **`trim(x) == ""`** on a
+text is written `blank(x)` (`!=` is `!blank(x)`), as part 05 § 7's migrated `test/general` writes it; where `x` can be
+null at 31 and 30 read it as text (a node that did not run, a field of an object input), it is in `TrimBlanks` and the
+migration says A10-050. That difference for a null `x` is unruled: it goes to the owner (the plan's *Results*).
+
+**`ConversionScope(Inputs, Nodes, Item, ItemIsFolderItem, InWhile, Formats)`** is what an expression can read where it
+sits: each input's 31 format, each 30 node as a `ConversionRead(Path, Format)` (where 31 reads it, `node.<id>` or
+`check.<id>`), the loop element's format, whether the item is a snippet folder's, whether `pass.number` is readable, and
+the package's formats. An input not in `RequiredInputs`, and a node whose `ConversionRead.AlwaysValued` is false, read as
+nullable, as 31's own scope reads them.
+
+### The rewrite, pass by pass (part 10 § 1)
+
+`WorkflowPackageMigration30To31.Migrate(manifestJson, files, options)` takes the manifest and every other file by its
+path, and a `Migration31Options`:
+
+| Member | Is |
+|---|---|
+| `Registry`, `Toolchain` | 31's published types and the toolchain `lock.json` records (used to publish the snapshot) |
+| `Formats30` | 30's format catalogue, which the 30 package is read with |
+| `ResolveContract` | the 24 → 25 rung's contract resolver, for a package older than 25 |
+| `Renames` | a reserved 30 id to its hand-chosen 31 id (§ 1.9, D6) |
+| `WhenEmpty` | a deliverable id to its `whenEmpty` (§ 1.10, D7); `release` when unsaid |
+| `FolderFormats` | a snippet folder's id to the format its items' headers are values of; `<folder>_item` when unsaid |
+| `WriteSnapshot` | whether `Migrate` ends by writing the snapshot test (default `true`) |
+
+It returns a `Migration31Result` in the earlier rungs' shape (D1): `ManifestJson`, `Files` (without `manifest.json`),
+`Notices` and `Refusals`, with `Succeeded`, and four more members: `HandEdits` (the S10-002 notices, a subset of
+`Notices`), `Report` (`MigrationNotes`: the renames, the `_macro` inputs, the `blank` conversions, the suggested text
+formats and the `reproducible` claims that differed), `Keys` (each 30 node id to its 31 rooted key, and each
+deliverable's `deliverable.<id>` to its 31 key) and `MacroBodies` (the 31 files that hold a 30 macro's body, for R5's
+rule).
+
+**The gates.** Line endings and a byte-order mark are normalised first (part 01 § 2.4). A manifest that does not read
+is A10-016, one already at 31 A10-015. An older package is raised to 30 in the same run by
+`WorkflowPackageMigrationChain.To30`: the stage to 24 (`WorkflowPackageMigrationTo24`, the script's, moved into the
+library), the 24 → 25 rewrite with `ResolveContract`, 25 → 26, the 27 raise, 27 → 28, and the 29 and 30 raises, each
+validated as the script validates it. Below 5 is A10-012; a rung's refusal or validation error is A10-017 and a rung
+that fails on the package A10-018, each naming the rung. `Migrated.Read` then reads the 30 package: a file that is not
+strict JSON is A10-019, a package 30 refuses A10-017, a reader that fails A10-020. A refusal writes nothing: the result
+holds the input's manifest and files.
+
+**The passes** run in this order on one working set (`V31/Migration/Migrated.cs`), which serialises the files once, at
+the end: one object per JSON file, every member present (`null` for none), in `SourceShapes`' member order, with `\n`
+line endings, a JSON Logic value in canonical order.
+
+| Pass | File | What it writes |
+|---|---|---|
+| renames | `Migrate.Renames.cs` | on the 30 package, before any 31 file: every reserved id, every name Windows reserves and every id past 64 characters, renamed by `Renames`, else with its kind as a suffix (`parts_for`, `test_snippet`; A10-006), the first free number when that is taken (S10-006), cut to 64 (A10-034). A hand choice that cannot be made refuses the run (A10-033). Every reference is rewritten by token, never by text search |
+| layout | `Migrate.Layout.cs` | the nine folders and their indexes, the manifest's identity, the formats as their schemas alone (every property required, an optional one nullable, § 1.8), the snippets and snippet folders with their 31 headers; the root `deliverables/index.json` has `delivery: ["pdf"]` (R8) |
+| inputs | `Migrate.Inputs.cs` | 30's inputs array as the manifest's object keyed by id, in its order: `label`, `description: null`, the 31 `format`, `required`, `channel` from `expectedContent` |
+| nodes and flows | `Migrate.Nodes.cs`, `Migrate.Flows.cs` | every node under `nodes/` at its nested path, its kind from what it has (a flow member, a `let`, a `rendered` or an agent format); a `for`, `while`, `if` or `case` as a folder whose `index.json` is its header; every condition converted. 30's `prose` that a deliverable composes is `markdown_block`, prose only prompts read `plaintext` (R9, D20); a composed `if` or `case` mixing prose and plain text reached through no `for` is A10-053. A classifier's `with` values are written at the end of its prompt, as 30's engine sent them (A10-064). A `terms_subset` node gets no file here |
+| templates | `Migrate.Templates.cs`, `TemplateRewriter.cs` | every prompt, `rendered` body, snippet, folder item and macro body in the 31 dialect: bare reads to `.content` or `.value`, renderer pipes, a loop's `.items` and `state` (30's `!e.skipped` is `e.state == "completed"`), `item.label`, white-space marks. A simple body `if` is lifted into `parts`; an `if` around a placement is hoisted onto the placement, and a `for` over a macro folder unrolled (R6); the rest is a hand edit (A10-001, A10-005, A10-035 to A10-039, S10-004). Text outside tags is never touched |
+| macros | `Migrate.Macros.cs` | each macro as `macros/<id>.md` (a folder as its index and one file per item), its `instruction` 30's lines then 30's mechanics sentence (D5); an optional macro offered by an optional boolean input (its id, else `<id>_macro`, A10-007); a macro read only as fixed text as a snippet (D4); a `before` or `after` node macro placed at the end of the prompt with its instruction left for the operator (D3, A10-003); A10-004, A10-036, A10-040 to A10-042 and A10-045 for what it cannot decide |
+| checks | `Migrate.Checks.cs` | each `terms_subset` node as `checks/<id>.md`, `kind: computed`, `format: check_result`, its `failWith` the 30 sentence; a reader of `node.<id>` reads `check.<id>`. One 30 ran inside a flow is also A10-046 |
+| deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, `{{ profile.signature }}` for 30's `signature: true`, one blank line apart. An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim |
+| derived flags | `Migrate.Derived.cs` | last: every node and check header's `reproducible`, `modelDerived`, `runDependent` and `profileCarrying` from `SourceDerived.Values`, the derivation without the header checks (D15). A 30 `reproducible` claim that differs is A10-010; a header made of a body the dialect refused is A10-049 |
+
+Then, with `WriteSnapshot`, the snapshot test (below). Other notices: A10-021 (a format's free-text field), A10-026 (a
+lone carriage return became a line end), A10-027 (`size` over a list that can be null), A10-030 (a member 31 has no
+form for, dropped), A10-013 (`onInvalid: flag`). `V31/Migration/MigrationSentences.cs` holds every S10 and A10 sentence
+the migration says, one method each.
+
+**Hand edits and the invariant (§ 1.4).** What the rewrite cannot decide is written where the 31 checker refuses it
+(D3: an unconvertible condition stays a JSON string in its member, a body construct stays in the body, a conditional
+deliverable macro is `{{ macro.<id>.fixed_text }}`), with exactly one notice, S10-002: `Hand edit needed in <file>,
+<member>: <reason>.` So a hand edit is never silently dropped, and the invariant holds over the sixteen packages
+(`MigratedPackagesTests.NoHandEdit_MeansPublishRefusesNothing`, `AHandEdit_MeansPublishRefuses`): **no hand-edit
+notice ⇔ `CompiledPackage.Publish` refuses nothing.** The same tests hold that the migration writes no unknown member
+(`NothingUnknownIsWritten`) and gives the same bytes twice (`MigratingTwice_GivesTheSameBytes`).
+
+**Who calls it:** the script, the weekly summary (`OutstandingHandEdits` in the Api, with `WriteSnapshot` false, so it
+publishes and runs nothing; the engine guide's "Alerts and the weekly summary"), the operator's run and the tests.
+
+### The offline run (part 10 § 3.1)
+
+`OfflineRun.RunAsync(plan, request)` runs a compiled 31 plan once, offline. An `OfflineRequest(Inputs, Profile,
+RunFacts, Outputs, StartedAtUtc, Limits = null, StubSeed = null)` holds each input's raw value as sent to a start, the
+profile's fields, the run facts by name (`run.` dropped), the replies to serve by 31 row key, and the run's one time.
+
+- **The start** is the engine's: `V31/Run/RunInputsBuilder` (`Build`, `Choices`, `NoDeliverableCanExist`,
+  `NotProduced`, `NoneApply`), moved out of the Api's `V31StartChecks`, which now calls it (Tasks 13 and 15). A
+  refused start ends the run with `State` null and its `StartRefusals`; one no deliverable can exist for is A10-062,
+  in the words the 30 and 31 starts give (`OfflineRun.NoApplicableDeliverable`).
+- **The run** is `PlanRunner` on `OfflineHost`, which calls the engine's own turns: `AgentTurn.Prepare` (strict mode
+  rejecting `format`, as every attested agent's entry says) and `AgentTurn.Finish`, `RenderTurn.Render` and
+  `RuleTurn.Evaluate`. Every answer is given at once, and the clock is `StartedAtUtc` and never moves, so the run ends
+  under `RunLimits` and the same request gives the same rows and hashes.
+- **The stubs** (`OfflineStubs`): a pinned reply is served as given; a missing one is generated from the entry's format
+  by `WorkflowStubOutputs`, seeded by the row key or by `StubSeed`. Each macro the prompt offers whose marker the reply
+  does not hold has its marker appended, in prompt order (D12). A reply that does not fit fails its node as the engine's
+  does.
+
+`OfflineResult` gives `State` and `Sentence`, every sent prompt and rendered text as an `OfflineText(Key, Text, Hash)`,
+the deliverables' outcomes, every reply served, the rows and decisions, and `UnusedOutputs` (pinned keys no call asked
+for). The snapshot test, the comparison and the operator's run use it; area 11's in-package tests will run on it.
+
+### The snapshot test (part 10 § 4)
+
+`V31/Harness/SnapshotTest` writes `tests/migration_snapshot.json` (`SnapshotTest.Id` is `migration_snapshot`), the one
+test a migrated package carries (D13):
+
+- `Fictional(plan)` is the request: every input given a value generated from its format (seed `input.<id>`), except a
+  per-run macro choice, left `null`; Dr A. Sample's fixed fictional values for exactly `needs.profile`; the run facts
+  the plan reads, the date `2026-11-16` in `America/Toronto`; every reply generated.
+- `Write(plan, request, result)` writes part 07 § 8.1's file from a completed run: `inputs`, `profile`, `run`, the
+  replies as served (markers included) as `outputs`, and `expect` with every prompt by `{ "hash" }` and every
+  deliverable by `{ "state", "hash" }`, or `{ "state": "skipped" }` alone (R3). It holds no prompt or deliverable text.
+  Its `description` cites "chapter 10 § 10.12", the published document's section (D31).
+- `Request(test)` reads such a file back into a request.
+
+`Migrate` writes it for a package with no hand edit, publishing it in memory with the options' registry and toolchain
+and running it offline. A package with hand edits gets none (`tests/index.json` keeps `"items": []`) and A10-011 as its
+last notice. A run that does not complete is A10-061, a snapshot past `SourceBounds` A10-060; neither is a hand edit,
+so the invariant is untouched. Once the hand edits are made, `WorkflowPackageMigration30To31.Snapshot(manifestJson,
+files, options)` writes it (anew, when the source already has one) and lists it in `tests/index.json`; a source that
+does not publish is refused with the checker's sentences.
+
+### The comparison and the report (part 10 § 3.2)
+
+`ByteEquivalence.RequestFor(scenario30, capture30, migrated, plan)` makes the 31 request of a 30 scenario (D25): its
+inputs under their 31 ids through 31's start (a scalar given to a list input as a list of one; an object's missing
+fields `null`, § 1.8), its macro choices through `RunInputsBuilder.Choices` (R7), its profile, 30's run date
+`2026-11-10` and clock, and the capture's replies under their 31 row keys (`KeyMap.To31`); a reply the capture lacks is
+generated, seeded with 30's key (`KeyMap.To30`).
+
+`ByteEquivalence.Compare(package, scenario, capture30, run31, migrated, plan, request31)` lists every compared text as a
+`ComparedText(Site, OldHash, NewHash, Equal, Expected, Explanation)`: `#status` first (the status word, D24), then the
+prompts, the rendered texts and the deliverables, each in the capture's order and then those only 31 has. A site is
+`<package>/<scenario>#prompts/<31 key>` (or `#renders/`, `#deliverables/`); a 30 text whose key cannot be mapped keeps
+its 30 key under `#prompts@30/` (D11). A side that lacks a text has the empty text's hash (`ByteEquivalence.EmptyHash`).
+A 31 deliverable its check blocked is never delivered, so it has no text (R4 item 3).
+
+**When in doubt, a difference is unexpected.** A difference is `expected` only when a rule of
+`ExpectedDifferences.Rules` explains it exactly. Each `Rule(Id, Basis, Explanation)` names its ruling or section, and
+the report says `<id>: <explanation> (<basis>)`. A case rule explains a whole text by where it is and how the runs
+ended; a bytes rule undoes one declared difference. `Explain` takes the first case rule that holds, else applies the
+bytes rules in order, each at most once, and the text is expected only when they leave the two texts equal.
+
+| Rule | Basis | Kind |
+|---|---|---|
+| `empty-input-list-runs` | R2 (the two captures it names) | case |
+| `skipped-deliverable-reads-null` | R4 item 1 | case |
+| `required-blank-refused` | R4 item 6 | case |
+| `all-refused-completes` | R4 item 7 | case |
+| `refused-deliverable-withheld` | R4 item 3 | bytes |
+| `escaped-plain-text` | part 06 § 6.4, D8 | bytes |
+| `item-ids-from-one` | #1506 ruling 2, D26 | bytes |
+| `position-names-from-the-loop` | part 04 § 2.7, D27 | bytes |
+| `sent-format` | part 10 § 1.8, D26 | bytes |
+| `explicit-null-for-optional` | part 10 § 1.8 | bytes |
+| `macro-trailing-whitespace` | R5 | bytes |
+| `blank-conversion` | R1 | case |
+
+`ExpectedDifferences.ConditionReasons` holds the one reason a converted condition may answer otherwise than 30
+(`blank`, R1). Each rule has a test with a pair it explains and a near pair it must not (`ExpectedDifferencesTests`).
+
+`MigrationReport.Of(oldVersion, migrated, texts, worstCase)` builds `migration-report.json`: `oldVersion`,
+`newVersion`, `handEdits` (the S10-002 notices), `notices` (every other notice, then A10-063 for a package with more than
+one deliverable, R8, then the worst-case note) and `texts`. `ToJson()` writes it canonical (RFC 8785).
+`MigrationReport.WorstCaseNote` is A10-014, said only when the worst case's agent calls (`PublishNotes.WorstCaseCalls`,
+S04-080's count) divided by `RunLimits.MaxAgentCalls`, rounded up, pass `RunLimits.JobMinutes` (D14). The report is
+never a gate: no test asserts how many texts differ, and each report is pinned as a golden.
+
+### The script
+
+```
+dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] [--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]... [--folder-format <folder>=<format>]...
+dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 --snapshot [--write]
+```
+
+The script reads 31's registry with `TypeRegistry.Read` from `external/consultologist-package-format/v31/` and
+`external/consultologist-agents/agents/v31/`, as `V31Contract.PublishedTypes` does, builds the toolchain with
+`Toolchain.Current` and the pinned names, and calls `Migration31Script.Run`, which is in the library so it is tested
+(`tests/V31Migration/MigrateScriptTests.cs`). `Migration31Script.Parse` reads the arguments into
+`Migration31Arguments`, whose `Fill` puts `--rename`, `--when-empty` and `--folder-format` (each repeatable, D29) into
+the options; a pair given twice, a `whenEmpty` that is not `release`, `hold` or `fail`, and `--snapshot` with any of the
+three are usage errors.
+
+`Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line that 31's `dag.mmd` is not this
+script's (`Migration31Script.NoDiagram`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
+exactly the result's files: 30's `prompts/`, flat macros and `dag.mmd` are deleted (`--snapshot` leaves a 31 folder's
+`dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files are written first, then changed ones
+with `manifest.json` last, then the deletes, so a write that fails part-way deletes no 30 file.
+
+| Exit | When |
+|---|---|
+| 0 (`Clean`) | migrated with no hand edit, or the snapshot test written |
+| 1 (`HandEditsLeft`) | migrated with hand edits left: the summary ends `written; hand edits remain` (S10-001). A dry run that finds hand edits also exits 1, though it writes nothing, and its summary ends `(dry run; pass --write to apply)` (D30, for the owner) |
+| 2 (`Refused`) | any refusal (nothing written), a result path that would leave the folder, a write that fails part-way, a usage error, or a registry or toolchain that cannot be read |
+
+Run on copies of `vendored/example-nested-note` (`--rename parts=sections --when-empty note=fail --write`, exit 0),
+`vendored/example-macros` (`--write`, exit 1) and `vendored/test/general` (`--when-empty consult=hold --folder-format
+standards=standard_section --write`, exit 1), each written folder equals its golden under `migrated/` but for the
+fixture-only `notices.json`.
+
+### The operator's run (part 10 § 1.5, D10)
+
+Today's engine runs a 30 package offline only through the test project's `CaptureRun`, so the operator's run over a
+folder of packages is a test, `OperatorRunTests.TheOperatorsRun`, which does nothing without
+`BYTE_EQUIVALENCE_PACKAGES`:
+
+```
+BYTE_EQUIVALENCE_PACKAGES=<dir> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName=Consultologist.Api.Tests.V31Migration.OperatorRunTests.TheOperatorsRun"
+```
+
+For each folder under `<dir>` that holds a `manifest.json` (`_migrated` and `_hand-edits` are the run's own), it
+migrates the package, lays over it the operator's edits from `<dir>/_hand-edits/<package>/` when there are any (the
+fixtures' `hand-edits/` form, below), and writes the 31 folder and `migration-report.json` under
+`<dir>/_migrated/<package>/`. A package that publishes is compared on D11's account scenario, `migration_snapshot`: the
+snapshot request's inputs run at 30 through `CaptureRun`, that capture replayed at 31 and compared. One with hand edits
+left gets a report of its hand edits and notices with no compared text. The run takes its hand choices from the
+fixtures' `ExampleChoices` by package name, so an account package migrates with the defaults (a suffix for a reserved
+id, `release`, `<folder>_item`); a package that needs a choice is migrated with the script. It writes no snapshot
+test into an edited package: the script's `--snapshot` does that.
+
+### The goldens
+
+Every golden is written from code and read before it is committed. `GOLDEN_UPDATE_V31=1` rewrites each one but the
+hand edits, which are written by hand:
+
+| Golden (under `tests/Fixtures/ByteEquivalence/`) | Test that pins it |
+|---|---|
+| `conditions/converted.json` | `ConditionConverterTests` |
+| `conditions/equivalence.json` | `ConditionEquivalenceTests` (with `TheUnruledDifferences_AreTheseOnes`) |
+| `migrated/<package>/`, with `notices.json` | `MigratedPackagesTests.TheMigratedSource_IsTheGolden` |
+| `hand-edits/<package>/` (by hand) | `HandEditsTests` |
+| `reports/<package>.json` | `ByteEquivalenceTests.TheReport_IsTheGolden` (no hand edit), `HandEditsTests.TheReport_IsTheGolden` (edited) |
+
+```
+GOLDEN_UPDATE_V31=1 dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31Migration"
+```
+
+The reports are built from the migration in memory, not from `migrated/`, so one run rewrites every golden. Two
+things it does not rewrite: a hand-edit folder's `README.md` lists its package's hand-edit notices, held to
+`migrated/<package>/notices.json` (`HandEditsTests.EachNotice_IsAnswered`), so a notice that changes is edited there
+by hand; and a change to what `Migrate` writes for a vector's package fails
+`MigrationVectorsTests.ThePinnedVectors_AreWhatMigrateGives` until the family is exported and the pin moved (below).
+The fixture README says what each folder holds.
+
+### The conformance cases
+
+`tests/V31Migration/MigrationVectorsExport.cs` exports the `migration-vectors` family (part 10 § 5) into the content
+repository named by `CONFORMANCE_EXPORT_V31`: eight cases (the three `composer-*` fixture packages,
+`example-conditional-sections`, `example-macros`, `example-nested-note`, `test-general` and a `hand-built` package for a
+`_macro` input, a union input and a refused condition). Each case holds `source/` (the 30 files, without `dag.mmd`),
+`options.json` (`renames`, `whenEmpty`, `folderFormats`, each `null` when none, and `toolchain`), `expected/` (the 31
+files, `tests/migration_snapshot.json` among them where the migration writes one), `notices.json` and `about.txt`.
+`MigrationVectorsTests.ThePinnedVectors_AreWhatMigrateGives` holds every pinned case to `Migrate` on its `source/` and
+`options.json`, byte for byte. The content repository's `scripts/check-v31.py` has a `migration-vectors` group, and its
+`v31/conformance/README.md` lists the A10 sentences, which `V31Contract.MigrationAreaSentences` holds.
+
+```
+CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~MigrationVectorsExport"
+```
+
+### The sentences
+
+The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10-004 and S10-006, each that row of
+`sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
+version 30"*) is the publish path's (area 11). Every other notice, refusal and reason is an area sentence, A10-001 to
+A10-064 (A10-009 unused), listed in the plan's table and in `V31Contract.MigrationAreaSentences`. Area 10's rulings also
+added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
+`markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
+summary). No sentence, notice or report entry carries a value from an input, a model or a profile.
+
+### Rulings applied outside the migration
+
+#1507's rulings of 2026-11-22 changed earlier areas' code; each is described where that code is:
+
+- **R7, `MacroChoices` at a 31 start**: the engine guide's "Macro choices".
+- **R8, delivery keeps 30's promise** (the `pdf` fallback to the link-only email, the settings read at the start, a
+  job whose every deliverable is blocked): "Delivery" above and the engine guide's "Delivery".
+- **R9, R10, D21, formats fail closed**: "Publish: deliverables" and "The escape" above (a union or untyped read in
+  a `markdown_block` deliverable is escaped, and a `markdown_inline` value holds no line ending, A10-052). **D23**, a
+  `for`'s `.content` is `markdown_block`: "the resolver and the lock", "The scope".
+- **R11, the weekly summary's hand-edits line**: the engine guide's "Alerts and the weekly summary".
+
+### What it leaves to areas 11 to 13
+
+- **Area 11:** the publish path that stores a migrated version and writes `migration-report.json` beside its publish
+  report, the publish record's *"migrated by the operator from …"*, S10-005, moving pins, running in-package tests at
+  publish on `OfflineRun`, and `OperatorAlertKinds.PublishFailed`.
+- **Area 12:** the Create page, whose per-run choice sets the optional boolean input a migrated macro's `if` reads
+  (area 07's three-state boolean); this area adds nothing to it.
+- **Area 13:** the 31 diagram (`dag.mmd`), which the script does not write.
+- **Milestone 41:** the Editor's upgrade and the converter's page, on the same `FromScriban` and `Migrate`. Author
+  documentation (part 10 § 6, #1473) and the satellites (§ 7) are not this build's.
+- **For the owner:** the unexpected differences, the unruled condition cases and the two packages whose edits are not
+  made (`example-macros`, `example-macros-warnings`), all in the plan's *Results*.
+
+### Not wired in
+
+31 stays outside `AcceptedSpecVersions` and `SupportedSpecVersions`. Nothing in the engine migrates a package at run
+time: the weekly summary migrates in memory to count, and writes nothing. The 5–30 path keeps its behaviour; the two
+moves into the library (the stage to 24, the 31 start's input building) are behind the tests that existed.

@@ -8,7 +8,10 @@ engine runs (`RunPlan`, `PlanRunner`, the seams) is described in
 the template language the activities run, the 31 agents catalogue and `MacroChoices` at a 31 start; the library's
 side is "specVersion 31: templates" in the same guide. Area 08 (#1505) added what a job does after its run: the
 deliverables' outcomes, delivery, the operator's alerts and the engine-fault log; the library's side is
-"specVersion 31: checks, deliverables and delivery" in the same guide.*
+"specVersion 31: checks, deliverables and delivery" in the same guide. Area 10 (#1507) migrates 30 packages to 31 in the
+library ("specVersion 31: migration" in the same guide); by the owner's rulings it also changed what the engine does at
+a 31 start (`MacroChoices` keyed by a macro's id), in delivery (`pdf` falls back to the link-only email) and in the
+weekly summary (the hand-edits line).*
 
 This page is for whoever deploys and operates the engine. It covers:
 
@@ -133,7 +136,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    the chosen one, else `"default"`. Both are `null` when the package reads no signature. A 5–30 start ignores
    the member.
 4. **The checks.** `V31StartChecks.Account` gives S06-031 and S06-032 for the profile, then S06-008 for a zone
-   that is blank or not an IANA zone the machine knows. `V31StartChecks.Inputs` gives the input refusals:
+   that is blank or not an IANA zone the machine knows. `V31StartChecks.Inputs` gives the input refusals (since #1507
+   it calls the library's `RunInputsBuilder.Build`, which the offline run of a migrated package starts with too):
    - **A06-011** *"Input '<id>' is required; fill it in to run this workflow."* for a required input that is
      absent, `null` or blank, whatever its format (R5);
    - **A06-012** *"Input '<id>' was given a value that isn't <format>."* (numeric enums included, R4);
@@ -147,8 +151,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    no deliverable can exist (R8, #1505). That is when the package has deliverables and every one has an `if`, each
    `if` reads only `input.*` and the run facts the start knows (`run.id`, `run.engine` and `run.package`), and each
    is false or `null` on the start's inputs. An `if` that reads anything else, or that fails, is left to the run.
-   `V31StartChecks.NoDeliverableCanExist` decides it, a rule that holds `matches` inline, since no replay exists at
-   a start. The detail names each deliverable by label with its printed `if` (S03-001), and nothing it read.
+   `V31StartChecks.NoDeliverableCanExist` decides it (through `RunInputsBuilder.NoDeliverableCanExist`, since #1507),
+   a rule that holds `matches` inline, since no replay exists at a start. The detail names each deliverable by label with its printed `if` (S03-001), and nothing it read.
 5. **The held inputs.** The inputs document
    (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`) is written where the
    job's held inputs live: `org-job-inputs` or `personal-job-inputs`, `{appUserId}/{jobId}.json`. The retention
@@ -171,8 +175,9 @@ the email sender is not told it, as with A06-013. A macro whose `if` reads no bo
 refused, *"MacroChoices names macro '<id>', whose if does not read exactly one boolean input; send the input in Inputs
 instead."* (A10-044). An input sent both ways with different values is
 refused, *"Input '<id>' is given one value in Inputs and another in MacroChoices; send it once."* (A07-016); the same
-value sent both ways is accepted, and an input sent as `null` counts as not sent. `V31StartChecks.Choices` does this; its
-refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
+value sent both ways is accepted, and an input sent as `null` counts as not sent. `V31StartChecks.Choices` does this,
+through the library's `RunInputsBuilder.Choices`, which the byte-equivalence comparison reads a 30 scenario's choices
+with; its refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
 
 **Not read at 31 yet.** A 31 start reads typed inputs, documents and macro choices only. These request members are
 not read, so an input sent only through one of them reads as missing (A06-011):
