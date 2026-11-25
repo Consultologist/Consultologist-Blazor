@@ -86,7 +86,8 @@ public sealed class WorkflowPackages
         // #1508 (specVersion 31, area 11; part 09 §§ 1.2, 4): a version stamped 31 is described from its resolve.json, on a
         // deployment that runs 31 (the load reads nothing otherwise); a refusal of the load is its sentence. A version with
         // no 31 stamp, or a registry that could not be read, is today's path's, which answers as it does with 31 off.
-        if (_compiled != null && await _compiled.TryLoadAsync(packageRef, cancellationToken) is { Unreadable: false } load)
+        var load = _compiled != null ? await _compiled.TryLoadAsync(packageRef, cancellationToken) : null;
+        if (load is { Unreadable: false })
         {
             if (load.Plan is { } plan)
             {
@@ -96,8 +97,7 @@ public sealed class WorkflowPackages
             _logger.LogWarning(
                 "Workflow package could not be loaded at 31. Pin={Pin}, RefusalId={RefusalId}, Detail={Detail}",
                 packageRef, load.RefusalId, load.OperatorDetail ?? load.Refusal);
-            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
-                new { error = load.Refusal ?? CompiledPackageStore.HashMismatch(packageRef.Name, packageRef.Version) }, cancellationToken);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = load.Refusal }, cancellationToken);
         }
 
         WorkflowPackage package;
@@ -108,7 +108,16 @@ public sealed class WorkflowPackages
         catch (WorkflowPackageSpecVersionException ex) when (ex.SpecVersion == Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion && _admission != null)
         {
             // #1508 (Review Focus 4): a 31 pin that today's path met. With 31 not admitted (the preview setting unset) it is
-            // S09-001; admitted, the compiled load found no stamp, so the version isn't published (A06-004).
+            // S09-001. Admitted, and the compiled load could not read the registry: nothing is known of the version, which
+            // may well be stamped, so the registry is unavailable, as today's path says it. Admitted, and the load found no
+            // stamp: the version isn't published (A06-004).
+            if (_admission.Runs31 && load is { Unreadable: true })
+            {
+                _logger.LogError("Workflow package resolution failed at 31. Pin={Pin}, Detail={Detail}", packageRef, load.OperatorDetail);
+                return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
+                    new { error = "Workflow package registry is unavailable." }, cancellationToken);
+            }
+
             _logger.LogWarning("Workflow package is specVersion 31 and was not loaded at 31. Pin={Pin}, Admitted={Admitted}", packageRef, _admission.Runs31);
             return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
                 new

@@ -92,6 +92,56 @@ public class V31PackageDescriptionTests
     private static JsonNode? FormatOf(WorkflowPackageInputResponse input) =>
         input.Format is { } format ? JsonNode.Parse(format.GetRawText()) : null;
 
+    /// <summary>
+    /// Part 09 § 4.3, "its <c>$id</c>s kept and its <c>$ref</c>s resolved within the document": each <c>$id</c> appears once,
+    /// and each <c>$ref</c> is one of them or a <c>#/$defs/</c> pointer to a definition of the resource it is written in.
+    /// </summary>
+    private static void AssertResolvesWithin(JsonNode format)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var references = new List<(string Reference, JsonObject Resource)>();
+        void Walk(JsonNode? node, JsonObject resource)
+        {
+            switch (node)
+            {
+                case JsonObject obj:
+                    if (obj["$id"] is JsonValue id)
+                    {
+                        Assert.True(ids.Add((string)id!), $"$id {id} appears twice");
+                        resource = obj;
+                    }
+
+                    foreach (var (name, value) in obj)
+                    {
+                        if (name == "$ref")
+                            references.Add(((string)value!, resource));
+                        else
+                            Walk(value, resource);
+                    }
+
+                    break;
+                case JsonArray array:
+                    foreach (var item in array)
+                        Walk(item, resource);
+                    break;
+            }
+        }
+
+        if (format is JsonObject root)
+            Walk(root, root);
+        foreach (var (reference, resource) in references)
+        {
+            Assert.True(
+                ids.Contains(reference)
+                || (reference.StartsWith("#/$defs/", StringComparison.Ordinal) && resource["$defs"]?[reference["#/$defs/".Length..]] is JsonObject),
+                $"{reference} does not resolve within the document");
+        }
+    }
+
+    /// <summary>Whether <paramref name="value"/> fits <paramref name="format"/>, through the library's validator.</summary>
+    private static bool Validates(JsonNode format, string value) =>
+        new CorvusFormatValueValidator().ValidateExpanded(JsonNode.Parse(value), format).Valid;
+
     private static void AssertJson(string expected, JsonNode? actual) =>
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), actual), actual?.ToJsonString());
 
@@ -165,20 +215,26 @@ public class V31PackageDescriptionTests
             ],
             sections.Items.Fields!,
             FieldComparer.Instance);
+        // One compound document: the input's own schema at the root, the format it reaches once under $defs with its
+        // $id, the reference written by that $id.
         AssertJson(
             """
-            {"items":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:section_request",
-              "additionalProperties":false,
-              "properties":{"kind":{"enum":["narrative","table","omit"],"title":"Kind","type":"string"},"title":{"title":"Title","type":"string"}},
-              "required":["title","kind"],"type":"object"},
-             "type":"array"}
+            {"items":{"$ref":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:section_request"},
+             "type":"array",
+             "$defs":{"section_request":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:section_request",
+               "additionalProperties":false,
+               "properties":{"kind":{"enum":["narrative","table","omit"],"title":"Kind","type":"string"},"title":{"title":"Title","type":"string"}},
+               "required":["title","kind"],"type":"object"}}}
             """,
             FormatOf(sections));
 
         var billing = response.Inputs[2];
         Assert.Equal(("Include the billing section", false, "boolean"), (billing.Label, billing.Required, billing.Type));
+        // A named format at the root is that format, with its $id; it reaches nothing, so it has no $defs.
         AssertJson("""{"$id":"urn:consultologist:spec:31:format:boolean","description":"true or false.","type":"boolean"}""", FormatOf(billing));
-        Assert.All(response.Inputs, i => Assert.DoesNotContain("\"$ref\"", i.Format!.Value.GetRawText(), StringComparison.Ordinal));
+        Assert.All(response.Inputs, i => AssertResolvesWithin(FormatOf(i)!));
+        Assert.True(Validates(FormatOf(sections)!, """[{"kind":"table","title":"Medications"}]"""));
+        Assert.False(Validates(FormatOf(sections)!, """[{"kind":"chart","title":"Medications"}]"""));
     }
 
     // ---- part 02 § 12's Type table, row by row --------------------------------------------------------------------------
@@ -298,12 +354,13 @@ public class V31PackageDescriptionTests
         Assert.Equal("number", input.Items.Items!.Type);
     }
 
-    // ---- Format: self-contained ----------------------------------------------------------------------------------------
+    // ---- Format: one compound document ----------------------------------------------------------------------------------------
 
     [Fact]
-    public void Format_InlinesEveryReference_ByKeyAndByUrn_KeepingIdsAndAnnotations()
+    public void Format_IsOneCompoundDocument_ItsIdsKept_AndItsRefsResolvedWithinIt()
     {
-        // R2: an entry of the bundle refers to another by its $id; the input refers to the first by #/$defs/.
+        // R2: an entry of the bundle refers to another by its $id; the input refers to the first by #/$defs/, with an
+        // annotation beside the reference, so the root is the input's own schema.
         var input = Input(OneInput(
             """{"$ref":"#/$defs/visit","description":"The visit to write up."}""",
             """
@@ -313,19 +370,68 @@ public class V31PackageDescriptionTests
               "required":["seen"],"title":"Visit","type":"object"}}
             """));
 
-        var format = FormatOf(input);
-        Assert.DoesNotContain("$ref", format!.ToJsonString(), StringComparison.Ordinal);
+        var format = FormatOf(input)!;
         AssertJson(
             """
-            {"description":"The visit to write up.",
-             "allOf":[{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:visit",
-               "additionalProperties":false,
-               "properties":{"seen":{"title":"Date seen","allOf":[{"$id":"urn:consultologist:spec:31:format:date","description":"A calendar date, written YYYY-MM-DD.","format":"date","type":"string"}]}},
-               "required":["seen"],"title":"Visit","type":"object"}]}
+            {"$ref":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:visit",
+             "description":"The visit to write up.",
+             "$defs":{
+               "visit":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:visit",
+                 "additionalProperties":false,
+                 "properties":{"seen":{"$ref":"urn:consultologist:spec:31:format:date","title":"Date seen"}},
+                 "required":["seen"],"title":"Visit","type":"object"},
+               "date":{"$id":"urn:consultologist:spec:31:format:date","description":"A calendar date, written YYYY-MM-DD.","format":"date","type":"string"}}}
             """,
             format);
+        AssertResolvesWithin(format);
+        Assert.True(Validates(format, """{"seen":"2026-12-01"}"""));
+        Assert.False(Validates(format, """{"seen":"first of December"}"""));
         Assert.Equal("object", input.Type);
         Assert.Equal([new WorkflowPackageFieldResponse("seen", "Date seen", true, "date")], input.Fields!, FieldComparer.Instance);
+    }
+
+    [Fact]
+    public void AFormatUsedTwice_SitsOnceUnderDefs()
+    {
+        var input = Input(OneInput(
+            """{"$ref":"#/$defs/admission"}""",
+            """
+            {"admission":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:admission",
+              "$schema":"urn:consultologist:spec:31:dialect","additionalProperties":false,
+              "properties":{"admitted":{"$ref":"urn:consultologist:spec:31:format:date","title":"Admitted"},
+                            "discharged":{"$ref":"urn:consultologist:spec:31:format:date","title":"Discharged"}},
+              "required":["admitted","discharged"],"type":"object"}}
+            """));
+
+        var format = FormatOf(input)!.AsObject();
+        Assert.Equal("urn:consultologist:package:example-conditional-sections@v2026.12.1:format:admission", (string)format["$id"]!);
+        Assert.Equal(["date"], format["$defs"]!.AsObject().Select(p => p.Key));
+        AssertResolvesWithin(format);
+        Assert.True(Validates(format, """{"admitted":"2026-11-30","discharged":"2026-12-02"}"""));
+        Assert.False(Validates(format, """{"admitted":"2026-11-30","discharged":"soon"}"""));
+        Assert.Equal(["admitted", "discharged"], input.Fields!.Select(f => f.Type == "date" ? f.Id : null));
+    }
+
+    [Fact]
+    public void AFormatFilesOwnDefinitions_StayInIt_AndResolveWithinIt()
+    {
+        // Part 02 § 3.1: a format file's own #/$defs reference resolves against the file, kept in the bundle as written.
+        var input = Input(OneInput(
+            """{"items":{"$ref":"#/$defs/dose_list"},"type":"array"}""",
+            """
+            {"dose_list":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:dose_list",
+              "$defs":{"dose":{"additionalProperties":false,"properties":{"mg":{"$ref":"urn:consultologist:spec:31:format:number"}},"required":["mg"],"type":"object"}},
+              "$schema":"urn:consultologist:spec:31:dialect",
+              "items":{"$ref":"#/$defs/dose"},"type":"array"}}
+            """));
+
+        var format = FormatOf(input)!;
+        AssertResolvesWithin(format);
+        Assert.Equal(["dose_list", "number"], format["$defs"]!.AsObject().Select(p => p.Key));
+        Assert.Equal("#/$defs/dose", (string)format["$defs"]!["dose_list"]!["items"]!["$ref"]!);
+        Assert.True(Validates(format, """[[{"mg":5}]]"""));
+        Assert.False(Validates(format, """[[{"mg":"five"}]]"""));
+        Assert.Equal("number", input.Items!.Items!.Fields!.Single().Type);
     }
 
     [Fact]
@@ -493,6 +599,24 @@ public class V31PackageDescriptionTests
         rig.Pin(packageRef);
         rig.Registry.ReadFailure = new Azure.RequestFailedException(503, "unavailable");
         rig.Store.ResolveAsync(packageRef, Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("unavailable"));
+
+        var response = await rig.CurrentAsync();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("Workflow package registry is unavailable.", (string)JsonNode.Parse(FakeHttp.TextOf(response))!["error"]!);
+    }
+
+    [Fact]
+    public async Task Current_WithThePreviewSet_AnswersA31PinWhoseStampCouldNotBeRead_503()
+    {
+        // A storage blip on publish.json: nothing is known of the version, which may well be stamped. Today's path then
+        // reads the manifest, which is 31; the answer is the registry's, retriable, never "isn't published".
+        var rig = new Rig();
+        var (packageRef, _) = rig.Registry.Put(Golden("nested-note"));
+        rig.Pin(packageRef);
+        rig.Registry.ReadFailure = new Azure.RequestFailedException(503, "unavailable");
+        rig.Store.ResolveAsync(packageRef, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new WorkflowPackageSpecVersionException(packageRef.ToString(), 31, WorkflowPackageStore.SupportedSpecVersions));
 
         var response = await rig.CurrentAsync();
 

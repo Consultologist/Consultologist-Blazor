@@ -12,10 +12,10 @@ namespace Consultologist.Api.V31;
 /// answers for a 31 version, read from its plan (its <c>resolve.json</c>) alone. <c>Blocks</c> are the top-level nodes in
 /// <c>graph.order</c>, by key, named by their <c>label</c>; <c>Results</c> the deliverables in the same order, by key and
 /// <c>label</c>; <c>Macros</c> always empty. Each input, in <c>inputOrder</c>, fills today's members from its format and
-/// adds <c>Format</c> (<see cref="PlanFormats.SelfContained"/>) and <c>Channel</c>; <c>ExpectedContent</c> is the channel
-/// too, and <c>Types</c> null. A format's <c>Type</c>, <c>Values</c>, <c>Items</c> and <c>Fields</c> are read from the
-/// self-contained schema by publish's own reading of a format's shape (<see cref="FormatTypes.ExpandedShape"/>), at every
-/// depth. Never throws on the plan.
+/// adds <c>Format</c> (one compound document, <see cref="PlanFormats.SelfContained"/>) and <c>Channel</c>;
+/// <c>ExpectedContent</c> is the channel too, and <c>Types</c> null. A format's <c>Type</c>, <c>Values</c>, <c>Items</c>
+/// and <c>Fields</c> are read from its expansion as the run holds it (<see cref="PlanFormats.Expand"/>) by publish's own
+/// reading of a format's shape (<see cref="FormatTypes.ExpandedShape"/>), at every depth. Never throws on the plan.
 /// </summary>
 public static class V31PackageDescription
 {
@@ -40,19 +40,19 @@ public static class V31PackageDescription
 
     private static WorkflowPackageInputResponse Input(RunPlan plan, string id, JsonObject input)
     {
-        var format = plan.Formats.SelfContained(input["format"]);
+        var expanded = plan.Formats.Expand(input["format"]);
         var channel = FormatTypes.Text(input["channel"]);
         return new WorkflowPackageInputResponse(
             id,
             Label(input) ?? id,
             input["required"] is JsonValue required && required.GetValueKind() == JsonValueKind.True,
-            TypeOf(format),
-            Values(format),
-            Items(format),
-            Fields(format),
+            TypeOf(expanded),
+            Values(expanded),
+            Items(expanded),
+            Fields(expanded),
             channel,
             Types: null,
-            JsonSerializer.SerializeToElement(format),
+            JsonSerializer.SerializeToElement(plan.Formats.SelfContained(input["format"])),
             channel);
     }
 
