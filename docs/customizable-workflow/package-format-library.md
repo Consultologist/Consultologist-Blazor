@@ -2702,8 +2702,8 @@ tests' plan.
 
 1. **Steps 0 to 2** are `CompiledPackage.Publish(upload, registry, toolchain, limits, templates, out check)`: intake
    (line endings normalised, `resolve.json`, `lock.json`, `publish-report.json` and `publish.json` dropped unread into
-   `Dropped`), the reader, every rule, and the pair, with R1's instances refusal (A11-001), R4's (A11-002) and R5's
-   node budget (A11-003) from the limits.
+   `Dropped`), the reader, every rule, and the pair, with the rulings' refusals: R1's worst case past the limits'
+   `Instances` (A11-001), R4's format that names and defines one name (A11-002) and R5's node budget (A11-003).
 2. **The name and version** are read from `manifest.json` as normalised. When the manifest is a JSON object whose `name`
    or `version` is not text, A11-004 comes first among the refusals (D2).
 3. **The pair must be complete.** A pair the compiler could not finish (`Complete` false) is A11-007.
