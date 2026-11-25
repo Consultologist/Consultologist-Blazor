@@ -38,7 +38,7 @@ public static class PackagePublishSentences
 
     /// <summary>S07-013: all tests together took longer than the limit (<c>limits.testsSeconds</c>, 60; D9). Said for the package, so at <c>""</c>.</summary>
     public static SourceRefusal TestsTookTooLong() =>
-        new("S07-013", "Tests took longer than 60 seconds in all. Publish stopped.", "");
+        new("S07-013", $"Tests took longer than {PackageTests.LimitSeconds} seconds in all. Publish stopped.", "");
 
     /// <summary>S07-014: the test stubs <paramref name="rowKey"/>, which does not run.</summary>
     public static SourceRefusal StubNotUsed(string testId, string rowKey, string path) =>
