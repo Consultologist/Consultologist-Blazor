@@ -105,11 +105,11 @@ A task that needs another sentence adds the next id and records it.
 
 **Files:** Modify `src/Consultologist.PackageFormat/V31/Templates/EnvelopedFormat.cs:39`, `tests/V31Templates/AgentTurnTests.cs:324-325`, `src/Consultologist.PackageFormat/V31/Run/RecordRows.cs:173`, `docs/customizable-workflow/engine-v31.md:309`, `docs/customizable-workflow/package-format-library.md:1926`.
 
-- [ ] **Step 1: Failing tests.** In `AgentTurnTests`: for a non-object root, `sentFormatHash` equals `prepared.Hash` (the format before the envelope); change the existing pin. In the record-rows tests: `AnAggregatesFailWith_IsTheOperationsLiteral_NeverTheValuesMessage` (a `check_result` value whose `message` differs from the `all_pass`/`count_pass` operation's `failWith` literal: the row holds the literal; a check with no such operation holds null).
-- [ ] **Step 2: Run, fail.**
-- [ ] **Step 3: Implement.** `EnvelopedFormat`: return `prepared.Hash` in the wrapped branch. `RecordRows`: read `failWith` from the entry's `expression` (the `failWith` argument of its `all_pass` or `count_pass`), never from the value.
-- [ ] **Step 4: Fix the two stale descriptions of S05-056** (it no longer names the model's id) at the lines above. Regenerate any run or record golden that moves (`GOLDEN_UPDATE_V31=1`), read the diff, list the files.
-- [ ] **Step 5: Run V31 tests; commit** `PackageFormat (#1508): sentFormatHash is taken before wrapping, and failWith comes from the operation's literal`; push.
+- [x] **Step 1: Failing tests.** In `AgentTurnTests`: for a non-object root, `sentFormatHash` equals `prepared.Hash` (the format before the envelope); change the existing pin. In the record-rows tests: `AnAggregatesFailWith_IsTheOperationsLiteral_NeverTheValuesMessage` (a `check_result` value whose `message` differs from the `all_pass`/`count_pass` operation's `failWith` literal: the row holds the literal; a check with no such operation holds null).
+- [x] **Step 2: Run, fail.**
+- [x] **Step 3: Implement.** `EnvelopedFormat`: return `prepared.Hash` in the wrapped branch. `RecordRows`: read `failWith` from the entry's `expression` (the `failWith` argument of its `all_pass` or `count_pass`), never from the value.
+- [x] **Step 4: Fix the two stale descriptions of S05-056** (it no longer names the model's id) at the lines above. Regenerate any run or record golden that moves (`GOLDEN_UPDATE_V31=1`), read the diff, list the files.
+- [x] **Step 5: Run V31 tests; commit** `PackageFormat (#1508): sentFormatHash is taken before wrapping, and failWith comes from the operation's literal`; push.
 
 ### Task 3: Engine faults are the engine's
 
