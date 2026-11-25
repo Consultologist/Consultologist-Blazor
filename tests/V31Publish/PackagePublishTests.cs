@@ -174,7 +174,10 @@ public class PackagePublishTests
         var outcome = await PackagePublish.RunAsync(await WithTest(), Options(templates: unknown));
 
         AssertRefusedAndNothingStored(outcome);
-        Assert.Equal("A11-007", Assert.Single(outcome.Report.Refusals).Id);
+        var refusal = Assert.Single(outcome.Report.Refusals);
+        Assert.Equal("A11-007", refusal.Id);
+        // No exception was caught: the pair is incomplete, so there is no fault type to name.
+        Assert.Null(refusal.EngineFault);
     }
 
     [Fact]
