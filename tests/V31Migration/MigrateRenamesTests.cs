@@ -165,6 +165,33 @@ public class MigrateRenamesTests
             V31Contract.AssertSentence(new SourceRefusal("A10-006", notice, ""));
     }
 
+    [Theory]
+    [InlineData("judgement", "built-in")]
+    [InlineData("check_result", "built-in")]
+    public void APackageFormatNamedLikeARegistryFormat_IsRenamed_AndPublishes(string name, string registry)
+    {
+        // Final review A1: 30 admits a package format named like a 31 built-in or catalogue format, which 31 refuses
+        // (S01-034); the format takes its kind as a suffix and every reference follows, so the package publishes.
+        var (json, files) = Package("example-nested-note");
+        json = json.Replace("\"id\": \"verdict\"", $"\"id\": \"{name}\"", StringComparison.Ordinal)
+            .Replace("\"format\": \"verdict\"", $"\"format\": \"{name}\"", StringComparison.Ordinal);
+        Assert.Contains($"\"format\": \"{name}\"", json, StringComparison.Ordinal);
+
+        var options = MigrationFixture.Options("example-nested-note");
+        Assert.Equal($"{name}_format", PlanOf(json, files, options)[("format", name)]);
+
+        var result = Run(json, files, options);
+        Assert.Contains($"formats/{name}_format.json", result.Files.Keys);
+        Assert.DoesNotContain($"formats/{name}.json", result.Files.Keys);
+        Assert.Equal($"{name}_format", (string?)MigrateNodesTests.Md(result, "nodes/refine/judge.md").Header["format"]);
+        var notice = $"Renamed format '{name}' to '{name}_format': '{name}' is the name of a {registry} format at 31.";
+        Assert.Contains(notice, result.Report.Renames);
+        Assert.Contains(notice, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-065", notice, ""));
+        Assert.Empty(result.HandEdits);
+        Assert.Empty(MigratedPackagesTests.Publish(result));
+    }
+
     [Fact]
     public void WithNoChoice_AMacroSnippetOrItem_TakesItsKind_AndAMacroThatBecomesASnippet_IsASnippet()
     {

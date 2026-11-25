@@ -161,7 +161,8 @@ internal static class V31Contract
     /// migration report's worst-case note, part 10 § 3.2, D14; A10-062: the offline run's start refused because no
     /// deliverable can exist, in the 30 and 31 starts' words, R8; A10-063: the report's notice that each deliverable is
     /// delivered in a message of its own, R8, Task 15; A10-064: a classifier's with values, written at the end of its
-    /// prompt, D16, Task 15 fix round 1).
+    /// prompt, D16, Task 15 fix round 1; A10-065: a package format named like a 31 built-in or catalogue format, renamed,
+    /// S01-034, D34).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -228,6 +229,7 @@ internal static class V31Contract
         ["A10-062"] = "No document applies to these inputs. <documents>",
         ["A10-063"] = "Each deliverable is now delivered by pdf in a message of its own, where 30 sent one message for the job.",
         ["A10-064"] = "Node '<id>' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.",
+        ["A10-065"] = "Renamed format '<id>' to '<new id>': '<id>' is the name of a <built-in | catalogue> format at 31.",
     };
 
     private static string RepoRoot()
