@@ -57,6 +57,11 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Status, "Refused", "Completed", "example-conditional-documents", "encounter-kind-unset")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Status, "Refused", "Failed", "example-prior-letters", "no-prior-letters")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "30's prompt", "31's prompt", "example-prior-letters", "no-prior-letters", key31: "node.assessment")));
+
+        // Final review B3: R2 rules that the runs complete; a text only 31 has, in a 31 run that failed, is unexpected.
+        var failed = Run(RunState.Failed);
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "31's prompt", "example-structured-intake", "all-optional-inputs-unset", run: failed, key31: "node.assessment")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, null, "## Assessment", "example-structured-intake", "all-optional-inputs-unset", run: failed, key31: "deliverable.note")));
     }
 
     [Fact]
@@ -73,6 +78,12 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Status, "Failed", "Completed", capture: capture, run: released, package: "example-conditional-documents")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Status, "Failed", "Completed", capture: Capture("Failed", "Node 'x' failed."), run: skipped, package: "example-conditional-documents")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "A", "B", capture: capture, run: skipped, package: "example-conditional-documents", key31: "deliverable.progress_note")));
+
+        // Final review B3: the 31 run did not complete; a prompt only 31 has (30's failure, composing deliverables, came after
+        // every node, so it left out no prompt).
+        var failed = Run(RunState.Failed, deliverables: [Outcome("deliverable.consult_note", DeliverableState.Skipped, null)]);
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, null, "Text 31 composed after the read.", capture: capture, run: failed, package: "example-conditional-documents", key31: "deliverable.progress_note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "A prompt only 31 sent.", capture: capture, run: skipped, package: "example-conditional-documents", key31: "node.plan")));
     }
 
     [Fact]
