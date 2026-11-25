@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
@@ -10,7 +11,7 @@ namespace Consultologist.Api.Tests.V31Resolve;
 /// #1508 (specVersion 31, area 11; R2, R6): <c>resolve.json</c>'s <c>formats</c> is a JSON Schema 2020-12 compound
 /// document: a reference inside a bundled format is the target's <c>$id</c>, while an input's and an entry's
 /// <c>format</c> stays <c>{ "$ref": "#/$defs/&lt;id&gt;" }</c>; the plan expands it, a standard validator resolves it,
-/// and neither hash moves.
+/// and neither hash moves. And <c>requires.features</c> lists <c>run-spots</c> only for a placed unit or a body.
 /// Content is fictional (Margaret Okafor, Dr A. Sample).
 /// </summary>
 public class BundleByIdTests
@@ -39,6 +40,9 @@ public class BundleByIdTests
         Assert.True(compiled!.Complete);
         return JsonNode.Parse(compiled.Resolve)!.AsObject();
     }
+
+    private static string[] Features(Dictionary<string, byte[]> files) =>
+        Resolve(files)["requires"]!["features"]!.AsArray().Select(f => (string)f!).ToArray();
 
     private static JsonObject Valid() => JsonNode.Parse(
         "{ \"plan\": { \"sections\": [ { \"title\": \"History of Margaret Okafor\", \"kind\": \"narrative\" } ] } }")!.AsObject();
@@ -156,5 +160,30 @@ public class BundleByIdTests
             + "\"section_plan\":\"sha256:0c5a884b29f52fc96dfca25e8fecf669a7096806470b37b84b25e9e46a48b5f5\","
             + "\"verdict\":\"sha256:08ea57ba6077ecaa2ae0ba3bcd7575693a24b4c5baddc669a339e0a4775ceb76\"}",
             CanonicalJson.Write(document["typeHashes"]));
+    }
+
+    [Fact]
+    public void AnUnplacedSnippetThatWritesRun_DoesNotTurnOnRunSpots()
+    {
+        // R6 (area 07's D15): only what is placed counts; the snippet still has its own run spot and warning.
+        var document = Resolve(TemplateFixture.Package().WithSnippet("when", "Run {{ run.id }}\n"));
+
+        Assert.Empty(document["requires"]!["features"]!.AsArray());
+        Assert.Single(document["snippets"]!["snippet.when"]!["runSpots"]!.AsArray());
+    }
+
+    [Fact]
+    public void APlacedOne_Does()
+    {
+        var files = TemplateFixture.Package()
+            .WithSnippet("when", "Run {{ run.id }}\n")
+            .WithAgent("draft", "Draft the note for Dr A. Sample.\n{{~ snippet.when.content }}\n")
+            .RunDependent("nodes/draft.md");
+
+        Assert.Equal(["run-spots"], Features(files));
+
+        // A body's own run spot counts as before.
+        Assert.Equal(["run-spots"], Features(TemplateFixture.Package()
+            .WithRendered("stamp", "Seen {{ run.date | date.to_string \"%d %B %Y\" }}\n").RunDependent("nodes/stamp.md")));
     }
 }

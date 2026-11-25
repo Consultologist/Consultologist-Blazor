@@ -1661,8 +1661,9 @@ As an entry of its own, a snippet, a macro or a renderer reads what its text rea
 The derived step also counts the `if` of each macro and snippet a body places as read by that body (S04-035). The
 compiler embeds each built-in renderer an entry pipes into in the package's `renderers`, under `renderer.<id>`,
 with the registry's header and body (D6). The features follow from what is placed (D15): `macro-markers` when an
-agent places a macro, `parts` when an agent declares a non-empty `parts`, and `run-spots` when any entry has a run
-spot. `warnings` gains the dialect's S05-060 and S05-061.
+agent places a macro, `parts` when an agent declares a non-empty `parts`, and `run-spots` when a body that runs
+(an agent's, a `rendered` node's, a deliverable's) has a run spot, its own or a placed unit's: an unplaced snippet
+that writes `run.*` does not count (#1508, R6). `warnings` gains the dialect's S05-060 and S05-061.
 
 ### Snippets, parts and macros at publish
 
