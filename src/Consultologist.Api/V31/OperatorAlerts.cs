@@ -29,10 +29,13 @@ public static class OperatorAlertKinds
     /// <summary>A delivery row was marked <c>failed</c>. <c>Key</c> is the first such row; <c>Number</c> how many there are.</summary>
     public const string DeliveryFailed = "delivery-failed";
 
-    /// <summary>A publish failed (area 10's to raise).</summary>
+    /// <summary>
+    /// A 31 publish was refused, for any reason (#1508, area 11: raised by <see cref="V31PackagePublisher"/>). <c>Key</c> is
+    /// the package's name; <c>Number</c> the number of refusals.
+    /// </summary>
     public const string PublishFailed = "publish-failed";
 
-    /// <summary>An exporter warned (area 11's to raise).</summary>
+    /// <summary>An exporter warned (named; nothing raises it in this build).</summary>
     public const string ExporterWarning = "exporter-warning";
 }
 
