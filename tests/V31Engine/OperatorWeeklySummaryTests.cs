@@ -45,7 +45,7 @@ public class OperatorWeeklySummaryTests
             "Failures: 2\n" +
             "p50 duration: 5 minutes\n" +
             "p90 duration: 9 minutes\n" +
-            "Largest record: not measured in this build\n" +
+            "Largest record: none\n" +
             "Outstanding migration hand edits: 3 in 2 packages; 1 packages do not migrate\n",
             body);
 
@@ -128,7 +128,7 @@ public class OperatorWeeklySummaryTests
         Assert.True(expectedHandEdits > 0);
         Assert.Empty(Migrate("general").HandEdits);
         var body = SentBody(mail);
-        Assert.EndsWith($"Largest record: not measured in this build\nOutstanding migration hand edits: {expectedHandEdits} in 1 packages; 0 packages do not migrate\n", body, StringComparison.Ordinal);
+        Assert.EndsWith($"Largest record: none\nOutstanding migration hand edits: {expectedHandEdits} in 1 packages; 0 packages do not migrate\n", body, StringComparison.Ordinal);
 
         // the line carries counts only: no package, no account, no notice
         Assert.DoesNotContain("composer", body, StringComparison.Ordinal);
@@ -154,7 +154,7 @@ public class OperatorWeeklySummaryTests
         Assert.True(await Summary(accounts, pins, sources, mail: mail).RunOnceAsync(Now, CancellationToken.None));
 
         Assert.EndsWith(
-            $"Largest record: not measured in this build\nOutstanding migration hand edits: {Migrate("composer-sources").HandEdits.Count} in 1 packages; 2 packages do not migrate\n",
+            $"Largest record: none\nOutstanding migration hand edits: {Migrate("composer-sources").HandEdits.Count} in 1 packages; 2 packages do not migrate\n",
             SentBody(mail),
             StringComparison.Ordinal);
     }
@@ -228,7 +228,7 @@ public class OperatorWeeklySummaryTests
         var (id, line) = failing == "registry"
             ? ("A10-058", "Outstanding migration hand edits: not counted; the type registry could not be read.")
             : ("A10-059", "Outstanding migration hand edits: 2 of the accounts' active packages could not be read and are not counted.");
-        Assert.EndsWith("Largest record: not measured in this build\n" + line + "\n", body, StringComparison.Ordinal);
+        Assert.EndsWith("Largest record: none\n" + line + "\n", body, StringComparison.Ordinal);
         Assert.DoesNotContain(" in 0 packages", body, StringComparison.Ordinal);
         Assert.DoesNotContain("do not migrate", body, StringComparison.Ordinal);
         Assert.DoesNotContain("table down", body, StringComparison.Ordinal);
@@ -269,14 +269,76 @@ public class OperatorWeeklySummaryTests
     }
 
     [Fact]
-    public void TheLargestRecordLine_IsUnchanged()
+    public async Task TheLargestRecordLine_IsTheWeeksLargestSealedRecord()
     {
-        // area 11's line (#1508): this area fills only the hand-edits line
-        foreach (var figures in new[] { MigrationFigures.Counted(2, 1, 0), MigrationFigures.Counted(2, 1, 0, 1), MigrationFigures.NoneRead(1), MigrationFigures.NotRead(MigrationFigures.ThePackages), MigrationFigures.NotRead(MigrationFigures.TheRegistry) })
-        {
-            var body = OperatorSummary.Compose([("Completed", TimeSpan.FromMinutes(1))], figures).Body;
-            Assert.Contains("\nLargest record: not measured in this build\nOutstanding migration hand edits: ", body, StringComparison.Ordinal);
-        }
+        // the week's sealed records: the largest is job "big"; a larger one ended before the week, and a 5–30 job has none
+        var accounts = Substitute.For<IAccountStore>();
+        accounts.ListAsync(Arg.Any<CancellationToken>()).Returns([new AccountSummary("user-1", "Active"), new AccountSummary("user-2", "Active")]);
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        index.ListAllAsync("user-1", Arg.Any<CancellationToken>()).Returns(
+        [
+            Job("small", ConsultGenerationJobStatuses.Completed, Now.AddDays(-1), minutes: 4, recordBytes: 900, recordRows: 7),
+            Job("old", ConsultGenerationJobStatuses.Completed, Now.AddDays(-8), minutes: 4, recordBytes: 99_999_999, recordRows: 9_999),
+            Job("thirty", ConsultGenerationJobStatuses.Completed, Now.AddDays(-1), minutes: 4),
+        ]);
+        index.ListAllAsync("user-2", Arg.Any<CancellationToken>()).Returns(
+            [Job("big", ConsultGenerationJobStatuses.Failed, Now.AddHours(-2), minutes: 2, recordBytes: 1_234_567, recordRows: 4_210)]);
+        var mail = Substitute.For<IGraphMailClient>();
+
+        Assert.True(await Summary(accounts, index: index, mail: mail).RunOnceAsync(Now, CancellationToken.None));
+
+        var body = SentBody(mail);
+        Assert.Contains("\nLargest record: 1,234,567 bytes, 4,210 rows (job big)\nOutstanding migration hand edits: ", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("not read", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WithNoSealedRecord_TheLineSaysNone()
+    {
+        // a week of 5–30 jobs only holds no sealed record; so does a week with no jobs
+        var accounts = Substitute.For<IAccountStore>();
+        accounts.ListAsync(Arg.Any<CancellationToken>()).Returns([new AccountSummary("user-1", "Active")]);
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        index.ListAllAsync("user-1", Arg.Any<CancellationToken>()).Returns([Job("thirty", ConsultGenerationJobStatuses.Completed, Now.AddDays(-1), minutes: 4)]);
+        var mail = Substitute.For<IGraphMailClient>();
+
+        Assert.True(await Summary(accounts, index: index, mail: mail).RunOnceAsync(Now, CancellationToken.None));
+
+        Assert.Contains("\nLargest record: none\nOutstanding migration hand edits: ", SentBody(mail), StringComparison.Ordinal);
+        Assert.Contains("\nLargest record: none\n", OperatorSummary.Compose([], MigrationFigures.Counted(0, 0, 0)).Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenTheSizesCannotBeRead_TheLineSaysSo_NeverZero()
+    {
+        // a sealed job whose row holds no size (sealed before sizes were written, or not sealed yet) is not measured
+        var accounts = Substitute.For<IAccountStore>();
+        accounts.ListAsync(Arg.Any<CancellationToken>()).Returns([new AccountSummary("user-1", "Active")]);
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        index.ListAllAsync("user-1", Arg.Any<CancellationToken>()).Returns(
+        [
+            Job("a", ConsultGenerationJobStatuses.Completed, Now.AddDays(-1), minutes: 4, recordStorage: 12),
+            Job("b", ConsultGenerationJobStatuses.Failed, Now.AddDays(-2), minutes: 4, recordStorage: 12),
+        ]);
+        var mail = Substitute.For<IGraphMailClient>();
+        Assert.True(await Summary(accounts, index: index, mail: mail).RunOnceAsync(Now, CancellationToken.None));
+
+        const string notRead = "Largest record: not measured; the sizes of 2 sealed records could not be read.";
+        var body = SentBody(mail);
+        Assert.Contains("\n" + notRead + "\nOutstanding migration hand edits: ", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("0 bytes", body, StringComparison.Ordinal);
+
+        // some read: the largest of those, then how many were not counted
+        index.ListAllAsync("user-1", Arg.Any<CancellationToken>()).Returns(
+        [
+            Job("a", ConsultGenerationJobStatuses.Completed, Now.AddDays(-1), minutes: 4, recordStorage: 12),
+            Job("b", ConsultGenerationJobStatuses.Failed, Now.AddDays(-2), minutes: 4, recordBytes: 50, recordRows: 3),
+        ]);
+        mail.ClearReceivedCalls();
+        Assert.True(await Summary(accounts, index: index, mail: mail).RunOnceAsync(Now, CancellationToken.None));
+        Assert.Contains(
+            "\nLargest record: 50 bytes, 3 rows (job b)\nLargest record: 1 sealed records could not be read and are not counted.\nOutstanding migration hand edits: ",
+            SentBody(mail), StringComparison.Ordinal);
     }
 
     private static readonly Lazy<PublishedTypeRegistry> Bundled = new(() => new PublishedTypeRegistry(AppContext.BaseDirectory, OutputContractCatalog.ResolveDirectory()));
@@ -370,8 +432,10 @@ public class OperatorWeeklySummaryTests
         return (string)call.GetArguments()[3]!;
     }
 
-    private static ConsultGenerationJobIndexEntry Job(string id, string status, DateTimeOffset? completed, int? minutes) =>
-        new(id, "user", status, Now.AddDays(-9), completed is { } c && minutes is { } m ? c.AddMinutes(-m) : null, completed, 1, 1, 0);
+    private static ConsultGenerationJobIndexEntry Job(
+        string id, string status, DateTimeOffset? completed, int? minutes, long? recordBytes = null, int? recordRows = null, int? recordStorage = null) =>
+        new(id, "user", status, Now.AddDays(-9), completed is { } c && minutes is { } m ? c.AddMinutes(-m) : null, completed, 1, 1, 0,
+            RecordStorage: recordStorage ?? (recordBytes != null ? 12 : null), RecordBytes: recordBytes, RecordRows: recordRows);
 
     private static IConfiguration Configuration() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {

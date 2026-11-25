@@ -211,7 +211,7 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
     internal static ConsultGenerationJobIndexEntity ToEntity(ConsultGenerationJobIndexEntry entry)
     {
         var entity = entry.RecordStorage is { } storage
-            ? new ConsultGenerationJobRecordIndexEntity { RecordStorage = storage }
+            ? new ConsultGenerationJobRecordIndexEntity { RecordStorage = storage, RecordBytes = entry.RecordBytes, RecordRows = entry.RecordRows }
             : new ConsultGenerationJobIndexEntity();
         entity.PartitionKey = entry.AppUserId;
         entity.RowKey = FormatRowKey(entry.CreatedAtUtc, entry.JobId);
@@ -258,7 +258,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.DecisionFailureKind,
             entity.InputsHeld,
             entity.InputsDroppedAtUtc,
-            entity.RecordStorage);
+            entity.RecordStorage,
+            entity.RecordBytes,
+            entity.RecordRows);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -332,7 +334,14 @@ public sealed record ConsultGenerationJobIndexEntry(
     // property is never stored), so its stored row is as before. The retention sweep and account closure gate on it, so
     // neither reads a job's entity, nor a record store, for a job without it. Additive column; rows from before read null.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    int? RecordStorage = null);
+    int? RecordStorage = null,
+    // #1508 (area 11, Task 21): the sealed record's length in bytes and its row count, written when the record is sealed, for
+    // the operator's weekly summary; null for a 5–30 job and for a 31 job not sealed (or sealed before this), which the summary
+    // reads as not measured, never zero. Trailing, optional, additive columns.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    long? RecordBytes = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? RecordRows = null);
 
 internal class ConsultGenerationJobIndexEntity : ITableEntity
 {
@@ -369,4 +378,9 @@ internal class ConsultGenerationJobIndexEntity : ITableEntity
 internal sealed class ConsultGenerationJobRecordIndexEntity : ConsultGenerationJobIndexEntity
 {
     public int? RecordStorage { get; set; }
+
+    /// <summary>#1508 (area 11): the sealed record's length in bytes and its row count; null until sealed.</summary>
+    public long? RecordBytes { get; set; }
+
+    public int? RecordRows { get; set; }
 }

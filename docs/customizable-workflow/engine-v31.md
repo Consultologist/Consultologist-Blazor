@@ -565,9 +565,16 @@ NCRONTAB value, for example `0 0 7 * * 1`. **Unset, the function is disabled** a
 text retention timer is. It reads nothing unless the engine runs 31 (`WorkflowPackages__PreviewSpecVersions`
 admits it), even with the schedule set. It lists every account's jobs from the job index that ended in the 7 days
 before the run, at every version, and mails `Jobs`, `Failures`, the p50 and p90 of the durations (nearest rank) and
-two lines areas 09 and 10 fill. `Largest record` reads *not measured in this build* (area 11's, #1508; the record's
-size per job is logged when it is sealed, below, for the gate to read; the summary does not read it yet). With no
-alert address it is only logged, as counts.
+two lines areas 09 and 10 fill. `Largest record` (#1508, area 11) is the largest record sealed in the week:
+`Largest record: <n> bytes, <rows> rows (job <id>)`, the numbers in the invariant culture with thousands separators. The
+size is written where the record is sealed: the `RecordV31Seal` entity operation (signalled by the sealing activity, never
+written by an orchestration) also upserts the job's index row with `RecordBytes` and `RecordRows` (trailing, optional,
+write-once columns, stored only for a job at record storage 12 or later), so the summary reads it from the rows it
+already lists, with no blob read per job. It is still logged at sealing. A week with no sealed 31 job reads
+`Largest record: none`. A sealed 31 job whose row holds no size (sealed before sizes were written, or not sealed yet) is
+**not measured, never zero**: with none read the line is `Largest record: not measured; the sizes of <k> sealed records
+could not be read.`; with some, the largest of those is followed by `Largest record: <k> sealed records could not be read
+and are not counted.` A 5–30 job has no size and is not counted. Ties go to the lower job id. With no alert address it is only logged, as counts.
 
 **The migration line** (#1507, R11, D22; `OutstandingHandEdits`) is computed by the summary itself, in its timer
 function, never in an orchestration. Each account's active package is the one a consult would run (the pin

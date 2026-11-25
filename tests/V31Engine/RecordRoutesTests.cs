@@ -607,8 +607,7 @@ public class RecordRoutesTests
                     Assert.Equal(nameof(ConsultGenerationJobEntity.RecordV31Seal), (string)call[1]);
                     var seal = (ConsultGenerationV31Seal)call[2]!;
                     Seals.Add(seal);
-                    _job.Entity.RecordV31Seal(seal);
-                    return Task.CompletedTask;
+                    return _job.Entity.RecordV31Seal(seal);
                 });
 
             _functions = new RecordRoutes(

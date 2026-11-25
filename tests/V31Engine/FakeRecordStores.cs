@@ -213,11 +213,10 @@ internal sealed class EntityRecordJobs(Consultologist.Api.Jobs.ConsultGeneration
         return Task.FromResult(DurableRecordJobs.KindOfHeldInputs(job) ?? FallbackKind);
     }
 
-    public Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct)
+    public Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct, int? rows = null)
     {
         Stamps.Add((recordHash, bytes));
-        entity.RecordV31Seal(new Consultologist.Api.Jobs.ConsultGenerationV31Seal(recordHash, bytes));
-        return Task.CompletedTask;
+        return entity.RecordV31Seal(new Consultologist.Api.Jobs.ConsultGenerationV31Seal(recordHash, bytes, rows));
     }
 }
 
