@@ -155,7 +155,7 @@ public class MigratedPackagesTests
     }
 
     /// <summary><c>notices.json</c>: every notice, the hand edits among them, and the refusals, each in the result's order.</summary>
-    private static string NoticesJson(Migration31Result result) => ByteEquivalenceFixtures.WriteJson(new JsonObject
+    internal static string NoticesJson(Migration31Result result) => ByteEquivalenceFixtures.WriteJson(new JsonObject
     {
         ["notices"] = Strings(result.Notices),
         ["handEdits"] = Strings(result.HandEdits),
