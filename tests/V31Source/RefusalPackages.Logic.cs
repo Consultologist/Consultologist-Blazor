@@ -132,11 +132,15 @@ internal static partial class RefusalPackages
             WithComputedNode("draft_line", "Writing the draft as one line", Plain,
                 $$"""{ "cat": ["Draft: ", { "plain": [{{Draft}}] }] }""").Edit("nodes/draft_line.md", $$"""{ "plain": [{{Draft}}] }""", Draft));
 
+        // #1508 (Task 30 fix round 1): the case pins that text is a member of a written list of string literals (the form
+        // the migration gives 30's text == "lit") and of no list read from the data; arithmetic on text is the library's.
         yield return PlanIfCase("A04-001",
-            "Each operand is of a type its operation takes: arithmetic takes numbers (chapter 3 § 3.5.1; this "
-            + "implementation's sentence). Invalid: the agent node plan's if multiplies the draft's text by 2. Valid: "
-            + "the draft's count of words.",
-            $$"""{ ">": [{ "*": [{ "words": [{{Draft}}] }, 2] }, 5000] }""", $$"""{ "words": [{{Draft}}] }""", Draft);
+            "Each operand is of a type its operation takes: arithmetic takes numbers, and text is a member only of a "
+            + "written list of string literals (chapter 3 § 3.5.1; this implementation's sentence). The input prior_notes "
+            + "is a list of plaintext. Valid: the agent node plan's if multiplies the draft's count of words by 2 and tests "
+            + "the draft in the written list [\"Reviewed in clinic.\"]. Invalid: the draft in the list input.prior_notes.value.",
+            $$"""{ "and": [{ ">": [{ "*": [{ "words": [{{Draft}}] }, 2] }, 5000] }, { "in": [{{Draft}}, ["Reviewed in clinic."]] }] }""",
+            """["Reviewed in clinic."]""", """{ "var": "input.prior_notes.value" }""", WithPriorNotes());
 
         yield return PlanIfCase("A04-002",
             "= and ≠ compare two values of one type (chapter 3 § 3.5.1; this implementation's sentence). Invalid: the "
