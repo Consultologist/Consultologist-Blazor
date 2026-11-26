@@ -103,7 +103,10 @@ internal static partial class Migrate
     /// #1507 (Task 15 and its fix round 1; part 10 § 3.1; D16): what 30's engine appended to a classifier's rendered prompt,
     /// its <c>with</c> values in declared order (<c>ClassificationOutputContract.Trailer</c>: a blank line, then <c>Answer
     /// with exactly one of: &lt;values joined by ", "&gt;.</c>), written at the end of the 31 body as package text: 31 has no
-    /// <c>with</c> and appends nothing, so the model is told the values as at 30 and the prompt keeps 30's bytes (A10-064).
+    /// <c>with</c>, so the model is told the values as at 30 and the body keeps 30's bytes (A10-064). The 31 engine then
+    /// appends, after this line, the answer format's own instruction (<c>Answer with one JSON object…</c> and the schema of
+    /// the classifier's <c>&lt;id&gt;_answer</c> enum, bound through <c>custom</c>, #1508 R12, Task 31): the values are sent
+    /// twice, an expected difference under <c>sent-format</c>.
     /// A value is written only when it is a 30 id (snake_case, as 30's validator holds every classifier value, so it holds no
     /// brace, no <c>%</c> and no line ending, and the dialect reads it as text); a package whose values are not is refused at
     /// 30 before this pass (A10-017), and should one reach it, nothing is written and A10-030 says the values were dropped.
