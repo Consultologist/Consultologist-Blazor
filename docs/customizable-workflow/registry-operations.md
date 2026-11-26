@@ -506,6 +506,69 @@ same case (its own `close_line` test) written with `--write <out> --version v202
     folder, `--write <out>`: exit 0, no link and nothing of either target in `<out>`, and the report's `sourceHash`
     the same as the run without links.
 
+### The bulk publish
+
+The operator migrates every account's package to 31 and publishes it as a new version of that account's package
+(part 10 § 1.5 of [the 31 design](package-format-v31/10-migration-and-tools.md#15-account-packages-by-the-operator)).
+The engine does one package a call (`Admin/MigratePackage`, [the engine at specVersion 31](engine-v31.md), "The bulk
+publish"); `scripts/bulk-publish-v31.cs` drives it over every account. Running it against production, sending the
+owners' notices and moving production pins stay the user's (R21).
+
+```
+ACCESS_TOKEN=<an operator account's bearer token> \
+dotnet run -v q --file scripts/bulk-publish-v31.cs -- <operator folder> --engine <engine url> [--publish]
+```
+
+**The folder.** The operator's folder holds what the operator chose for each package, by account and package name:
+
+```
+<operator folder>/
+├── <owner>/<name>/options.json        # the package's migration choices (part 10 § 1.4); absent: the defaults
+├── <owner>/<name>/hand-edits/…        # each file replaces or adds its path in the migrated package;
+│                                      # <path>.deleted removes <path>
+├── bulk-publish-record.json           # written by the run
+└── owners.json                        # written by the run
+```
+
+`<owner>` is the account's app user id and `<name>` its package (`acct-<root>-<slug>` or `acct-<root>/<path>`, nested
+as it is nested). A package with no folder is migrated with the defaults and no edits. The script asks the engine for
+the list (`GET`), reads every package's folder before it sends anything (an `options.json` that does not read, A10-019's
+sentence, stops the run with exit 2 and nothing sent), then sends each package in the engine's order, one at a time. It
+talks only to the engine URL it is given, with the token in `ACCESS_TOKEN`.
+
+**The dry run.** Without `--publish` each package is migrated and its publish run in memory by the engine: nothing is
+written in the registry, no pin moves, and no alert is raised. Its outcome is `would publish`, with the version it
+would take. Run it first, make the hand edits it reports (`handEditsLeft`) and the choices it asks for, and run it
+again until every package would publish or is to stay at 30; then run it with `--publish`.
+
+**The record.** `bulk-publish-record.json` is `{ "engine", "publish", "notRead", "rows" }`: one row per package, the
+engine's answer (`owner`, `name`, `oldVersion`, `newVersion`, `outcome`, `handEditsLeft`, `notices`, `report`, the
+`options` used and `defaults`, A10-083 when the package had no `options.json`) and the `time` it was answered (UTC).
+`notRead` counts the accounts' active packages the engine could not read; they are not in the record. `owners.json`
+is the list for the before-and-after notification (#1447): per owner, the packages `published` (in a dry run, those that
+would be; each with its versions and the notices the owner must see, `flag` becoming `retry` among them) and the
+packages `notMigrated` (each with its version, the `reason`, S10-005 as the owner's `notice`, and the `deadline`,
+A11-015: *"This package stops working when specVersion 30 is retired."*). Both files are written again by each run.
+
+**Exit codes:** 0, every package published (or would); 1, a package is not migrated, or an account's active package
+could not be read; 2, usage, a folder that does not read, or an engine that does not answer as the route does. The run
+stops at the first engine fault, and the two files then hold what was done before it. A rerun is safe: a package
+published by an earlier run is at 31, and is `not migrated: The package is already at specVersion 31.`
+
+**A package it cannot publish.** The owner's clarification of B2 on #1508
+([2026-11-25](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179842619)), word for word:
+
+> This covers a package the migration cannot publish at 31: a publish refusal such as A11-001, or a migration refusal.
+> - **It keeps its 30 version and its pin.** Nothing is published at 31 for it, and no `max` or other value is guessed to force it through.
+> - **It keeps running at 30** until 30 is retired (#1450). Old spec versions keep their own load path; there is no backfill.
+> - **It is recorded "not migrated: <reason>"** in the bulk publish's record, with the refusal's sentence. The weekly summary already counts it ("<q> packages do not migrate", D22 of [PR #1532](https://github.com/Consultologist/Consultologist-Blazor/pull/1532)).
+> - **Its owner is named in the before-and-after notification** (#1447), with the reason, and with the deadline: the package stops working when 30 is retired.
+> - **"Pins move always" (#1447) applies to packages that publish at 31.** A package with no 31 version keeps its pin.
+> - **Where its core idea is still wanted, a new 31 package** that does it within the format is written. That is content work, outside this area.
+
+The engine records such a package `not migrated: <sentence>`, the first sentence of what stopped it (a hand edit left,
+S10-002; a migration refusal; a publish refusal, A11-001 among them), and writes nothing for it.
+
 ### Before 31 leaves preview
 
 31 is admitted outside preview (joins `AcceptedSpecVersions`, and the preview setting is removed) only once these

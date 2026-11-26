@@ -652,7 +652,9 @@ and every file, `manifest.json` included, as text in `Files` (written as UTF-8 w
    (`PublishedTypeRegistry`), the toolchain the engine attests (`EngineToolchain.Current()`), the limits
    (`EngineLimitSettings.PublishLimits`: `MaxAgentCallsPerJob`, `LoopItems`, `JobAgentCalls`, `JobInstances` and
    `JobMinutes`), the clock, `RegexMilliseconds` for the tests' `matches`, and no diagram. `publishedBy` is
-   `operator-migration` with a migration report, else `editor` with a `Source`, else `api`.
+   `operator-migration` with a migration report, else `editor` with a `Source`, else `api`. A migration report whose
+   `newVersion` is not the version being tried gets that version (a member replacement, written canonical), so the
+   stored `migration-report.json` names the version it is stored in; one that names it already is stored as sent.
 6. **Writing.** The account's ownership is recorded once, before the first byte. If the version is already stamped, or
    the write loses to another publish, the pipeline runs again on the next CalVer (never at or below the one that was
    taken), three times in all; then the answer is **A11-006**. After the stamp the latest pointer is set and the
@@ -877,6 +879,56 @@ If the release is abandoned at step 2, the drain stays on and new jobs keep park
   every 31 history gains `write-record-rows-v31` (once per round that recorded anything and at the end) and
   `seal-record-v31` (after `FinalizeJob`), and the entity `RecordV31Rows` and `RecordV31Seal`. **Drain 31
   orchestrations before deploying this build**, as above; only dev admits 31.
+
+## The bulk publish (`Admin/MigratePackage`, #1508 Task 36)
+
+The operator's migration of the accounts' packages (part 10 § 1.5) is one engine route, one account package a call,
+driven by `scripts/bulk-publish-v31.cs` ([registry operations](registry-operations.md), "The bulk publish"). Both
+functions are anonymous at the Functions level and gated in code as the drain's are: 401 without an account, 403
+unless the account can use the app and is listed in `Operators__AppUserIds`. Then, where the preview setting does not
+admit 31, both answer S09-001 as a 400 (`{ "error" }`) before anything is read. CORS is applied, and each answers with
+`Cache-Control: no-store`.
+
+| Endpoint | `[Function]` | What it does | Answer |
+|---|---|---|---|
+| `GET /api/Admin/MigratePackage` | `AdminMigratePackageList` | Lists every account's active account package below 31: each account's pin (`IWorkflowPackagePinResolver`), each distinct package read once as stored (`ActivePackages`, which the weekly summary's hand-edits line reads too), only `acct-…` names. | `{ "packages": [{ "owner", "name", "version", "specVersion" }], "notRead": n }`, `notRead` the pins and packages that could not be read |
+| `POST /api/Admin/MigratePackage` | `AdminMigratePackage` | Migrates and publishes one package (`MigratePackage.RunAsync`). | below |
+
+**The body:** `{ "owner": <app user id>, "name": <package>, "options": <options.json> | null, "handEdits": { "<path>":
+"<text>" | null }, "publish": bool }`. `options` null (or absent) is the defaults; in `handEdits` a text replaces or adds
+its path (`manifest.json` the manifest) and null deletes it, as a `.deleted` file does (a path the migration did not
+write is left absent); `publish` false (or absent) is a dry run. A body that is not strict JSON, has another member,
+or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with `error` naming the member.
+
+**What it does,** in order; the first step that cannot go on answers `not migrated: <its sentence>`:
+
+1. **The package the account's pin names**, as stored (`IWorkflowPackageSources`). A name that is not an account
+   package, or that the pin does not name: A11-016. A stored package that cannot be read: A11-007 (the fault logged by
+   its type).
+2. **The choices:** `options` read with `Migration31Options.FromJson` (A10-070 to A10-072, A10-082), or the defaults,
+   said in the answer's `defaults` (A10-083).
+3. **The migration** (`WorkflowPackageMigration30To31.Migrate`, with the 24 → 25 rung's contract resolver): a refusal is
+   its first sentence, A10-015 for a package at 31 already (a rerun after a publish). A migration that leaves hand edits
+   when the body gives none: its first S10-002 notice, every one in `handEditsLeft`.
+4. **The operator's edits** laid over it, and then, when any were given, its snapshot test written anew
+   (`WorkflowPackageMigration30To31.Snapshot`, which publishes the edited package in memory at the engine's default limits:
+   a package past them, A11-001, or an edit left undone, the checker's sentence, is refused here). A10-011 is then not
+   said.
+5. **The publish** through `V31PackagePublisher` as the account's next version, with the migration report
+   (`MigrationReport.Of`, no compared text: the engine cannot run 30 offline; `newVersion` the version assigned), so the
+   stamp has `migratedFrom`, `publishedBy` is `operator-migration`, the ownership is recorded and the latest pointer and
+   the pin move after the stamp, as for any publish. A refusal (A11-001 at the configured limits among them) is its
+   first sentence, and raises `publish-failed` as any refused 31 publish does. With `publish: false` the same pipeline
+   runs once in memory (`V31PackagePublisher.CheckAsync`): no write, no pointer, no pin, no alert.
+
+A package that is not migrated has nothing written: its 30 version and its pin are as they were (comment 8 on #1508).
+
+**The answer** (200): `{ "owner", "name", "oldVersion", "newVersion", "outcome", "handEditsLeft", "notices", "report",
+"options", "defaults" }`. `outcome` is `published`, `would publish` or `not migrated: <sentence>`; `newVersion` is the
+version published (or that would be), else null; `notices` the migration's notices that need no edit (A10-013, `flag`
+becoming `retry`, among them), as the migration report lists them; `report` the publish report (null when no publish
+ran); `options` the choices used, as `options.json` writes them; `defaults` A10-083 or null. No member carries input,
+model or profile text: ids, versions, sentences, hashes and the choices.
 
 ## Sizing the deployment-wide limits (D10)
 

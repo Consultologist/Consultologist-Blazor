@@ -168,9 +168,16 @@ tests and the operator's bulk publish, so the choices have one source, and the m
 (§ 3.2). A file the migration cannot read is refused, exit **2**: a member that is no option
 (*"options.json has the member '<member>', which is not an option of the migration; its members are
 renames, whenEmpty and folderFormats."*), a choice missing or not an object of text (*"options.json must
-give <member> as an object whose values are text; write {} for none."*), or a `whenEmpty` that is not
-`release`, `hold` or `fail` (*"options.json gives deliverable '<id>' a whenEmpty that is not release, hold
-or fail."*).
+give <member> as an object whose values are text; write {} for none."*), an empty id or choice, which
+the flags refuse too (A10-082: *"options.json gives <member> an empty id or an empty choice; name each id
+and its choice."*), or a `whenEmpty` that is not `release`, `hold` or `fail` (*"options.json gives
+deliverable '<id>' a whenEmpty that is not release, hold or fail."*). A leading byte-order mark is dropped,
+as a package file's is, and a file that is not strict JSON is refused with A10-019's sentence (*"The file
+'options.json' does not read: it names the member '<member>' twice; fix it, then migrate."*). A package with
+no `options.json` takes the defaults (§§ 1.9, 1.10; part 01 § 3), and the bulk publish (§ 1.5) says so in
+its record (A10-083: *"No options.json was given, so the migration's defaults were used: a reserved id takes
+its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take
+<folder>_item."*).
 
 The script exits **0** when the package migrated cleanly, **1** with *"written; hand edits remain"*
 (as #1447 decided), and **2** when it refused, writing no package (unreadable input, or a version
@@ -186,7 +193,23 @@ Each notice reads:
   version as a new version of each owner's package,** making any hand edits, so every package
   migrates. Each package's choices are its `options.json` beside its hand edits (§ 1.4), `{}` for
   each when the operator makes none.
-- **Pins move always:** each account pin moves to the migrated version at publish.
+- **Pins move always** for a package that publishes at 31: each account pin moves to the migrated
+  version at publish.
+- **A package that cannot be published at 31 keeps its 30 version and its pin**
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179842619), the
+  clarification of B2): a publish refusal such as A11-001, or a migration refusal. Nothing is published at 31 for
+  it, and no `max` or other value is guessed to force it through. It keeps running at 30 until 30 is retired
+  (#1450). The bulk publish records it *"not migrated: <reason>"*, with the refusal's sentence, and names its
+  owner in the before-and-after notification (#1447) with the reason and the deadline (A11-015: *"This package
+  stops working when specVersion 30 is retired."*). Where its core idea is still wanted, a new 31 package that
+  does it within the format is written (content work).
+- **The bulk publish** is the engine's operator route `Admin/MigratePackage`, one account package a call, driven
+  by `scripts/bulk-publish-v31.cs` over every account's active account package below 31 ([the engine at
+  specVersion 31](../engine-v31.md), "The bulk publish"; [registry operations](../registry-operations.md), "The bulk
+  publish"). It migrates the package the account's pin names (A11-016 when it does not: *"<package> is not the
+  account's active account package; the bulk publish migrates only the account package an account's pin
+  names."*), lays the operator's hand edits over it, and publishes it as that account's next version, or with
+  no `--publish` runs that publish in memory and writes nothing.
 - **Recorded as a migration:** the version's publish record says *"migrated by the operator from
   <old version>"*, with the byte-equivalence report and the list of hand edits attached. The
   Editor and History show it ([part 09](09-engine-and-pages.md#62-the-job-header)).
@@ -741,6 +764,11 @@ and the pages' in part 09. The wording below is the starting text. It follows th
 - The worst-case note: *"<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes."*
 - The publish record of a migrated version (#1447): *"migrated by the operator from <old
   version>"*
+- The bulk publish's record, for a package it cannot publish (§ 1.5): *"not migrated: <reason>"*, the reason the
+  refusal's sentence; in the owners' list, beside the notice above: *"This package stops working when specVersion 30
+  is retired."* (A11-015)
+- The bulk publish, asked for a package no account's pin names (§ 1.5): *"<package> is not the account's active
+  account package; the bulk publish migrates only the account package an account's pin names."* (A11-016)
 - A converter refusal on type: the 31 checker's own sentence (part 03), unchanged.
 - A converter refusal for anything else: *"The condition '<expression>' uses
   <construct>, which has no JSON Logic form at 31: rewrite it by hand."*
