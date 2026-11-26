@@ -39,6 +39,21 @@ public class ClassifierQuestionTests
     }
 
     [Fact]
+    public void AQuestionInAPlacedSnippet_IsAsked()
+    {
+        // The snippet's text is sent where it is placed, so a question there is asked.
+        Assert.Empty(TemplateFixture.RefusalsOf(TemplateFixture.Package()
+            .WithSnippet("question", "Does the plan prescribe letrozole for Margaret Okafor?\n")
+            .WithAgent("applies", Reads + "{{ snippet.question.content }}\n", Judgement)));
+
+        // A snippet that only reads asks nothing either.
+        var refusal = Assert.Single(TemplateFixture.RefusalsOf(TemplateFixture.Package()
+            .WithSnippet("question", "{{ input.consult_draft.content }}\n")
+            .WithAgent("applies", Reads + "{{ snippet.question.content }}\n", Judgement)));
+        Assert.Equal("A11-013", refusal.Id);
+    }
+
+    [Fact]
     public void AnotherFormat_IsNotHeldToIt()
     {
         // Only a judgement asks a question; a text agent that only reads is not this rule.

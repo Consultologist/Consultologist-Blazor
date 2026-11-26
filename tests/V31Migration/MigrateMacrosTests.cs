@@ -519,9 +519,9 @@ public class MigrateMacrosTests
             """{"kind":"agent","producer":"generated","label":"Whether House-style reminder applies","description":null,"format":"judgement","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}""",
             header.ToJsonString());
 
-        // Its prompt reads what summary's reads outside an if or a for, but the snippet style, which places the macro
-        // itself (a judgement node places none), then ends with an empty question line.
-        Assert.Equal("{{ snippet.boilerplate.content }}\n\n{{ input.consult_draft.content }}\n\n", body);
+        // Its prompt reads what summary's reads outside an if or a for, but its snippets (style places the macro itself, and
+        // a snippet's text would stand for the question), then ends with an empty question line.
+        Assert.Equal("{{ input.consult_draft.content }}\n\n", body);
 
         // Inside a loop and a case branch: the classifier is the placing node's sibling in that branch, its if the macro's
         // own offer condition.
@@ -589,6 +589,13 @@ public class MigrateMacrosTests
             """{"and":[""" + Answer("node.house_style_applies") + "," + Answer("node.house_style_applies_2") + "]}",
             MigrateNodesTests.Md(result, "macros/house_style.md").Header["if"]!.ToJsonString());
         Assert.Equal(2, result.HandEdits.Count(h => h.StartsWith("Hand edit needed in nodes/house_style_applies", StringComparison.Ordinal)));
+
+        // Fix round 1: 30's two models chose each on its own, so the joined if is a hand edit (A10-078).
+        AssertHandEdit(result, "macros/house_style.md", "if", "A10-078",
+            "macro 'house_style' is placed by 2 nodes, with a classifier each (house_style_applies, house_style_applies_2), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.");
+
+        // One placing node: the if is no hand edit.
+        Assert.DoesNotContain(MigrateNodesTests.Migrated("example-macros").HandEdits, h => h.StartsWith("Hand edit needed in macros/house_style.md, if:", StringComparison.Ordinal));
     }
 
     [Fact]

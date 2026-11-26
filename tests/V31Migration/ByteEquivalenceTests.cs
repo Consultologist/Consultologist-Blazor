@@ -364,6 +364,56 @@ public class ByteEquivalenceTests
         };
     }
 
+    [Fact]
+    public void ChoiceClassifiers_AreFound_ThroughTheSnippetsAPromptPlaces()
+    {
+        // #1508 (R14; Task 32 fix round 1): summary places red_flags and safety_net itself, and house_style through the
+        // snippet style; each classifier is found, so each is answered from the capture.
+        var found = ChoiceClassifiers.Of(MigrateNodesTests.Migrated("example-macros"));
+
+        Assert.Equal(
+            [("node.house_style_applies", "house_style"), ("node.red_flags_applies", "notes.red_flags"), ("node.safety_net_applies", "notes.safety_net")],
+            found.Select(c => (c.Key, c.Macro)));
+        Assert.All(found, c => Assert.Equal("node.summary", c.Placing));
+    }
+
+    [Fact]
+    public void AChoiceAnswer_ReadsTheMacros30Name()
+    {
+        // #1508 (R14; Task 32 fix round 1): 30's model wrote the marker with the macro's 30 id; for a macro the migration
+        // renamed, that id is matched, never the 31 one (said here as if letrozole_prescription_text had been 30's letrozole).
+        var edited = EquivalenceFixture.Migrated("test/general");
+        var renamed = edited with
+        {
+            MacroIds30 = new Dictionary<string, string>(StringComparer.Ordinal) { ["letrozole_prescription_text"] = "letrozole" },
+        };
+        var plan = EquivalenceFixture.Plan("test/general");
+        JsonObject CaptureWith(string reply)
+        {
+            var capture = Capture();
+            capture["outputs"]!["section_instructions:assessment_plan"] = reply;
+            return capture;
+        }
+
+        bool? Answer(Migration31Result migrated, string reply) =>
+            (bool?)Equivalence.ChoiceAnswers(CaptureWith(reply), migrated, plan)
+                .Single(a => a.Key == "node.standards.letrozole_prescription_text_applies:assessment_plan").Answer["answer"];
+
+        Assert.True(Answer(renamed, "Letrozole started.\n{{ macro.letrozole.content }}\n"));
+        Assert.False(Answer(renamed, "Letrozole started.\n"));
+        Assert.True(Answer(edited, "Letrozole started.\n{{ macro.letrozole_prescription_text.content }}\n"));
+        Assert.False(Answer(edited, "Letrozole started.\n{{ macro.letrozole.content }}\n"));
+
+        // A folder's item: the folder and the item are each read back.
+        var folders = edited with
+        {
+            MacroIds30 = new Dictionary<string, string>(StringComparer.Ordinal) { ["notes_macro"] = "notes", ["notes/flags_macro"] = "flags" },
+        };
+        Assert.Equal("notes.flags", Equivalence.Name30(folders, "notes_macro.flags_macro"));
+        Assert.Equal("notes.safety_net", Equivalence.Name30(folders, "notes_macro.safety_net"));
+        Assert.Equal("other.flags_macro", Equivalence.Name30(folders, "other.flags_macro"));
+    }
+
     private static JsonObject Capture() => new()
     {
         ["status"] = "Completed",

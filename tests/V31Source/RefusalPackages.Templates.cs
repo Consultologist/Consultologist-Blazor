@@ -707,12 +707,12 @@ internal static partial class RefusalPackages
                 + "\"title\": \"Reason for referral\" } } }, \"required\": false, \"channel\": null }\n  }")
             .Edit(Plan, DraftRead, DraftRead + "\n" + line);
 
-    /// <summary>The macros <c>follow_up</c> and <c>recall</c> (unplaced), and the agent <c>closing</c>, which places follow_up.</summary>
     /// <summary>The <c>judgement</c> agent <c>applies</c>, its prompt the draft, a blank line and <paramref name="question"/>.</summary>
     private static Dictionary<string, byte[]> Applies(string question) =>
         MinimalListing("applies")
             .With("nodes/applies.md", Agent("Whether a follow-up applies", "\"judgement\"", "{{ input.consult_draft.content }}\n\n" + question));
 
+    /// <summary>The macros <c>follow_up</c> and <c>recall</c> (unplaced), and the agent <c>closing</c>, which places follow_up.</summary>
     private static Dictionary<string, byte[]> FollowUp() =>
         WithFollowUp(MinimalListing("closing"))
             .With("nodes/closing.md", Agent("Writing the closing", Plain, "Write the closing line of the plan.\n" + FollowUpPlaced));

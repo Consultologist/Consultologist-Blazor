@@ -208,7 +208,8 @@ internal static class V31Contract
     /// A10-074: text compared with a literal written as in, #1508 comment 5 item 2, area 11 Task 30; A10-075: a text input
     /// read whole compared with "" written with its null test, and A10-076: another comparison of an input's text with blank text, a
     /// hand edit's reason, Task 30 fix round 1; A10-077: a judgement node the migration wrote for a macro 30's model chose,
-    /// whose question is a hand edit, #1508 comment 6 item 1, R13, area 11 Task 32).
+    /// whose question is a hand edit, and A10-078: a macro with more than one, whose if is a hand edit, #1508 comment 6 item 1,
+    /// R13, area 11 Task 32).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -287,6 +288,7 @@ internal static class V31Contract
         ["A10-075"] = "<file>, <member>: '<comparison>' became <rule>; 31 reads an input not given or blank as null, where 30 read \"\".",
         ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
         ["A10-077"] = "node '<id>' decides whether macro '<macro id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
+        ["A10-078"] = "macro '<id>' is placed by <n> nodes, with a classifier each (<ids>), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

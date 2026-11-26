@@ -227,6 +227,9 @@ public class MigrateRenamesTests
         Assert.Equal(notices, result.Report.Renames);
         foreach (var notice in notices)
             V31Contract.AssertSentence(new SourceRefusal("A10-006", notice, ""));
+
+        // #1508 (R14; Task 32 fix round 1): each renamed macro's 30 id, which 30's model wrote in its marker (test, written as a snippet, D4, is listed too: it was a 30 macro).
+        Assert.Equal([("macro_macro", "macro"), ("test_snippet", "test")], result.MacroIds30.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => (p.Key, p.Value)));
     }
 
     [Fact]
