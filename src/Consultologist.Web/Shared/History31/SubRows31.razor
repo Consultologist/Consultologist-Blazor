@@ -1,0 +1,157 @@
+@using System.Text.Json
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 18; part 08 §§ 2.3, 4, 4.2, 4.3, 8.2; R4): the sub-rows inside a node's row, each by its id
+    (`id="row-<sub-row id>"`): renderer uses (one per step of a chain, numbered as stored, a gap kept), with the renderer,
+    the source, the input and output hashes and the `pass`; macro rows, offered or not (linking to the decisions the offer
+    depended on), placed or not, the content hash, and the classifier the `if` read (linking to its row), or "no single
+    classifier"; the units the prompt placed, a unit not sent saying "substituted, not sent"; and the run spots, a spot's
+    output shown when the row holds it, else its hash (Run facts shows a retained output). A sub-row repeated per template
+    pass keeps its id on its first occurrence and shows its `pass` on each.
+*@
+@{
+    var used = new HashSet<string>(StringComparer.Ordinal);
+}
+@if (Objects(Row.List("renders")) is { Count: > 0 } renders)
+{
+    <ul class="history31-renders">
+        @foreach (var render in renders)
+        {
+            <li class="history31-render" id="@IdOnce(used, Str(render, "id"))">
+                <code class="history31-render__id">@Str(render, "id")</code>
+                <code class="history31-render__renderer">@Str(render, "renderer")</code>
+                <span class="history31-render__source">from <code>@Str(render, "source")</code></span>
+                <span>input <code class="hash-text">@Str(render, "inputHash")</code>@(Str(render, "inputSize") is { Length: > 0 } size ? $" ({size})" : "")</span>
+                <span>output <code class="hash-text">@Str(render, "outputHash")</code></span>
+                @if (Pass(render) is { } pass)
+                {
+                    <span class="history31-render__pass">pass @pass</span>
+                }
+                @if (Flag(render, "runDependent"))
+                {
+                    <span class="history31-render__run-dependent">run-dependent</span>
+                }
+            </li>
+        }
+    </ul>
+}
+@if (Objects(Row.List("macros")) is { Count: > 0 } macros)
+{
+    <ul class="history31-macros">
+        @foreach (var macro in macros)
+        {
+            <li class="history31-macro" id="@IdOnce(used, Str(macro, "id"))">
+                <code class="history31-macro__macro">@Str(macro, "macro")</code>
+                <span class="history31-macro__offered">@(Flag(macro, "offered") ? "offered" : "not offered")</span>
+                @foreach (var decision in Strings(macro, "decisions"))
+                {
+                    <span class="history31-macro__decision"><a href="#row-@decision" @onclick="() => View.Reveal(decision)" @onclick:preventDefault="true">@decision</a></span>
+                }
+                <span class="history31-macro__placed">@(Flag(macro, "placed") ? "placed" : "not placed")</span>
+                @if (Str(macro, "form") is { Length: > 0 } form)
+                {
+                    <span class="history31-macro__form">@form</span>
+                }
+                @if (Str(macro, "contentHash") is { Length: > 0 } contentHash)
+                {
+                    <code class="hash-text history31-macro__content-hash">@contentHash</code>
+                }
+                @if (Str(macro, "runNeutralHash") is { Length: > 0 } neutral)
+                {
+                    <span class="history31-macro__run-neutral">run-neutral <code class="hash-text">@neutral</code></span>
+                }
+                <span class="history31-macro__classifier">
+                    @if (Str(macro, "classifier") is { Length: > 0 } classifier)
+                    {
+                        <text>classifier </text><a href="#row-@classifier" @onclick="() => View.Reveal(classifier)" @onclick:preventDefault="true">@classifier</a>
+                    }
+                    else
+                    {
+                        @HistorySentences31.NoSingleClassifier
+                    }
+                </span>
+                @Spots(Objects(List(macro, "runSpots")), used)
+            </li>
+        }
+    </ul>
+}
+@if (Objects(Row.List("units")) is { Count: > 0 } units)
+{
+    <ul class="history31-units">
+        @foreach (var unit in units)
+        {
+            <li class="history31-unit">
+                <code class="history31-unit__site">@Str(unit, "site")</code>
+                <code class="hash-text">@Str(unit, "hash")</code>
+                @if (IsFalse(unit, "sent"))
+                {
+                    <span class="history31-unit__not-sent">@HistorySentences31.SubstitutedNotSent</span>
+                }
+            </li>
+        }
+    </ul>
+}
+@Spots(Objects(Row.List("runSpots")), used)
+
+@code {
+    [Parameter, EditorRequired]
+    public Row31 Row { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Nodes31.View View { get; set; } = default!;
+
+    private RenderFragment Spots(IReadOnlyList<JsonElement> spots, HashSet<string> used) => @<text>
+        @if (spots.Count > 0)
+        {
+            <ul class="history31-node-spots">
+                @foreach (var spot in spots)
+                {
+                    <li class="history31-node-spot" id="@IdOnce(used, Str(spot, "id"))">
+                        <span class="history31-node-spot__site">site @Number(spot, "site")</span>
+                        <code class="history31-node-spot__reads">@Str(spot, "reads")</code>
+                        @if (Pass(spot) is { } pass)
+                        {
+                            <span class="history31-node-spot__pass">pass @pass</span>
+                        }
+                        @if (Str(spot, "output") is { } output)
+                        {
+                            <span class="history31-node-spot__output">@output</span>
+                        }
+                        <code class="hash-text">@Str(spot, "outputHash")</code>
+                    </li>
+                }
+            </ul>
+        }
+    </text>;
+
+    /// <summary><c>row-&lt;id&gt;</c> for the first sub-row of an id, null (no id attribute) for a repeat or a sub-row with none.</summary>
+    private static string? IdOnce(HashSet<string> used, string? id) =>
+        id is { Length: > 0 } && used.Add(id) ? $"row-{id}" : null;
+
+    /// <summary>A sub-row's <c>pass</c>: its numbers joined, 1-based as stored; null when it is in no template loop.</summary>
+    private static string? Pass(JsonElement element) =>
+        element.TryGetProperty("pass", out var pass) && pass.ValueKind == JsonValueKind.Array && pass.GetArrayLength() > 0
+            ? string.Join(", ", pass.EnumerateArray().Select(number => number.GetRawText()))
+            : null;
+
+    private static List<JsonElement> Objects(IEnumerable<JsonElement> list) =>
+        list.Where(item => item.ValueKind == JsonValueKind.Object).ToList();
+
+    private static IEnumerable<JsonElement> List(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? value.EnumerateArray() : [];
+
+    private static List<string> Strings(JsonElement element, string name) =>
+        List(element, name).Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString()!).ToList();
+
+    private static string? Str(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static string? Number(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetRawText() : null;
+
+    private static bool Flag(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+
+    private static bool IsFalse(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.False;
+}

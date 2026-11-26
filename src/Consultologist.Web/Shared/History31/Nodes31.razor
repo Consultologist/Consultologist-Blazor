@@ -1,0 +1,256 @@
+@using System.Text.Json
+@using Consultologist.Web.Services.Provenance.V31
+@using Microsoft.AspNetCore.Components.Routing
+@implements IDisposable
+@inject NavigationManager Navigation
+@*
+    #1509 (Task 18; part 09 § 6.4 "Nodes", part 08 §§ 4, 5, 7): one row per node by its key with root, built by
+    NodeTree31: a loop expands per item, a `while` per pass, a `call` into the rows keyed under it, and a node that never
+    ran is a row of its own holding its decisions (R4). Every row starts collapsed; a row's children, decisions, sub-rows
+    and text are drawn only once it is opened, and its text is fetched then, once (RowText31). Each row's element is
+    `id="row-<key>"`; a link to a row (`#row-<key>`: a row, a decision or a sub-row id) opens the rows it sits in and
+    the row itself, whether it is followed on this page or the page is opened at it.
+*@
+@if (_tree.Count == 0)
+{
+    <p class="history31-nodes__none">No nodes were recorded.</p>
+}
+else
+{
+    <ul class="history31-nodes">
+        @foreach (var node in _tree)
+        {
+            <NodeRow31 @key="node.Key" Node="node" View="_view" />
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public Record31 Record { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public RowText31 Texts { get; set; } = default!;
+
+    /// <summary>The job's <c>resolve.json</c> (the package content's <c>Resolve</c>), for the sources of a model-derived value; null when it was not read.</summary>
+    [Parameter]
+    public JsonElement? Resolve { get; set; }
+
+    /// <summary>What every row of the section shares: the record, the texts, which rows are open, and the links between rows.</summary>
+    public sealed class View
+    {
+        private readonly Nodes31 _owner;
+
+        internal View(Nodes31 owner) => _owner = owner;
+
+        public Record31 Record => _owner.Record;
+
+        public RowText31 Texts => _owner.Texts;
+
+        public bool IsOpen(string key) => _owner._open.Contains(key);
+
+        /// <summary>The row the page was sent to, focused once it is drawn; null when none is waiting.</summary>
+        public string? FocusKey { get; set; }
+
+        public void Toggle(string key)
+        {
+            if (!_owner._open.Remove(key))
+            {
+                _owner._open.Add(key);
+            }
+
+            _owner.StateHasChanged();
+        }
+
+        /// <summary>Follows a link to a row, a decision or a sub-row: the row holding it and every row it sits in are opened.</summary>
+        public void Reveal(string target)
+        {
+            if (_owner.Open(target))
+            {
+                _owner.StateHasChanged();
+            }
+        }
+
+        /// <summary>
+        /// The model-derived nodes a row's value is computed from, by the package's graph (<c>resolve.json</c>'s
+        /// <c>graph.edges</c> into the row's rooted key): empty when the graph was not read or names none.
+        /// </summary>
+        public IReadOnlyList<string> ModelSources(Row31 row) => _owner.ModelSources(row);
+    }
+
+    private readonly HashSet<string> _open = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string?> _parents = new(StringComparer.Ordinal);
+    private IReadOnlyList<TreeNode31> _tree = [];
+    private Record31? _built;
+    private JsonElement? _resolveRead;
+    private List<(string From, string To)> _edges = [];
+    private Dictionary<string, bool> _resolveDerived = new(StringComparer.Ordinal);
+    private View _view = default!;
+    private bool _arrived;
+
+    private static readonly HashSet<string> SourceKinds = new(["reads", "for", "ret"], StringComparer.Ordinal);
+
+    protected override void OnInitialized()
+    {
+        _view = new View(this);
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_built, Record))
+        {
+            _built = Record;
+            _tree = NodeTree31.Build(Record);
+            _parents.Clear();
+            Walk(_tree, null);
+        }
+
+        if (!Equals(_resolveRead, Resolve))
+        {
+            _resolveRead = Resolve;
+            ReadGraph(Resolve);
+        }
+
+        if (!_arrived)
+        {
+            // a page opened at a row: its rows open as it is first drawn
+            _arrived = true;
+            OpenAt(Navigation.Uri);
+        }
+    }
+
+    private void Walk(IReadOnlyList<TreeNode31> nodes, string? parent)
+    {
+        foreach (var node in nodes)
+        {
+            _parents[node.Key] = parent;
+            Walk(node.Children, node.Key);
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        if (OpenAt(args.Location))
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Opens the rows a <c>#row-&lt;key&gt;</c> fragment of <paramref name="uri"/> names; false when it names none of this section's.</summary>
+    private bool OpenAt(string uri)
+    {
+        var hash = uri.IndexOf('#');
+        if (hash < 0)
+        {
+            return false;
+        }
+
+        var fragment = Uri.UnescapeDataString(uri[(hash + 1)..]);
+        return fragment.StartsWith("row-", StringComparison.Ordinal) && Open(fragment["row-".Length..]);
+    }
+
+    /// <summary>Opens the row holding <paramref name="target"/> and each row it sits in, and asks for it to be focused.</summary>
+    private bool Open(string target)
+    {
+        if (RowHolding(target) is not { } key)
+        {
+            return false;
+        }
+
+        _view.FocusKey = key;
+        for (string? at = key; at is not null; at = _parents.GetValueOrDefault(at))
+        {
+            _open.Add(at);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The row of this section that holds <paramref name="target"/>: the row itself, a decision's owner, or the row a sub-row
+    /// id is under (the longest leading part of the id, cut at a <c>/</c>, that is a row here); null for none.
+    /// </summary>
+    private string? RowHolding(string target)
+    {
+        if (_parents.ContainsKey(target))
+        {
+            return target;
+        }
+
+        if (Record.Find(target) is { Section: "decision" } decision)
+        {
+            var owner = Record31.OwnerOf(decision);
+            return _parents.ContainsKey(owner) ? owner : null;
+        }
+
+        for (var cut = target.LastIndexOf('/'); cut > 0; cut = target.LastIndexOf('/', cut - 1))
+        {
+            if (_parents.ContainsKey(target[..cut]))
+            {
+                return target[..cut];
+            }
+        }
+
+        return null;
+    }
+
+    private void ReadGraph(JsonElement? resolve)
+    {
+        _edges = [];
+        _resolveDerived = new Dictionary<string, bool>(StringComparer.Ordinal);
+        if (resolve is not { ValueKind: JsonValueKind.Object } root)
+        {
+            return;
+        }
+
+        if (root.TryGetProperty("graph", out var graph) && graph.ValueKind == JsonValueKind.Object
+            && graph.TryGetProperty("edges", out var edges) && edges.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var edge in edges.EnumerateArray())
+            {
+                if (Str(edge, "from") is { } from && Str(edge, "to") is { } to && Str(edge, "kind") is { } kind && SourceKinds.Contains(kind))
+                {
+                    _edges.Add((from, to));
+                }
+            }
+        }
+
+        if (root.TryGetProperty("nodes", out var nodes) && nodes.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var node in nodes.EnumerateObject())
+            {
+                if (node.Value.ValueKind == JsonValueKind.Object && node.Value.TryGetProperty("modelDerived", out var flag)
+                    && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                {
+                    _resolveDerived[node.Name] = flag.GetBoolean();
+                }
+            }
+        }
+    }
+
+    private IReadOnlyList<string> ModelSources(Row31 row)
+    {
+        var rooted = row.Text("nodeId") ?? row.Key;
+        return _edges
+            .Where(edge => string.Equals(edge.To, rooted, StringComparison.Ordinal) && edge.From.StartsWith("node.", StringComparison.Ordinal))
+            .Select(edge => edge.From)
+            .Where(IsModelDerived)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>A node is model-derived as <c>resolve.json</c> declares it, else as any of its rows in the record says.</summary>
+    private bool IsModelDerived(string rootedKey) =>
+        _resolveDerived.TryGetValue(rootedKey, out var declared)
+            ? declared
+            : Record.Nodes.Any(row => string.Equals(row.Text("nodeId") ?? row.Key, rootedKey, StringComparison.Ordinal) && row.Flag("modelDerived") == true);
+
+    private static string? Str(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}

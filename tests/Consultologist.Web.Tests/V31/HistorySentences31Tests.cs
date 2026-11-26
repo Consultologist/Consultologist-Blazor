@@ -42,6 +42,15 @@ public class HistorySentences31Tests
             "The model service stayed busy for 5 minutes. Run the workflow again later.",
             HistorySentences31.RunAgainLater("The model service stayed busy for 5 minutes."));
 
+    [Theory]
+    [InlineData("The model service stayed busy for 5 minutes.", "The model service stayed busy for 5 minutes. Run the workflow again later.")]
+    [InlineData("The model service stayed busy for 5 minutes. Run the workflow again later.", "The model service stayed busy for 5 minutes. Run the workflow again later.")]
+    [InlineData("The job didn't finish within 30 minutes.", "The job didn't finish within 30 minutes. Run the workflow again later.")]
+    [InlineData("cancelled: the job didn't finish within 30 minutes", "cancelled: the job didn't finish within 30 minutes")]
+    [InlineData("not run: beyond max 1", "not run: beyond max 1")]
+    public void StateReason_IsAsStored_AndALimitsHalfIsFollowedByRunAgainLater(string stored, string shown) =>
+        Assert.Equal(shown, HistorySentences31.StateReason(stored));
+
     [Fact]
     public void MigratedFrom_NamesTheOldVersion() =>
         Assert.Equal("migrated by the operator from 30", HistorySentences31.MigratedFrom("30"));

@@ -47,6 +47,21 @@ public static class HistorySentences31
     /// <summary>Part 08's last bullet: the stored half of S09-010 to S09-012, and what History adds.</summary>
     public static string RunAgainLater(string error) => $"{error} Run the workflow again later.";
 
+    private const string AgainLater = " Run the workflow again later.";
+
+    /// <summary>
+    /// A row's <c>stateReason</c> as shown: as stored, but a failure by the model service's limits or the job's time limit
+    /// (S09-010 to S09-012) that holds only the stored half (part 08's last bullet) is followed by <see cref="RunAgainLater"/>'s
+    /// words. The engine may store the whole sentence already; it is then shown once, as stored.
+    /// </summary>
+    public static string StateReason(string reason)
+    {
+        var text = reason.Trim();
+        var limit = text.StartsWith("The model service ", StringComparison.Ordinal)
+                    || text.StartsWith("The job didn't finish within ", StringComparison.Ordinal);
+        return limit && !text.EndsWith(AgainLater, StringComparison.Ordinal) ? RunAgainLater(text) : reason;
+    }
+
     /// <summary>
     /// A12-005: Verify could not read the record or a deliverable's text; <paramref name="what"/> names it in plain words
     /// (<c>the record file</c>, <c>the text of '&lt;label&gt;'</c>).
@@ -67,6 +82,12 @@ public static class HistorySentences31
 
     /// <summary>Part 08 § 7: a row whose value is computed from a model's output.</summary>
     public static string ComputedFromModelText(IEnumerable<string> reads) => $"computed from model text: {string.Join(", ", reads)}";
+
+    /// <summary>Part 08 § 4 (ruling 4 of #1506): a unit whose text was substituted into a body not sent to the model (a macro's).</summary>
+    public const string SubstitutedNotSent = "substituted, not sent";
+
+    /// <summary>R4 (part 08 § 4.3): a macro row whose <c>classifier</c> is <c>null</c>, its <c>if</c> reading no one node.</summary>
+    public const string NoSingleClassifier = "no single classifier";
 
     /// <summary>A held deliverable: <c>&lt;label&gt; was held: empty</c>, the words after <c>held: </c> as stored.</summary>
     internal static string Held(string label, string? stateReason)

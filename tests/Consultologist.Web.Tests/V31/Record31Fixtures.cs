@@ -45,6 +45,17 @@ internal static class Record31Fixtures
             new DeliveryRow(DeliveryPlan.Key(deliverable, kind), deliverable, kind, result, reason,
                 result == "sent" ? At : null, outcomes.Select(o => new DeliveryAttempt(At, o)).ToList()).ToJson());
 
+    /// <summary>Task 18: a node, check or deliverable row of a shape <see cref="Job"/> lacks, by the engine's own writer.</summary>
+    public static RecordRowRef NodeRow(string key, PlanKind kind, RowState state, string? reason = null, string? hash = "sha256:aa", string detail = "{}") =>
+        Row(key, kind, state, reason, hash, detail);
+
+    /// <summary>Task 18: a decision with its two flags given, by the engine's own writer.</summary>
+    public static RecordRowRef DecisionRow(string owner, string site, string condition, bool? result, string? branch = null,
+        bool runDependent = false, bool modelDerived = false) =>
+        Ref($"{owner}/if:{site}", "decision",
+            new RunDecision(owner, site, condition, "sha256:ee", result, branch,
+                [new RunRead("input.kind.value", "sha256:ff")], runDependent, modelDerived, At).ToJson());
+
     public static ConsultGenerationJobResponse Header() => new(
         "job-1", null, "Completed", 6, 6, 0, new Dictionary<string, string>(), new Dictionary<string, string>(), true,
         SchemaVersion: 12, WorkflowPackage: "test/general@v2026.12.1", PackageSpecVersion: 31,
