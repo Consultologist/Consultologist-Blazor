@@ -1,0 +1,18 @@
+{
+  "$schema": "urn:consultologist:spec:31:dialect",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "value"
+  ],
+  "properties": {
+    "value": {
+      "type": "string",
+      "enum": [
+        "in_scope",
+        "out_of_scope",
+        "needs_information"
+      ]
+    }
+  }
+}

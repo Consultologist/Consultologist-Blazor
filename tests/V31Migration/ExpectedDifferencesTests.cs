@@ -248,6 +248,31 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Prompt + At30, Prompt + At31, key31: "deliverable.note")));
     }
 
+    /// <summary>
+    /// #1508 (R12; comment 5, item 7, #3, format descriptions sent; the controller's ruling on Task 31): a classifier's
+    /// format is a package format of its answers, bound <c>custom</c>, so 31 ends its prompt with the custom trailer and
+    /// that format after 30's own text, which listed the same values ("Answer with exactly one of: …").
+    /// </summary>
+    [Fact]
+    public void SentFormat_ExplainsAClassifiersAnswerFormatAppendedToItsPrompt()
+    {
+        const string At30 = "Decide whether the referral for Margaret Okafor is in scope.\n\nAnswer with exactly one of: in_scope, out_of_scope.";
+        const string Answers = """{"additionalProperties":false,"properties":{"value":{"enum":["in_scope","out_of_scope"],"type":"string"}},"required":["value"],"type":"object"}""";
+        const string At31 = At30 + "\n\n" + AgentTurn.CustomTrailer + "\n" + Answers;
+        Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, At30, At31, key31: "node.scope", key30: "scope")));
+
+        // Near: other values, or another order, than 30 listed; 30 listed none; a format that is not the answers' shape (a
+        // description sent, another member); the text before it differs; a deliverable.
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("\"out_of_scope\"]", "\"needs_information\"]", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("[\"in_scope\",\"out_of_scope\"]", "[\"out_of_scope\",\"in_scope\"]", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "Decide.", "Decide.\n\n" + AgentTurn.CustomTrailer + "\n" + Answers, key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("{\"additionalProperties\"", "{\"description\":\"One value.\",\"additionalProperties\"", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("\"type\":\"string\"}}", "\"type\":\"string\"},\"reason\":{\"type\":\"string\"}}", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("{\"value\":{\"enum\":[\"in_scope\",\"out_of_scope\"],\"type\":\"string\"}}", "[]", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("Margaret Okafor", "the patient", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, At30, At31, key31: "deliverable.note")));
+    }
+
     [Fact]
     public void ExplicitNullForOptional_ExplainsTheNullMembersAReplyNowCarries()
     {

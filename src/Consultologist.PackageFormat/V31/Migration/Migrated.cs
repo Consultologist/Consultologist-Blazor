@@ -139,6 +139,12 @@ internal sealed class Migrated
     /// <summary>Each deliverable the renames pass renamed, its 31 id to its id in the package as given (as <see cref="NodeIds30"/>).</summary>
     public Dictionary<string, string> DeliverableIds30 { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// #1508 (R12, comment 5, item 1): each 30 classifier given a package format of its answers (<see cref="Migrate.Layout"/>),
+    /// its node id to that format's id (<c>&lt;id&gt;_answer</c>, fitted), which the nodes pass writes as its format.
+    /// </summary>
+    public Dictionary<string, string> AnswerFormats { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Where 31 reads each 30 node, by 30 id (Task 7), for <see cref="Scope"/>.</summary>
     public Dictionary<string, ConversionRead> NodeReads { get; } = new(StringComparer.Ordinal);
 

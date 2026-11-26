@@ -61,7 +61,7 @@ public class MigrateNodesTests
     [Theory]
     [InlineData("example-two-documents", "nodes/extract_patient_concepts.md", "concept_list")] // attested
     [InlineData("example-nested-note", "nodes/plan.md", "section_plan")]                       // custom
-    [InlineData("example-classifier-scope", "nodes/scope.md", "classification")]               // attested
+    [InlineData("example-classifier-scope", "nodes/scope.md", "scope_answer")]                 // a classifier's answers (R12)
     public void AFormatOfAnAttestedOrCustomProducer_IsAnAgentNode(string package, string path, string format)
     {
         var (header, _) = Md(Migrated(package), path);
@@ -314,6 +314,133 @@ public class MigrateNodesTests
     }
 
     /// <summary>
+    /// #1508 (R12, comment 5, item 1; part 10 § 1.2): a 30 classifier's format at 31 is a package format of its answers,
+    /// <c>&lt;id&gt;_answer</c>: <c>classification</c>'s shape with <c>value</c> an enum of its <c>with</c> values in
+    /// written order, every property required, <c>$schema</c> as every migrated format has; listed after the folders'.
+    /// </summary>
+    [Fact]
+    public void AClassifiersFormat_IsTheEnumOfItsValues()
+    {
+        var result = Migrated("example-classifier-scope");
+
+        Assert.Equal("scope_answer", (string?)Md(result, "nodes/scope.md").Header["format"]);
+        Assert.Equal(Compact("""
+            { "$schema": "urn:consultologist:spec:31:dialect", "type": "object", "additionalProperties": false,
+              "required": ["value"],
+              "properties": { "value": { "type": "string", "enum": ["in_scope", "out_of_scope", "needs_information"] } } }
+            """), Json(result, "formats/scope_answer.json").ToJsonString());
+        Assert.Equal(Compact("""{ "description": null, "items": ["letter_item", "plan_sections_item", "scope_answer"] }"""),
+            Json(result, "formats/index.json").ToJsonString());
+
+        // The 30 trailer stays in the prompt (A10-064), and the migrated package publishes with the reads kept at .value.value.
+        Assert.EndsWith("Answer with exactly one of: in_scope, out_of_scope, needs_information.", Md(result, "nodes/scope.md").Body, StringComparison.Ordinal);
+        Assert.Contains("node.scope.value.value", Md(result, "nodes/letter_decline_letter/decline_letter.md").Body, StringComparison.Ordinal);
+        var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes(), V31Resolve.CompiledGoldenTests.Fixed);
+        Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));
+    }
+
+    [Fact]
+    public void TwoClassifiersOfTheSameValues_GetAFormatEach()
+    {
+        var result = Migrated("example-classifier-scope", root =>
+        {
+            var urgency = Node(root, "scope").DeepClone().AsObject();
+            urgency["id"] = "scope_again";
+            urgency["label"] = "Is the referral in scope, asked again?";
+            root["nodes"]!.AsArray().Add(urgency);
+        }, files => files["prompts/scope_again.md"] = files["prompts/scope.md"]);
+
+        Assert.Equal("scope_answer", (string?)Md(result, "nodes/scope.md").Header["format"]);
+        Assert.Equal("scope_again_answer", (string?)Md(result, "nodes/scope_again.md").Header["format"]);
+        Assert.Equal(Json(result, "formats/scope_answer.json").ToJsonString(), Json(result, "formats/scope_again_answer.json").ToJsonString());
+    }
+
+    [Fact]
+    public void AnAnswerFormatThatWouldCollide_TakesANumericSuffix()
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-problem-list");
+        var root = JsonNode.Parse(json)!.AsObject();
+        root["formats"]!.AsArray().Add(new JsonObject { ["id"] = "follow_up_answer", ["file"] = "formats/follow_up_answer.json" });
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["formats/follow_up_answer.json"] = files["formats/problem_list.json"] };
+
+        var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("example-problem-list"));
+
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+        Assert.Equal("follow_up_answer_2", (string?)Md(result, "nodes/follow_up.md").Header["format"]);
+        Assert.Equal(Compact("""{ "description": null, "items": ["problem_list", "follow_up_answer", "sections_item", "follow_up_answer_2"] }"""),
+            Json(result, "formats/index.json").ToJsonString());
+    }
+
+    [Fact]
+    public void ALongClassifiersAnswerFormat_IsCutTo64_AndSaid()
+    {
+        var id = "scope_" + new string('s', 54);
+        var result = Migrated("example-classifier-scope", root =>
+        {
+            Node(root, "scope")["id"] = id;
+            foreach (var deliverable in root["deliverables"]!.AsArray().OfType<JsonObject>())
+                deliverable["if"] = ((string)deliverable["if"]!).Replace("node.scope.", $"node.{id}.", StringComparison.Ordinal);
+        }, files =>
+        {
+            files[$"prompts/{id}.md"] = files["prompts/scope.md"];
+            foreach (var path in files.Keys.ToList())
+                files[path] = files[path].Replace("node.scope.", $"node.{id}.", StringComparison.Ordinal);
+        });
+
+        var format = id[..57] + "_answer";
+        Assert.Equal(format, (string?)Md(result, $"nodes/{id}.md").Header["format"]);
+        var notice = $"Renamed format '{id}_answer' to '{format}': an id is at most 64 characters at 31.";
+        Assert.Contains(notice, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-034", notice, ""));
+    }
+
+    /// <summary>
+    /// A <c>with</c> with no values gives no answer format: the node keeps <c>classification</c>, and A10-030 says
+    /// <c>with</c> was dropped, as before. 30 refuses a classifier with none, so the 30 model is changed after it is read.
+    /// </summary>
+    [Fact]
+    public void AWithOfNoValues_KeepsTodaysNotice()
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-classifier-scope");
+        var (m, refusals) = PackageFormat.V31.Migration.Migrated.Read(json, files, MigrationFixture.Options("example-classifier-scope"));
+        Assert.Empty(refusals);
+        m!.Manifest30.Nodes!.Single(n => n.Id == "scope").With!["values"] = new JsonArray();
+
+        PackageFormat.V31.Migration.Migrate.Layout(m);
+        PackageFormat.V31.Migration.Migrate.Inputs(m);
+        PackageFormat.V31.Migration.Migrate.Nodes(m);
+
+        Assert.Equal("\"classification\"", m.NodeReads["scope"].Format.ToJsonString());
+        Assert.False(m.NodeReads["scope"].Classifier);
+        Assert.DoesNotContain(m.Sources.Keys, k => k.EndsWith("_answer.json", StringComparison.Ordinal));
+        var result = m.Result([]);
+        Assert.Contains("Node 'scope' declared with at 30, which 31 has no member for; it was dropped.", result.Notices);
+    }
+
+    /// <summary>
+    /// R12 (comment 5, item 1: "an answer outside the set is refused, as at 30"): a pinned reply outside the classifier's
+    /// values does not fit its format, so the node takes its <c>onInvalid</c> outcome (here <c>fail</c>), never a silent
+    /// no-match of every gate.
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerOutsideTheSet_IsInvalid()
+    {
+        const string package = "example-classifier-scope";
+        var plan = EquivalenceFixture.Plan(package);
+        var request = PackageFormat.V31.Harness.ByteEquivalence.RequestFor(
+            EquivalenceFixture.Scenario(package, "default"), EquivalenceFixture.Capture(package, "default"), EquivalenceFixture.Migrated(package), plan);
+        var outputs = new Dictionary<string, JsonNode?>(request.Outputs, StringComparer.Ordinal) { ["node.scope"] = JsonNode.Parse("""{ "value": "other" }""") };
+
+        var run = await PackageFormat.V31.Harness.OfflineRun.RunAsync(plan, request with { Outputs = outputs, GenerateMissing = false });
+
+        var fault = Assert.Single(run.InvalidOutputs);
+        Assert.Equal("node.scope", fault.Key);
+        Assert.Contains("enum", fault.Error, StringComparison.Ordinal);
+        Assert.Equal(PackageFormat.V31.Run.RowState.Failed, run.Rows.Single(r => r.Key == "node.scope").State);
+        Assert.DoesNotContain(run.Deliverables, d => d.State == PackageFormat.V31.Run.DeliverableState.Released);
+    }
+
+    /// <summary>
     /// #1507 (Task 15 fix round 1; Task 12's invariant): a classifier's values are written into its prompt as plain text,
     /// which the dialect never reads as template, because 30 holds every value to snake_case: a value holding <c>{{</c> or a
     /// line ending never reaches the pass, the package being refused at 30 (A10-017), so nothing is written.
@@ -388,7 +515,8 @@ public class MigrateNodesTests
         var m = Read(json, files, "example-v12-constructs");
 
         Assert.Equal("node.tone", m.NodeReads["tone"].Path);
-        Assert.Equal("\"classification\"", m.NodeReads["tone"].Format.ToJsonString());
+        Assert.Equal("\"tone_answer\"", m.NodeReads["tone"].Format.ToJsonString());
+        Assert.True(m.NodeReads["tone"].Classifier);
         Assert.True(m.NodeReads["tone"].AlwaysValued);
         Assert.Equal("check.note_coverage", m.NodeReads["note_coverage"].Path);
         Assert.Equal("\"check_result\"", m.NodeReads["note_coverage"].Format.ToJsonString());

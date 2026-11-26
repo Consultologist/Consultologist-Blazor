@@ -109,14 +109,25 @@ internal static partial class Migrate
     /// 30 before this pass (A10-017), and should one reach it, nothing is written and A10-030 says the values were dropped.
     /// <c>""</c> for any other node.
     /// </summary>
-    private static string ClassifierTrailer(WorkflowNodeSpec node, string kind)
+    private static string ClassifierTrailer(WorkflowNodeSpec node, string kind) =>
+        kind == "agent" && ClassifierValues(node) is { } names ? $"\n\nAnswer with exactly one of: {string.Join(", ", names)}." : "";
+
+    /// <summary>
+    /// A 30 classifier's answers: its <c>with</c> values in written order, when <paramref name="node"/> is a leaf of the
+    /// <c>classification</c> format whose values are all 30 ids (as <see cref="ClassifierTrailer"/> writes them); else null.
+    /// </summary>
+    internal static IReadOnlyList<string>? ClassifierValues(WorkflowNodeSpec node)
     {
-        if (kind != "agent" || node.Format != "classification" || node.With?.GetValueOrDefault("values") is not JsonArray values)
-            return "";
+        if (WorkflowImpliedPaths.IsFlow(node) || node.Let is not null || node.Format != "classification"
+            || node.With?.GetValueOrDefault("values") is not JsonArray values)
+        {
+            return null;
+        }
+
         var names = values.Select(SourceLayout.Text).ToList();
         if (names.Count == 0 || names.Any(n => n is null || !WorkflowDeclaredIds.IsValid(n)))
-            return "";
-        return $"\n\nAnswer with exactly one of: {string.Join(", ", names)}.";
+            return null;
+        return [.. names.Select(n => n!)];
     }
 
     /// <summary>A 30 node's prompt text (its <c>prompt</c>, or the file its id implies), as 30 holds it; <c>""</c> when it has none. Task 9 rewrites it.</summary>
@@ -165,7 +176,8 @@ internal static partial class Migrate
     /// A leaf's 31 format (part 02 § 11, part 10 § 1.2): a <c>let</c>'s from its <c>type</c> (<c>text</c> is
     /// <c>plaintext</c>; <c>number</c>, <c>boolean</c> and a format id are kept); a <c>rendered</c> node's
     /// <c>plaintext</c>, the text 30 rendered; an agent's the plain format of the same shape (<see cref="AgentFormat"/>),
-    /// prose a deliverable composes being <c>markdown_block</c> (R9: <paramref name="composed"/>, D20).
+    /// prose a deliverable composes being <c>markdown_block</c> (R9: <paramref name="composed"/>, D20), and a classifier's
+    /// the package format of its answers (R12, <see cref="Migrated.AnswerFormats"/>).
     /// </summary>
     private static JsonNode LeafFormat(Migrated m, WorkflowNodeSpec node, bool composed)
     {
@@ -173,6 +185,8 @@ internal static partial class Migrate
             return JsonValue.Create(node.Type == WorkflowLetAt30.Text ? "plaintext" : node.Type ?? "plaintext");
         if (LeafKind(m, node) == "rendered")
             return JsonValue.Create("plaintext");
+        if (m.AnswerFormats.TryGetValue(node.Id, out var answer))
+            return JsonValue.Create(answer);
         return JsonValue.Create(AgentFormat(node.Format, composed));
     }
 

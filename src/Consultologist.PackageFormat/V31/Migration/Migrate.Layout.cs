@@ -11,13 +11,14 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// </summary>
 internal static partial class Migrate
 {
-    /// <summary>The first pass's layout: the manifest's identity, the formats, then the snippets (whose folders add formats), and a root <c>README.md</c> as it was (part 01 § 2.3).</summary>
+    /// <summary>The first pass's layout: the manifest's identity, the formats, then the snippets (whose folders add formats), the classifiers' answer formats, and a root <c>README.md</c> as it was (part 01 § 2.3).</summary>
     public static void Layout(Migrated m)
     {
         ArgumentNullException.ThrowIfNull(m);
         Manifest(m);
         Formats(m);
         Snippets(m);
+        AnswerFormats(m);
         if (m.Files30.TryGetValue("README.md", out var readme))
             m.Texts["README.md"] = readme;
     }
@@ -326,6 +327,50 @@ internal static partial class Migrate
 
             m.Put(written, header, BodyOf(m, path + file));
             m.Items($"snippets/{id}").Add(item);
+        }
+    }
+
+    /// <summary>
+    /// #1508 (R12, comment 5, item 1; part 10 § 1.2's classifier row): each 30 classifier whose <c>with</c> values are 30
+    /// ids (<see cref="ClassifierValues"/>), in 30's node order, gets a package format of its answers:
+    /// <c>classification</c>'s shape (<c>{ value: string }</c>, closed, every property required) with <c>value</c> an
+    /// <c>enum</c> of the values in written order, so a reply outside them is invalid as at 30, and a <c>case</c> on it
+    /// lists them. Named <c>&lt;node id&gt;_answer</c>, cut to 64 characters as every generated id is (A10-034, said) and
+    /// numbered (<c>_answer_2</c>, …) when a format of the package already has the name, as <see cref="FolderFormat"/>
+    /// names a folder's; one each, even for classifiers of the same values. Listed after the folders' formats.
+    /// </summary>
+    private static void AnswerFormats(Migrated m)
+    {
+        foreach (var node in m.Manifest30.Nodes ?? [])
+        {
+            if (ClassifierValues(node) is not { } values || m.AnswerFormats.ContainsKey(node.Id))
+                continue;
+
+            var taken = m.Items("formats").Select(i => (string?)i).ToHashSet(StringComparer.Ordinal);
+            var wanted = $"{node.Id}_answer";
+            var id = Renames.Fit(node.Id, "_answer");
+            for (var n = 2; taken.Contains(id); n++)
+                id = Renames.Fit(node.Id, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"_answer_{n}"));
+            if (wanted.Length > SourceBounds.IdLength)
+                m.Notice(MigrationSentences.RenamedTooLong(Renames.Format, wanted, id));
+
+            m.Put($"formats/{id}.json", new JsonObject
+            {
+                ["$schema"] = FormatDialect.DialectId,
+                ["type"] = "object",
+                ["additionalProperties"] = false,
+                ["required"] = new JsonArray("value"),
+                ["properties"] = new JsonObject
+                {
+                    ["value"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["enum"] = new JsonArray([.. values.Distinct(StringComparer.Ordinal).Select(v => (JsonNode?)JsonValue.Create(v))]),
+                    },
+                },
+            });
+            m.Items("formats").Add(id);
+            m.AnswerFormats[node.Id] = id;
         }
     }
 

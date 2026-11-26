@@ -113,8 +113,8 @@ public static class ExpectedDifferences
             Bytes = PositionNames,
         },
         new("sent-format",
-            "part 10 § 1.8 (every property required, an optional one nullable); part 10 § 3.2",
-            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order")
+            "part 10 § 1.8 (every property required, an optional one nullable); R12 and #1508, comment 5, item 7, #3 (a classifier's answers sent as its format); part 10 § 3.2",
+            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order; or a classifier's answers, the values 30 listed, sent as its format after them")
         {
             Bytes = SentFormat,
         },
@@ -602,6 +602,7 @@ public static class ExpectedDifferences
     /// sets). A description, a title, <c>$schema</c> or <c>$id</c> 31 sends and 30 did not is a difference no ruling declares,
     /// so the text stays unexpected.
     /// The 31 format is then put back as 30's, so the bytes rules after this one compare the rest.
+    /// #1508 (R12; comment 5, item 7, #3): a classifier's prompt, which 30 ended with its values (<see cref="AnswersSent"/>).
     /// </summary>
     private static (string Old, string New)? SentFormat(DifferenceContext c, string old, string now)
     {
@@ -610,6 +611,8 @@ public static class ExpectedDifferences
         var marker = AgentTurn.CustomTrailer + "\n";
         var at30 = old.LastIndexOf(marker, StringComparison.Ordinal);
         var at31 = now.LastIndexOf(marker, StringComparison.Ordinal);
+        if (at30 < 0 && at31 >= 0)
+            return AnswersSent(old, now, at31, marker);
         if (at30 < 0 || at31 < 0)
             return null;
         var schema30 = old[(at30 + marker.Length)..];
@@ -619,6 +622,37 @@ public static class ExpectedDifferences
         if (CanonicalJson.Write(Shape(As31(s30))) != CanonicalJson.Write(Shape(s31.DeepClone())))
             return null;
         return (old, now[..(at31 + marker.Length)] + schema30);
+    }
+
+    /// <summary>
+    /// #1508 (R12; comment 5, item 7, #3): 30 sent no format to a classifier and ended its prompt with its values
+    /// (<c>Answer with exactly one of: &lt;values&gt;.</c>, kept by the migration); 31 sends its answers' format, bound
+    /// <c>custom</c>, after the custom trailer (<see cref="WorkflowCustomPrompt.Compose"/>). Explained when that format is
+    /// exactly the answers' (<c>{ value: enum }</c>, closed, nothing else: no description, title or <c>$id</c>) and its
+    /// values are the ones 30's last line lists, in order; the trailer and format are then taken off 31's text.
+    /// </summary>
+    private static (string Old, string New)? AnswersSent(string old, string now, int at31, string marker)
+    {
+        var joint = "\n\n";
+        if (at31 < joint.Length || !now.AsSpan(at31 - joint.Length, joint.Length).SequenceEqual(joint))
+            return null;
+        if (StrictJson.Parse(now[(at31 + marker.Length)..]) is not { Fault: null, Value: JsonObject sent })
+            return null;
+        if (sent["properties"] is not JsonObject { } properties || properties["value"] is not JsonObject { } value
+            || value["enum"] is not JsonArray values || values.Any(v => SourceLayout.Text(v) is null))
+            return null;
+        var answers = new JsonObject
+        {
+            ["type"] = "object",
+            ["additionalProperties"] = false,
+            ["required"] = new JsonArray("value"),
+            ["properties"] = new JsonObject { ["value"] = new JsonObject { ["type"] = "string", ["enum"] = values.DeepClone() } },
+        };
+        if (CanonicalJson.Write(answers) != CanonicalJson.Write(sent))
+            return null;
+        var listed = $"Answer with exactly one of: {string.Join(", ", values.Select(SourceLayout.Text))}.";
+        var before = now[..(at31 - joint.Length)];
+        return before.EndsWith(listed, StringComparison.Ordinal) && old.EndsWith(listed, StringComparison.Ordinal) ? (old, before) : null;
     }
 
     /// <summary>30's format written as part 10 § 1.8 rewrites it: each object's every property required, one 30 did not require nullable.</summary>

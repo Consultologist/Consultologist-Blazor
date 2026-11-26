@@ -203,14 +203,6 @@ internal static class MigrationSentences
         $"the case switches on {subject}, whose values 31 cannot list; switch on an enumerated string.";
 
     /// <summary>
-    /// A10-032 (part 04 § 5.2, part 10 § 2.2): a reason: the <c>case</c> switches on the 30 classifier <paramref name="id"/>,
-    /// whose answers (its <c>with</c> values) 31 does not type: <c>classification</c>'s <c>value</c> is a plain string, so
-    /// the checker refuses the subject (S04-044) until the classifier's format lists its answers.
-    /// </summary>
-    public static string CaseOnClassifier(string id) =>
-        $"the case switches on classifier '{id}', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.";
-
-    /// <summary>
     /// A10-029 (part 04 § 5.2): a reason: the <c>case</c>'s subject <paramref name="subject"/> can be <c>null</c>, which 31
     /// sends to an <c>else</c>, and the 30 case had none.
     /// </summary>

@@ -2,6 +2,7 @@
   "description": null,
   "items": [
     "letter_item",
-    "plan_sections_item"
+    "plan_sections_item",
+    "scope_answer"
   ]
 }

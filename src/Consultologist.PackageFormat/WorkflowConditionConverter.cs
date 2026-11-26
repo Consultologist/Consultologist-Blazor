@@ -224,4 +224,10 @@ public sealed record ConversionRead(string Path, JsonNode Format)
 {
     /// <summary>Whether the node always has a value here; false by default, so its reads are typed nullable.</summary>
     public bool AlwaysValued { get; init; }
+
+    /// <summary>
+    /// #1508 (R12): whether the node is a 30 classifier, whose 30 <c>.value</c> is its answer's text, read at 31 as
+    /// <c>.value.value</c> whatever its format's name (<c>classification</c>, or the package format of its answers).
+    /// </summary>
+    public bool Classifier { get; init; }
 }

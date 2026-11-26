@@ -178,8 +178,8 @@ internal static class V31Contract
     /// A10-016, A10-017 and A10-018: the migration's gates and the chain's rung refusals, part 10 § 1.1, § 1.4, D2; A10-019 and
     /// A10-020: a 30 file or package that does not read; A10-021: a package format's free-text field, part 02 § 11; A10-022
     /// to A10-025: the reasons of the first pass's hand edits, part 10 § 1.4; A10-026: a lone carriage return made a line end,
-    /// part 01 § 2.4; A10-013 and A10-027 to A10-032: the nodes pass's notices and reasons, part 10 § 1.2, D16, the Task 4
-    /// ruling on size, part 04 § 5.2, part 02 § 3.3; A10-006, A10-033 and A10-034: the renames pass, part 10 § 1.9, part 01 §§ 6 and 7, D6;
+    /// part 01 § 2.4; A10-013 and A10-027 to A10-031: the nodes pass's notices and reasons, part 10 § 1.2, D16, the Task 4
+    /// ruling on size, part 04 § 5.2, part 02 § 3.3 (A10-032, a case on a classifier, is retired by #1508 R12, area 11 Task 31, and not used); A10-006, A10-033 and A10-034: the renames pass, part 10 § 1.9, part 01 §§ 6 and 7, D6;
     /// A10-001, A10-005 and A10-035 to A10-039: the templates pass's reasons, part 10 § 1.2, § 1.4, part 05 §§ 2, 3.1, 7, R6;
     /// A10-003, A10-004, A10-007, A10-040 to A10-042 and A10-045: the macros pass, part 10 §§ 1.3, 1.4, part 05 § 8, D3 to D5;
     /// A10-043 and A10-044: a MacroChoices entry the 31 start refuses, part 10 § 1.3, R7; A10-002, A10-047 and A10-048: a deliverable
@@ -239,7 +239,6 @@ internal static class V31Contract
         ["A10-029"] = "<subject> can be null, which a 31 case sends to its else; add an else body.",
         ["A10-030"] = "Node '<id>' declared <member> at 30, which 31 has no member for; it was dropped.",
         ["A10-031"] = "a package format's root is an object or a list at 31; make it one, or use a registry format.",
-        ["A10-032"] = "the case switches on classifier '<id>', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.",
         ["A10-033"] = "The chosen rename of '<id>' to '<new id>' cannot be made: '<new id>' <is already taken | is not a 31 id>; choose another.",
         ["A10-034"] = "Renamed <kind> '<id>' to '<new id>': an id is at most 64 characters at 31.",
         ["A10-035"] = "the body's if at line <n> decides what a <snippet | macro | rendered node> body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.",

@@ -408,7 +408,7 @@ internal static class ConditionTree
             }
 
             var members = steps.Skip(1).ToList();
-            if (members is ["value"] && FormatSet.NameOf(node.Format) == "classification")
+            if (members is ["value"] && (node.Classifier || FormatSet.NameOf(node.Format) == "classification"))
             {
                 // A 30 classifier gate keeps its format: its value is the classification's value field (§ 2.2).
                 return Var($"{node.Path}.value.value");

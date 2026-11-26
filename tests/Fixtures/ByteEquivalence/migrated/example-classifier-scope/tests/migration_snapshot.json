@@ -21,13 +21,13 @@
     "node.plan_sections.plan_section:assessment": "Stub reply for node.plan_sections.plan_section:assessment (65b86ba0).",
     "node.plan_sections.plan_section:plan": "Stub reply for node.plan_sections.plan_section:plan (075fe66d).",
     "node.scope": {
-      "value": "stub 775aa725"
+      "value": "in_scope"
     }
   },
   "expect": {
     "prompts": {
       "node.scope": {
-        "hash": "sha256:bf0b139d9b309d1a0faae3c06f6136b49b5df5d8db2613b880901e317b089acc"
+        "hash": "sha256:24c3d97c327dbf8566e3482cee912ec8e00df75f1ea0a34cabe7c16d69ce6992"
       },
       "node.plan_sections.plan_section:assessment": {
         "hash": "sha256:09fa628369f2fcfeae9efc57896be74472ad0f72d89b0d3edddf2c431b5b2f63"
@@ -39,12 +39,13 @@
         "hash": "sha256:6f7f81191b8c10c463f82a6c57e1f99a0f951ab62e1c140918092d2ebfe4f6ca"
       },
       "node.letter_decline_letter.decline_letter:letter": {
-        "hash": "sha256:338e832a0c6a92457953ce0d642279786e2e87d6bdc6afa1b7b4ad4409ebeb12"
+        "hash": "sha256:72f1c7fea9e489af9614dfb5240c4e1124c0dcadca9c0d6f766b4dc576704ee5"
       }
     },
     "deliverables": {
       "deliverable.plan": {
-        "state": "skipped"
+        "state": "released",
+        "hash": "sha256:1ad48f42fe474b72567cef79132469154b27a3fe6d9c1ac14be0f2a88a3232ab"
       },
       "deliverable.decline_letter": {
         "state": "skipped"

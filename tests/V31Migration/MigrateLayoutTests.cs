@@ -529,7 +529,7 @@ public class MigrateLayoutTests
 
         Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
         Assert.Equal("sections_item_2", (string?)JsonOf(result, "snippets/sections/index.json")["format"]);
-        Assert.Equal(Compact("""{ "description": null, "items": ["problem_list", "sections_item", "sections_item_2"] }"""),
+        Assert.Equal(Compact("""{ "description": null, "items": ["problem_list", "sections_item", "sections_item_2", "follow_up_answer"] }"""),
             JsonOf(result, "formats/index.json").ToJsonString());
     }
 
