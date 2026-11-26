@@ -251,7 +251,7 @@ public static partial class SourceTemplates
             var units = Expand(body, null, host.Site, parts, 0, null, null);
             if (leaf is not null)
                 PlacingNode(units, leaf, host);
-            if (leaf is not null && AsksNothing(leaf, text, units))
+            if (leaf is not null && AsksNothing(leaf, text, body, units))
                 Refusals.Add(DialectSentences.AsksNothing(leaf.Id, leaf.Path));
             body = body with { Units = units };
             return host is { Site: TemplateSite.Deliverable, Declaration: SourceDeliverable deliverable } ? Deliverable(body, deliverable, Refusals.Count > said) : body;
@@ -259,17 +259,25 @@ public static partial class SourceTemplates
 
         /// <summary>
         /// #1508 (comment 6, item 1; R13; A11-013): whether <paramref name="leaf"/>, an agent of the built-in format
-        /// <c>judgement</c> (a yes-or-no question), asks nothing: its prompt <paramref name="text"/>, its parts' text and the
-        /// text of every snippet and part it places (<paramref name="units"/>, expanded where they are placed) hold nothing
-        /// outside their tags but white space, so the only text the model is sent is what it reads. The migration writes a
-        /// classifier so, its question line left empty for the operator (part 10 § 1.4).
+        /// <c>judgement</c> (a yes-or-no question), asks nothing: its prompt <paramref name="text"/>, its parts' text, the
+        /// text of every snippet and part it places (<paramref name="units"/>, expanded where they are placed) and of every
+        /// snippet folder item it or a placed unit reads as <c>item.content</c> (<see cref="CheckedBody.FolderItems"/> of
+        /// <paramref name="body"/> and of each unit, rendered where they are read, part 05 § 6.2) hold nothing outside their
+        /// tags but white space, so the only text the model is sent is what it reads at run time (an input, a node). The
+        /// migration writes a classifier so, its question line left empty for the operator (part 10 § 1.4).
         /// </summary>
-        private static bool AsksNothing(SourceLeaf leaf, string text, IReadOnlyList<PlacedUnit> units)
+        private static bool AsksNothing(SourceLeaf leaf, string text, CheckedBody body, IReadOnlyList<PlacedUnit> units)
         {
             if (leaf.Header["format"] is not JsonValue format || !format.TryGetValue<string>(out var name) || name != "judgement")
                 return false;
             var texts = new List<string> { text };
-            texts.AddRange(units.Where(u => u.Instruction is null).Select(u => u.Body.Syntax.Text));
+            texts.AddRange(body.FolderItems.Select(item => item.Syntax.Text));
+            foreach (var unit in units.Where(u => u.Instruction is null))
+            {
+                texts.Add(unit.Body.Syntax.Text);
+                texts.AddRange(unit.Body.FolderItems.Select(item => item.Syntax.Text));
+            }
+
             foreach (var (_, part) in leaf.Header["parts"] as JsonObject ?? [])
             {
                 foreach (var line in part?["text"] as JsonArray ?? [])
