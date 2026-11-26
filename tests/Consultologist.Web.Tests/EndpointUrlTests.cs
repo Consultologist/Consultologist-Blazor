@@ -172,6 +172,30 @@ public class EndpointUrlTests
         Assert.Equal(HttpStatusCode.BadRequest, thrown.StatusCode);
     }
 
+    [Fact]
+    public async Task TheWorkflowService_Current400_ThrowsCarryingTheError()
+    {
+        // #1509 (Task 11): a 31 package the engine cannot run is Current's 400 { error }; the Create page says it word for word.
+        const string requires = "This workflow (example-note@v2026.11.1) needs Scriban ^7.2; this engine runs Scriban 8.0.1. Publish a new version of the workflow to run it on this engine.";
+        var handler = new StatusHandler(HttpStatusCode.BadRequest, "{\"error\":\"" + requires + "\"}");
+        var service = new WorkflowEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        var thrown = await Assert.ThrowsAsync<HttpRequestException>(() => service.GetCurrentPackageAsync());
+
+        Assert.Equal(requires, thrown.Message);
+        Assert.Equal(HttpStatusCode.BadRequest, thrown.StatusCode);
+    }
+
+    [Fact]
+    public async Task TheWorkflowService_CurrentOtherFailure_KeepsTodaysMessage()
+    {
+        var service = new WorkflowEndpointService(new HttpClient(new FailingHandler()), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        var thrown = await Assert.ThrowsAsync<HttpRequestException>(() => service.GetCurrentPackageAsync());
+
+        Assert.Equal("Workflow package endpoint failed: ServiceUnavailable", thrown.Message);
+    }
+
     private sealed class StatusHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

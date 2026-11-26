@@ -496,6 +496,12 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
                 response.StatusCode,
                 errorContent);
 
+            // #1509 (Task 11): a 400 is a 31 load refusal (requires, lock, S09-001); its sentence is the message, said as written.
+            if (response.StatusCode == HttpStatusCode.BadRequest && ErrorOf(errorContent) is { } refusal)
+            {
+                throw new HttpRequestException(refusal, null, response.StatusCode);
+            }
+
             throw new HttpRequestException($"Workflow package endpoint failed: {response.StatusCode}");
         }
 

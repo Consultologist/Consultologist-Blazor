@@ -494,4 +494,5 @@ The build's area sentences for area 12, which are not rows of `sentences.json` a
 
 | Id | Section | Sentence | Audience | Review |
 |---|---|---|---|---|
+| A12-004 | [5.3 Checks before submission](09-engine-and-pages.md#53-checks-before-submission) | *"The workflow's checks couldn't be run. Reload the page to try again."* | clinician | |
 | A12-006 | [5.1 Inputs](09-engine-and-pages.md#51-inputs) | *"This workflow can't be filled in here: this page has no field for '\<input label\>'. Tell the operator."* | clinician | |

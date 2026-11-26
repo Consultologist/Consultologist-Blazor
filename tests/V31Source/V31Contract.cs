@@ -172,15 +172,18 @@ internal static class V31Contract
         ["A11-015"] = "clinician",
         ["A11-016"] = "operator",
         ["A11-017"] = "operator",
+        ["A12-004"] = "clinician",
         ["A12-006"] = "clinician",
     };
 
     /// <summary>
     /// #1509: area 12's own sentences (<c>A12-NNN</c>), as plan area-12-create-and-history lists them; each is added by the
-    /// task that first says it (A12-006, Task 9: an input whose format the Create page has no widget for, part 09 § 5.1).
+    /// task that first says it (A12-006, Task 9: an input whose format the Create page has no widget for, part 09 § 5.1;
+    /// A12-004, Task 11: the start checks could not be asked before a 31 start, part 09 § 5.3).
     /// </summary>
     private static readonly Dictionary<string, string> PagesAreaSentences = new()
     {
+        ["A12-004"] = "The workflow's checks couldn't be run. Reload the page to try again.",
         ["A12-006"] = "This workflow can't be filled in here: this page has no field for '<input label>'. Tell the operator.",
     };
 

@@ -88,9 +88,13 @@
                             @* #882: a content-shaped skeleton for the section-standards load. *@
                             <SkeletonText Lines="4" />
                         }
-                        else if (!string.IsNullOrEmpty(blocksLoadError))
+                        else if (!string.IsNullOrEmpty(blocksLoadError) || currentRefusal31 != null)
                         {
-                            <FluentMessageBar Intent="MessageIntent.Error">@blocksLoadError</FluentMessageBar>
+                            @* #1509 (Task 11): a 31 load refusal (Current's 400) is said above Start, as written; the picker stays. *@
+                            @if (!string.IsNullOrEmpty(blocksLoadError))
+                            {
+                                <FluentMessageBar Intent="MessageIntent.Error">@blocksLoadError</FluentMessageBar>
+                            }
                             @* Escape hatch: a pin to an unloadable package must stay
                                correctable from here — the picker loads independently. *@
                             <div class="setup-context">
@@ -711,6 +715,17 @@
                             </FluentMessageBar>
                         }
 
+                        @if (asksStartChecks31 || currentRefusal31 != null)
+                        {
+                            @* #1509 (Task 11; part 09 §§ 5.2, 5.3): what holds a 31 start, and the signature choice. *@
+                            <StartChecks31 Sentences="StartSentences31"
+                                           LinksToProfile="StartSentencesAreTheAccounts31"
+                                           Blocks="SignatureChoice31"
+                                           Pick="@signaturePick31"
+                                           PickChanged="PickSignature31Async"
+                                           Disabled="@(isAiRequestLoading || isSchedulingRequest)" />
+                        }
+
                         <div class="action-row">
                             <FluentSwitch @bind-Value="RunOvernight"
                                           Label="Run overnight"
@@ -744,7 +759,7 @@
                             }
                             <FluentButton Appearance="Appearance.Accent"
                                           @onclick="CreateConsultAsync"
-                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || HasUnacknowledgedShortInput || packageBlocks.Count == 0)">
+                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || HasUnacknowledgedShortInput || packageBlocks.Count == 0 || StartHeldBy31)">
                                 @(runOvernight ? "Schedule consult" : (queueMultiple ? "Create & next" : "Create consult"))
                             </FluentButton>
                         </div>
@@ -1994,6 +2009,21 @@
         await area.FocusAsync();
       }
     }
+
+    // #1509 (Task 11, Review Focus 5): once a 31 package is open, one window-focus listener asks its checks again.
+    if (asksStartChecks31 && windowFocusReference31 is null)
+    {
+      windowFocusReference31 = DotNetObjectReference.Create(this);
+      try
+      {
+        windowFocusListener31 = await JS.InvokeAsync<int>("consultologistWindowFocus.listen", windowFocusReference31);
+      }
+      catch (Exception exception) when (exception is JSException or InvalidOperationException)
+      {
+        // No script costs only the re-ask on focus; the checks are still asked before submission.
+        Logger.LogWarning(exception, "Window focus listener could not start");
+      }
+    }
   }
 
   protected override async Task OnInitializedAsync()
@@ -2289,6 +2319,7 @@
   {
     isBlocksLoading = true;
     blocksLoadError = null;
+    ResetStartChecks31();
 
     try
     {
@@ -2318,10 +2349,25 @@
       macroChoices = package.SpecVersion is >= 12 and < 31 && package.Macros is { Count: > 0 }
         ? package.Macros.Select(m => new MacroChoice(m.Id, m.Label, m.Default) { Value = m.Default }).ToList()
         : new List<MacroChoice>();
+
+      // #1509 (Task 11; part 09 § 5.3, D1): a 31 package's start checks are asked before the clinician can start.
+      asksStartChecks31 = package.SpecVersion >= 31;
+      if (asksStartChecks31)
+      {
+        await AskStartChecks31Async();
+      }
     }
     catch (AccessTokenNotAvailableException exception)
     {
       exception.Redirect();
+    }
+    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+    {
+      // #1509 (Task 11): only a 31 load answers Current with a 400 (requires, the lock, S09-001); its sentence is said
+      // above Start as written, and no input is drawn for a package that cannot run.
+      packageBlocks = new();
+      inputsDeclared = false;
+      currentRefusal31 = ex.Message;
     }
     catch (Exception ex)
     {
@@ -2337,6 +2383,12 @@
 
   private async Task CreateConsultAsync()
   {
+    // #1509 (Task 11): a second click while the checks are asked again before a 31 start starts nothing.
+    if (askingBeforeStart31)
+    {
+      return;
+    }
+
     editingDraft = false;
     runEventSeen = false;
     runTerminalStatus = null;
@@ -2392,6 +2444,29 @@
       return;
     }
 
+    // #1509 (Task 11; part 09 § 5.3, Review Focus 5): the account may have changed since the checks were asked (another
+    // tab); they are asked again, and a refusal holds the start, said above Start.
+    if (asksStartChecks31)
+    {
+      askingBeforeStart31 = true;
+      try
+      {
+        await AskStartChecks31Async();
+      }
+      finally
+      {
+        askingBeforeStart31 = false;
+      }
+
+      if (StartHeldBy31)
+      {
+        return;
+      }
+    }
+
+    // D6: the job's signature pick, sent only when it differs from the account's chosen block.
+    var signatureBlockId = SignatureBlockIdToSend31;
+
     // #157: a scheduled submit never enters the run phase — the job sleeps
     // server-side and History (plus the completion email) is its surface.
     if (runOvernight)
@@ -2405,7 +2480,7 @@
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices(),
-          SuppliedAcknowledgedShortInputs(), SuppliedFormFiles());
+          SuppliedAcknowledgedShortInputs(), SuppliedFormFiles(), signatureBlockId);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
@@ -2445,7 +2520,7 @@
         isSchedulingRequest = true;
         await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, files: SuppliedFiles(), refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
-          acknowledgedShortInputs: SuppliedAcknowledgedShortInputs(), formFiles: SuppliedFormFiles());
+          acknowledgedShortInputs: SuppliedAcknowledgedShortInputs(), formFiles: SuppliedFormFiles(), signatureBlockId: signatureBlockId);
         ClearInputs();
         queuedThisSession++;
         // Set AFTER ClearInputs — ClearInputs nulls scheduleConfirmation — so the
@@ -2492,7 +2567,7 @@
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
         inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
-        acknowledgedShortInputs: acknowledgedShortSnapshot, formFiles: formFileSnapshot);
+        acknowledgedShortInputs: acknowledgedShortSnapshot, formFiles: formFileSnapshot, signatureBlockId: signatureBlockId);
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
@@ -3772,6 +3847,140 @@
 
   // #1509 (Task 9): the spec version of the package the form was drawn from; 31 draws inputs from their formats.
   private int packageSpecVersion;
+
+  // #1509 (Task 11; part 09 §§ 5.2, 5.3; D1, D6): the start's account checks, asked before a 31 start.
+  private const string ChecksUnreachable31 = "The workflow's checks couldn't be run. Reload the page to try again."; // A12-004
+
+  // Current's 400: the package cannot run here (requires, the lock, S09-001).
+  private string? currentRefusal31;
+  private bool asksStartChecks31;
+  private WorkflowPackageStartChecksResponse? startChecks31;
+  // The checks' own 400: the package's load refusal, as Current gives it.
+  private string? startChecksLoadRefusal31;
+  private bool startChecksUnreachable31;
+  // Only the latest answer is kept: a focus and a pick may ask at once.
+  private int startChecksAsked31;
+  // The checks are being asked again before a start; Start waits.
+  private bool askingBeforeStart31;
+  private SignatureBlocks.SignatureBlockSet signatureSet31 = SignatureBlocks.Empty();
+  // The block this job signs with; never saved to the account (part 09 § 5.2).
+  private string? signaturePick31;
+  private DotNetObjectReference<Consults>? windowFocusReference31;
+  private int? windowFocusListener31;
+
+  private IReadOnlyList<string> StartSentences31 =>
+    currentRefusal31 is { } refusal ? [refusal]
+    : startChecksLoadRefusal31 is { } loadRefusal ? [loadRefusal]
+    : startChecksUnreachable31 ? [ChecksUnreachable31]
+    : startChecks31?.Refusals ?? Array.Empty<string>();
+
+  // The account's sentences (a profile field, the signature, the time zone) are set on Profile.
+  private bool StartSentencesAreTheAccounts31 =>
+    currentRefusal31 is null && startChecksLoadRefusal31 is null && !startChecksUnreachable31 && startChecks31?.Refusals is { Count: > 0 };
+
+  // Start waits for an answer, and for every refusal to clear.
+  private bool StartHeldBy31 =>
+    currentRefusal31 != null || (asksStartChecks31 && (askingBeforeStart31 || startChecks31 is null || StartSentences31.Count > 0));
+
+  private string? ChosenSignature31 => SignatureBlocks.Chosen(signatureSet31)?.Id;
+
+  // D6: offered when the package reads the signature and the account has more than one block.
+  private IReadOnlyList<SignatureBlocks.SignatureBlock>? SignatureChoice31 =>
+    asksStartChecks31 && startChecks31?.NeedsProfile?.Contains("signature") == true && signatureSet31.Blocks.Count > 1
+      ? signatureSet31.Blocks
+      : null;
+
+  private string? SignatureBlockIdToSend31 =>
+    SignatureChoice31 is not null && !string.IsNullOrEmpty(signaturePick31) && signaturePick31 != ChosenSignature31
+      ? signaturePick31
+      : null;
+
+  private void ResetStartChecks31()
+  {
+    currentRefusal31 = null;
+    asksStartChecks31 = false;
+    startChecks31 = null;
+    startChecksLoadRefusal31 = null;
+    startChecksUnreachable31 = false;
+    signatureSet31 = SignatureBlocks.Empty();
+    signaturePick31 = null;
+  }
+
+  private async Task PickSignature31Async(string? choice)
+  {
+    // A FluentSelect pick can arrive twice (AGENTS.md); the same pick asks nothing more.
+    if (choice == signaturePick31)
+    {
+      return;
+    }
+
+    signaturePick31 = choice;
+    await AskStartChecks31Async();
+  }
+
+  // Reads the account's blocks afresh (one removed in another tab falls back to the chosen one), then asks the checks
+  // with the pick.
+  private async Task AskStartChecks31Async()
+  {
+    var asked = ++startChecksAsked31;
+    var followedDefault = signaturePick31 == ChosenSignature31;
+
+    try
+    {
+      var setting = await AccountService.GetSettingAsync(SignatureBlocks.SettingKey);
+      signatureSet31 = SignatureBlocks.Parse(setting?.Value);
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+      return;
+    }
+    catch
+    {
+      // The blocks last read stand; the start reads the account itself.
+    }
+
+    if (followedDefault || !signatureSet31.Blocks.Any(block => block.Id == signaturePick31))
+    {
+      signaturePick31 = ChosenSignature31;
+    }
+
+    try
+    {
+      var answer = await WorkflowService.GetStartChecksAsync(currentPackageRef, SignatureBlockIdToSend31);
+      if (asked != startChecksAsked31)
+      {
+        return;
+      }
+
+      startChecks31 = answer;
+      startChecksLoadRefusal31 = null;
+      startChecksUnreachable31 = answer is null;
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+    }
+    catch (HttpRequestException exception) when (exception.StatusCode == System.Net.HttpStatusCode.BadRequest)
+    {
+      if (asked == startChecksAsked31)
+      {
+        startChecks31 = null;
+        startChecksLoadRefusal31 = exception.Message;
+        startChecksUnreachable31 = false;
+      }
+    }
+    catch (Exception exception)
+    {
+      Logger.LogWarning(exception, "Start checks could not be asked");
+      if (asked == startChecksAsked31)
+      {
+        startChecks31 = null;
+        startChecksLoadRefusal31 = null;
+        startChecksUnreachable31 = true;
+      }
+    }
+  }
 
   // #1509 (D4): each 31 input's help text, from the content the rail loads; empty when it cannot be read.
   private IReadOnlyDictionary<string, string> inputHelp31 = new Dictionary<string, string>();
@@ -5373,14 +5582,40 @@
     }
   }
 
-  public ValueTask DisposeAsync()
+  /// <summary>#1509 (Task 11, Review Focus 5): the window regained focus; the account may have changed in another tab.</summary>
+  [JSInvokable]
+  public async Task OnWindowFocusAsync()
+  {
+    if (!asksStartChecks31 || isBlocksLoading || isAiRequestLoading || isSchedulingRequest)
+    {
+      return;
+    }
+
+    await AskStartChecks31Async();
+    await InvokeAsync(StateHasChanged);
+  }
+
+  public async ValueTask DisposeAsync()
   {
     Navigation.LocationChanged -= HandleLocationChanged;
     CancelActiveEventStream("component-disposed");
     activeEventStreamCancellationTokenSource?.Dispose();
     elapsedTicker?.Cancel();
     elapsedTicker?.Dispose();
-    return ValueTask.CompletedTask;
+
+    if (windowFocusListener31 is { } listener)
+    {
+      try
+      {
+        await JS.InvokeVoidAsync("consultologistWindowFocus.stop", listener);
+      }
+      catch (Exception exception) when (exception is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
+      {
+        // The page is going; a listener the browser already dropped needs no stopping.
+      }
+    }
+
+    windowFocusReference31?.Dispose();
   }
 
   // #684: mark when the run started and re-render once a second so the elapsed

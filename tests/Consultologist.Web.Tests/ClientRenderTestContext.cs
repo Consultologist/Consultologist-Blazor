@@ -85,6 +85,10 @@ public abstract class ClientRenderTestContext : BunitContext
         WorkflowService.GetMyPackagesAsync().Returns((IReadOnlyList<PublicPackageView>?)null);
         // v25 (C1 #1007): the formats catalogue is absent unless a test supplies one.
         WorkflowService.GetFormatsAsync().Returns((WorkflowFormatsView?)null);
+        // #1509 (Task 11): a 31 Create page asks the start checks before Start; nothing refused unless a test says so.
+        // A 5–30 page never asks.
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(new WorkflowPackageStartChecksResponse([], []));
     }
 
     /// <summary>

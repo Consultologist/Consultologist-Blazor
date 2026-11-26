@@ -1,0 +1,69 @@
+@using Consultologist.Web.Services.Accounts
+@*
+    #1509 (Task 11; part 09 §§ 5.2, 5.3; D1, D6): what holds a 31 start, said above Start before submission, and the
+    per-job signature choice. The page asks the checks and decides; this draws them. Each sentence is shown as the
+    engine wrote it; the account's sentences share one link to Profile, so no sentence's words are rewritten.
+*@
+@if (Blocks is { Count: > 0 } || Sentences.Count > 0)
+{
+    <div class="start-checks31">
+        @if (Blocks is { Count: > 0 } blocks)
+        {
+            <div class="start-checks31__signature">
+                <label class="start-checks31__label" for="start-checks31-signature">Sign this consult with</label>
+                <FluentSelect TOption="string" Id="start-checks31-signature"
+                              Value="@(Pick ?? string.Empty)"
+                              ValueChanged="@(choice => PickChanged.InvokeAsync(string.IsNullOrEmpty(choice) ? null : choice))"
+                              Disabled="@Disabled"
+                              aria-label="Sign this consult with">
+                    @if (Pick is null)
+                    {
+                        @* D6: on "choose…" when the account has chosen no block. *@
+                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                    }
+                    @foreach (var block in blocks)
+                    {
+                        <FluentOption TOption="string" Value="@block.Id">@block.Name</FluentOption>
+                    }
+                </FluentSelect>
+            </div>
+        }
+        @if (Sentences.Count > 0)
+        {
+            <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="start-checks31__refusals">
+                @foreach (var sentence in Sentences)
+                {
+                    <p class="start-checks31__refusal">@sentence</p>
+                }
+                @if (LinksToProfile)
+                {
+                    <a class="start-checks31__profile" href="/profile">Open Profile</a>
+                }
+            </FluentMessageBar>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>The sentences that hold Start, in the order the start gives them.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Sentences { get; set; } = Array.Empty<string>();
+
+    /// <summary>The sentences are the account's (a profile field, the signature, the time zone), set on Profile.</summary>
+    [Parameter]
+    public bool LinksToProfile { get; set; }
+
+    /// <summary>The account's blocks when the choice is offered (more than one, and the package reads the signature); else null.</summary>
+    [Parameter]
+    public IReadOnlyList<SignatureBlocks.SignatureBlock>? Blocks { get; set; }
+
+    /// <summary>The block this job signs with; null when none is picked or chosen.</summary>
+    [Parameter]
+    public string? Pick { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> PickChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+}
