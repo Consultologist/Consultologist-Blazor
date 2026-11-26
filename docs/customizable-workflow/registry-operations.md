@@ -525,3 +525,34 @@ From [the fourth comment](https://github.com/Consultologist/Consultologist-Blazo
 > **Added to the conditions before 31 is admitted outside preview** (beside [the earlier list](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7073314794)):
 > - a dev-deployment run of a 31 job, including a forced replay: the Azure table and blob adapters (insert-if-absent, `row1…` splitting, the 1 MiB check) have only run over in-memory seams;
 > - the owner sets `Operators__AlertAddress` and `OperatorWeeklySummarySchedule`, and drains 31 orchestrations before deploying (their history gains `job-slow`, `evaluate-rule-v31` and the delivery step).
+
+From [the sixth comment](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295)
+(item 3):
+
+> **Before 31 leaves preview,** these same packages also run **live on the dev deployment** with fictional inputs. This joins the release conditions above (the dev run with a forced replay). The full live-model test suite stays Milestone 40 (#1449).
+
+**The edge-case packages** (#1508, Task 35). "These same packages" are the six small packages built for the cases the
+review of area 10 found, one each: `edge-missing-marker` (a reply that leaves a macro out), `edge-no-branch` (a flow that
+takes no branch), `edge-items-not-run` (loop items not run), `edge-unset-object` (an unset optional object input),
+`edge-answer-outside-set` (a classifier answer outside its set) and `edge-flag` (a 30 `onInvalid: flag` node). Each is
+a 30 package under `tests/Fixtures/ByteEquivalence/fixture-packages/edge-*`, with its scenario and capture; its 31
+package, as the migration writes it, is `tests/Fixtures/ByteEquivalence/migrated/edge-*/`, and its operator's edits are
+`hand-edits/edge-*/` (only `edge-missing-marker` has any: the question of its classifier `follow_up_applies`). CI runs
+each offline with the capture's replies pinned (`tests/Fixtures/ByteEquivalence/edge-tests/`,
+`EdgeCasePackagesTests`); the live run asks the model instead.
+
+To publish one on the dev deployment, make its 31 folder and check it first:
+
+1. Copy `migrated/edge-<case>/` to a new folder, and delete its `notices.json` (the migration's notices, not a package
+   file). For `edge-missing-marker`, lay `hand-edits/edge-missing-marker/` over it: copy `macros/follow_up.md` and
+   `nodes/follow_up_applies.md` in place of the migrated ones (its `README.md` and `options.json` are not package files).
+2. Check it offline, as CI would publish it:
+   `dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder>`. It must end `would publish`; the
+   warnings it prints are part 04 § 10.2's notes. To run the pinned test too, copy `edge-tests/edge-<case>.json` into the
+   folder as `tests/edge.json` and add `"edge"` to `tests/index.json`'s `items`: four of them pass;
+   `edge-answer-outside-set`'s and `edge-flag`'s pin the reply 31 refuses, so publish stops with S07-009, which is the case.
+3. Publish the folder to the dev deployment (the Editor's publish, or `WorkflowPackages/Publish` with the files), start a
+   job of it with fictional inputs (Margaret Okafor's draft and problem list, as the scenarios give them; for
+   `edge-no-branch`, leave `include_plan` unset; for `edge-unset-object`, leave `intake` unset; for
+   `edge-items-not-run`, give three problems), and read the job's record: the deliverables, the skipped and not-run
+   rows, and for `edge-missing-marker` the classifier's answer and the letter's macro row.

@@ -514,9 +514,14 @@ and the migration report lists each such conversion (A10-050).
     31's text holds an input's text value whole and 30's holds it with its trailing white space trimmed
     (`input-trailing-whitespace`; `composer-sources` `item-names-and-bounds`).
   - **A failed job's prompts follow its dispatch order** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #9):
-    both jobs failed at the same empty reply, which the node's `failIfEmpty` refused at both, and each sent what its
-    dispatch order reached first; a text only one side has is explained (`failed-job-dispatch-order`; `composer-sources`
-    `failed-item`).
+    both jobs failed at the same reply, refused at both (an empty one by the node's `failIfEmpty`, or one its format
+    refused under `onInvalid: fail`, as an answer outside a classifier's values), and each sent what its dispatch order
+    reached first; a text only one side has is explained (`failed-job-dispatch-order`; `composer-sources` `failed-item`,
+    `edge-answer-outside-set` `answer-outside-set`).
+  - **`onInvalid: flag` is retried** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 3; § 1.2):
+    30 kept a reply that did not fit its format and ran on; at 31 the node asks once more with the validation error, then
+    fails. The status, that node's prompt (the retry's) and each text only 30 has are explained (`flag-becomes-retry`;
+    `edge-flag`).
   - **A `before`/`after` node macro is a marker** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #10; D3, § 1.4):
     30's engine placed the macro's body before or after the node's reply, joined by a blank line; at 31 the model writes
     its marker where the hand-edited instruction says. 30's reply never held a marker for it, so the comparison writes

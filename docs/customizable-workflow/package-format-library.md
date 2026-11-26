@@ -1604,6 +1604,8 @@ The rules for one read:
 - #1508 (comment 6, item 1; R13): an agent of the built-in format `judgement` whose prompt, with its parts' text and
   the text of every snippet and part it places, holds nothing outside its tags (`TemplateTags.Scan`) but white space
   asks nothing: A11-013, said of the node's file.
+- #1508 (Task 35): an agent's `onInvalid` other than `retry` or `fail` (30's `flag`, say) is A11-014, said by the reader
+  (`SourceParser.Nodes`) of the node's file; the member table only types it.
 - #1508 (Q5, R17): `TypedRead.Through` lists each object a read steps through that can be null, as written
   (`FormatReads.NullableSteps`: the head's value when the head can be null, a field whose format admits `null`), and
   `AfterFirstPass` those null only before a second pass. Each must be guarded, else A11-009 names the outermost. The
