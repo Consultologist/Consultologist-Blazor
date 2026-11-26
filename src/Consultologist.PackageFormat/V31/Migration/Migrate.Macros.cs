@@ -171,7 +171,7 @@ internal static partial class Migrate
     /// <paramref name="defaultOn"/>, <paramref name="instruction"/>) or else its header's. #1508 (comment 6, item 1; R13): a
     /// macro 30's model chose (<see cref="ModelChosen"/>) gets a <c>judgement</c> node per agent that places it
     /// (<see cref="ChoiceClassifiers"/>), its <c>if</c> the macro's offer condition, and the macro's <c>if</c> gains each
-    /// one's answer, joined by <c>and</c> after the rest.
+    /// one's answer, joined by <c>and</c> after the rest; with more than one, its <c>if</c> is a hand edit (A10-078).
     /// </summary>
     private static JsonObject MacroHeader(
         Migrated m, NodeTree tree, string key, string file, string? label, WorkflowTextHeader? header, bool? optional, bool? defaultOn, string? instruction,
@@ -192,10 +192,15 @@ internal static partial class Migrate
         var instruction30 = instruction ?? header?.Instruction;
         if (ModelChosen(key, instruction30, byTheEngine, disagreeing))
         {
-            var answers = ChoiceClassifiers(m, tree, key, name, gate).Select(classifier => (JsonNode)new JsonObject
+            var classifiers = ChoiceClassifiers(m, tree, key, name, gate);
+            var answers = classifiers.Select(classifier => (JsonNode)new JsonObject
             {
                 ["==="] = new JsonArray(new JsonObject { ["var"] = $"{classifier}.value.answer" }, true),
             }).ToList();
+
+            // Fix round 1 (A10-078): two placing nodes' answers joined by and is a condition 30 never had.
+            if (classifiers.Count > 1)
+                m.HandEdit(file, "if", MigrationSentences.SplitPerPlacer(key, [.. classifiers.Select(c => c["node.".Length..])]));
             if (answers.Count > 0)
             {
                 List<JsonNode> parts = gate switch

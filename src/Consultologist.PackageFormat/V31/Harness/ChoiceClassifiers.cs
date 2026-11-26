@@ -14,8 +14,9 @@ public sealed record ChoiceClassifier(string Key, string Placing, string Macro, 
 /// <summary>
 /// #1508 (R13, R14): the macro-choice classifiers of a migrated package, read from its files, so a hand edit that writes one
 /// is read alike: each macro whose <c>if</c> holds <c>{ "===": [ { "var": "node.&lt;id&gt;.value.answer" }, true ] }</c>, where
-/// <c>&lt;id&gt;</c> is a <c>judgement</c> agent listed immediately before an agent whose prompt places the macro (as the
-/// migration writes it, part 10 § 1.2). Never throws on package content: a file that does not read gives nothing.
+/// <c>&lt;id&gt;</c> is a <c>judgement</c> agent listed before an agent (with only other <c>judgement</c> agents between)
+/// whose prompt places the macro, itself or through a snippet it places (as the migration writes it, part 10 § 1.2). Never
+/// throws on package content: a file that does not read gives nothing.
 /// </summary>
 public static class ChoiceClassifiers
 {
@@ -65,7 +66,7 @@ public static class ChoiceClassifiers
         foreach (var (path, text) in migrated.Files)
         {
             if (!path.StartsWith("nodes/", StringComparison.Ordinal) || !path.EndsWith($"/{id}.md", StringComparison.Ordinal)
-                || Header(text) is not { } header || SourceLayout.Text(header["kind"]) != "agent" || SourceLayout.Text(header["format"]) != "judgement")
+                || !IsJudgement(text))
             {
                 continue;
             }
@@ -81,10 +82,16 @@ public static class ChoiceClassifiers
             {
                 var ids = list.Select(SourceLayout.Text).ToList();
                 var at = ids.IndexOf(id);
-                if (at < 0 || at + 1 >= ids.Count || ids[at + 1] is not { } placing)
+                if (at < 0)
                     continue;
-                var placingText = migrated.Files.GetValueOrDefault($"{folder}/{placing}.md") ?? "";
-                if (!placingText.Contains($"macro.{macro} }}}}", StringComparison.Ordinal))
+
+                // The classifiers of one placing node stand together before it: the node is the first after them.
+                var next = at + 1;
+                while (next < ids.Count && ids[next] is { } sibling && IsJudgement(migrated.Files.GetValueOrDefault($"{folder}/{sibling}.md")))
+                    next++;
+                if (next >= ids.Count || ids[next] is not { } placing)
+                    return null;
+                if (!Places(migrated, migrated.Files.GetValueOrDefault($"{folder}/{placing}.md") ?? "", macro, 0))
                     return null;
                 var root = folder == "nodes" ? "node" : "node." + folder["nodes/".Length..].Replace('/', '.');
                 return ($"{root}.{id}", $"{root}.{placing}");
@@ -95,6 +102,40 @@ public static class ChoiceClassifiers
 
         return null;
     }
+
+    /// <summary>The deepest chain of snippets followed: the composer's own bound on units placed in units.</summary>
+    private const int SnippetChain = V31.Templates.BodyComposer.UnitDepth;
+
+    /// <summary>
+    /// Whether <paramref name="text"/> places macro <paramref name="macro"/>: itself (<c>{{ macro.&lt;id&gt; }}</c>), or
+    /// through a snippet it reads (<c>snippet.&lt;id&gt;.content</c>), whose body is read the same way, at most
+    /// <see cref="SnippetChain"/> deep.
+    /// </summary>
+    private static bool Places(Migration31Result migrated, string text, string macro, int depth)
+    {
+        if (text.Contains($"macro.{macro} }}}}", StringComparison.Ordinal))
+            return true;
+        if (depth >= SnippetChain)
+            return false;
+        const string Head = "snippet.";
+        for (var at = text.IndexOf(Head, StringComparison.Ordinal); at >= 0; at = text.IndexOf(Head, at + Head.Length, StringComparison.Ordinal))
+        {
+            var end = text.IndexOf(".content", at + Head.Length, StringComparison.Ordinal);
+            if (end < 0)
+                break;
+            var id = text[(at + Head.Length)..end];
+            if (id.Length == 0 || !id.All(c => char.IsAsciiLetterOrDigit(c) || c == '_' || c == '.'))
+                continue;
+            if (migrated.Files.GetValueOrDefault($"snippets/{id.Replace('.', '/')}.md") is { } body && Places(migrated, body, macro, depth + 1))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether <paramref name="text"/> is a node file of a <c>judgement</c> agent.</summary>
+    private static bool IsJudgement(string? text) =>
+        text is not null && Header(text) is { } header && SourceLayout.Text(header["kind"]) == "agent" && SourceLayout.Text(header["format"]) == "judgement";
 
     private static JsonObject? Header(string text) => FrontMatter.Split(text) is { } split ? Json(split.Header) : null;
 

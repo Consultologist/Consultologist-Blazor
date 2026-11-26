@@ -137,6 +137,10 @@ internal static partial class Migrate
                     again.NodeIds30[rename.NewId] = rename.Id;
                 else if (rename.Kind == Deliverable)
                     again.DeliverableIds30[rename.NewId] = rename.Id;
+                else if (rename.Kind == Macro)
+                    again.MacroIds30[rename.NewId] = rename.Id;
+                else if (rename.Kind == MacroItem)
+                    again.MacroIds30[$"{rename.Folder}/{rename.NewId}"] = rename.Id;
             }
 
             return (again, []);

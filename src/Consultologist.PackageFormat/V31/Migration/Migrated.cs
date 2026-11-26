@@ -140,6 +140,12 @@ internal sealed class Migrated
     public Dictionary<string, string> DeliverableIds30 { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Each macro the renames pass renamed, its 31 id to its 30 id, and each macro folder's item it renamed, keyed
+    /// <c>&lt;30 folder id&gt;/&lt;31 item id&gt;</c>, to its 30 item id (<see cref="Migration31Result.MacroIds30"/>).
+    /// </summary>
+    public Dictionary<string, string> MacroIds30 { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// #1508 (R12, comment 5, item 1): each 30 classifier given a package format of its answers (<see cref="Migrate.Layout"/>),
     /// its node id to that format's id (<c>&lt;id&gt;_answer</c>, fitted), which the nodes pass writes as its format.
     /// </summary>
@@ -407,6 +413,7 @@ internal sealed class Migrated
             Report = new MigrationNotes(Renames.ToList(), MacroInputs.ToList(), BlankConversions.ToList(), Suggestions.ToList(), Reproducible.ToList()),
             Keys = keys,
             MacroBodies = MacroBodyFiles.Where(Sources.ContainsKey).ToList(),
+            MacroIds30 = new Dictionary<string, string>(MacroIds30, StringComparer.Ordinal),
         };
     }
 }

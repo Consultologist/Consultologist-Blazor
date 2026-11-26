@@ -151,6 +151,13 @@ public sealed record Migration31Result(
     /// keeps its own rule, so the byte-equivalence comparison reads these to explain the difference.
     /// </summary>
     public IReadOnlyList<string> MacroBodies { get; init; } = [];
+
+    /// <summary>
+    /// #1508 (R14; area 11 Task 32 fix round 1): each macro the migration renamed (§ 1.9), its 31 id to its 30 id, and
+    /// each macro folder's item it renamed, keyed <c>&lt;30 folder id&gt;/&lt;31 item id&gt;</c>, to its 30 item id: 30's
+    /// model wrote a macro's marker with its 30 id, which the byte-equivalence comparison reads.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> MacroIds30 { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
 /// <summary>

@@ -420,6 +420,15 @@ internal static class MigrationSentences
         $"macro '{macro}' was placed {where} the reply by the engine; say in its instruction where the model writes its marker.";
 
     /// <summary>
+    /// A10-078 (#1508, comment 6, item 1; R13; Task 32 fix round 1): a reason: macro <paramref name="macro"/> is placed by
+    /// more than one agent, so the migration wrote a classifier for each (<paramref name="nodes"/>, in order) and its
+    /// <c>if</c> joins their answers by <c>and</c>, a condition 30 did not have: each of 30's placing nodes' models chose
+    /// on its own.
+    /// </summary>
+    public static string SplitPerPlacer(string macro, IReadOnlyList<string> nodes) =>
+        $"macro '{macro}' is placed by {nodes.Count.ToString(CultureInfo.InvariantCulture)} nodes, with a classifier each ({string.Join(", ", nodes)}), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.";
+
+    /// <summary>
     /// A10-077 (#1508, comment 6, item 1; R13; part 10 § 1.4): a reason: the <c>judgement</c> node <paramref name="node"/>
     /// the migration wrote decides whether macro <paramref name="macro"/> is offered, which 30's model chose from the
     /// instruction; its prompt ends with an empty question line, which publish refuses (A11-013), and the instruction's

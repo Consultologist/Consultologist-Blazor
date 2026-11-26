@@ -268,7 +268,8 @@ public static class ByteEquivalence
     /// #1508 (comment 6, item 2; R14): for each macro-choice classifier of <paramref name="migrated"/> the plan runs, and
     /// each instance of its placing agent the capture holds a reply for (its 30 key mapped to 31's, <see cref="KeyMap"/>), the
     /// classifier's reply at the same instance: <c>{ "answer": true, "reason": … }</c> exactly when 30's reply held the
-    /// macro's marker (<c>macro.&lt;id&gt;.content</c>, which 30's model wrote where it placed the macro), else
+    /// macro's marker (<c>macro.&lt;id&gt;.content</c> with the macro's 30 id, which 30's model wrote where it placed the
+    /// macro; <see cref="Name30"/>), else
     /// <c>answer: false</c>. By row key, in the capture's order.
     /// </summary>
     public static IEnumerable<(string Key, JsonObject Answer)> ChoiceAnswers(JsonObject capture30, Migration31Result migrated, RunPlan plan)
@@ -288,13 +289,29 @@ public static class ByteEquivalence
             var reply = value is JsonValue text && text.TryGetValue<string>(out var said) ? said : value?.ToJsonString() ?? "";
             foreach (var classifier in classifiers.Where(c => c.Placing == entry))
             {
+                var name30 = Name30(migrated, classifier.Macro);
                 yield return (classifier.Key + key31[entry.Length..], new JsonObject
                 {
-                    ["answer"] = reply.Contains($"macro.{classifier.Macro}.content", StringComparison.Ordinal),
+                    ["answer"] = reply.Contains($"macro.{name30}.content", StringComparison.Ordinal),
                     ["reason"] = ChoiceReason,
                 });
             }
         }
+    }
+
+    /// <summary>
+    /// Macro <paramref name="macro"/>, as a 31 placement names it (<c>&lt;folder&gt;.&lt;id&gt;</c> for a folder's item), by
+    /// its 30 name: the folder and the item each read back through <see cref="Migration31Result.MacroIds30"/>.
+    /// </summary>
+    internal static string Name30(Migration31Result migrated, string macro)
+    {
+        var ids30 = migrated.MacroIds30;
+        var dot = macro.IndexOf('.', StringComparison.Ordinal);
+        if (dot < 0)
+            return ids30.GetValueOrDefault(macro, macro);
+        var folder30 = ids30.GetValueOrDefault(macro[..dot], macro[..dot]);
+        var item = macro[(dot + 1)..];
+        return $"{folder30}.{ids30.GetValueOrDefault($"{folder30}/{item}", item)}";
     }
 
     /// <summary>31's status word: the run's state, or <see cref="Refused"/> when its start refused it.</summary>

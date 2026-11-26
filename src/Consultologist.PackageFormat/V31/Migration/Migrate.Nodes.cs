@@ -232,20 +232,18 @@ internal static partial class Migrate
 
     /// <summary>
     /// A classifier's prompt: each read <paramref name="placing"/> (the placing node's 31 prompt) writes outside any <c>if</c>
-    /// or <c>for</c> (an input, a node, a check, the item, a snippet's text; never a part or a macro, nor a snippet whose body
-    /// places a macro, which a <c>judgement</c> node may not place: part 05 § 8.3), as written, once each in order, on lines
-    /// of their own, then an empty line and the empty question line the operator writes (A10-077).
+    /// or <c>for</c> (an input, a node, a check, the item), as written, once each in order, on lines of their own, then an
+    /// empty line and the empty question line the operator writes (A10-077). Never a part, a macro or a snippet: a snippet's
+    /// text may place a macro, which a <c>judgement</c> node may not (part 05 § 8.3), and any text it holds would count as
+    /// the question, so the prompt would publish asking nothing (A11-013 counts placed snippets' text, fix round 1).
     /// </summary>
     private static string QuestionPrompt(Migrated m, string placing)
     {
-        var placesMacros = m.MacroPlacements.Select(p => p.File).ToHashSet(StringComparer.Ordinal);
         var syntax = V31.Templates.TemplateSyntax.Parse(placing);
         var reads = new List<string>();
         foreach (var output in syntax.Outputs)
         {
-            if (output.Depth > 0 || output.Path is not { } path || path.Split('.')[0] is not ("input" or "node" or "check" or "item" or "snippet"))
-                continue;
-            if (path.Split('.') is ["snippet", .. var rest] && placesMacros.Contains($"snippets/{string.Join('/', rest.SkipLast(1))}.md"))
+            if (output.Depth > 0 || output.Path is not { } path || path.Split('.')[0] is not ("input" or "node" or "check" or "item"))
                 continue;
             var tag = placing[output.Tag.Start..output.Tag.End];
             var inner = tag[2..^2].Trim().Trim('~', '-').Trim();
