@@ -520,8 +520,8 @@ and the migration report lists each such conversion (A10-050).
     `edge-answer-outside-set` `answer-outside-set`).
   - **`onInvalid: flag` is retried** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 3; § 1.2):
     30 kept a reply that did not fit its format and ran on; at 31 the node asks once more with the validation error, then
-    fails. The status, that node's prompt (the retry's) and each text only 30 has are explained (`flag-becomes-retry`;
-    `edge-flag`).
+    fails. The status and each text only 30 has are explained (`flag-becomes-retry`; `edge-flag`), and in that node's
+    prompt the retry's text at its end, so another rule may credit the rest (31 sends the format's description).
   - **A `before`/`after` node macro is a marker** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #10; D3, § 1.4):
     30's engine placed the macro's body before or after the node's reply, joined by a blank line; at 31 the model writes
     its marker where the hand-edited instruction says. 30's reply never held a marker for it, so the comparison writes
