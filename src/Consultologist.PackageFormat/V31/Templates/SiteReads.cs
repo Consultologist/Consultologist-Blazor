@@ -310,9 +310,31 @@ internal sealed class PathTyping
             return Refuse(DialectSentences.ReadsBare(host.Subject, written, line, member, host.Path));
         }
 
-        return resolved.Kind == ScopeHeadKind.Value
+        var typed = resolved.Kind == ScopeHeadKind.Value
             ? Steps(written, line, head, resolved.Key, resolved.Format, rest, resolved.Nullable)
             : Read(written, line, head, resolved.Key, resolved.Format, rest, resolved.Nullable);
+        return typed.Item1 is { Through.Count: > 0 } read && resolved.Nullable && PreviousOnly(s)
+            ? (read with { AfterFirstPass = read.Through.Except(Through(written, resolved.Format!, ResolvedSteps(resolved, rest), false)).ToList() }, null)
+            : typed;
+    }
+
+    /// <summary>The steps <see cref="Read(string, int, string, string?, JsonNode?, List{string}, bool)"/> reads after a resolved head.</summary>
+    private static List<string> ResolvedSteps(Resolved resolved, List<string> rest) => resolved.Kind == ScopeHeadKind.Value ? ["value", .. rest] : rest;
+
+    /// <summary>
+    /// #1508 (Q5, R17): whether <paramref name="s"/>, a read of <c>pass</c> (past its <c>parent</c>s) <c>.previous</c>, can be
+    /// null only because there is no previous pass: the same read of this pass can't be (the node always runs in a pass).
+    /// </summary>
+    private bool PreviousOnly(string[] s)
+    {
+        var at = 1;
+        while (at < s.Length && s[at] == "parent")
+            at++;
+        if (s[0] != "pass" || at >= s.Length || s[at] != "previous")
+            return false;
+        string[] current = [.. s[..at], .. s[(at + 1)..]];
+        var resolved = tree.Resolve(new ReferenceString(string.Join('.', current), current), host.Frame, host.Subject, host.Path, condition: false, host.Declaration as SourceNode);
+        return resolved.Kind is ScopeHeadKind.Format or ScopeHeadKind.Value && !resolved.Nullable;
     }
 
     // ---- steps -----------------------------------------------------------------------------------
@@ -342,12 +364,31 @@ internal sealed class PathTyping
         switch (read.Fault)
         {
             case ReadFault.None:
-                return (Read(written, line, head, rooted, read.Format, nullable || read.Nullable), null);
+                return (Read(written, line, head, rooted, read.Format, nullable || read.Nullable) with { Through = Through(written, format, steps, nullable) }, null);
             case ReadFault.TitleOfPlainEnum:
                 return Refuse(FormatReads.TitleOfPlainEnum(written.EndsWith(".title", StringComparison.Ordinal) ? written[..^".title".Length] : written, host.Path));
             default:
                 return Refuse(DialectSentences.ReadsWhatIsNotThere(host.Subject, written, line, TypeStrings.Print(Lacking(format, steps), formats), host.Path));
         }
+    }
+
+    /// <summary>
+    /// #1508 (Q5, R17): the objects <paramref name="written"/> steps through that can be null, as written: each position
+    /// <see cref="FormatReads.NullableSteps"/> gives, as the prefix of <paramref name="written"/> without the steps after it
+    /// (<paramref name="steps"/> are the last segments of <paramref name="written"/>, but for a leading <c>value</c> that
+    /// stands for a head read as a value, a <c>for</c> variable or a run fact).
+    /// </summary>
+    private IReadOnlyList<string> Through(string written, JsonNode format, List<string> steps, bool nullable)
+    {
+        var positions = FormatReads.NullableSteps(format, steps, formats, nullable);
+        if (positions.Count == 0)
+            return [];
+        var segments = written.Split('.');
+        return positions
+            .Select(at => segments.Length - (steps.Count - 1 - at))
+            .Where(length => length >= 1 && length < segments.Length)
+            .Select(length => string.Join('.', segments, 0, length))
+            .ToList();
     }
 
     /// <summary>The format the failing step is read on: what the longest run of <paramref name="steps"/> that reads gives, else <paramref name="format"/>.</summary>

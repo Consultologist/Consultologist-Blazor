@@ -144,6 +144,14 @@ internal static partial class RefusalPackages
             FollowUp(),
             FollowUp().Edit("nodes/closing.md", FollowUpPlaced, "{{ macro.follow_up | string.upcase }}\n"));
 
+        // #1508 (Q5 of 2026-11-26, R17; Task 26): a member read through an object that can be null stands under its guard.
+        yield return new RefusalCase("A11-009",
+            "A member read through an object that can be null is guarded (chapter 5 § 5.2.5). The optional object input intake is "
+            + "unset in some jobs. Invalid: the plan's prompt reads input.intake.value.reason bare, which fails to render when intake "
+            + "is unset. Valid: it reads it inside {{ if input.intake.value }}.",
+            Intake(IntakeGuarded),
+            Intake(IntakeRead));
+
         yield return new RefusalCase("S05-020",
             "A template reads only its site's roots (chapter 5 § 5.3.1). The plan's prompt writes the draft. Invalid: it reads "
             + "deliverable.note.content, which a prompt never reads. Valid: input.consult_draft.content.",
@@ -673,6 +681,23 @@ internal static partial class RefusalPackages
                 + "\"instruction\": [\"Place the history's closing line alone:\", \"{{~ macro.section_notes.hpi.content }}\"] }",
                 "History taken from Margaret Okafor and her daughter.\n"))
             .With("nodes/closing.md", Agent("Writing the closing", Plain, "Write the closing line of the history.\n{{~ macro.section_notes.hpi }}\n"));
+
+    private const string IntakeRead = "Reason for referral: {{ input.intake.value.reason }}";
+
+    private const string IntakeGuarded = "{{ if input.intake.value }}Reason for referral: {{ input.intake.value.reason }}{{ end }}";
+
+    /// <summary>
+    /// <see cref="SourceFixture.Minimal"/> with the optional object input <c>intake</c> (its <c>reason</c>, text), whose plan's
+    /// prompt writes <paramref name="line"/> after the draft.
+    /// </summary>
+    private static Dictionary<string, byte[]> Intake(string line) =>
+        Minimal()
+            .Edit("manifest.json", "\"channel\": null }\n  }",
+                "\"channel\": null },\n"
+                + "    \"intake\": { \"label\": \"Intake form\", \"description\": null, \"format\": { \"type\": \"object\", "
+                + "\"required\": [\"reason\"], \"additionalProperties\": false, \"properties\": { \"reason\": { \"type\": \"string\", "
+                + "\"title\": \"Reason for referral\" } } }, \"required\": false, \"channel\": null }\n  }")
+            .Edit(Plan, DraftRead, DraftRead + "\n" + line);
 
     /// <summary>The macros <c>follow_up</c> and <c>recall</c> (unplaced), and the agent <c>closing</c>, which places follow_up.</summary>
     private static Dictionary<string, byte[]> FollowUp() =>

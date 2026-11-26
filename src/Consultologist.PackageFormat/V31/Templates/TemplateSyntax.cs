@@ -19,7 +19,9 @@ public sealed record TemplatePipe(string Name, IReadOnlyList<string> Arguments, 
 /// the path <c>node.e.value</c>. <paramref name="Head"/> is the head as written without them; <paramref name="HeadType"/>
 /// the built-in type of a head that is a literal or a test (<c>"string"</c>, <c>"integer"</c>, <c>"number"</c>,
 /// <c>"boolean"</c>, <c>"null"</c>), else <c>null</c>. #1506 (area 09; part 08 § 10): <paramref name="Loop"/> is the nearest
-/// <c>for</c> around it as written (<c>&lt;variable&gt; in &lt;source&gt;</c>), <c>null</c> in none.
+/// <c>for</c> around it as written (<c>&lt;variable&gt; in &lt;source&gt;</c>), <c>null</c> in none. #1508 (ruled by the
+/// owner, Q5 of 2026-11-26; R17): <paramref name="Guards"/> are the paths the <c>if</c>s around it assert are there (see
+/// <see cref="TemplateTest.Asserts"/>), outermost first; an <c>else</c> asserts nothing.
 /// </summary>
 public sealed record TemplateOutput(
     TemplateTag Tag,
@@ -30,10 +32,14 @@ public sealed record TemplateOutput(
     IReadOnlyList<string> Enclosing,
     string Head,
     string? HeadType,
-    string? Loop = null);
+    string? Loop = null,
+    IReadOnlyList<string>? Guards = null);
 
-/// <summary>#1504 (specVersion 31, area 07; part 05 § 2.1): a <c>for</c>: its variable, what it iterates as written, its tag, and the number of <c>if</c> and <c>for</c> around it.</summary>
-public sealed record TemplateFor(string Variable, string Source, TemplateTag Tag, int Depth);
+/// <summary>
+/// #1504 (specVersion 31, area 07; part 05 § 2.1): a <c>for</c>: its variable, what it iterates as written, its tag, and the
+/// number of <c>if</c> and <c>for</c> around it. #1508 (Q5, R17): <paramref name="Guards"/> as <see cref="TemplateOutput.Guards"/>.
+/// </summary>
+public sealed record TemplateFor(string Variable, string Source, TemplateTag Tag, int Depth, IReadOnlyList<string>? Guards = null);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 2.5; R2): one comparison or bare truth test of an <c>if</c> chain,
@@ -42,8 +48,15 @@ public sealed record TemplateFor(string Variable, string Source, TemplateTag Tag
 /// <c>c.support</c> through <paramref name="Pipes"/>); <paramref name="Operator"/> and <paramref name="Literal"/> the
 /// comparison's operator and literal as written (<c>==</c>, <c>"completed"</c>), <c>null</c> for a bare test;
 /// <paramref name="Start"/> its offset in the body, so that an <c>else if</c>'s test is placed after the branch before it.
+/// #1508 (ruled by the owner, Q5 of 2026-11-26; R17): <paramref name="Asserts"/> whether the branch is taken only when
+/// <paramref name="Path"/> is there: the test is <c>path</c> or <c>path != null</c> (no pipe), joined to its branch's
+/// condition by <c>&amp;&amp;</c> and parentheses alone (no <c>!</c>, no <c>||</c>). <paramref name="Guards"/> are the paths
+/// asserted before the test is read: by the <c>if</c>s around the chain (<see cref="TemplateOutput.Guards"/>) and by the
+/// tests before it on its condition's <c>&amp;&amp;</c> (Scriban reads no right side of a false <c>&amp;&amp;</c>).
 /// </summary>
-public sealed record TemplateTest(string Text, string? Path, string? Operator, string? Literal, IReadOnlyList<TemplatePipe> Pipes, int Line, int Start);
+public sealed record TemplateTest(
+    string Text, string? Path, string? Operator, string? Literal, IReadOnlyList<TemplatePipe> Pipes, int Line, int Start,
+    bool Asserts = false, IReadOnlyList<string>? Guards = null);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 2.5): an <c>if</c> chain (<c>if</c>, its <c>else if</c>s, its
@@ -175,6 +188,7 @@ public sealed record TemplateSyntax(
         private readonly List<TemplateIf> _ifs = [];
         private readonly List<string> _enclosing = [];
         private readonly List<string> _loops = [];
+        private readonly List<string> _guards = [];
         private int _deepest;
         private int _deepestLine;
 
@@ -222,7 +236,7 @@ public sealed record TemplateSyntax(
                 CollectPaths(expression, paths);
                 _outputs.Add(new TemplateOutput(
                     TagOf(node), Chain(head), steps.Select(Pipe).ToList(), paths, _enclosing.Count, [.. _enclosing], Slice(head), TypeOf(head),
-                    _loops.Count == 0 ? null : _loops[^1]));
+                    _loops.Count == 0 ? null : _loops[^1], [.. _guards]));
             }
 
             Walk(node.Expression);
@@ -237,7 +251,7 @@ public sealed record TemplateSyntax(
         public override void Visit(ScriptForStatement node)
         {
             var variable = node.Variable is ScriptVariable named ? named.Name : Slice(node.Variable);
-            _fors.Add(new TemplateFor(variable, Slice(node.Iterator), TagOf(node), _enclosing.Count));
+            _fors.Add(new TemplateFor(variable, Slice(node.Iterator), TagOf(node), _enclosing.Count, [.. _guards]));
 
             if (node.Iterator is { } iterator && DialectRules.IsNoList(iterator))
             {
@@ -273,20 +287,21 @@ public sealed record TemplateSyntax(
         public override void Visit(ScriptIfStatement node)
         {
             var tests = new List<TemplateTest>();
-            var bodies = new List<ScriptNode?>();
+            var bodies = new List<(ScriptNode? Body, List<string> Asserted)>();
             var hasElse = false;
 
             for (ScriptConditionStatement? branch = node; branch is not null;)
             {
                 if (branch is ScriptIfStatement test)
                 {
+                    var asserted = new List<string>();
                     if (test.Condition is { } condition)
                     {
-                        Split(condition, tests);
+                        Split(condition, tests, true, asserted);
                         Walk(condition);
                     }
 
-                    bodies.Add(test.Then);
+                    bodies.Add((test.Then, asserted));
                     branch = test.Else;
                 }
                 else
@@ -294,11 +309,11 @@ public sealed record TemplateSyntax(
                     if (branch is ScriptElseStatement otherwise)
                     {
                         hasElse = true;
-                        bodies.Add(otherwise.Body);
+                        bodies.Add((otherwise.Body, []));
                     }
                     else
                     {
-                        bodies.Add(branch);
+                        bodies.Add((branch, []));
                     }
 
                     branch = null;
@@ -306,7 +321,16 @@ public sealed record TemplateSyntax(
             }
 
             _ifs.Add(new TemplateIf(TagOf(node), tests, hasElse, _enclosing.Count));
-            Nest("if", node, () => bodies.ForEach(Walk));
+            Nest("if", node, () =>
+            {
+                foreach (var (body, asserted) in bodies)
+                {
+                    var outer = _guards.Count;
+                    _guards.AddRange(asserted);
+                    Walk(body);
+                    _guards.RemoveRange(outer, _guards.Count - outer);
+                }
+            });
         }
 
         // ----- expressions -----------------------------------------------------------
@@ -416,8 +440,12 @@ public sealed record TemplateSyntax(
             }
         }
 
-        /// <summary>The tests of one condition: <c>!</c>, <c>&amp;&amp;</c>, <c>||</c> and parentheses taken apart.</summary>
-        private void Split(ScriptExpression? condition, List<TemplateTest> tests)
+        /// <summary>
+        /// The tests of one condition: <c>!</c>, <c>&amp;&amp;</c>, <c>||</c> and parentheses taken apart. #1508 (Q5, R17):
+        /// <paramref name="spine"/> whether the condition holds only when this part does (reached by <c>&amp;&amp;</c> and
+        /// parentheses alone); <paramref name="asserted"/> the paths the tests on the spine read so far assert are there.
+        /// </summary>
+        private void Split(ScriptExpression? condition, List<TemplateTest> tests, bool spine, List<string> asserted)
         {
             if (condition is null)
             {
@@ -427,12 +455,16 @@ public sealed record TemplateSyntax(
             var expression = DialectRules.Unwrap(condition);
             switch (expression)
             {
-                case ScriptBinaryExpression { Operator: ScriptBinaryOperator.And or ScriptBinaryOperator.Or } both:
-                    Split(both.Left, tests);
-                    Split(both.Right, tests);
+                case ScriptBinaryExpression { Operator: ScriptBinaryOperator.And } both:
+                    Split(both.Left, tests, spine, asserted);
+                    Split(both.Right, tests, spine, asserted);
+                    return;
+                case ScriptBinaryExpression { Operator: ScriptBinaryOperator.Or } either:
+                    Split(either.Left, tests, false, asserted);
+                    Split(either.Right, tests, false, asserted);
                     return;
                 case ScriptUnaryExpression { Operator: ScriptUnaryOperator.Not, Right: { } negated }:
-                    Split(negated, tests);
+                    Split(negated, tests, false, asserted);
                     return;
                 case ScriptBinaryExpression { Operator: ScriptBinaryOperator.CompareEqual or ScriptBinaryOperator.CompareNotEqual
                     or ScriptBinaryOperator.CompareLess or ScriptBinaryOperator.CompareGreater
@@ -442,10 +474,12 @@ public sealed record TemplateSyntax(
                     var literal = sides.FirstOrDefault(s => s is ScriptLiteral);
                     var tested = sides.FirstOrDefault(s => s is not ScriptLiteral);
                     var (head, steps) = tested is null ? (null, []) : Decompose(tested);
-                    tests.Add(new TemplateTest(
+                    var written = comparison.OperatorToken?.Value ?? comparison.OperatorAsText;
+                    var asserts = spine && steps.Count == 0 && written == "!=" && literal is ScriptLiteral { Value: null } && Chain(head) is not null;
+                    Add(tests, asserted, asserts, new TemplateTest(
                         Slice(comparison),
                         Chain(head),
-                        comparison.OperatorToken?.Value ?? comparison.OperatorAsText,
+                        written,
                         literal is null ? null : Slice(literal),
                         steps.Select(Pipe).ToList(),
                         LineOf(comparison),
@@ -456,10 +490,23 @@ public sealed record TemplateSyntax(
                 default:
                 {
                     var (head, steps) = Decompose(expression);
-                    tests.Add(new TemplateTest(
+                    Add(tests, asserted, spine && steps.Count == 0 && Chain(head) is not null, new TemplateTest(
                         Slice(expression), Chain(head), null, null, steps.Select(Pipe).ToList(), LineOf(expression), Math.Max(expression.Span.Start.Offset, 0)));
                     return;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Adds <paramref name="test"/> with the guards in force where it is read (the <c>if</c>s around, then what the spine
+        /// asserted before it); when it <paramref name="asserts"/> its path, the tests after it on the spine read under it too.
+        /// </summary>
+        private void Add(List<TemplateTest> tests, List<string> asserted, bool asserts, TemplateTest test)
+        {
+            tests.Add(test with { Asserts = asserts, Guards = [.. _guards, .. asserted] });
+            if (asserts)
+            {
+                asserted.Add(test.Path!);
             }
         }
 

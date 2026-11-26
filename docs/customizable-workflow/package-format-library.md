@@ -1599,6 +1599,13 @@ The rules for one read:
   there; in a body `if` it is S05-007, and a `for` over it is S05-006. Every step of every other head is read too, so
   no member read passes untyped. What stays untyped is said elsewhere: a read under a loop whose own source is
   refused (said there), and a renderer's `value` when its `input` is refused (S02-017).
+- #1508 (Q5, R17): `TypedRead.Through` lists each object a read steps through that can be null, as written
+  (`FormatReads.NullableSteps`: the head's value when the head can be null, a field whose format admits `null`), and
+  `AfterFirstPass` those null only before a second pass. Each must be guarded, else A11-009 names the outermost. The
+  guards are `TemplateOutput.Guards`, `TemplateFor.Guards` and `TemplateTest.Guards` (the paths the enclosing `if`
+  branches assert, `TemplateTest.Asserts`: a bare test or `!= null` on the `&&` spine of its condition, an `else`
+  asserting nothing), and the header rules of the text (`NullableGuards.Asserted`: the node's, deliverable's,
+  snippet's or macro's `if`, and a part's own). Both are compared as written and rooted.
 - These are refused:
   - a root the site does not read: S05-020, or S05-021 for `profile.*` in a prompt, a part or a `rendered` node;
   - an unknown root or member, at any step: S05-011;
@@ -1628,7 +1635,8 @@ A body `if` (part 05 § 2.5) tests only these:
 - a loop position: `for.index` only compared with a literal;
 - a `.state` compared with `==` or `!=` to a state of the closed set (`completed`, `skipped`, `not_run`, else
   S05-010);
-- whether a check passed: `check.<…>.value.pass`, bare or compared with `true` or `false`.
+- whether a check passed: `check.<…>.value.pass`, bare or compared with `true` or `false`;
+- #1508 (Q5): whether an object that can be null is there, bare or `!= null`, with no pipe (A11-009's guard).
 
 Any other test, a piped one included, is S05-007. A chain that branches on a state with no `else` handles every
 state, else S05-009 for each path tested. A renderer's body may test its own `value` in any way, pipes included

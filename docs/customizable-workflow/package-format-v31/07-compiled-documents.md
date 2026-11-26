@@ -829,12 +829,18 @@ A11-007, [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/
 - *"The workflow couldn't be published because the engine failed. Tell the operator."* An engine fault at publish; the
   fault's type goes to the operator's log, never to the report.
 
-**At publish, from the templates** (this implementation's sentence A11-012, ruled by the owner on
-[#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), ruling 12: every read is checked at publish):
+**At publish, from the templates** (this implementation's sentences A11-012 and A11-009, ruled by the owner on
+[#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), ruling 12: every read is checked at publish,
+and Q5: a member read through a nullable object is told at publish, never at run time):
 - *"<Subject> uses <part or macro> at line <n> in an expression; a part or a macro is placed on its own, as {{ <part or
   macro> }}, never piped or used in an expression."* A template reads `part.<id>`, `macro.<id>` or `macro.<folder>.<id>`
   other than alone in its tag ([part 05 § 2.6](05-templates-and-macros.md#26-placement-forms-and-whitespace)): piped, as
   a pipe's argument or beside another value. The run reads a unit there as nothing, so it is refused at publish.
+- *"<Subject> reads <path> at line <n> through <object path>, which can be null. Put the read inside {{ if <object
+  path> }}."* A template read steps through an object that can be null (an input not required, a field whose format
+  admits `null`, a node that may not run) with no guard on it ([part 05 § 2.5](05-templates-and-macros.md#25-a-body-if-tests-recorded-facts-only)).
+  The render fails when the object is null, so it is refused at publish; `<object path>` is the outermost object not
+  guarded.
 
 **Warnings** (never blocking):
 - *"Test '<test id>' stubs <row key>, which doesn't run."*

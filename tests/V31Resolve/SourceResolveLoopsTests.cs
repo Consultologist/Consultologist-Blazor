@@ -353,7 +353,8 @@ public class SourceResolveLoopsTests
             h["while"] = JsonNode.Parse(rule);
         })
         .With("nodes/refine/draft_summary.md", Agent("Drafting the summary", "\"plaintext\"",
-            "Summarise the note in two sentences for Dr A. Sample.\n\n{{ pass.previous.node.judge.value.verdict }}\n"));
+            // #1508 (Q5, A11-009): there is no previous pass on the first, so its judge's verdict is read under its guard.
+            "Summarise the note in two sentences for Dr A. Sample.\n\n{{ if pass.previous.node.judge.value }}{{ pass.previous.node.judge.value.verdict }}{{ end }}\n"));
 
     [Theory]
     [InlineData("node.judge.value.verdict")]

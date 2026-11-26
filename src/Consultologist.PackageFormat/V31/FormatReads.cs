@@ -125,6 +125,44 @@ public static class FormatReads
         return new ReadResult(current, ReadFault.None, nullable, null);
     }
 
+    /// <summary>
+    /// #1508 (ruled by the owner, Q5 of 2026-11-26; R17): the positions in <paramref name="steps"/> (a read that
+    /// <see cref="Read"/> types, beginning with <c>value</c>) after which the value read so far can be null and the next step
+    /// reads a field of it: the objects the read steps through that can be null. Position 0 is the value itself, null when
+    /// <paramref name="headNullable"/> (an input not required, a node that may not run) or when its format admits null; a
+    /// later position, when that field's format admits null. A last step <c>title</c> that is the label read of an enum is no
+    /// field. Empty for a read of <c>content</c> or <c>title</c>, or with no field step.
+    /// </summary>
+    internal static IReadOnlyList<int> NullableSteps(JsonNode? format, IReadOnlyList<string> steps, FormatSet formats, bool headNullable)
+    {
+        var found = new List<int>();
+        if (format is null || steps.Count < 2 || steps[0] != "value")
+        {
+            return found;
+        }
+
+        var view = Look(format, FormatTypes.Defs(format), formats);
+        var nullable = headNullable || view.Nullable;
+        for (var i = 1; i < steps.Count && steps[i] is { } step; i++)
+        {
+            var field = Field(view, step, formats, out _, out var viaNull);
+            if (field is null)
+            {
+                break;
+            }
+
+            if (nullable || viaNull)
+            {
+                found.Add(i - 1);
+            }
+
+            view = Look(field, FormatTypes.Defs(field), formats);
+            nullable = view.Nullable;
+        }
+
+        return found;
+    }
+
     /// <summary>S02-018 for <c>input.&lt;id&gt;</c> read bare; <paramref name="path"/> is the file.</summary>
     public static SourceRefusal BareInput(string id, string path)
     {

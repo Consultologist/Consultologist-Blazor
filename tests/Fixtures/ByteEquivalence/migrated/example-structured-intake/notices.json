@@ -2,6 +2,8 @@
   "notices": [
     "Hand edit needed in nodes/sections_senior_review_section/senior_review_section.md, body: the body's if at line 1 does more than choose text to show; write it as parts with their own if.",
     "deliverables/notes_index.md, if: size(input.prior_notes.value) is null when input.prior_notes.value is null, where 30 counted 0.",
+    "nodes/sections_note_section/index.json: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/sections_note_section/note_section.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "nodes/sections_senior_review_section/index.json: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "nodes/sections_senior_review_section/senior_review_section.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "No snapshot test was written: hand edits remain."

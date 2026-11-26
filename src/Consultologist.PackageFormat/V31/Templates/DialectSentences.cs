@@ -319,6 +319,14 @@ public static class DialectSentences
     public static SourceRefusal UnitInExpression(string subject, string unit, int line, string path) =>
         new("A11-012", $"{subject} uses {unit} at line {Line(line)} in an expression; a part or a macro is placed on its own, as {{{{ {unit} }}}}, never piped or used in an expression.", path);
 
+    /// <summary>
+    /// A11-009 (#1508, ruled by the owner, Q5 of 2026-11-26; R17; part 05 § 2.5): <paramref name="readPath"/> steps through
+    /// <paramref name="objectPath"/>, an object that can be null (an input not required, a nullable field, a node that may
+    /// not run), with no <c>{{ if }}</c> on it around the read: the render would fail when it is null.
+    /// </summary>
+    public static SourceRefusal ReadsThroughNullable(string subject, string readPath, int line, string objectPath, string path) =>
+        new("A11-009", $"{subject} reads {readPath} at line {Line(line)} through {objectPath}, which can be null. Put the read inside {{{{ if {objectPath} }}}}.", path);
+
     /// <summary>A07-008: a bare <c>node.x</c>, <c>input.x</c>, <c>check.x</c>, <c>param.x</c> (or <c>item</c>); <paramref name="member"/> is <c>.value</c>, <c>.content</c> or <c>.title</c>.</summary>
     public static SourceRefusal ReadsBare(string subject, string readPath, int line, string member, string path) =>
         new("A07-008", $"{subject} reads {readPath} at line {Line(line)}; read {member} of it.", path);

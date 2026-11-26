@@ -20,8 +20,15 @@ public sealed record TemplateHost(
 /// (<c>node.refine.draft_summary</c>), and <paramref name="Canonical"/> the path with its head rooted
 /// (<c>node.refine.draft_summary.content</c>; the written path when the two are one). <paramref name="Format"/> is the
 /// format read, <c>null</c> when it cannot be typed yet (a deferred loop source, a snippet the package does not define).
+/// #1508 (ruled by the owner, Q5 of 2026-11-26; R17): <paramref name="Nullable"/> per step: <paramref name="Through"/> is each
+/// object the read steps through that can be null, as written (<c>input.intake.value</c>, a prefix of
+/// <paramref name="Written"/>), outermost first; empty when the read steps through none (a nullable last step is not one).
+/// <paramref name="AfterFirstPass"/> are those of them that can be null only because there is no previous pass
+/// (<c>pass.previous.node.judge.value</c>, where <c>judge</c> runs in every pass).
 /// </summary>
-public sealed record TypedRead(string Written, string Canonical, string? Head, string? RootedHead, JsonNode? Format, bool Nullable, int Line);
+public sealed record TypedRead(
+    string Written, string Canonical, string? Head, string? RootedHead, JsonNode? Format, bool Nullable, int Line,
+    IReadOnlyList<string>? Through = null, IReadOnlyList<string>? AfterFirstPass = null);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 2.6): one placement of a body: the <paramref name="Unit"/> as written
@@ -340,7 +347,7 @@ public static partial class SourceTemplates
             foreach (var loop in syntax.Fors)
             {
                 if (Path(loop.Source) is { } source)
-                    Record(loop.Tag.Start, order++, Type(source, loop.Tag.Line, loop.Tag.Start, loop.Depth));
+                    Guarded(Record(loop.Tag.Start, order++, Type(source, loop.Tag.Line, loop.Tag.Start, loop.Depth)), loop.Guards, Scope(loop.Tag.Start, loop.Depth));
             }
 
             foreach (var output in syntax.Outputs)
@@ -362,6 +369,7 @@ public static partial class SourceTemplates
 
                     var typed = Typed(path, output.Tag.Line, scope);
                     var read = Record(output.Tag.Start, order++, typed);
+                    Guarded(read, output.Guards, scope);
                     // #1508 (ruling 12): a part or a macro is placed on its own; read in an expression it is no placement
                     // (the run reads it as null there), so it is refused (A11-012).
                     if (typed is (null, null) && IsUnit(path) && scope.All(v => v.Name != path.Split('.')[0]) && Unit(output) is null)
@@ -540,13 +548,15 @@ public static partial class SourceTemplates
             foreach (var test in chain.Tests)
             {
                 var read = test.Path is { } path ? Typed(path, test.Line, scope) : (null, null);
-                Record(test.Start, order++, read);
+                Guarded(Record(test.Start, order++, read), test.Guards, scope);
                 if (read.Item2 != null || host.Site == TemplateSite.Renderer)
                     continue;
 
                 switch (DialectRules.TestForm(test))
                 {
                     case BodyTest.Position or BodyTest.CheckPassed:
+                        break;
+                    case BodyTest.Refused when IsPresence(test, read.Item1):
                         break;
                     case BodyTest.State when read.Item1 is null || IsState(read.Item1.Format):
                         var literal = test.Literal![1..^1];
@@ -579,6 +589,77 @@ public static partial class SourceTemplates
                     Refusals.Add(DialectSentences.BranchesWithoutEveryState(
                         host.Subject, path, DialectRules.States.Where(states.Contains).ToList(), missing, host.Path));
                 }
+            }
+        }
+
+        /// <summary>
+        /// #1508 (ruled by the owner, Q5 of 2026-11-26; R17; part 05 § 2.5): whether <paramref name="test"/> asks whether an
+        /// object that can be null is there: <c>path</c> or <c>path != null</c>, with no pipe, where <paramref name="read"/>
+        /// (the path typed) can be null and is an object (or a union of objects). The guard A11-009 asks for.
+        /// </summary>
+        private bool IsPresence(TemplateTest test, TypedRead? read) =>
+            test.Pipes.Count == 0 && (test.Operator == null || (test.Operator == "!=" && test.Literal == "null"))
+            && read is { Nullable: true, Format: { } format } && FormatTypes.Shape(format, formats) is FormatShape.Object or FormatShape.Union;
+
+        /// <summary>
+        /// #1508 (Q5, R17): A11-009 when <paramref name="read"/> steps through an object that can be null (<see cref="TypedRead.Through"/>)
+        /// that is not guarded, naming the outermost. An object is guarded when one of <paramref name="guards"/> (the paths the
+        /// body <c>if</c>s around the read assert are there) or of the header rules' (<see cref="HeaderGuards"/>) is it, as
+        /// written or rooted (each typed with <paramref name="scope"/>); one null only before a second pass
+        /// (<see cref="TypedRead.AfterFirstPass"/>) is also guarded by a header rule that the pass is past its first.
+        /// </summary>
+        private void Guarded(TypedRead? read, IReadOnlyList<string>? guards, List<ForVariable> scope)
+        {
+            if (read?.Through is not { Count: > 0 } through)
+                return;
+            var held = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var guard in (guards ?? []).Concat(HeaderGuards))
+            {
+                held.Add(guard);
+                if (typing.Type(guard, read.Line, scope).Read is { } typed)
+                    held.Add(typed.Canonical);
+            }
+
+            var written = read.Written.Split('.').Length;
+            foreach (var prefix in through)
+            {
+                var canonical = read.Canonical.Split('.');
+                var rooted = string.Join('.', canonical[..Math.Max(1, canonical.Length - (written - prefix.Split('.').Length))]);
+                var guarded = held.Contains(prefix) || held.Contains(rooted)
+                    || (read.AfterFirstPass?.Contains(prefix, StringComparer.Ordinal) == true
+                        && held.Any(h => h.EndsWith(".previous", StringComparison.Ordinal) && prefix.StartsWith(h + ".", StringComparison.Ordinal)));
+                if (!guarded)
+                {
+                    Refusals.Add(DialectSentences.ReadsThroughNullable(host.Subject, read.Written, read.Line, prefix, host.Path));
+                    return;
+                }
+            }
+        }
+
+        private IReadOnlyList<string>? headerGuards;
+
+        /// <summary>
+        /// #1508 (Q5, R17): the paths this body's header rules assert are there whenever it renders: the <c>if</c> of the node
+        /// whose prompt or <c>rendered</c> body it is (a part's text: and the part's own <c>if</c>), of the deliverable, of the
+        /// snippet or of the macro (<see cref="NullableGuards.Asserted"/>).
+        /// </summary>
+        private IReadOnlyList<string> HeaderGuards => headerGuards ??= HeaderRules().SelectMany(NullableGuards.Asserted).Distinct(StringComparer.Ordinal).ToList();
+
+        private IEnumerable<JsonNode?> HeaderRules()
+        {
+            switch (host.Declaration)
+            {
+                case SourceLeaf leaf when host.Site is TemplateSite.Prompt or TemplateSite.Rendered or TemplateSite.PartText:
+                    yield return leaf.Header["if"];
+                    if (host.Site == TemplateSite.PartText && host.PartId is { } part && leaf.Header["parts"] is JsonObject parts)
+                        yield return parts[part]?["if"];
+                    break;
+                case SourceDeliverable deliverable when host.Site == TemplateSite.Deliverable:
+                    yield return deliverable.Header["if"];
+                    break;
+                case SourceText text when host.Site is TemplateSite.SnippetBody or TemplateSite.MacroInstruction or TemplateSite.MacroBody:
+                    yield return text.Header["if"];
+                    break;
             }
         }
 
