@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -12,8 +13,10 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// R1), and the operand is listed; on anything else it stays <c>!</c>, which the checker holds to a boolean
 /// (S03-009).</item>
 /// <item>#1508 (comment 5, item 2): text compared with a literal by <c>===</c> or <c>!==</c> (S03-002 as written) is
-/// membership in a list of that literal, <c>{ "in": [x, ["lit"]] }</c> or its negation, which answers as 30's comparison
-/// did, and is listed; a comparison of the <c>size</c> of a list that can be null is written with the null test that
+/// membership in a list of that literal, <c>{ "in": [x, ["lit"]] }</c> or its negation, and is listed; with blank text
+/// (<c>""</c> or white space), where 30 read an input's text not given or blank as <c>""</c> and 31 reads it as null or
+/// as given, a text input read whole compared with <c>""</c> is <c>x === null or x in [""]</c> (listed), and any other comparison with
+/// blank text that reads an input is refused (A10-076, a hand edit's reason); a comparison of the <c>size</c> of a list that can be null is written with the null test that
 /// counts a null list 0, as 30 did.</item>
 /// <item>A condition is checked at a site of kind <see cref="ExpressionSiteKind.NodeIf"/>, so it yields a boolean
 /// (S03-025); a value (a <c>let</c>, a <c>case</c> subject) at an <see cref="ExpressionSiteKind.Expression"/> site,
@@ -35,6 +38,12 @@ internal static class ConditionTyping
 
         /// <summary>Each text compared with a literal written as <c>in</c> (<see cref="ConversionResult.TextLiterals"/>).</summary>
         public IReadOnlyList<BlankConversion> TextLiterals { get; init; } = [];
+
+        /// <summary>Each text input read whole compared with <c>""</c>, written with its null test (<see cref="ConversionResult.EmptyComparisons"/>).</summary>
+        public IReadOnlyList<BlankConversion> EmptyComparisons { get; init; } = [];
+
+        /// <summary>What the rewrite refuses, each as its id and sentence (A10-076), before the checker is asked.</summary>
+        public IReadOnlyList<(string Id, string Sentence)> Refusals { get; init; } = [];
     }
 
     /// <summary>
@@ -55,12 +64,14 @@ internal static class ConditionTyping
             ? new ExpressionSite(ExpressionSiteKind.NodeIf, subject, "if", "", null, null)
             : new ExpressionSite(ExpressionSiteKind.Expression, subject, "expression", "", null, declared);
 
-        var found = new Found();
+        var found = new Found(text);
         logic = Blank(logic, operand, scope, conversion.Formats, nots, found);
         return new Typed(logic, ExpressionChecker.Check(logic, site, scope, conversion.Formats), found.Blanks)
         {
             TrimBlanks = found.Trims,
             TextLiterals = found.Literals,
+            EmptyComparisons = found.Empties,
+            Refusals = found.Refusals,
         };
     }
 
@@ -133,13 +144,20 @@ internal static class ConditionTyping
     }
 
     /// <summary>What the rewrite listed: the <c>!x</c>s that became <c>blank</c>, the trims compared with <c>""</c>, the texts compared with a literal.</summary>
-    private sealed class Found
+    private sealed class Found(string text)
     {
+        /// <summary>The expression as the author wrote it, which a refusal quotes.</summary>
+        public string Text { get; } = text;
+
         public List<BlankConversion> Blanks { get; } = [];
 
         public List<BlankConversion> Trims { get; } = [];
 
         public List<BlankConversion> Literals { get; } = [];
+
+        public List<BlankConversion> Empties { get; } = [];
+
+        public List<(string Id, string Sentence)> Refusals { get; } = [];
     }
 
     /// <summary>
@@ -193,7 +211,7 @@ internal static class ConditionTyping
                     return blank;
                 }
 
-                if (TextLiteral(name, operands, operand, scope, formats, found.Literals) is { } member)
+                if (TextLiteral(name, operands, operand, scope, formats, found) is { } member)
                 {
                     return member;
                 }
@@ -259,10 +277,16 @@ internal static class ConditionTyping
     /// <summary>
     /// #1508 (comment 5, item 2): a text <c>x</c> compared by <c>===</c> or <c>!==</c> with a string literal, either side
     /// (S03-002 as written), is <c>{ "in": [x, ["lit"]] }</c> or <c>{ "!": [{ "in": [x, ["lit"]] }] }</c>, listed in
-    /// <paramref name="literals"/>; null for anything else. Membership is exact, as 30's comparison was, and a null
-    /// <c>x</c> is in no list of text, as 30's null equalled no text.
+    /// <paramref name="found"/>; null for anything else. Membership is exact, as 30's comparison was, and a null <c>x</c> is
+    /// in no list of text, as 30's null equalled no text. Blank text is the exception (Task 30 fix round 1): 30 read an
+    /// input's text not given or blank (white space alone, a field's too) as <c>""</c>, where 31's start leaves out a text
+    /// input absent or blank, so it reads null, and keeps a field as given. A text input read whole compared with
+    /// <c>""</c> is <c>x === null or x in [""]</c> (<c>x !== null and not (x in [""])</c> for <c>!==</c>), the null test
+    /// written as for a nullable list's size (<see cref="NullSafeSize"/>), which answers as 30 did (listed, A10-075); any
+    /// other comparison with blank text that reads an input (<c>lower(input.x) == ""</c>, <c>input.x == " "</c>,
+    /// <c>input.x.y == ""</c>) is refused (A10-076): the migration asks for a hand edit rather than a different answer.
     /// </summary>
-    private static JsonNode? TextLiteral(string name, JsonNode? operands, ExpressionSite operand, Scope scope, FormatSet formats, List<BlankConversion> literals)
+    private static JsonNode? TextLiteral(string name, JsonNode? operands, ExpressionSite operand, Scope scope, FormatSet formats, Found found)
     {
         if (name is not ("===" or "!==") || operands is not JsonArray { Count: 2 } pair)
         {
@@ -279,12 +303,42 @@ internal static class ConditionTyping
             return null;
         }
 
-        var member = new JsonObject { ["in"] = new JsonArray(x.DeepClone(), new JsonArray(literal!.DeepClone())) };
+        var written = JsonLogicPrinter.Print(new JsonObject { [name] = pair.DeepClone() });
+        var reads = JsonLogicShape.Paths(x);
+        var text = literal!.GetValue<string>();
+        if (text.EnumerateRunes().All(Rune.IsWhiteSpace))
+        {
+            if (text.Length == 0 && IsTextInputReadWhole(x))
+            {
+                var inEmpty = new JsonObject { ["in"] = new JsonArray(x.DeepClone(), new JsonArray("")) };
+                JsonNode empty = name == "==="
+                    ? new JsonObject { ["or"] = new JsonArray(new JsonObject { ["==="] = new JsonArray(x.DeepClone(), null) }, inEmpty) }
+                    : new JsonObject
+                    {
+                        ["and"] = new JsonArray(
+                            new JsonObject { ["!=="] = new JsonArray(x.DeepClone(), null) }, new JsonObject { ["!"] = new JsonArray(inEmpty) }),
+                    };
+                found.Empties.Add(new BlankConversion(written, JsonLogicPrinter.Print(empty), reads));
+                return empty;
+            }
+
+            if (reads.Any(IsInputRead))
+            {
+                found.Refusals.Add((BlankTextId, MigrationSentences.ComparedWithBlankText(found.Text, JsonLogicPrinter.Print(x))));
+                return null;
+            }
+        }
+
+        var member = new JsonObject { ["in"] = new JsonArray(x.DeepClone(), new JsonArray(literal.DeepClone())) };
         JsonNode result = name == "===" ? member : new JsonObject { ["!"] = new JsonArray(member) };
-        literals.Add(new BlankConversion(
-            JsonLogicPrinter.Print(new JsonObject { [name] = pair.DeepClone() }), JsonLogicPrinter.Print(result), JsonLogicShape.Paths(x)));
+        found.Literals.Add(new BlankConversion(written, JsonLogicPrinter.Print(result), reads));
         return result;
     }
+
+    private const string BlankTextId = "A10-076";
+
+    /// <summary>Whether <paramref name="path"/> reads an input (<c>input.&lt;id&gt;.content</c>, <c>.value</c> or a field of it), whose blank text 30 read as <c>""</c>.</summary>
+    private static bool IsInputRead(string path) => path.Split('.') is ["input", { Length: > 0 }, "content" or "value", ..];
 
     /// <summary>The comparisons a <c>size</c> may be an operand of, each as it holds for two numbers.</summary>
     private static readonly Dictionary<string, Func<double, double, bool>> Comparisons = new(StringComparer.Ordinal)

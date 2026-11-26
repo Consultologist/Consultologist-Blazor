@@ -63,6 +63,11 @@ public static class WorkflowConditionConverter
         }
 
         var typed = ConditionTyping.Type(logic, expression, scope, kind, declared, written);
+        if (typed.Refusals.Count > 0)
+        {
+            return new ConversionResult(null, null, [], [.. typed.Refusals.Select(r => r.Sentence)]) { NoticeIds = [.. typed.Refusals.Select(r => r.Id)] };
+        }
+
         if (typed.Check.Refusals.Count > 0)
         {
             return new ConversionResult(null, null, [], [.. typed.Check.Refusals.Select(r => r.Sentence)])
@@ -77,6 +82,7 @@ public static class WorkflowConditionConverter
             Blanks = typed.Blanks,
             TrimBlanks = typed.TrimBlanks,
             TextLiterals = typed.TextLiterals,
+            EmptyComparisons = typed.EmptyComparisons,
         };
     }
 
@@ -152,11 +158,19 @@ public sealed record ConversionResult(JsonNode? Logic, string? ResultFormat, IRe
 
     /// <summary>
     /// #1508 (comment 5, item 2): each text compared with a literal by <c>==</c> or <c>!=</c> (S03-002 at 31) written as
-    /// membership, <c>{ "in": [x, ["lit"]] }</c> or its negation, which answers as 30's comparison did:
+    /// membership, <c>{ "in": [x, ["lit"]] }</c> or its negation, which answers as 30's comparison did (a blank literal
+    /// is the exception: <see cref="EmptyComparisons"/>, or a refusal):
     /// <see cref="BlankConversion.Written"/> the comparison as the printer shows it, <c>Printed</c> the 31 rule. What the
     /// migration says (A10-074).
     /// </summary>
     public IReadOnlyList<BlankConversion> TextLiterals { get; init; } = [];
+
+    /// <summary>
+    /// #1508 (comment 5, item 2; Task 30 fix round 1): each text input read whole compared with <c>""</c> written
+    /// <c>x === null or x in [""]</c> (or <c>x !== null and not (x in [""])</c>): 30 read the input not given or blank as
+    /// <c>""</c>, 31's start leaves it out and it reads null, so the null test answers as 30's comparison did. What the migration says (A10-075).
+    /// </summary>
+    public IReadOnlyList<BlankConversion> EmptyComparisons { get; init; } = [];
 
     /// <summary>The id of each notice's sentence, in the order of <see cref="Notices"/>: <c>S10-003</c>, or the 31 checker's own (<c>S03-008</c>, …).</summary>
     public IReadOnlyList<string> NoticeIds { get; init; } = [];

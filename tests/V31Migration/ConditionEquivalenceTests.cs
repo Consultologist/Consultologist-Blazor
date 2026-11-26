@@ -32,12 +32,15 @@ public class ConditionEquivalenceTests
 
     /// <summary>
     /// The expressions § 2.2's table maps (and the package expressions) that give no logic once typed, each with its
-    /// notice ids (part 10 § 2.3 as written: a list mixing formats is A04-003; an optional read into a non-nullable field is A04-009; builtins with no row are S10-003). The § 2.3
+    /// notice ids (part 10 § 2.3 as written: an input's text compared with blank text other than a text input read whole
+    /// with <c>""</c> is A10-076; a list mixing formats is A04-003; an optional read into a non-nullable field is A04-009; builtins with no row are S10-003). The § 2.3
     /// refusals (<c>refuse.*</c>) are not listed here: every one of them gives no logic by design.
     /// </summary>
     private static readonly Dictionary<string, string[]> NotConverted = new(StringComparer.Ordinal)
     {
         ["composer-sources.topic_tally.let"] = ["S10-003", "S10-003"],
+        ["row.input.x-y-empty"] = ["A10-076"],
+        ["row.downcase-empty"] = ["A10-076"],
         ["row.let-object"] = ["A04-009"],
         ["row.let-array"] = ["A04-003"],
     };

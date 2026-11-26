@@ -598,6 +598,34 @@ public class MigrateNodesTests
         V31Contract.AssertSentence(new SourceRefusal("A10-074", literal, ""));
     }
 
+    /// <summary>
+    /// #1508 (comment 5, item 2; Task 30 fix round 1): the usual "was it given?" gate on a text input, <c>!= ""</c>, is
+    /// <c>x !== null and not (x in [""])</c>, said with A10-075, since 31 reads the input not given or blank as null where 30 read <c>""</c>;
+    /// another comparison of an input's text with blank text (<c>lower(x) == ""</c>) is a hand edit (A10-076).
+    /// </summary>
+    [Fact]
+    public void ATextInputComparedWithEmptyText_IsNullTested_AndAnyOtherIsAHandEdit()
+    {
+        var result = Migrated("composer-sources", root => Node(root, "plan_gate")["if"] = "input.consult_draft != \"\"");
+
+        Assert.Equal(
+            """{"and":[{"!==":[{"var":"input.consult_draft.content"},null]},{"!":[{"in":[{"var":"input.consult_draft.content"},[""]]}]}]}""",
+            CanonicalJson.Write(Json(result, "nodes/plan_gate/index.json")["if"]));
+        const string notice = "nodes/plan_gate/index.json, if: 'input.consult_draft.content ≠ \"\"' became input.consult_draft.content ≠ null and not (input.consult_draft.content in [\"\"]); 31 reads an input not given or blank as null, where 30 read \"\".";
+        Assert.Contains(notice, result.Notices);
+        Assert.DoesNotContain(result.HandEdits, e => e.Contains("plan_gate", StringComparison.Ordinal));
+        V31Contract.AssertSentence(new SourceRefusal("A10-075", notice, ""));
+
+        const string lowered = "(string.downcase input.consult_draft) == \"\"";
+        var edited = Migrated("composer-sources", root => Node(root, "plan_gate")["if"] = lowered);
+        Assert.Equal(JsonValue.Create(lowered)!.ToJsonString(), Json(edited, "nodes/plan_gate/index.json")["if"]!.ToJsonString());
+        var edit = Assert.Single(edited.HandEdits, e => e.Contains("plan_gate", StringComparison.Ordinal));
+        Assert.Equal(
+            $"Hand edit needed in nodes/plan_gate/index.json, if: The condition '{lowered}' compares lower(input.consult_draft.content), read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
+            edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "nodes/plan_gate/index.json"));
+    }
+
     [Fact]
     public void ASingleSnippetsIf_IsConverted_OrAHandEdit()
     {

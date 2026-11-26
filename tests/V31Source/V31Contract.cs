@@ -203,7 +203,9 @@ internal static class V31Contract
     /// snippet folder's chosen item format that cannot be used, A10-033's sibling, D34; A10-070 to A10-072: an options.json
     /// the migration cannot read, a member that is no option, a choice that is not an object of text, a whenEmpty that is
     /// not release, hold or fail, #1508 R18, area 11 Task 29; A10-073: string.contains on a list, a hand edit's reason, and
-    /// A10-074: text compared with a literal written as in, #1508 comment 5 item 2, area 11 Task 30).
+    /// A10-074: text compared with a literal written as in, #1508 comment 5 item 2, area 11 Task 30; A10-075: a text input
+    /// read whole compared with "" written with its null test, and A10-076: another comparison of an input's text with blank text, a
+    /// hand edit's reason, Task 30 fix round 1).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -280,6 +282,8 @@ internal static class V31Contract
         ["A10-072"] = "options.json gives deliverable '<id>' a whenEmpty that is not release, hold or fail.",
         ["A10-073"] = "The condition '<expression>' uses string.contains on <list>, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.",
         ["A10-074"] = "<file>, <member>: '<comparison>' became <rule>; text is compared with a literal by in at 31.",
+        ["A10-075"] = "<file>, <member>: '<comparison>' became <rule>; 31 reads an input not given or blank as null, where 30 read \"\".",
+        ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

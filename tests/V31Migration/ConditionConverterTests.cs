@@ -50,7 +50,7 @@ public class ConditionConverterTests
     }
 
     [Fact]
-    public void TheRowsOf2_2_AreFortyTwo() => Assert.Equal(42, RowIds().Count);
+    public void TheRowsOf2_2_AreFortyNine() => Assert.Equal(49, RowIds().Count);
 
     [Theory]
     [MemberData(nameof(RowIds))]
@@ -193,6 +193,8 @@ public class ConditionConverterTests
                 ["blankConversions"] = new JsonArray(result.BlankConversions.Select(r => (JsonNode?)JsonValue.Create(r)).ToArray()),
                 ["blanks"] = new JsonArray(result.Blanks.Select(b => (JsonNode?)new JsonObject { ["written"] = b.Written, ["printed"] = b.Printed }).ToArray()),
                 ["trimBlanks"] = new JsonArray(result.TrimBlanks.Select(b => (JsonNode?)new JsonObject { ["written"] = b.Written, ["printed"] = b.Printed }).ToArray()),
+                ["textLiterals"] = new JsonArray(result.TextLiterals.Select(b => (JsonNode?)new JsonObject { ["written"] = b.Written, ["printed"] = b.Printed }).ToArray()),
+                ["emptyComparisons"] = new JsonArray(result.EmptyComparisons.Select(b => (JsonNode?)new JsonObject { ["written"] = b.Written, ["printed"] = b.Printed }).ToArray()),
                 ["notices"] = new JsonArray(result.Notices.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()),
             });
         }
@@ -351,10 +353,15 @@ public class ConditionConverterTests
     [InlineData("0 == input.problems.size", """{"or":[{"===":[{"var":"input.problems.value"},null]},{"===":[0,{"size":[{"var":"input.problems.value"}]}]}]}""")]
     [InlineData("input.problems.size >= input.age", """{"if":[{"===":[{"var":"input.problems.value"},null]},{">=":[0,{"var":"input.age.value"}]},{">=":[{"size":[{"var":"input.problems.value"}]},{"var":"input.age.value"}]}]}""")]
     [InlineData("input.listed.size == 0", """{"===":[{"size":[{"var":"input.listed.value"}]},0]}""")]
+    // The if form's c0 is the comparison with 0 as written: it is not made null-safe for the other operand. Over an
+    // optional age, 0 >= null is false at 31 (an ordering with null, part 03 § 6.2), as the size's own comparison is.
+    [InlineData("input.problems.size >= input.weight", """{"if":[{"===":[{"var":"input.problems.value"},null]},{">=":[0,{"var":"input.weight.value"}]},{">=":[{"size":[{"var":"input.problems.value"}]},{"var":"input.weight.value"}]}]}""")]
     public void TheSizeOfANullableList_Keeps30sMeaning(string expression, string logic)
     {
         var list = Format("""{"type":"array","items":{"$ref":"markdown_block"}}""");
-        var scope = Scope(inputs: new() { ["problems"] = list, ["listed"] = list.DeepClone(), ["age"] = Format("number") }, required: ["listed", "age"]);
+        var scope = Scope(
+            inputs: new() { ["problems"] = list, ["listed"] = list.DeepClone(), ["age"] = Format("number"), ["weight"] = Format("number") },
+            required: ["listed", "age"]);
 
         var result = WorkflowConditionConverter.FromScriban(expression, scope);
 
@@ -400,6 +407,61 @@ public class ConditionConverterTests
 
         Assert.Null(texts.Logic);
         Assert.Equal(["S03-003"], texts.NoticeIds);
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 2; Task 30 fix round 1): 30 read an input's text not given or blank (white space alone, a
+    /// field's too) as <c>""</c>; 31's start leaves out a text input absent or blank, which then reads null, and keeps a
+    /// field as given. So a text input read whole compared with <c>""</c> is <c>x === null or x in [""]</c> (the null test
+    /// written as for a nullable list's size), which answers as 30 did
+    /// (A10-075), and any other comparison of an input's text with blank text is refused for a hand edit (A10-076). Text
+    /// not read from an input (a node's, an item's) keeps <c>in [""]</c>, as 30 kept it as written.
+    /// </summary>
+    private const string PrintedNotEmpty = "input.reason.content ≠ null and not (input.reason.content in [\"\"])";
+
+    [Fact]
+    public void TextComparedWithBlankText_KeepsWhat30Read()
+    {
+        var scope = Scope(
+            inputs: new()
+            {
+                ["reason"] = Format("markdown_block"),
+                ["patient"] = Format("""{"type":"object","additionalProperties":false,"required":["name"],"properties":{"name":{"anyOf":[{"$ref":"markdown_block"},{"type":"null"}]}}}"""),
+            },
+            nodes: new() { ["summary"] = new ConversionRead("node.summary", Format("plaintext")) });
+
+        var empty = WorkflowConditionConverter.FromScriban("input.reason == \"\"", scope);
+        var given = WorkflowConditionConverter.FromScriban("\"\" != input.reason", scope);
+        var node = WorkflowConditionConverter.FromScriban("node.summary.content == \"\"", scope);
+        var lowered = WorkflowConditionConverter.FromScriban("(string.downcase input.reason) == \"\"", scope);
+        var space = WorkflowConditionConverter.FromScriban("input.reason == \" \"", scope);
+        var field = WorkflowConditionConverter.FromScriban("input.patient.name != \"\"", scope);
+
+        Assert.Equal("""{"or":[{"===":[{"var":"input.reason.content"},null]},{"in":[{"var":"input.reason.content"},[""]]}]}""", CanonicalJson.Write(empty.Logic));
+        Assert.Equal("""{"and":[{"!==":[{"var":"input.reason.content"},null]},{"!":[{"in":[{"var":"input.reason.content"},[""]]}]}]}""", CanonicalJson.Write(given.Logic));
+        Assert.Equal("""{"in":[{"var":"node.summary.content"},[""]]}""", CanonicalJson.Write(node.Logic));
+        Assert.Empty(empty.TextLiterals);
+        Assert.Empty(empty.BlankConversions);
+        var listed = Assert.Single(given.EmptyComparisons);
+        Assert.Equal("\"\" ≠ input.reason.content", listed.Written);
+        Assert.Equal(PrintedNotEmpty, listed.Printed);
+        var sentence = MigrationSentences.EmptyBecameNullTested("nodes/gate.md", "if", listed);
+        Assert.Equal($"nodes/gate.md, if: '\"\" ≠ input.reason.content' became {PrintedNotEmpty}; 31 reads an input not given or blank as null, where 30 read \"\".", sentence);
+        V31Contract.AssertSentence(new SourceRefusal("A10-075", sentence, ""));
+
+        foreach (var (refused, text, read) in new[]
+        {
+            (lowered, "(string.downcase input.reason) == \"\"", "lower(input.reason.content)"),
+            (space, "input.reason == \" \"", "input.reason.content"),
+            (field, "input.patient.name != \"\"", "input.patient.value.name"),
+        })
+        {
+            Assert.Null(refused.Logic);
+            Assert.Equal(["A10-076"], refused.NoticeIds);
+            var notice = Assert.Single(refused.Notices);
+            Assert.Equal($"The condition '{text}' compares {read}, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.", notice);
+            V31Contract.AssertSentence(new SourceRefusal("A10-076", notice, ""));
+        }
     }
 
     private static void AssertBlank((string Written, string Printed, string[] Reads) expected, BlankConversion actual)
@@ -554,7 +616,7 @@ public class ConditionConverterTests
     [Theory]
     [InlineData("!(input.kind == \"new\")", """{"!":[{"===":[{"var":"input.kind.value"},"new"]}]}""", "")]
     [InlineData("!input.flag", """{"!":[{"var":"input.flag.value"}]}""", "")]
-    [InlineData("input.reason == \"\"", """{"in":[{"var":"input.reason.content"},[""]]}""", "")]
+    [InlineData("input.reason == \"\"", """{"or":[{"===":[{"var":"input.reason.content"},null]},{"in":[{"var":"input.reason.content"},[""]]}]}""", "")]
     [InlineData("input.kind == \"old\"", null, "S03-023")]
     [InlineData("input.age - -1 > 65", """{">":[{"-":[{"var":"input.age.value"},-1]},65]}""", "")]
     [InlineData("input.age == -1.5", """{"===":[{"var":"input.age.value"},-1.5]}""", "")]

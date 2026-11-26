@@ -422,6 +422,30 @@
       "reads": { "input.patient": { "type": "object", "fields": { "name": "text", "age": "number" } } }
     },
     {
+      "id": "row.input.x-empty",
+      "kind": "condition",
+      "expression": "input.reason == \"\"",
+      "letType": null,
+      "origin": "§ 2.2: a read of an input: `input.x`, `input.x.y`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.input.x-not-empty",
+      "kind": "condition",
+      "expression": "input.reason != \"\"",
+      "letType": null,
+      "origin": "§ 2.2: a read of an input: `input.x`, `input.x.y`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.input.x-y-empty",
+      "kind": "condition",
+      "expression": "input.patient.name == \"\"",
+      "letType": null,
+      "origin": "§ 2.2: a read of an input: `input.x`, `input.x.y`",
+      "reads": { "input.patient": { "type": "object", "fields": { "name": "text" } } }
+    },
+    {
       "id": "row.eq",
       "kind": "condition",
       "expression": "input.kind == \"new\"",
@@ -574,9 +598,41 @@
       "reads": { "input.problems": { "type": "array", "items": "text" } }
     },
     {
+      "id": "row.size.lt",
+      "kind": "condition",
+      "expression": "input.problems.size < 2",
+      "letType": null,
+      "origin": "§ 2.2: `(x | array.size)`, `x.size` on a list",
+      "reads": { "input.problems": { "type": "array", "items": "text" } }
+    },
+    {
+      "id": "row.size.le",
+      "kind": "condition",
+      "expression": "(input.problems | array.size) <= 1",
+      "letType": null,
+      "origin": "§ 2.2: `(x | array.size)`, `x.size` on a list",
+      "reads": { "input.problems": { "type": "array", "items": "text" } }
+    },
+    {
+      "id": "row.size.if",
+      "kind": "condition",
+      "expression": "input.problems.size >= input.count",
+      "letType": null,
+      "origin": "§ 2.2: `(x | array.size)`, `x.size` on a list",
+      "reads": { "input.problems": { "type": "array", "items": "text" }, "input.count": { "type": "number", "required": true } }
+    },
+    {
       "id": "row.downcase",
       "kind": "condition",
       "expression": "(string.downcase input.reason) == \"breathlessness\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.downcase x`, `string.strip x`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.downcase-empty",
+      "kind": "condition",
+      "expression": "(string.downcase input.reason) == \"\"",
       "letType": null,
       "origin": "§ 2.2: `string.downcase x`, `string.strip x`",
       "reads": { "input.reason": "text" }

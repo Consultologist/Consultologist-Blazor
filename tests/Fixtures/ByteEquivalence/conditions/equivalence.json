@@ -487,6 +487,35 @@
       "listed": []
     },
     {
+      "id": "row.input.x-empty",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.input.x-not-empty",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.input.x-y-empty",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "A10-076"
+      ],
+      "cases": 5,
+      "agreed": null,
+      "listed": []
+    },
+    {
       "id": "row.eq",
       "kind": "condition",
       "converted": true,
@@ -710,12 +739,50 @@
       "listed": []
     },
     {
+      "id": "row.size.lt",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.size.le",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
+      "id": "row.size.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 4,
+      "agreed": 4,
+      "listed": []
+    },
+    {
       "id": "row.downcase",
       "kind": "condition",
       "converted": true,
       "noticeIds": [],
       "cases": 5,
       "agreed": 5,
+      "listed": []
+    },
+    {
+      "id": "row.downcase-empty",
+      "kind": "condition",
+      "converted": false,
+      "noticeIds": [
+        "A10-076"
+      ],
+      "cases": 4,
+      "agreed": null,
       "listed": []
     },
     {

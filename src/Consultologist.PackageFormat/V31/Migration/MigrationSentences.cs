@@ -58,6 +58,28 @@ internal static class MigrationSentences
     }
 
     /// <summary>
+    /// A10-075 (#1508, comment 5, item 2; Task 30 fix round 1): in <paramref name="file"/>'s <paramref name="member"/>, a
+    /// text input read whole compared with <c>""</c> (<see cref="BlankConversion.Written"/>) became
+    /// <c>x === null or x in [""]</c> or <c>x !== null and not (x in [""])</c> (<see cref="BlankConversion.Printed"/>):
+    /// 30 read the input not given or blank as <c>""</c>, 31's start leaves it out and it reads null, which the null test
+    /// counts as 30's <c>""</c>, so the rule answers as 30's did.
+    /// </summary>
+    public static string EmptyBecameNullTested(string file, string member, BlankConversion empty)
+    {
+        ArgumentNullException.ThrowIfNull(empty);
+        return $"{file}, {member}: '{empty.Written}' became {empty.Printed}; 31 reads an input not given or blank as null, where 30 read \"\".";
+    }
+
+    /// <summary>
+    /// A10-076 (#1508, comment 5, item 2; Task 30 fix round 1): the 30 condition <paramref name="expression"/>, as written,
+    /// compares <paramref name="text"/> (printed at 31), which reads an input, with blank text: 30 read an input's text
+    /// not given or blank as <c>""</c>, 31 reads it as null or as given, and no 31 form is written for it. A reason S10-002
+    /// gives.
+    /// </summary>
+    public static string ComparedWithBlankText(string expression, string text) =>
+        $"The condition '{expression}' compares {text}, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.";
+
+    /// <summary>
     /// A10-073 (#1508, comment 5, item 2; part 10 § 2.2): the 30 condition <paramref name="expression"/>, as written, calls
     /// <c>string.contains</c> on <paramref name="list"/> (the 31 read, printed), a list: 30 wrote the list as text and
     /// searched it, where 31's <c>in</c> on a list is membership, so no rule is written. A reason S10-002 gives.
