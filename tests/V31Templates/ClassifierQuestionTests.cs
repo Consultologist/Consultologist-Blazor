@@ -53,6 +53,38 @@ public class ClassifierQuestionTests
         Assert.Equal("A11-013", refusal.Id);
     }
 
+    /// <summary>
+    /// A loop over the snippet folder <c>standards</c> whose items are <paramref name="hpi"/> and <paramref name="pmh"/>, its
+    /// agent <c>section</c> a judgement whose prompt is <paramref name="reader"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Checklist(string hpi, string pmh, string reader = "{{ item.content }}\n") =>
+        FolderItemFixture.Folder(hpi, pmh)
+            .Listed("nodes/index.json", "standards")
+            .With("nodes/standards/index.json", Json(Node("for", "Loop standards", ArrayOf(Judgement), false, true,
+                "\"in\": \"snippet.standards\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"section\"], \"ret\": \"node.standards.section\"")))
+            .With("nodes/standards/section.md", Agent("Asking in standards", Judgement, reader));
+
+    [Fact]
+    public void AQuestionInAFolderItemsBody_IsAsked()
+    {
+        // Final review of Part F, finding 3: a judgement in a loop over a snippet folder whose prompt is {{ item.content }}
+        // asks each item's body, package text rendered where it is read (part 05 § 6.2): a checklist, one question an item.
+        Assert.Empty(TemplateFixture.RefusalsOf(Checklist(
+            "Does the draft describe the history of the present illness for Margaret Okafor?\n",
+            "Does the draft list her past conditions?\n")));
+
+        // The near miss: a folder whose items are all empty or white space asks nothing.
+        var refusal = Assert.Single(TemplateFixture.RefusalsOf(Checklist("", " \n\t\n")));
+        Assert.Equal(("A11-013", "nodes/standards/section.md"), (refusal.Id, refusal.Path));
+        V31Contract.AssertSentence(refusal);
+
+        // And a question only an input gives at run time is no question the package asks.
+        var fromAnInput = Assert.Single(TemplateFixture.RefusalsOf(Checklist(
+            "{{ input.consult_draft.content }}\n", "{{ input.consult_draft.content }}\n")));
+        Assert.Equal("A11-013", fromAnInput.Id);
+    }
+
     [Fact]
     public void AnotherFormat_IsNotHeldToIt()
     {
