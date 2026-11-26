@@ -642,7 +642,7 @@ and every file, `manifest.json` included, as text in `Files` (written as UTF-8 w
 1. **Admission**, before anything is read: S09-001 unless 31 is admitted.
 2. **A migration report** (the trailing request member `MigrationReport`, area 10's `migration-report.json`) is
    accepted only from an account in `Operators__AppUserIds`, as the drain's endpoints are (else 403, *"A migration
-   report is accepted only from the operator."*), and only with `oldVersion` and `newVersion` as text (else 400).
+   report is accepted only from the operator."*), and only with `oldVersion` and `newVersion` as text and no member written twice in any object (else 400).
 3. **`Source`** is optional at 31; when given it gets today's format checks and, unless `FromUpload`, today's access
    check. **The target** is decided as at 5–30 (`Target`, `NewPackageSlug`, or the account's first name), so a 31
    publish always lands in the account's private container under an `acct-…` name.

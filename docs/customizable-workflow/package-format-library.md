@@ -2934,7 +2934,7 @@ test's text: a mismatch on text gives hashes, and S07-009's error a path and a k
 | D2 | name and version | the engine assigns the next CalVer as at 5–30 and writes `name` and `version` into `manifest.json` in place (every other member and its order kept) before step 0; the script's `--version` replaces `version` only. A stamped version is never written; an unstamped folder is cleared and rewritten. A manifest without both as text is stored as uploaded and refused with A11-004 |
 | D3 | the request | the same route and record: `Manifest` null, every file in `Files`. The 31 branch is taken when `manifest.json` parses as an object whose `specVersion` is the integer 31. The response gains a trailing `Report`; a refused publish's 400 is `{ errors, error, report }` |
 | D4 | `publishedBy` | `operator-migration` when the request carries `MigrationReport`, else `editor` when it carries `Source`, else `api`; `ci <tag>` from the script |
-| D5 | migration | `MigrationReport` is accepted only from a caller in `Operators__AppUserIds` (else 403) and only with `oldVersion` and `newVersion` as text (else 400); it is written as `migration-report.json` before `resolve.json`, and the stamp gains `migratedFrom` |
+| D5 | migration | `MigrationReport` is accepted only from a caller in `Operators__AppUserIds` (else 403) and only with `oldVersion` and `newVersion` as text and no member written twice (else 400); it is written as `migration-report.json` before `resolve.json`, and the stamp gains `migratedFrom` |
 | D6 | no stub | above, "The in-package tests" |
 | D7 | first mismatch | above |
 | D8 | `outcomeHash` | above |
