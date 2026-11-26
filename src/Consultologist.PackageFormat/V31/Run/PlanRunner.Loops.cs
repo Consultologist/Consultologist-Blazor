@@ -6,9 +6,6 @@ namespace Consultologist.PackageFormat.V31.Run;
 
 public sealed partial class PlanRunner
 {
-    /// <summary>The longest item name (part 04 § 2.7): a longer one is cut to this many characters, ending "…".</summary>
-    private const int NameLength = 120;
-
     /// <summary>
     /// One item of a loop instance: its position in the list (0-based) and id (§ 2.2), its source element once known (a
     /// list's element, a folder item's header data and body, a production item's <c>.items</c> element), its name (§ 2.7),
@@ -307,29 +304,23 @@ public sealed partial class PlanRunner
         }
 
         /// <summary>
-        /// Names <paramref name="item"/> (§ 2.7): its element's <c>itemLabel</c> field, trimmed and cut to
-        /// <see cref="NameLength"/> characters ending "…"; with <c>itemLabel</c> null, or a field empty after trimming (or
-        /// not text), its position name.
+        /// Names <paramref name="item"/> (§ 2.7): its element's <c>itemLabel</c> field as 30 names an item from a field
+        /// (<see cref="WorkflowItemNames.FromField"/>: trimmed, and when longer than
+        /// <see cref="WorkflowItemNames.MaxLength"/> characters cut, trimmed again and ended "…", a surrogate pair never
+        /// split; #1508, 2026-11-25, item 4); with <c>itemLabel</c> null, or a field empty after trimming (or not text),
+        /// its position name.
         /// </summary>
         private static void Name(LoopState loop, LoopItem item, JsonNode? element)
         {
             var drawn = loop.ItemLabel is { } field && element is JsonObject row
                 && row[field] is JsonValue text && text.GetValueKind() == JsonValueKind.String
-                ? text.GetValue<string>().Trim()
+                ? WorkflowItemNames.FromField(text.GetValue<string>())
                 : null;
             if (string.IsNullOrEmpty(drawn))
             {
                 item.Name = PositionName(loop, item.Position);
                 item.PositionName = true;
                 return;
-            }
-
-            if (drawn.Length > NameLength)
-            {
-                var cut = drawn[..(NameLength - 1)];
-                if (char.IsHighSurrogate(cut[^1]))
-                    cut = cut[..^1];
-                drawn = cut + "…";
             }
 
             item.Name = drawn;

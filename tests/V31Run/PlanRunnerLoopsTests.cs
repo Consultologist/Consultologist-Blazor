@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
@@ -505,6 +506,33 @@ public class PlanRunnerLoopsTests
         // with itemLabel null, items take position names
         Assert.Equal("Paragraphs 1", NodeRowTests.ItemName(recorder.Row("node.sections.paragraphs:1/1")));
         Assert.True((bool)recorder.Row("node.sections.paragraphs:1/1").Detail["positionName"]!);
+    }
+
+    [Fact]
+    public async Task AnItemNameCutAt120_IsTrimmedBeforeTheEllipsis()
+    {
+        // #1508 (2026-11-25, item 4): a name cut at 120 characters is trimmed before the ellipsis, as at 30
+        // (WorkflowItemNames.FromField): a space at the cut does not stand before the "…", and a surrogate pair is never split.
+        string[] titles =
+        [
+            new string('a', 118) + " " + new string('x', 81), // the 119th character is a space
+            new string('b', 110) + new string(' ', 9) + new string('x', 81), // spaces run up to the cut
+            new string('c', 118) + "\U0001F600" + new string('x', 80), // a surrogate pair at the cut
+            new string('d', 117) + " \U0001F600" + new string('x', 80), // a surrogate pair at the cut, a space before it
+            "  Past medical history of Margaret Okafor  ",
+        ];
+        var plan = RunFixture.Plan(InputLoop(Members()), InputLoopReads());
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true), recorder).RunAsync(Sections(Rows(titles)), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(new string('a', 118) + "…", titles[0][..119].TrimEnd() + "…");
+        var names = Enumerable.Range(1, titles.Length).Select(n => NodeRowTests.ItemName(recorder.Row($"node.drafts:{n}"))).ToList();
+        Assert.Equal(titles.Select(WorkflowItemNames.FromField), names);
+        Assert.Equal(new string('a', 118) + "…", names[0]);
+        Assert.Equal(new string('d', 117) + "…", names[3]);
+        Assert.Equal("Past medical history of Margaret Okafor", names[4]);
     }
 
     // ---- sources ------------------------------------------------------------------------------------
