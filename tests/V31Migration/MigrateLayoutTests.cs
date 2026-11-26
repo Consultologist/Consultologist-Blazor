@@ -79,8 +79,10 @@ public class MigrateLayoutTests
             Assert.Equal(Compact("""{ "description": null, "items": [] }"""), JsonOf(result, $"{folder}/index.json").ToJsonString());
         }
 
-        // With no hand edit, tests/ holds the migration's snapshot test (Task 14, part 10 § 4).
-        Assert.Equal(Compact("""{ "description": null, "items": ["migration_snapshot"] }"""), JsonOf(result, "tests/index.json").ToJsonString());
+        // #1508 (R11): its one hand edit (its worst case passes the instances limit) leaves tests/ empty, with A10-011 (part
+        // 10 § 4); a package with no hand edit holds its snapshot test there (Task 14).
+        Assert.Equal(Compact("""{ "description": null, "items": [] }"""), JsonOf(result, "tests/index.json").ToJsonString());
+        Assert.Equal(Compact("""{ "description": null, "items": ["migration_snapshot"] }"""), JsonOf(Migrated("example-prior-letters"), "tests/index.json").ToJsonString());
 
         Assert.Equal(Compact("""{ "description": null, "items": ["section_plan", "outline", "verdict"] }"""),
             JsonOf(result, "formats/index.json").ToJsonString());
@@ -435,7 +437,7 @@ public class MigrateLayoutTests
             Assert.Contains(s, result.Notices);
             V31Contract.AssertSentence(new SourceRefusal("A10-021", s, ""));
         });
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
     }
 
     [Fact]

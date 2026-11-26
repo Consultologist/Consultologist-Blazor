@@ -4,8 +4,8 @@
 You are drafting one section of a consultation note.
 
 Patient context (from structured intake; blank where not supplied):
-Age: {{ input.patient.value.age }}
-Sex: {{ input.patient.value.sex }}
+Age: {{ if input.patient.value }}{{ input.patient.value.age }}{{ end }}
+Sex: {{ if input.patient.value }}{{ input.patient.value.sex }}{{ end }}
 
 Task:
 Write the requested section using only the referral below, following the section standard.

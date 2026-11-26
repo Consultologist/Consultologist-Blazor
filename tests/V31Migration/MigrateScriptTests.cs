@@ -75,22 +75,24 @@ public class MigrateScriptTests
     [Fact]
     public void TheDryRun_PrintsTheNoticesAndThePlan_AndWritesNothing()
     {
-        var dir = CopyOf("example-nested-note");
+        // #1508 (R11): example-nested-note now carries a hand edit (its worst case passes the instances limit), so the
+        // clean run is example-prior-letters', which needs no choice.
+        var dir = CopyOf("example-prior-letters");
         try
         {
             var before = Contents(dir);
 
-            var (exit, output, error) = Run(dir, "--rename", "parts=sections", "--when-empty", "note=fail");
+            var (exit, output, error) = Run(dir);
 
             Assert.Equal(Migration31Script.Clean, exit);
             Assert.Equal("", error);
             Assert.Equal(before, Contents(dir));
             var lines = Lines(output);
-            var migrated = MigratedPackagesTests.Migrated("example-nested-note");
+            var migrated = MigratedPackagesTests.Migrated("example-prior-letters");
             foreach (var notice in migrated.Notices)
                 Assert.Contains($"notice: {notice}", lines);
             Assert.Contains("delete:  dag.mmd", lines);
-            Assert.Contains("delete:  prompts/plan.md", lines);
+            Assert.Contains("delete:  prompts/assessment.md", lines);
             Assert.Contains("add:     nodes/index.json", lines);
             Assert.Contains("add:     tests/migration_snapshot.json", lines);
             Assert.Contains("rewrite: manifest.json", lines);
@@ -106,15 +108,16 @@ public class MigrateScriptTests
     [Fact]
     public void TheWrite_LeavesExactlyThe31Files_AndExits0WithNoHandEdit()
     {
-        // D6, D7: --rename and --when-empty fill the options as ExampleChoices does for the golden.
-        var dir = CopyOf("example-nested-note");
+        // #1508 (R11): example-prior-letters, which needs no choice, as the dry run's (--rename and --when-empty are
+        // tested on example-nested-note below).
+        var dir = CopyOf("example-prior-letters");
         try
         {
-            var (exit, output, error) = Run(dir, "--rename", "parts=sections", "--when-empty", "note=fail", "--write");
+            var (exit, output, error) = Run(dir, "--write");
 
             Assert.Equal(Migration31Script.Clean, exit);
             Assert.Equal("", error);
-            Assert.Equal(Expected(MigratedPackagesTests.Migrated("example-nested-note")), Contents(dir));
+            Assert.Equal(Expected(MigratedPackagesTests.Migrated("example-prior-letters")), Contents(dir));
             Assert.False(Directory.Exists(Path.Combine(dir, "prompts")));
             Assert.False(File.Exists(Path.Combine(dir, "dag.mmd")));
             var lines = Lines(output);

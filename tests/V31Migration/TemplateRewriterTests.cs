@@ -55,7 +55,7 @@ public class TemplateRewriterTests
             "A {{ input.consult_draft }} B {{ input.length_of_stay }} C {{ input.patient.sex }} D {{ input.prior_notes | array.join \", \" }}\n");
 
         Assert.Equal(
-            "A {{ input.consult_draft.content }} B {{ input.length_of_stay.value }} C {{ input.patient.value.sex }} D {{ input.prior_notes.value | array.join \", \" }}\n",
+            "A {{ input.consult_draft.content }} B {{ input.length_of_stay.value }} C {{ if input.patient.value }}{{ input.patient.value.sex }}{{ end }} D {{ input.prior_notes.value | array.join \", \" }}\n",
             rewritten.Text);
         Assert.Empty(rewritten.HandEdits);
 
@@ -171,6 +171,102 @@ public class TemplateRewriterTests
     }
 
     [Fact]
+    public void ALoopThatNeedsOnlyText_ReadsValue()
+    {
+        // #1508 (ruled by the owner, Q4 of 2026-11-26; R16): 30's list held only the items that ran; 31's .items holds those
+        // its until or max left not_run too. A body that reads only each item's text loops over .value, the completed
+        // items' values (part 04 § 2.5), each read as the item itself: no guard is needed.
+        var m = Working("example-prior-letters");
+
+        var text = Prompt(m, "assessment", "{{ for letter in node.letters }}{{ letter.content }}\n\n{{ end }}\n");
+        Assert.Equal("{{ for letter in node.letters.value }}{{ letter }}\n\n{{ end }}\n", text.Text);
+        Assert.Empty(text.HandEdits);
+
+        // A loop position and fixed text are not reads of the item.
+        var positions = Prompt(m, "assessment", "{{ for letter in node.letters }}{{ if for.first }}First: {{ end }}{{ letter.content }}{{ end }}\n");
+        Assert.Equal("{{ for letter in node.letters.value }}{{ if for.first }}First: {{ end }}{{ letter }}{{ end }}\n", positions.Text);
+
+        // Written so, the package publishes and its run writes only the letters read (the vendored assessment, rewritten).
+        var result = MigrateNodesTests.Migrated("example-prior-letters", _ => { }, files =>
+            files["prompts/assessment.md"] = files["prompts/assessment.md"].Replace(
+                "{{ for letter in node.letters }}{{ if !letter.skipped }}{{ letter.content }}\n\n{{ end }}{{ end }}",
+                "{{ for letter in node.letters }}{{ letter.content }}\n\n{{ end }}", StringComparison.Ordinal));
+        Assert.Contains("{{ for letter in node.letters.value }}{{ letter }}\n\n{{ end }}", Body(result, "nodes/assessment.md"), StringComparison.Ordinal);
+        Assert.Empty(MigratedPackagesTests.Publish(result));
+    }
+
+    [Fact]
+    public void ALoopThatNeedsTheItem_IsGuardedOnState()
+    {
+        // R16: a body that reads more of the item than its text (a body node, the source element, a text that is no item's
+        // own) keeps .items, and its body is wrapped in an if on the item's state, with the else a state test needs (S05-009),
+        // so an item left not_run writes nothing.
+        var m = Working("example-prior-letters");
+
+        var item = Prompt(m, "assessment", "{{ for letter in node.letters }}- {{ letter.item.value }}: {{ letter.read_letter.content }}\n{{ end }}\n");
+        Assert.Equal(
+            "{{ for letter in node.letters.items }}{{ if letter.state == \"completed\" }}- {{ letter.item.value }}: {{ letter.nodes.read_letter.content }}\n{{ else }}{{ end }}{{ end }}\n",
+            item.Text);
+        Assert.Empty(item.HandEdits);
+        Assert.Empty(TemplateSyntax.Parse(item.Text).Faults);
+
+        // The guard goes inside the loop's own marks, so the white space they take is the same.
+        var marked = Prompt(m, "assessment", "{{ for letter in node.letters ~}}\n- {{ letter.item.value }}\n{{~ end }}\n");
+        Assert.Equal(
+            "{{ for letter in node.letters.items ~}}\n{{ if letter.state == \"completed\" }}- {{ letter.item.value }}\n{{ else }}{{ end }}{{~ end }}\n",
+            marked.Text);
+
+        // A body that already tests the item's state (30's skipped) is not wrapped twice.
+        var tested = Prompt(m, "assessment", "{{ for letter in node.letters }}{{ if !letter.skipped }}{{ letter.read_letter.content }}{{ end }}{{ end }}\n");
+        Assert.Equal(
+            "{{ for letter in node.letters.items }}{{ if letter.state == \"completed\" }}{{ letter.nodes.read_letter.content }}{{ else }}{{ end }}{{ end }}\n",
+            tested.Text);
+        Assert.Equal(
+            "{{ for e in node.sections_draft.items }}\n- {{ e.item.value.title }}: {{ if e.state == \"skipped\" }}left out at the author's request{{ else }}produced{{ end }}\n{{ end }}\n",
+            Prompt(Working("example-conditional-sections"), "coverage",
+                "{{ for e in node.sections_draft }}\n- {{ e.item.value.title }}: {{ if e.skipped }}left out at the author's request{{ else }}produced{{ end }}\n{{ end }}\n").Text);
+
+        // Written so, the package publishes.
+        var result = MigrateNodesTests.Migrated("example-prior-letters", _ => { }, files =>
+            files["prompts/assessment.md"] = files["prompts/assessment.md"].Replace(
+                "{{ for letter in node.letters }}{{ if !letter.skipped }}{{ letter.content }}\n\n{{ end }}{{ end }}",
+                "{{ for letter in node.letters }}- {{ letter.item.value }}\n{{ end }}", StringComparison.Ordinal));
+        Assert.Contains("{{ for letter in node.letters.items }}{{ if letter.state == \"completed\" }}- {{ letter.item.value }}\n{{ else }}{{ end }}{{ end }}",
+            Body(result, "nodes/assessment.md"), StringComparison.Ordinal);
+        Assert.Empty(MigratedPackagesTests.Publish(result));
+    }
+
+    [Fact]
+    public void AMemberReadThroughAnOptionalObject_IsGuarded()
+    {
+        // #1508 (ruled by the owner, Q5 of 2026-11-26; R17): a member read through an optional object input renders empty
+        // at 30 when it is unset and fails the render at 31 (A11-009 refuses it at publish), so the migration writes the
+        // guard A11-009 accepts, {{ if <object path> }} … {{ end }}, around the output, its outer marks moved onto the guard.
+        var m = Working("example-structured-intake");
+
+        var guarded = Prompt(m, "note_section", "Age: {{ input.patient.age }}\nSex: {{~ input.patient.sex ~}}\nDraft: {{ input.consult_draft }}\n");
+        Assert.Equal(
+            "Age: {{ if input.patient.value }}{{ input.patient.value.age }}{{ end }}\nSex: {{~ if input.patient.value }}{{~ input.patient.value.sex ~}}{{ end ~}}\nDraft: {{ input.consult_draft.content }}\n",
+            guarded.Text);
+        Assert.Empty(guarded.HandEdits);
+        Assert.Empty(TemplateSyntax.Parse(guarded.Text).Faults);
+
+        // Where the dialect takes no guard, in a part's text (which holds no if, A07-002), it is a hand edit.
+        var part = Prompt(m, "note_section", "{{ if input.length_of_stay > 7 }}\nAged {{ input.patient.age }}.\n{{ end }}\n");
+        const string reason = "the template reads input.patient.value.age at line 2 through input.patient.value, which can be null, where no {{ if input.patient.value }} can enclose the read; move the read where that guard can stand.";
+        var edit = Assert.Single(part.HandEdits);
+        Assert.Equal($"Hand edit needed in {FileOf(m, "note_section")}, parts.when_1.text: {reason}", edit);
+        AssertHandEdit(edit, FileOf(m, "note_section"), "A10-080", reason);
+
+        // The vendored files: note_section is guarded and the package publishes (its one hand edit made) with no A11-009.
+        var result = MigrateNodesTests.Migrated("example-structured-intake");
+        Assert.Contains(
+            "Age: {{ if input.patient.value }}{{ input.patient.value.age }}{{ end }}\nSex: {{ if input.patient.value }}{{ input.patient.value.sex }}{{ end }}\n",
+            Body(result, "nodes/sections_note_section/note_section.md"), StringComparison.Ordinal);
+        Assert.Empty(MigratedPackagesTests.Publish(MigrationFixture.Edited("example-structured-intake")));
+    }
+
+    [Fact]
     public void ARewrittenWhitespaceMark_IsSaid_OncePerFile_WithItsLines()
     {
         // Final review A4 (part 05 § 2.6, part 10 § 1.2): - removes every white space, ~ spaces and tabs (and one newline on
@@ -183,7 +279,7 @@ public class TemplateRewriterTests
         const string notice = "nodes/plan.md: the white-space marks at line 12 of the 30 body became 31's (- is ~; a placement keeps only a {{~ alone on its line), so line endings beside them are now kept.";
         Assert.Equal([notice], result.Notices.Where(n => n.Contains("white-space marks", StringComparison.Ordinal)));
         V31Contract.AssertSentence(new SourceRefusal("A10-068", notice, ""));
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
 
         // Several lines in one file are one notice; a ~ that 31 keeps (an ordinary output's) is no change.
         var two = MigrateNodesTests.Migrated("example-nested-note", _ => { }, files =>
@@ -271,7 +367,8 @@ public class TemplateRewriterTests
         // § 2.5: a loop position and an item's state are recorded facts, and stay.
         var m = Working("example-nested-note");
         var facts = Prompt(m, "draft_summary", "{{ for s in node.sections }}{{ if for.first }}First: {{ end }}{{ s.content }}{{ end }}\n");
-        Assert.Equal("{{ for s in node.sections.items }}{{ if for.first }}First: {{ end }}{{ s.content }}{{ end }}\n", facts.Text);
+        // #1508 (R16): a section's text is no item's value (its ret is the loop paragraphs), so the body keeps .items, guarded on state.
+        Assert.Equal("{{ for s in node.sections.items }}{{ if s.state == \"completed\" }}{{ if for.first }}First: {{ end }}{{ s.content }}{{ else }}{{ end }}{{ end }}\n", facts.Text);
         Assert.Empty(facts.Parts);
 
         // pass.number is not one of § 2.5's facts (a body if testing it is S05-007), so its if is lifted into a part.
@@ -412,10 +509,11 @@ public class TemplateRewriterTests
     {
         var m = Working("example-macros");
 
-        // A07-009: a placement stands at the top level. A for over a loop node's items stays, so its placement is an edit.
+        // A07-009: a placement stands at the top level. A for over a loop node stays, so its placement is an edit. (#1508,
+        // R16: a body that reads nothing of its item loops over .value, the items that completed.)
         var rewritten = Prompt(m, "summary", "{{ for e in node.requested_sections }}\n{{ macro.house_style.prompt }}\n{{ end }}\n");
 
-        Assert.Equal("{{ for e in node.requested_sections.items }}\n{{ macro.house_style }}\n{{ end }}\n", rewritten.Text);
+        Assert.Equal("{{ for e in node.requested_sections.value }}\n{{ macro.house_style }}\n{{ end }}\n", rewritten.Text);
         AssertHandEdit(Assert.Single(rewritten.HandEdits), "nodes/summary.md", "A10-005",
             "the template uses a placement inside an if or a for at line 2, which the 31 dialect doesn't have; rewrite it.");
 
@@ -495,7 +593,7 @@ public class TemplateRewriterTests
         var result = MigrateNodesTests.Migrated("example-structured-intake");
         const string path = "nodes/sections_senior_review_section/senior_review_section.md";
         Assert.StartsWith(
-            "You are drafting one section of a senior review request for a patient aged {{ input.patient.value.age }}{{ if input.patient.value.sex }} ({{ input.patient.value.sex }}){{ end }}.\n",
+            "You are drafting one section of a senior review request for a patient aged {{ if input.patient.value }}{{ input.patient.value.age }}{{ end }}{{ if input.patient.value.sex }} ({{ if input.patient.value }}{{ input.patient.value.sex }}{{ end }}){{ end }}.\n",
             Body(result, path),
             StringComparison.Ordinal);
         AssertHandEdit(Assert.Single(result.HandEdits, h => h.Contains(path, StringComparison.Ordinal)), path, "A10-001",

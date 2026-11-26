@@ -157,7 +157,7 @@ public class SnapshotTestTests
     {
         // An operator's new snapshot of an edited package: the old snapshot and its listing are replaced, an author's own
         // test (listed before it, with its index's description) is kept, bytes and order.
-        const string package = "example-nested-note";
+        const string package = "example-prior-letters";
         var result = MigratedPackagesTests.Migrated(package);
         var files = new Dictionary<string, string>(result.Files, StringComparer.Ordinal)
         {
@@ -210,7 +210,7 @@ public class SnapshotTestTests
         // Snapshot refuses a source that does not publish, with the checker's sentences.
         var snapshot = WorkflowPackageMigration30To31.Snapshot(result.ManifestJson, result.Files, MigrationFixture.Options(package));
         Assert.False(snapshot.Succeeded);
-        var refusals = MigratedPackagesTests.Publish(result);
+        var refusals = MigratedPackagesTests.PublishAtTheEngine(result);
         Assert.Equal(refusals.Select(r => r.Sentence), snapshot.Refusals);
         Assert.Equal(result.Files, snapshot.Files);
     }

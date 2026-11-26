@@ -145,7 +145,7 @@ public class MigrateNodesTests
         // Converted, not left as 30's text (D3's hand-edit form, a JSON string holding the let as written); a text let's
         // logic is a JSON string too, without 30's quotes.
         Assert.NotEqual(JsonValue.Create(let).ToJsonString(), header["expression"]!.ToJsonString());
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
     }
 
     [Theory]
@@ -285,7 +285,7 @@ public class MigrateNodesTests
 
         const string notice = "Node 'judge' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails.";
         Assert.Equal([notice], result.Notices.Where(n => n.StartsWith("Node 'judge'", StringComparison.Ordinal)));
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
         V31Contract.AssertSentence(new SourceRefusal("A10-013", notice, ""));
     }
 

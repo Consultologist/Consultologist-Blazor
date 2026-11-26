@@ -363,7 +363,7 @@ public class PackageTestsTests
     [Fact]
     public async Task AMigrationVectorsSnapshot_PassesOnItsOwnPackage()
     {
-        var folder = System.IO.Path.Combine(V31Contract.ConformanceFolder("migration-vectors"), "example-nested-note", "expected");
+        var folder = System.IO.Path.Combine(V31Contract.ConformanceFolder("migration-vectors"), "example-conditional-sections", "expected");
         Assert.True(Directory.Exists(folder), $"The migration vector {folder} is missing.");
         var upload = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .ToDictionary(

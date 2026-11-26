@@ -51,7 +51,8 @@ public class MigrationVectorsExport
         new("composer-sources", "composer-sources",
             "Area 01's fixture composer-sources: one deliverable per kind of source it composes (one node, two nodes, a for "
             + "over an input with an if inside, a for over a node's list with a for inside, a while, an if, a case and a let "
-            + "of type text), each written as the template 31 composes; the free-text fields 31 suggests a text format for; "
+            + "of type text), each written as the template 31 composes, the if and the case that may run no branch each "
+            + "giving its deliverable the if that skips it as 30 did; the free-text fields 31 suggests a text format for; "
             + "and a let whose expression the converter refuses (string.append), a hand edit."),
         new("example-conditional-sections", "example-conditional-sections",
             "The vendored example-conditional-sections: a case on each section's kind inside a for over sections named by "
@@ -65,8 +66,10 @@ public class MigrationVectorsExport
         new("example-nested-note", "example-nested-note",
             "The vendored example-nested-note: the hand-chosen rename of the reserved id parts to sections, a deliverable "
             + "whose hand-chosen whenEmpty is fail, a loop with an inner loop and a while, a let computing a typed value, "
-            + "and the formats 31 writes for its nodes, with the free-text fields it suggests a text format for; no hand "
-            + "edit, so the migration writes its snapshot test."),
+            + "and the formats 31 writes for its nodes, with the free-text fields it suggests a text format for; its two "
+            + "loops over lists known only at run time open more instances than one job may at the engine's default, so its "
+            + "one hand edit is the outer loop's max, which the migration does not guess (#1508), and no snapshot test is "
+            + "written."),
         new(HandBuiltName, null,
             "A package written for this case: an optional macro (leaflet, default off) whose id an input already has, so "
             + "the boolean input that offers it takes the suffix _macro; an input that takes one of two types, a hand edit; "

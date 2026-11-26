@@ -209,7 +209,10 @@ internal static class V31Contract
     /// read whole compared with "" written with its null test, and A10-076: another comparison of an input's text with blank text, a
     /// hand edit's reason, Task 30 fix round 1; A10-077: a judgement node the migration wrote for a macro 30's model chose,
     /// whose question is a hand edit, and A10-078: a macro with more than one, whose if is a hand edit, #1508 comment 6 item 1,
-    /// R13, area 11 Task 32).
+    /// R13, area 11 Task 32; A10-079: a deliverable whose sources may all not run given the if that skips it as 30 did,
+    /// A10-080: a read through a nullable object where no guard can stand, a hand edit's reason, and A10-081: a package
+    /// whose worst case passes the engine's instances limit, a hand edit's reason, #1508 comment 7 (Q3, Q5, B2), R15, R17,
+    /// R11, area 11 Task 33).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -289,6 +292,9 @@ internal static class V31Contract
         ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
         ["A10-077"] = "node '<id>' decides whether macro '<macro id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
         ["A10-078"] = "macro '<id>' is placed by <n> nodes, with a classifier each (<ids>), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.",
+        ["A10-079"] = "<file>, if: written to skip the deliverable unless <reads> ran, as 30 skipped a deliverable none of whose sources ran.",
+        ["A10-080"] = "the template reads <path> at line <n> through <object path>, which can be null, where no {{ if <object path> }} can enclose the read; move the read where that guard can stand.",
+        ["A10-081"] = "up to <n> steps could run in one job through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

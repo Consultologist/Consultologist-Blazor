@@ -42,6 +42,7 @@ public class HandEditsTests
     {
         ["example-macros"] = SilentAndWrapUp,
         ["example-macros-warnings"] = SilentAndWrapUp + " Its self_read instruction read the macro's own .content, which rendered the body into the prompt; what the model is told in its place is a choice too.",
+        ["example-nested-note"] = "the owner ruled that no max is guessed (#1508).",
     };
 
     private const string SilentAndWrapUp =
@@ -53,44 +54,20 @@ public class HandEditsTests
     /// <summary>The packages Task 12 migrates with hand edits (<see cref="MigratedPackagesTests.PackagesWithHandEdits"/>).</summary>
     public static TheoryData<string> Packages() => MigratedPackagesTests.PackagesWithHandEdits();
 
-    /// <summary>
-    /// #1508 (ruled by the owner, Q5 of 2026-11-26; R17; Task 26): the edited packages publish refuses until the migration
-    /// writes the guard A11-009 asks for (Task 33), with each refusal, file and sentence. The reads are in files the migration
-    /// writes (<c>migrated/</c>), never hand-edited; a read in a file an edit already rewrites carries its guard there.
-    /// </summary>
-    internal static readonly IReadOnlyDictionary<string, string[]> ForTask33 = new Dictionary<string, string[]>(StringComparer.Ordinal)
-    {
-        ["example-structured-intake"] =
-        [
-            "nodes/sections_note_section/note_section.md: Node 'note_section' reads input.patient.value.age at line 4 through input.patient.value, which can be null. Put the read inside {{ if input.patient.value }}.",
-            "nodes/sections_note_section/note_section.md: Node 'note_section' reads input.patient.value.sex at line 5 through input.patient.value, which can be null. Put the read inside {{ if input.patient.value }}.",
-        ],
-    };
-
-    /// <summary>The packages with hand edits whose edits are made, but those that wait for Task 33 (<see cref="ForTask33"/>).</summary>
+    /// <summary>The packages with hand edits whose edits are made.</summary>
     public static TheoryData<string> EditedPackages() =>
-        new(MigratedPackagesTests.NamesWithHandEdits.Where(p => !NotEdited.ContainsKey(p) && !ForTask33.ContainsKey(p)));
+        new(MigratedPackagesTests.NamesWithHandEdits.Where(p => !NotEdited.ContainsKey(p)));
 
-    /// <summary>The packages of <see cref="ForTask33"/>.</summary>
-    public static TheoryData<string> WaitingForTask33() => new(ForTask33.Keys.Order(StringComparer.Ordinal));
+    /// <summary>
+    /// #1508 (R11): the packages not edited whose migrated package still runs offline as written, so it is compared: its
+    /// one edit is the instances limit, which publish holds it to and the run does not. <c>example-nested-note</c>'s worst
+    /// case passes the engine's default (A11-001), and no max is guessed.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> ComparedAsMigrated = ["example-nested-note"];
 
-    [Theory]
-    [MemberData(nameof(WaitingForTask33))]
-    public void AnEditedPackageReadingThroughANullObject_IsRefusedUntilTheMigrationGuardsIt(string package)
-    {
-        // Until Task 33 writes the guard, publish refuses exactly these reads (A11-009) and nothing else, so no snapshot is
-        // written and the package is not compared; its reports/ golden stays as it was. Task 33 removes the entry.
-        var edited = MigrationFixture.Edited(package);
-        var refusals = MigratedPackagesTests.Publish(edited);
-
-        Assert.All(refusals, r => V31Source.V31Contract.AssertSentence(r));
-        Assert.Equal(ForTask33[package], refusals.Select(r => $"{r.Path}: {r.Sentence}"));
-        Assert.All(refusals, r => Assert.Equal("A11-009", r.Id));
-        var snapshot = WorkflowPackageMigration30To31.Snapshot(edited.ManifestJson, edited.Files, MigrationFixture.Options(package));
-        Assert.False(snapshot.Succeeded);
-        Assert.Contains(snapshot.Refusals, r => r.Contains("which can be null. Put the read inside {{ if input.patient.value }}.", StringComparison.Ordinal));
-        Assert.True(File.Exists(Path.Combine([ByteEquivalenceFixtures.Root, ReportsFolder, .. package.Split('/')]) + ".json"));
-    }
+    /// <summary>The packages with hand edits whose reports are compared: those edited, and <see cref="ComparedAsMigrated"/>.</summary>
+    public static TheoryData<string> ComparedPackages() =>
+        new(MigratedPackagesTests.NamesWithHandEdits.Where(p => !NotEdited.ContainsKey(p) || ComparedAsMigrated.Contains(p)));
 
     [Fact]
     public void EveryPackageWithHandEdits_HasItsEdits()
@@ -126,7 +103,7 @@ public class HandEditsTests
     public void APackageNotEdited_StaysRefused(string package)
     {
         // An edit not made leaves its notice's construct where the checker refuses it, so the package is not compared.
-        Assert.NotEmpty(MigratedPackagesTests.Publish(MigrationFixture.Edited(package)));
+        Assert.NotEmpty(MigratedPackagesTests.PublishAtTheEngine(MigrationFixture.Edited(package)));
     }
 
     [Theory]
@@ -134,7 +111,7 @@ public class HandEditsTests
     public void TheEditedPackage_Publishes(string package)
     {
         // The invariant (Task 12): no hand edit left means CompiledPackage.Publish refuses nothing.
-        var refusals = MigratedPackagesTests.Publish(MigrationFixture.Edited(package));
+        var refusals = MigratedPackagesTests.PublishAtTheEngine(MigrationFixture.Edited(package));
 
         Assert.True(refusals.Count == 0, "Refusals:\n" + string.Join("\n", refusals.Select(r => $"  {r.Id} {r.Path}: {r.Sentence}")));
     }
@@ -222,7 +199,7 @@ public class HandEditsTests
     }
 
     [Theory]
-    [MemberData(nameof(EditedPackages))]
+    [MemberData(nameof(ComparedPackages))]
     public async Task TheReport_IsValidAgainstItsSchema(string package)
     {
         var report = await EquivalenceFixture.Report(package);
@@ -235,7 +212,7 @@ public class HandEditsTests
     }
 
     [Theory]
-    [MemberData(nameof(EditedPackages))]
+    [MemberData(nameof(ComparedPackages))]
     public async Task TheReport_IsTheGolden(string package)
     {
         var report = (await EquivalenceFixture.Report(package)).ToJson();

@@ -89,7 +89,7 @@ public class MigrateRenamesTests
         const string notice = "Renamed node 'parts' to 'sections': 'parts' is reserved at 31.";
         Assert.Equal([notice], result.Report.Renames);
         Assert.Contains(notice, result.Notices);
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
         V31Contract.AssertSentence(new SourceRefusal("A10-006", notice, ""));
     }
 
@@ -188,7 +188,7 @@ public class MigrateRenamesTests
         Assert.Contains(notice, result.Report.Renames);
         Assert.Contains(notice, result.Notices);
         V31Contract.AssertSentence(new SourceRefusal("A10-065", notice, ""));
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
         Assert.Empty(MigratedPackagesTests.Publish(result));
     }
 
