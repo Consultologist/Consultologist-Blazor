@@ -33,7 +33,7 @@ internal static partial class Migrate
         {
             if (macro.File.EndsWith('/'))
             {
-                Folder(m, macro, byTheEngine, disagreeing);
+                Folder(m, tree, macro, byTheEngine, disagreeing);
                 continue;
             }
 
@@ -44,7 +44,7 @@ internal static partial class Migrate
             }
 
             var header = m.Resolved30.Headers.GetValueOrDefault(macro.File);
-            m.Put(macro.File, MacroHeader(m, macro.Id, macro.File, macro.Label ?? header?.Label, header, macro.Optional, macro.Default, macro.Instruction, byTheEngine, disagreeing),
+            m.Put(macro.File, MacroHeader(m, tree, macro.Id, macro.File, macro.Label ?? header?.Label, header, macro.Optional, macro.Default, macro.Instruction, byTheEngine, disagreeing),
                 MacroBody(m, macro.File));
             m.MacroBodyFiles.Add(macro.File);
             m.Items("macros").Add(macro.Id);
@@ -109,7 +109,7 @@ internal static partial class Migrate
     /// A macro folder (part 05 § 8.1): <c>macros/&lt;folder&gt;/index.json</c> (30's label as its description, its items in
     /// 30's order, <c>if: null</c>: 30 had no folder gate) and one macro file per item, keyed <c>&lt;folder&gt;/&lt;item&gt;</c>.
     /// </summary>
-    private static void Folder(Migrated m, WorkflowMacroSpec folder, HashSet<string> byTheEngine, HashSet<string> disagreeing)
+    private static void Folder(Migrated m, NodeTree tree, WorkflowMacroSpec folder, HashSet<string> byTheEngine, HashSet<string> disagreeing)
     {
         var index = m.Files30.TryGetValue(folder.File + WorkflowDataResolver.IndexFileName, out var indexJson)
             ? WorkflowTextHeaders.ReadIndex(indexJson, folder.Id, "Macro", m.Manifest30.SpecVersion, [])
@@ -127,7 +127,7 @@ internal static partial class Migrate
             var path30 = folder.File + file;
             var written = $"macros/{folder.Id}/{item}.md";
             var header = m.Resolved30.Headers.GetValueOrDefault(path30);
-            m.Put(written, MacroHeader(m, $"{folder.Id}/{item}", written, header?.Label, header, null, null, null, byTheEngine, disagreeing), MacroBody(m, path30));
+            m.Put(written, MacroHeader(m, tree, $"{folder.Id}/{item}", written, header?.Label, header, null, null, null, byTheEngine, disagreeing), MacroBody(m, path30));
             m.MacroBodyFiles.Add(written);
             m.Items($"macros/{folder.Id}").Add(item);
         }
@@ -168,10 +168,13 @@ internal static partial class Migrate
     /// <summary>
     /// Part 05 § 8.1: a macro's header. <paramref name="key"/> is its id (<c>&lt;folder&gt;/&lt;item&gt;</c> for a folder's),
     /// <paramref name="file"/> its 31 file; the 30 facts are the manifest's (<paramref name="optional"/>,
-    /// <paramref name="defaultOn"/>, <paramref name="instruction"/>) or else its header's.
+    /// <paramref name="defaultOn"/>, <paramref name="instruction"/>) or else its header's. #1508 (comment 6, item 1; R13): a
+    /// macro 30's model chose (<see cref="ModelChosen"/>) gets a <c>judgement</c> node per agent that places it
+    /// (<see cref="ChoiceClassifiers"/>), its <c>if</c> the macro's offer condition, and the macro's <c>if</c> gains each
+    /// one's answer, joined by <c>and</c> after the rest.
     /// </summary>
     private static JsonObject MacroHeader(
-        Migrated m, string key, string file, string? label, WorkflowTextHeader? header, bool? optional, bool? defaultOn, string? instruction,
+        Migrated m, NodeTree tree, string key, string file, string? label, WorkflowTextHeader? header, bool? optional, bool? defaultOn, string? instruction,
         HashSet<string> byTheEngine, HashSet<string> disagreeing)
     {
         var name = label ?? key;
@@ -186,13 +189,33 @@ internal static partial class Migrate
             m.MacroInputs.Add(notice);
         }
 
+        var instruction30 = instruction ?? header?.Instruction;
+        if (ModelChosen(key, instruction30, byTheEngine, disagreeing))
+        {
+            var answers = ChoiceClassifiers(m, tree, key, name, gate).Select(classifier => (JsonNode)new JsonObject
+            {
+                ["==="] = new JsonArray(new JsonObject { ["var"] = $"{classifier}.value.answer" }, true),
+            }).ToList();
+            if (answers.Count > 0)
+            {
+                List<JsonNode> parts = gate switch
+                {
+                    null => [],
+                    JsonObject { Count: 1 } all when all["and"] is JsonArray joined => [.. joined.Select(p => p!.DeepClone())],
+                    _ => [gate],
+                };
+                parts.AddRange(answers);
+                gate = parts.Count == 1 ? parts[0] : new JsonObject { ["and"] = new JsonArray([.. parts]) };
+            }
+        }
+
         return new JsonObject
         {
             ["label"] = name,
             ["description"] = null,
             ["if"] = gate,
             ["format"] = MacroFormat(m, key),
-            ["instruction"] = byTheEngine.Contains(key) ? new JsonArray() : Instruction(m, key, file, instruction ?? header?.Instruction),
+            ["instruction"] = byTheEngine.Contains(key) ? new JsonArray() : Instruction(m, key, file, instruction30),
         };
     }
 

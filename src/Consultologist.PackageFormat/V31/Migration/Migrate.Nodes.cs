@@ -130,6 +130,165 @@ internal static partial class Migrate
         return [.. names.Select(n => n!)];
     }
 
+    /// <summary>
+    /// #1508 (comment 6, item 1; R13; part 10 § 1.2's model-chosen row): whether macro <paramref name="key"/> is one 30's
+    /// model chose: it migrates to an offered macro with a non-empty instruction (30's mechanics sentence begins "If so,
+    /// write …", so every such macro was optional at 30, where 31 requires an offered macro's marker exactly once). Not one
+    /// the engine placed (its instruction is written <c>[]</c>, D3), one whose placements disagree (its <c>if</c> is a
+    /// string, A10-036), one with no 30 instruction, or one whose instruction is a template (<c>{{ "" }}</c>, another
+    /// macro's text: A10-042, the operator writes its lines): those keep area 10's hand edits.
+    /// </summary>
+    private static bool ModelChosen(string key, string? instruction30, HashSet<string> byTheEngine, HashSet<string> disagreeing) =>
+        !byTheEngine.Contains(key) && !disagreeing.Contains(key) && !string.IsNullOrWhiteSpace(instruction30)
+        && !instruction30.Contains("{{", StringComparison.Ordinal);
+
+    /// <summary>
+    /// #1508 (comment 6, item 1; R13): for macro <paramref name="key"/> (labelled <paramref name="label"/>, offered when
+    /// <paramref name="offer"/> holds), one <c>judgement</c> node per agent that places it (in the order of its placements:
+    /// a prompt's own, or the agents whose prompts place the snippet holding it; a snippet folder's item places none at 31,
+    /// A10-051), written as the placing node's sibling immediately before it (inside its loop or branch when it is in one):
+    /// <c>&lt;macro id&gt;_applies</c>, fitted to 64 characters (A10-034) and numbered when a node already has the id
+    /// (S10-006), its <c>if</c> <paramref name="offer"/>, its prompt the reads the placing node's prompt makes outside any
+    /// <c>if</c> or <c>for</c> (each on a line of its own, in order, once) followed by an empty question line, which is a
+    /// hand edit (A10-077). Returns each node's read where the macro is placed (<c>node.&lt;id&gt;</c>, its sibling's read: the
+    /// macro's <c>if</c> is evaluated in the placing scope, part 05 § 8.2), in order.
+    /// </summary>
+    private static List<string> ChoiceClassifiers(Migrated m, NodeTree tree, string key, string label, JsonNode? offer)
+    {
+        var placers = new List<string>();
+        foreach (var placement in m.MacroPlacements.Where(p => p.Macro == key))
+        {
+            if (placement.Owner is not null)
+                placers.Add(placement.Owner);
+            else if (SnippetOf(placement.File) is { } snippet && placement.File.Count(c => c == '/') == 1)
+                placers.AddRange(PlacerIdsOf(m, snippet));
+        }
+
+        var keys = new List<string>();
+        foreach (var placer in placers.Distinct(StringComparer.Ordinal).ToList())
+        {
+            var placerFile = $"{FolderOf(tree, placer)}/{placer}.md";
+            if (!tree.ById.ContainsKey(placer) || !m.Sources.TryGetValue(placerFile, out var placing) || (string?)placing.Json["kind"] != "agent")
+                continue;
+
+            var id = ClassifierId(m, tree, key[(key.LastIndexOf('/') + 1)..]);
+            var file = $"{FolderOf(tree, placer)}/{id}.md";
+            m.Put(file, new JsonObject
+            {
+                ["kind"] = "agent",
+                ["producer"] = "generated",
+                ["label"] = $"Whether {label} applies",
+                ["description"] = null,
+                ["format"] = "judgement",
+                ["reproducible"] = false,
+                ["modelDerived"] = false,
+                ["runDependent"] = false,
+                ["profileCarrying"] = false,
+                ["if"] = offer?.DeepClone(),
+                ["onInvalid"] = WorkflowOnInvalid.Fail,
+                ["failIfEmpty"] = null,
+                ["parts"] = null,
+                ["ordered"] = false,
+            }, QuestionPrompt(m, placing.Body ?? ""));
+            SiblingBefore(m, tree, placer, id);
+            m.HandEdit(file, "body", MigrationSentences.WriteTheQuestion(id, key));
+            keys.Add("node." + id);
+        }
+
+        return keys;
+    }
+
+    /// <summary>The agents whose 30 prompts place snippet (or snippet folder) <paramref name="snippet"/>, by id (<see cref="PlacersOf"/>' nodes).</summary>
+    private static IEnumerable<string> PlacerIdsOf(Migrated m, string snippet) =>
+        m.Walk30.Templates
+            .Where(t => t.Kind == TemplateKind.Prompt && (t.References.Snippets.Contains(snippet) || t.References.SnippetFolders.Contains(snippet)))
+            .Where(t => m.Keys.TryGetValue(t.Id, out var rooted) && rooted.StartsWith("node.", StringComparison.Ordinal))
+            .Select(t => t.Id);
+
+    /// <summary>
+    /// A classifier's id for macro <paramref name="macro"/> (its bare id): <c>&lt;macro&gt;_applies</c> fitted (A10-034 when cut),
+    /// or with the first free number, <c>_applies_2</c>, … (S10-006) when a node, a check or a classifier already written has it.
+    /// </summary>
+    private static string ClassifierId(Migrated m, NodeTree tree, string macro)
+    {
+        var taken = new HashSet<string>(tree.ById.Keys, StringComparer.Ordinal);
+        foreach (var path in m.Sources.Keys.Where(p => p.StartsWith("nodes/", StringComparison.Ordinal) || p.StartsWith("checks/", StringComparison.Ordinal)))
+        {
+            var segments = path.Split('/');
+            taken.Add(segments[^1] == WorkflowDataResolver.IndexFileName ? segments[^2] : segments[^1].Replace(".md", "", StringComparison.Ordinal));
+        }
+
+        var wanted = $"{macro}_applies";
+        var suffixed = Renames.Fit(macro, "_applies");
+        var id = suffixed;
+        for (var n = 2; taken.Contains(id); n++)
+            id = Renames.Fit(macro, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"_applies_{n}"));
+        if (wanted.Length > SourceBounds.IdLength)
+            m.Notice(MigrationSentences.RenamedTooLong(Renames.Node, wanted, suffixed));
+        if (id != suffixed)
+            m.Notice(MigrationSentences.RenameTaken(suffixed, id, suffixed));
+        return id;
+    }
+
+    /// <summary>
+    /// A classifier's prompt: each read <paramref name="placing"/> (the placing node's 31 prompt) writes outside any <c>if</c>
+    /// or <c>for</c> (an input, a node, a check, the item, a snippet's text; never a part or a macro, nor a snippet whose body
+    /// places a macro, which a <c>judgement</c> node may not place: part 05 § 8.3), as written, once each in order, on lines
+    /// of their own, then an empty line and the empty question line the operator writes (A10-077).
+    /// </summary>
+    private static string QuestionPrompt(Migrated m, string placing)
+    {
+        var placesMacros = m.MacroPlacements.Select(p => p.File).ToHashSet(StringComparer.Ordinal);
+        var syntax = V31.Templates.TemplateSyntax.Parse(placing);
+        var reads = new List<string>();
+        foreach (var output in syntax.Outputs)
+        {
+            if (output.Depth > 0 || output.Path is not { } path || path.Split('.')[0] is not ("input" or "node" or "check" or "item" or "snippet"))
+                continue;
+            if (path.Split('.') is ["snippet", .. var rest] && placesMacros.Contains($"snippets/{string.Join('/', rest.SkipLast(1))}.md"))
+                continue;
+            var tag = placing[output.Tag.Start..output.Tag.End];
+            var inner = tag[2..^2].Trim().Trim('~', '-').Trim();
+            var read = $"{{{{ {inner} }}}}";
+            if (!reads.Contains(read))
+                reads.Add(read);
+        }
+
+        return reads.Count == 0 ? "\n" : string.Join("\n\n", reads) + "\n\n";
+    }
+
+    /// <summary>
+    /// Lists node <paramref name="id"/> immediately before <paramref name="sibling"/> where <paramref name="sibling"/> is listed:
+    /// <c>nodes/index.json</c>'s items for a top-level node; else its flow's <c>index.json</c>, in the body that holds it (a
+    /// loop's <c>nodes</c>, an <c>if</c>'s <c>then</c> or <c>else</c>, a <c>case</c> branch's or its <c>else</c>'s).
+    /// </summary>
+    private static void SiblingBefore(Migrated m, NodeTree tree, string sibling, string id)
+    {
+        var lists = new List<JsonArray>();
+        if (!tree.Owner.TryGetValue(sibling, out var flow))
+        {
+            lists.Add(m.Items("nodes"));
+        }
+        else if (m.Sources.TryGetValue(FlowFile(tree, flow), out var index))
+        {
+            var header = index.Json;
+            foreach (var body in new[] { header, header["then"], header["else"] }.Concat((header["branches"] as JsonArray ?? []).Select(b => b)))
+            {
+                if (body?["nodes"] is JsonArray nodes)
+                    lists.Add(nodes);
+            }
+        }
+
+        foreach (var list in lists)
+        {
+            var at = list.Select(n => (string?)n).ToList().IndexOf(sibling);
+            if (at < 0)
+                continue;
+            list.Insert(at, id);
+            return;
+        }
+    }
+
     /// <summary>A 30 node's prompt text (its <c>prompt</c>, or the file its id implies), as 30 holds it; <c>""</c> when it has none. Task 9 rewrites it.</summary>
     private static string PromptOf(Migrated m, WorkflowNodeSpec node)
     {

@@ -132,7 +132,8 @@ internal static class V31Contract
     /// A11-012, Task 25's fix round 1: a part or a macro read in an expression rather than placed, ruling 12;
     /// A11-009, Task 26: a member read through a nullable object with no guard on it, Q5 of 2026-11-26, R17;
     /// A11-010 and A11-011, Task 28: the publish warnings of a deliverable that could be released empty and of a loop's fixed
-    /// text for items that did not run, Q3 and Q4 of 2026-11-26, R15 and R16).
+    /// text for items that did not run, Q3 and Q4 of 2026-11-26, R15 and R16; A11-013, Task 32: a judgement node whose prompt
+    /// asks no question, #1508 comment 6 item 1, R13).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
@@ -148,6 +149,7 @@ internal static class V31Contract
         ["A11-010"] = "Deliverable '<id>' could be released with nothing in it: everything it reads may not run. Give it an if, or whenEmpty: hold.",
         ["A11-011"] = "Deliverable '<id>' writes fixed text for every item of <loop key> at line <n>, also for items that did not run. Loop over .value, or guard on state.",
         ["A11-012"] = "<Subject> uses <part or macro> at line <n> in an expression; a part or a macro is placed on its own, as {{ <part or macro> }}, never piped or used in an expression.",
+        ["A11-013"] = "Node '<id>' asks nothing: its prompt has no question.",
     };
 
     /// <summary>
@@ -205,7 +207,8 @@ internal static class V31Contract
     /// not release, hold or fail, #1508 R18, area 11 Task 29; A10-073: string.contains on a list, a hand edit's reason, and
     /// A10-074: text compared with a literal written as in, #1508 comment 5 item 2, area 11 Task 30; A10-075: a text input
     /// read whole compared with "" written with its null test, and A10-076: another comparison of an input's text with blank text, a
-    /// hand edit's reason, Task 30 fix round 1).
+    /// hand edit's reason, Task 30 fix round 1; A10-077: a judgement node the migration wrote for a macro 30's model chose,
+    /// whose question is a hand edit, #1508 comment 6 item 1, R13, area 11 Task 32).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -283,6 +286,7 @@ internal static class V31Contract
         ["A10-074"] = "<file>, <member>: '<comparison>' became <rule>; text is compared with a literal by in at 31.",
         ["A10-075"] = "<file>, <member>: '<comparison>' became <rule>; 31 reads an input not given or blank as null, where 30 read \"\".",
         ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
+        ["A10-077"] = "node '<id>' decides whether macro '<macro id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

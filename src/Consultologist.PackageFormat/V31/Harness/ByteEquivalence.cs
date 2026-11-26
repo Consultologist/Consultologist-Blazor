@@ -91,7 +91,8 @@ public static class ByteEquivalence
     /// member its 31 format lists (<see cref="Fit"/>). A reply the capture lacks is generated, seeded with 30's key
     /// (<see cref="KeyMap.To30"/>). #1508 (comment 6 item 2; R14): a captured reply is replayed exactly as 30's model
     /// wrote it, no 31 marker added (<see cref="OfflineStubs.Reply"/>), so one that holds no marker for a macro 31 offers
-    /// fails its node as it would live.</item>
+    /// fails its node as it would live. Each macro-choice classifier (<see cref="ChoiceClassifiers"/>, R14) is answered from
+    /// the capture (<see cref="ChoiceAnswers"/>).</item>
     /// </list>
     /// </summary>
     public static OfflineRequest RequestFor(JsonObject scenario30, JsonObject capture30, Migration31Result migrated, RunPlan plan)
@@ -148,6 +149,9 @@ public static class ByteEquivalence
                 continue;
             outputs[key31] = Fit(WithConceptSource(value?.DeepClone(), key30, plan, key31), FormatOf(plan, key31), key30);
         }
+
+        foreach (var (key31, answer) in ChoiceAnswers(capture30, migrated, plan))
+            outputs.TryAdd(key31, answer);
 
         return new OfflineRequest(
             new Dictionary<string, JsonNode?>(supplied, StringComparer.Ordinal),
@@ -255,6 +259,42 @@ public static class ByteEquivalence
         }
 
         return texts;
+    }
+
+    /// <summary>The <c>reason</c> each classifier answered from a capture gives: package text, never 30's reply.</summary>
+    public const string ChoiceReason = "Answered from the 30 capture: whether the reply placed the macro.";
+
+    /// <summary>
+    /// #1508 (comment 6, item 2; R14): for each macro-choice classifier of <paramref name="migrated"/> the plan runs, and
+    /// each instance of its placing agent the capture holds a reply for (its 30 key mapped to 31's, <see cref="KeyMap"/>), the
+    /// classifier's reply at the same instance: <c>{ "answer": true, "reason": … }</c> exactly when 30's reply held the
+    /// macro's marker (<c>macro.&lt;id&gt;.content</c>, which 30's model wrote where it placed the macro), else
+    /// <c>answer: false</c>. By row key, in the capture's order.
+    /// </summary>
+    public static IEnumerable<(string Key, JsonObject Answer)> ChoiceAnswers(JsonObject capture30, Migration31Result migrated, RunPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(capture30);
+        ArgumentNullException.ThrowIfNull(migrated);
+        ArgumentNullException.ThrowIfNull(plan);
+        var classifiers = ChoiceClassifiers.Of(migrated).Where(c => plan.Entries.ContainsKey(c.Key)).ToList();
+        if (classifiers.Count == 0)
+            yield break;
+        foreach (var (key30, value) in capture30["outputs"] as JsonObject ?? [])
+        {
+            if (KeyMap.To31(key30, migrated, plan) is not { } key31)
+                continue;
+            var end = key31.IndexOfAny([':', '#']);
+            var entry = end < 0 ? key31 : key31[..end];
+            var reply = value is JsonValue text && text.TryGetValue<string>(out var said) ? said : value?.ToJsonString() ?? "";
+            foreach (var classifier in classifiers.Where(c => c.Placing == entry))
+            {
+                yield return (classifier.Key + key31[entry.Length..], new JsonObject
+                {
+                    ["answer"] = reply.Contains($"macro.{classifier.Macro}.content", StringComparison.Ordinal),
+                    ["reason"] = ChoiceReason,
+                });
+            }
+        }
     }
 
     /// <summary>31's status word: the run's state, or <see cref="Refused"/> when its start refused it.</summary>

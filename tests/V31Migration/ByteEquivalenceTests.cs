@@ -137,14 +137,16 @@ public class ByteEquivalenceTests
         Assert.Equal(true, (bool?)request.Inputs["letrozole_macro"]);
         Assert.False(request.Inputs.ContainsKey("letrozole"));
         Assert.False(request.Inputs.ContainsKey("no_such_macro"));
-        var run = await OfflineRun.RunAsync(plan, request);
+        // #1508 (R13): the macro's classifier answers yes, so the choice alone decides.
+        var yes = new Dictionary<string, JsonNode?>(request.Outputs, StringComparer.Ordinal) { ["node.letrozole_applies"] = JsonNode.Parse("""{ "answer": true, "reason": "The plan starts letrozole." }""") };
+        var run = await OfflineRun.RunAsync(plan, request with { Outputs = yes });
         Assert.True(run.StartRefusals.Count == 0, string.Join("\n", run.StartRefusals.Select(r => r.Sentence)));
         var on = run.Prompts.Single(p => p.Key == "node.draft").Text;
 
         // Chosen off, the macro is not offered: the prompt lacks its instruction.
         var off = Equivalence.RequestFor(Scenario(inputs, new JsonObject { ["letrozole"] = false }), Capture(), migrated, plan);
         Assert.Equal(false, (bool?)off.Inputs["letrozole_macro"]);
-        var without = (await OfflineRun.RunAsync(plan, off)).Prompts.Single(p => p.Key == "node.draft").Text;
+        var without = (await OfflineRun.RunAsync(plan, off with { Outputs = yes })).Prompts.Single(p => p.Key == "node.draft").Text;
         Assert.True(on.Length > without.Length && on.StartsWith(without.TrimEnd(), StringComparison.Ordinal), on + "\n---\n" + without);
     }
 

@@ -412,6 +412,14 @@ internal static partial class RefusalPackages
 
     private static IEnumerable<RefusalCase> Macros()
     {
+        // #1508 (comment 6, item 1; R13; Task 32): a judgement node asks its question; the migration leaves it empty.
+        yield return new RefusalCase("A11-013",
+            "A classifier asks its question (chapter 5 § 5.8.2). The judgement agent applies decides whether a follow-up line "
+            + "is offered, from the draft. Invalid: its prompt gives the draft and asks nothing. Valid: it asks whether the "
+            + "draft plans a follow-up.",
+            Applies("Does the draft plan a follow-up visit?\n"),
+            Applies(""));
+
         yield return new RefusalCase("S05-042",
             "A macro's body places no macro (chapter 5 § 5.8.1). The agent closing places the macro follow_up. Invalid: "
             + "follow_up's body places macro.recall. Valid: it places nothing.",
@@ -700,6 +708,11 @@ internal static partial class RefusalPackages
             .Edit(Plan, DraftRead, DraftRead + "\n" + line);
 
     /// <summary>The macros <c>follow_up</c> and <c>recall</c> (unplaced), and the agent <c>closing</c>, which places follow_up.</summary>
+    /// <summary>The <c>judgement</c> agent <c>applies</c>, its prompt the draft, a blank line and <paramref name="question"/>.</summary>
+    private static Dictionary<string, byte[]> Applies(string question) =>
+        MinimalListing("applies")
+            .With("nodes/applies.md", Agent("Whether a follow-up applies", "\"judgement\"", "{{ input.consult_draft.content }}\n\n" + question));
+
     private static Dictionary<string, byte[]> FollowUp() =>
         WithFollowUp(MinimalListing("closing"))
             .With("nodes/closing.md", Agent("Writing the closing", Plain, "Write the closing line of the plan.\n" + FollowUpPlaced));

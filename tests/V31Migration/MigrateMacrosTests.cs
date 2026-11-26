@@ -76,6 +76,18 @@ public class MigrateMacrosTests
             : files.WithAgent("draft", $"Draft.\n{line}\n{{{{ macro.{placed} }}}}\n"));
     }
 
+    /// <summary>
+    /// A migrated macro file with its <c>if</c> written <c>null</c>, to be placed in another package: a macro 30's model chose
+    /// reads its classifier's answer (R13), which that package has no node for.
+    /// </summary>
+    private static string Ungated(string macroFile)
+    {
+        var split = FrontMatter.Split(macroFile)!;
+        var header = JsonNode.Parse(split.Header)!.AsObject();
+        header["if"] = null;
+        return "---\n" + header.ToJsonString(Unescaped) + "\n---\n" + split.Body;
+    }
+
     /// <summary>The line of <paramref name="body"/> holding <paramref name="text"/>.</summary>
     private static string LineWith(string body, string text) => body.Split('\n').Single(l => l.Contains(text, StringComparison.Ordinal));
 
@@ -106,7 +118,7 @@ public class MigrateMacrosTests
 
         // Part 05 § 8.1's members in order; the instruction is 30's, an empty line, then 30's mechanics sentence (D5).
         Assert.Equal(
-            "{\"label\":\"House-style reminder\",\"description\":null,\"if\":null,\"format\":\"markdown_block\",\"instruction\":["
+            "{\"label\":\"House-style reminder\",\"description\":null,\"if\":" + Answer("node.house_style_applies") + ",\"format\":\"markdown_block\",\"instruction\":["
             + "\"Where the summary departs from the house style above, the reminder goes as the last sentence; otherwise nothing.\",\"\","
             + JsonSerializer.Serialize(Mechanics("house_style"), Unescaped) + "]}",
             Header(result, "macros/house_style.md"));
@@ -174,7 +186,7 @@ public class MigrateMacrosTests
         Assert.Contains("know.\n" + prompt30 + "\n\n\nReminders:", sent, StringComparison.Ordinal);
 
         // The migrated macro, placed by a 31 agent and composed as the engine composes it.
-        var migrated = MigrateNodesTests.Migrated("example-macros").Files["macros/house_style.md"];
+        var migrated = Ungated(MigrateNodesTests.Migrated("example-macros").Files["macros/house_style.md"]);
         var plan = RunFixture.Plan(TemplateFixture.Package()
             .Listed("macros/index.json", "house_style")
             .With("macros/house_style.md", migrated)
@@ -214,7 +226,8 @@ public class MigrateMacrosTests
             files["prompts/summary.md"] += "{{ if input.include_counselling == true }}{{ macro.followup_only.prompt }}{{ end }}\n";
         });
         Assert.Equal(
-            """{"and":[{"===":[{"var":"input.note_type.value"},"consult"]},{"===":[{"var":"input.include_counselling.value"},true]},{"===":[{"var":"input.followup_only.value"},true]}]}""",
+            """{"and":[{"===":[{"var":"input.note_type.value"},"consult"]},{"===":[{"var":"input.include_counselling.value"},true]},{"===":[{"var":"input.followup_only.value"},true]},"""
+            + Answer("node.followup_only_applies") + "]}",
             MigrateNodesTests.Md(joined, "macros/followup_only.md").Header["if"]!.ToJsonString());
 
         // Final review A3 (R7): that if reads include_counselling beside the choice, so a MacroChoices entry for the macro is
@@ -239,7 +252,7 @@ public class MigrateMacrosTests
             """{"label":"Letrozole counselling","description":null,"format":"boolean","required":false,"channel":null}""",
             inputs["letrozole_macro"]!.ToJsonString());
         Assert.Equal("Input letrozole", (string?)inputs["letrozole"]!["label"]); // the input of that id is untouched
-        Assert.Equal("""{"===":[{"var":"input.letrozole_macro.value"},true]}""", MigrateNodesTests.Md(result, "macros/letrozole.md").Header["if"]!.ToJsonString());
+        Assert.Equal("""{"and":[{"===":[{"var":"input.letrozole_macro.value"},true]},""" + Answer("node.letrozole_applies") + "]}", MigrateNodesTests.Md(result, "macros/letrozole.md").Header["if"]!.ToJsonString());
         const string notice = "Macro 'letrozole' is now offered by the input 'letrozole_macro'.";
         Assert.Equal([notice], result.Report.MacroInputs);
         Assert.Contains(notice, result.Notices);
@@ -247,7 +260,7 @@ public class MigrateMacrosTests
 
         // Review Focus 2: letrozole_macro taken too gives the first free number, said in S10-006's form.
         var taken = WithLetrozole("letrozole_macro");
-        Assert.Equal("""{"===":[{"var":"input.letrozole_macro_2.value"},true]}""", MigrateNodesTests.Md(taken, "macros/letrozole.md").Header["if"]!.ToJsonString());
+        Assert.Equal("""{"and":[{"===":[{"var":"input.letrozole_macro_2.value"},true]},""" + Answer("node.letrozole_applies") + "]}", MigrateNodesTests.Md(taken, "macros/letrozole.md").Header["if"]!.ToJsonString());
         // The input is said to offer the macro too (A10-007), beside the rename.
         const string renamed = "Renamed 'letrozole' to 'letrozole_macro_2'; 'letrozole_macro' was already taken.";
         const string offered = "Macro 'letrozole' is now offered by the input 'letrozole_macro_2'.";
@@ -405,7 +418,7 @@ public class MigrateMacrosTests
 
         // A plain instruction is no hand edit.
         Assert.DoesNotContain(result.HandEdits, h => h.StartsWith("Hand edit needed in macros/house_style.md", StringComparison.Ordinal));
-        Assert.Empty(RefusalsPlacing("house_style", result.Files["macros/house_style.md"]));
+        Assert.Empty(RefusalsPlacing("house_style", Ungated(result.Files["macros/house_style.md"])));
     }
 
     [Fact]
@@ -415,7 +428,7 @@ public class MigrateMacrosTests
 
         Assert.Equal("""{"description":null,"items":["red_flags","safety_net"],"if":null}""", MigrateNodesTests.Json(result, "macros/notes/index.json").ToJsonString());
         Assert.Equal(
-            "{\"label\":\"Red flags\",\"description\":null,\"if\":null,\"format\":\"markdown_block\",\"instruction\":["
+            "{\"label\":\"Red flags\",\"description\":null,\"if\":" + Answer("node.red_flags_applies") + ",\"format\":\"markdown_block\",\"instruction\":["
             + "\"If the draft reviews red flags, the red-flags line goes in the summary; otherwise nothing.\",\"\","
             + JsonSerializer.Serialize(Mechanics("notes.red_flags"), Unescaped) + "]}",
             Header(result, "macros/notes/red_flags.md"));
@@ -459,5 +472,148 @@ public class MigrateMacrosTests
         Assert.Single(result.HandEdits, h => h.StartsWith("Hand edit needed in macros/counselling.md, if: ", StringComparison.Ordinal));
         var text = result.Files["macros/counselling.md"].Replace("\"instruction\":[]", "\"instruction\":[\"Place {{ macro.counselling.content }} in the plan.\"]", StringComparison.Ordinal);
         Assert.Contains(RefusalsPlacing("counselling", text), r => r.Id == "S03-025"); // a condition that yields a string
+    }
+
+    // ---- #1508 (comment 6, item 1; R13): a macro the model used to choose is gated by a classifier -------------------
+
+    /// <summary>The <c>if</c> that reads classifier <paramref name="key"/>'s answer, as canonical JSON.</summary>
+    private static string Answer(string key) => $$"""{"===":[{"var":"{{key}}.value.answer"},true]}""";
+
+    /// <summary>
+    /// <c>test/general</c> with the letrozole macro placed by the loop's prompt, <c>section_instructions</c>, rather than by the
+    /// snippet folder's item (which places no macro at 31, A10-051): the migration then knows the agent that places it.
+    /// </summary>
+    private static Migration31Result LetrozoleInTheLoop() =>
+        MigrateNodesTests.Migrated("test/general", _ => { }, files =>
+        {
+            const string Placed = "{{ if input.note_type == \"consult\" }}\n{{ macro.letrozole_prescription_text.prompt }}\n{{ end }}";
+            Assert.Contains(Placed, files["snippets/standards/assessment_plan.md"], StringComparison.Ordinal);
+            files["snippets/standards/assessment_plan.md"] = files["snippets/standards/assessment_plan.md"].Replace(Placed, "", StringComparison.Ordinal);
+            files["prompts/section_instructions.md"] += "\n{{ macro.letrozole_prescription_text.prompt }}\n";
+        });
+
+    /// <summary>
+    /// <c>example-macros</c> with the macro <c>loop_note</c> (its own <c>if</c>, an instruction leaving the choice to the
+    /// model) placed by <c>narrative_draft</c>, which runs in a <c>case</c> branch inside the loop <c>requested_sections</c>.
+    /// </summary>
+    private static Migration31Result WithLoopNote() =>
+        MigrateNodesTests.Migrated("example-macros", root => root["macros"]!.AsArray().Add((JsonNode)"loop_note"), files =>
+        {
+            files["macros/loop_note.md"] =
+                "{\n  \"label\": \"Medication note\",\n  \"instruction\": \"If the section discusses a medication change, the medication note goes at its end; otherwise nothing.\",\n"
+                + "  \"if\": \"input.note_type == \\\"consult\\\"\"\n}\nThe medication change was discussed with Margaret Okafor.\n";
+            files["prompts/narrative_draft.md"] += "{{ macro.loop_note.prompt }}\n";
+        });
+
+    [Fact]
+    public void AModelChosenMacro_GetsAJudgementNode()
+    {
+        // house_style is placed through the snippet style, which summary places: its classifier is summary's sibling, just
+        // before it, as are the folder's red_flags and safety_net (summary places each), in the order the macros are written.
+        var result = MigrateNodesTests.Migrated("example-macros");
+        Assert.Equal(
+            """["standing_sections","requested_sections","house_style_applies","red_flags_applies","safety_net_applies","summary","patient_line"]""",
+            MigrateNodesTests.Json(result, "nodes/index.json")["items"]!.ToJsonString());
+        var (header, body) = MigrateNodesTests.Md(result, "nodes/house_style_applies.md");
+        Assert.Equal(
+            """{"kind":"agent","producer":"generated","label":"Whether House-style reminder applies","description":null,"format":"judgement","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}""",
+            header.ToJsonString());
+
+        // Its prompt reads what summary's reads outside an if or a for, but the snippet style, which places the macro
+        // itself (a judgement node places none), then ends with an empty question line.
+        Assert.Equal("{{ snippet.boilerplate.content }}\n\n{{ input.consult_draft.content }}\n\n", body);
+
+        // Inside a loop and a case branch: the classifier is the placing node's sibling in that branch, its if the macro's
+        // own offer condition.
+        var loop = WithLoopNote();
+        var route = MigrateNodesTests.Json(loop, "nodes/requested_sections/route/index.json");
+        Assert.Equal("""["loop_note_applies","narrative_draft"]""", route["branches"]![0]!["nodes"]!.ToJsonString());
+        var (inLoop, prompt) = MigrateNodesTests.Md(loop, "nodes/requested_sections/route/loop_note_applies.md");
+        Assert.Equal("""{"===":[{"var":"input.note_type.value"},"consult"]}""", inLoop["if"]!.ToJsonString());
+        Assert.Equal("judgement", (string?)inLoop["format"]);
+        Assert.Equal("{{ item.value.title }}\n\n{{ input.consult_draft.content }}\n\n", prompt);
+    }
+
+    [Fact]
+    public void TheMacrosIf_ReadsTheAnswer()
+    {
+        var result = MigrateNodesTests.Migrated("example-macros");
+        Assert.Equal(Answer("node.house_style_applies"), MigrateNodesTests.Md(result, "macros/house_style.md").Header["if"]!.ToJsonString());
+        Assert.Equal(Answer("node.red_flags_applies"), MigrateNodesTests.Md(result, "macros/notes/red_flags.md").Header["if"]!.ToJsonString());
+
+        // The macro's own if first, then the answer, read as the sibling it is where the macro is placed (per item).
+        var loop = WithLoopNote();
+        Assert.Equal(
+            """{"and":[{"===":[{"var":"input.note_type.value"},"consult"]},""" + Answer("node.loop_note_applies") + "]}",
+            MigrateNodesTests.Md(loop, "macros/loop_note.md").Header["if"]!.ToJsonString());
+
+        // The instruction is 30's, as area 10 wrote it: the "otherwise" clause is the operator's to remove.
+        Assert.Equal(
+            "If the section discusses a medication change, the medication note goes at its end; otherwise nothing.",
+            (string?)MigrateNodesTests.Md(loop, "macros/loop_note.md").Header["instruction"]![0]);
+    }
+
+    [Fact]
+    public void TheEmptyQuestion_IsAHandEdit_AndPublishRefusesIt()
+    {
+        var result = LetrozoleInTheLoop();
+        const string File = "nodes/standards/letrozole_prescription_text_applies.md";
+        AssertHandEdit(result, File, "body", "A10-077",
+            "node 'letrozole_prescription_text_applies' decides whether macro 'letrozole_prescription_text' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.");
+        Assert.Equal(
+            """["letrozole_prescription_text_applies","section_instructions","patient_section_draft","standard_section_draft"]""",
+            MigrateNodesTests.Json(result, "nodes/standards/index.json")["nodes"]!.ToJsonString());
+        Assert.Equal(Answer("node.letrozole_prescription_text_applies"), MigrateNodesTests.Md(result, "macros/letrozole_prescription_text.md").Header["if"]!.ToJsonString());
+
+        // Published unedited, the question is missing (A11-013), and nothing else is refused.
+        var refusal = Assert.Single(MigratedPackagesTests.Publish(result));
+        Assert.Equal(("A11-013", File, "Node 'letrozole_prescription_text_applies' asks nothing: its prompt has no question."), (refusal.Id, refusal.Path, refusal.Sentence));
+        V31Contract.AssertSentence(refusal);
+
+        // The question written, it publishes.
+        var asked = result with { Files = new Dictionary<string, string>(result.Files, StringComparer.Ordinal) { [File] = result.Files[File] + "Does the plan prescribe letrozole?\n" } };
+        Assert.Empty(MigratedPackagesTests.Publish(asked));
+    }
+
+    [Fact]
+    public void AMacroPlacedByTwoNodes_GetsAClassifierEach()
+    {
+        // patient_line places house_style too; its placement comes first (30's nodes, then the snippets), so its classifier
+        // takes the id and summary's is numbered (S10-006). The macro's if reads both answers.
+        var result = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["prompts/patient_line.md"] += "{{ macro.house_style.prompt }}\n");
+        Assert.Equal(
+            """["standing_sections","requested_sections","house_style_applies_2","red_flags_applies","safety_net_applies","summary","house_style_applies","patient_line"]""",
+            MigrateNodesTests.Json(result, "nodes/index.json")["items"]!.ToJsonString());
+        Assert.Contains("Renamed 'house_style_applies' to 'house_style_applies_2'; 'house_style_applies' was already taken.", result.Notices);
+        Assert.Equal(
+            """{"and":[""" + Answer("node.house_style_applies") + "," + Answer("node.house_style_applies_2") + "]}",
+            MigrateNodesTests.Md(result, "macros/house_style.md").Header["if"]!.ToJsonString());
+        Assert.Equal(2, result.HandEdits.Count(h => h.StartsWith("Hand edit needed in nodes/house_style_applies", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void AMacroWithNoInstructionOrATemplatedOne_IsUnchanged()
+    {
+        // silent_reminder's instruction is {{ "" }}, wrap_up's reads another macro, header_line has none, and the engine placed
+        // preamble, sign_off, table_note, section_caveat and counselling (instruction []): no classifier, no answer read.
+        var result = MigrateNodesTests.Migrated("example-macros");
+        foreach (var id in (string[])["silent_reminder", "wrap_up", "header_line", "preamble", "sign_off", "table_note", "section_caveat", "counselling"])
+        {
+            Assert.DoesNotContain(result.Files.Keys, f => f.EndsWith($"/{id}_applies.md", StringComparison.Ordinal));
+            Assert.DoesNotContain(".value.answer", MigrateNodesTests.Md(result, $"macros/{id}.md").Header["if"]?.ToJsonString() ?? "", StringComparison.Ordinal);
+        }
+
+        Assert.Null(MigrateNodesTests.Md(result, "macros/silent_reminder.md").Header["if"]);
+    }
+
+    [Fact]
+    public void AnOptionalMacro_KeepsItsInput_AndGainsTheClassifier()
+    {
+        // Part 10 § 1.3: the choice input still offers it; the classifier is asked only when the choice holds.
+        var result = WithLetrozole();
+        const string Choice = """{"===":[{"var":"input.letrozole_macro.value"},true]}""";
+        Assert.Equal("""{"and":[""" + Choice + "," + Answer("node.letrozole_applies") + "]}", MigrateNodesTests.Md(result, "macros/letrozole.md").Header["if"]!.ToJsonString());
+        Assert.Equal(Choice, MigrateNodesTests.Md(result, "nodes/letrozole_applies.md").Header["if"]!.ToJsonString());
+        Assert.NotNull(JsonNode.Parse(result.ManifestJson)!["inputs"]!["letrozole_macro"]);
     }
 }

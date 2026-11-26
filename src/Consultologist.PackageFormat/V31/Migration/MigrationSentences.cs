@@ -419,6 +419,15 @@ internal static class MigrationSentences
     public static string PlacedByTheEngine(string macro, string where) =>
         $"macro '{macro}' was placed {where} the reply by the engine; say in its instruction where the model writes its marker.";
 
+    /// <summary>
+    /// A10-077 (#1508, comment 6, item 1; R13; part 10 § 1.4): a reason: the <c>judgement</c> node <paramref name="node"/>
+    /// the migration wrote decides whether macro <paramref name="macro"/> is offered, which 30's model chose from the
+    /// instruction; its prompt ends with an empty question line, which publish refuses (A11-013), and the instruction's
+    /// "otherwise" clause cannot be found reliably by code.
+    /// </summary>
+    public static string WriteTheQuestion(string node, string macro) =>
+        $"node '{node}' decides whether macro '{macro}' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.";
+
     /// <summary>A10-004 (D4): a reason: macro <paramref name="macro"/> is read both as <c>.content</c> (fixed text) and as <c>.prompt</c> (an instruction) at 30.</summary>
     public static string ReadBothWays(string macro) =>
         $"macro '{macro}' is read both as fixed text and as an instruction; split it into a snippet and a macro.";

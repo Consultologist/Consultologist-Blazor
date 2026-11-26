@@ -130,6 +130,13 @@ public static class ExpectedDifferences
         {
             Bytes = MacroTrailingWhitespace,
         },
+        new("macro-choice-classifier",
+            "#1508, comment 6, items 1 and 2, ruled by the owner on 2026-11-25 (R13, R14); part 10 §§ 1.2, 1.4, 3.2",
+            "a macro 30's model chose is gated by a judgement node, answered from 30's reply: the node's prompt is 31's alone, and the placing prompt holds the macro's instruction, its \"otherwise\" clause removed, only where the node answered yes")
+        {
+            Case = ClassifierPrompt,
+            Bytes = ChoiceInstruction,
+        },
         new("blank-conversion",
             "R1, ruled by the owner on #1507, 2026-11-20; part 10 §§ 2.3, 3.2",
             "the text is gated by a '!x' converted to blank(x), which held at 31 for an empty or white-space-only text where 30's !x did not, so only 31 has it")
@@ -175,6 +182,93 @@ public static class ExpectedDifferences
         applied = [.. Rules.Where(applied.Contains)];
 
         return applied.Count > 0 && string.Equals(old, now, StringComparison.Ordinal) ? string.Join("; ", applied.Select(r => r.Said)) : null;
+    }
+
+    /// <summary>
+    /// #1508 (R13): a prompt only 31 sent, of a macro-choice classifier (<see cref="ChoiceClassifiers"/>), which 30 had no
+    /// node for.
+    /// </summary>
+    private static bool ClassifierPrompt(DifferenceContext c) =>
+        c.Kind == ComparedKind.Prompt && c.OldText is null && c.NewText is not null && c.Key31 is { } key
+        && ChoiceClassifiers.Of(c.Migrated).Any(k => k.Key == EntryOf(key));
+
+    /// <summary>
+    /// #1508 (R13, R14): the prompt of an agent a macro-choice classifier stands before, at an instance where the classifier
+    /// answered (its reply in <see cref="OfflineResult.Outputs"/>): where it answered yes, 31's prompt is 30's with the
+    /// macro's 30 instruction (<c>Y</c>) in place of its 31 instruction (<c>I</c>), where <c>I</c> is <c>Y</c> or <c>Y</c>
+    /// with one "otherwise" clause removed (<see cref="WithoutAnOtherwise"/>); where it answered no, 31's prompt is 30's with
+    /// such a <c>Y</c> taken out (the macro was not offered). Undone, 31's text is 30's there; anything else is not this rule.
+    /// </summary>
+    private static (string Old, string New)? ChoiceInstruction(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind != ComparedKind.Prompt || c.Key31 is not { } key)
+            return null;
+        var entry = EntryOf(key);
+        foreach (var classifier in ChoiceClassifiers.Of(c.Migrated).Where(k => k.Placing == entry))
+        {
+            if (c.Run31.Outputs.GetValueOrDefault(classifier.Key + key[entry.Length..]) is not JsonObject reply
+                || reply["answer"] is not JsonValue answer || !answer.TryGetValue<bool>(out var yes))
+            {
+                continue;
+            }
+
+            var instruction = classifier.Instruction;
+            if (yes)
+            {
+                for (var at = now.IndexOf(instruction, StringComparison.Ordinal); at >= 0 && instruction.Length > 0; at = now.IndexOf(instruction, at + 1, StringComparison.Ordinal))
+                {
+                    var (before, after) = (now[..at], now[(at + instruction.Length)..]);
+                    if (old.Length >= before.Length + after.Length && old.StartsWith(before, StringComparison.Ordinal) && old.EndsWith(after, StringComparison.Ordinal)
+                        && Restores(old[before.Length..(old.Length - after.Length)], instruction))
+                    {
+                        return (old, before + old[before.Length..(old.Length - after.Length)] + after);
+                    }
+                }
+
+                continue;
+            }
+
+            // Not offered: 30's text is 31's with Y inserted at some place p, which the common prefix and suffix bound.
+            var extra = old.Length - now.Length;
+            if (extra <= 0)
+                continue;
+            var prefix = 0;
+            while (prefix < now.Length && old[prefix] == now[prefix])
+                prefix++;
+            var suffix = 0;
+            while (suffix < now.Length && old[old.Length - 1 - suffix] == now[now.Length - 1 - suffix])
+                suffix++;
+            for (var p = Math.Max(0, now.Length - suffix); p <= prefix; p++)
+            {
+                if (Restores(old.Substring(p, extra), instruction))
+                    return (old, now[..p] + old.Substring(p, extra) + now[p..]);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether 31's <paramref name="instruction"/> is 30's <paramref name="written"/>, or it with one "otherwise" clause removed.</summary>
+    private static bool Restores(string written, string instruction) =>
+        written == instruction || WithoutAnOtherwise(written).Contains(instruction, StringComparer.Ordinal);
+
+    /// <summary>
+    /// <paramref name="text"/> with one "otherwise" clause removed, for each one it holds: <c>; otherwise …</c> or
+    /// <c>, otherwise …</c> up to the next full stop (kept), or a sentence <c>Otherwise ….</c> with the space before it.
+    /// </summary>
+    private static IEnumerable<string> WithoutAnOtherwise(string text)
+    {
+        foreach (var word in new[] { "otherwise", "Otherwise" })
+        {
+            for (var at = text.IndexOf(word, StringComparison.Ordinal); at >= 0; at = text.IndexOf(word, at + 1, StringComparison.Ordinal))
+            {
+                var stop = text.IndexOf('.', at);
+                if (word == "otherwise" && at >= 2 && text[at - 1] == ' ' && text[at - 2] is ';' or ',')
+                    yield return text[..(at - 2)] + (stop < 0 ? "" : text[stop..]);
+                else if (word == "Otherwise" && at >= 2 && text[at - 1] == ' ' && text[at - 2] == '.' && stop >= 0)
+                    yield return text[..(at - 1)] + text[(stop + 1)..];
+            }
+        }
     }
 
     private static bool IsStatus(DifferenceContext c, string old, string now) =>

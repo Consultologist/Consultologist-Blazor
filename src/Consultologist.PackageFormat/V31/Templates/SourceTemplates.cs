@@ -251,8 +251,45 @@ public static partial class SourceTemplates
             var units = Expand(body, null, host.Site, parts, 0, null, null);
             if (leaf is not null)
                 PlacingNode(units, leaf, host);
+            if (leaf is not null && AsksNothing(leaf, text))
+                Refusals.Add(DialectSentences.AsksNothing(leaf.Id, leaf.Path));
             body = body with { Units = units };
             return host is { Site: TemplateSite.Deliverable, Declaration: SourceDeliverable deliverable } ? Deliverable(body, deliverable, Refusals.Count > said) : body;
+        }
+
+        /// <summary>
+        /// #1508 (comment 6, item 1; R13; A11-013): whether <paramref name="leaf"/>, an agent of the built-in format
+        /// <c>judgement</c> (a yes-or-no question), asks nothing: its prompt <paramref name="text"/> and its parts' text hold
+        /// nothing outside their tags but white space, so the only text the model is sent is what it reads. The migration
+        /// writes a classifier so, its question line left empty for the operator (part 10 § 1.4).
+        /// </summary>
+        private static bool AsksNothing(SourceLeaf leaf, string text)
+        {
+            if (leaf.Header["format"] is not JsonValue format || !format.TryGetValue<string>(out var name) || name != "judgement")
+                return false;
+            var texts = new List<string> { text };
+            foreach (var (_, part) in leaf.Header["parts"] as JsonObject ?? [])
+            {
+                foreach (var line in part?["text"] as JsonArray ?? [])
+                    texts.Add(line is JsonValue v && v.TryGetValue<string>(out var written) ? written : "");
+            }
+
+            return texts.All(t => string.IsNullOrWhiteSpace(OutsideTags(t)));
+        }
+
+        /// <summary><paramref name="text"/> with every tag (<see cref="TemplateTags.Scan"/>) taken out.</summary>
+        private static string OutsideTags(string text)
+        {
+            var (tags, _) = TemplateTags.Scan(text);
+            var outside = new System.Text.StringBuilder();
+            var at = 0;
+            foreach (var tag in tags)
+            {
+                outside.Append(text, at, Math.Max(0, tag.Start - at));
+                at = Math.Max(at, tag.End);
+            }
+
+            return outside.Append(text, Math.Min(at, text.Length), text.Length - Math.Min(at, text.Length)).ToString();
         }
 
         /// <summary>

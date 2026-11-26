@@ -320,6 +320,14 @@ public static class DialectSentences
         new("A11-012", $"{subject} uses {unit} at line {Line(line)} in an expression; a part or a macro is placed on its own, as {{{{ {unit} }}}}, never piped or used in an expression.", path);
 
     /// <summary>
+    /// A11-013 (#1508, comment 6, item 1; R13; part 05 § 8.2): the <c>judgement</c> node <paramref name="id"/> asks a yes-or-no
+    /// question, and its prompt (with its parts' text) has nothing outside its tags but white space: the migration writes a
+    /// classifier's prompt so, its question left for the operator.
+    /// </summary>
+    public static SourceRefusal AsksNothing(string id, string path) =>
+        new("A11-013", $"Node '{id}' asks nothing: its prompt has no question.", path);
+
+    /// <summary>
     /// A11-009 (#1508, ruled by the owner, Q5 of 2026-11-26; R17; part 05 § 2.5): <paramref name="readPath"/> steps through
     /// <paramref name="objectPath"/>, an object that can be null (an input not required, a nullable field, a node that may
     /// not run), with no <c>{{ if }}</c> on it around the read: the render would fail when it is null.

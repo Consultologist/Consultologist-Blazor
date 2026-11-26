@@ -21,7 +21,7 @@ public class ExpectedDifferencesTests
     [
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
         "refused-deliverable-withheld", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop", "sent-format", "explicit-null-for-optional",
-        "macro-trailing-whitespace", "blank-conversion",
+        "macro-trailing-whitespace", "macro-choice-classifier", "blank-conversion",
     ];
 
     [Fact]
@@ -362,6 +362,65 @@ public class ExpectedDifferencesTests
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------------
+
+    // ---- macro-choice-classifier (#1508, comment 6, items 1 and 2; R13, R14) ------------------------------------
+
+    private const string Placing = "node.standards.section_instructions:assessment_plan";
+
+    private const string Classifier = "node.standards.letrozole_prescription_text_applies:assessment_plan";
+
+    /// <summary>A prompt of test/general (edited: its classifier written with its question), the classifier having answered <paramref name="yes"/>.</summary>
+    private static DifferenceContext ChoiceContext(string? old, string now, bool? yes, string key31 = Placing)
+    {
+        var outputs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+        if (yes is { } answer)
+            outputs[Classifier] = new JsonObject { ["answer"] = answer, ["reason"] = Consultologist.PackageFormat.V31.Harness.ByteEquivalence.ChoiceReason };
+        var run = new OfflineResult(RunState.Completed, null, [], [], [], [], outputs, [], [], []);
+        return new("test/general", "default", $"test/general/default#prompts/{key31}", ComparedKind.Prompt, null, key31, old, now,
+            Capture("Completed", null), run, EquivalenceFixture.Migrated("test/general"), EquivalenceFixture.Plan("test/general"));
+    }
+
+    [Fact]
+    public void MacroChoiceClassifier_ExplainsTheClassifiersPrompt_AndTheInstructionItGates()
+    {
+        var classifier = Assert.Single(ChoiceClassifiers.Of(EquivalenceFixture.Migrated("test/general")));
+        Assert.Equal(("node.standards.letrozole_prescription_text_applies", "node.standards.section_instructions", "letrozole_prescription_text"),
+            (classifier.Key, classifier.Placing, classifier.Macro));
+        var now31 = classifier.Instruction;
+        var was30 = now31.Replace("assessment and plan.", "assessment and plan; otherwise nothing.", StringComparison.Ordinal);
+        Assert.NotEqual(now31, was30);
+
+        // The classifier's prompt, which only 31 sends.
+        Assert.StartsWith("macro-choice-classifier: ", Explain(ChoiceContext(null, "Does the plan prescribe letrozole?\n", true, Classifier)));
+
+        // Answered yes: 30's instruction, its "otherwise" clause removed at 31.
+        Assert.StartsWith("macro-choice-classifier: ", Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + now31 + "Margaret Okafor.", true)));
+
+        // Answered no: the macro is not offered, so 31's prompt lacks 30's instruction.
+        Assert.StartsWith("macro-choice-classifier: ", Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\nMargaret Okafor.", false)));
+    }
+
+    [Fact]
+    public void MacroChoiceClassifier_DoesNotExplainANearPair()
+    {
+        var now31 = Assert.Single(ChoiceClassifiers.Of(EquivalenceFixture.Migrated("test/general"))).Instruction;
+        var was30 = now31.Replace("assessment and plan.", "assessment and plan; otherwise nothing.", StringComparison.Ordinal);
+
+        // A prompt only 31 sent that is no classifier's.
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext(null, "Only 31 sent this.", true)));
+
+        // The instruction missing where the classifier answered yes, or kept where it answered no.
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\nMargaret Okafor.", true)));
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + now31 + "Margaret Okafor.", false)));
+
+        // With no answer (the classifier did not run), nothing is explained.
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\nMargaret Okafor.", null)));
+
+        // More than the "otherwise" clause changed, or text beside the instruction.
+        var reworded = now31.Replace("side-effect counselling", "counselling", StringComparison.Ordinal);
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + reworded + "Margaret Okafor.", true)));
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + now31 + "Dr A. Sample.", true)));
+    }
 
     private static string Explain(DifferenceContext context) =>
         ExpectedDifferences.Explain(context) ?? throw new Xunit.Sdk.XunitException($"No rule explains {context.Site}.");

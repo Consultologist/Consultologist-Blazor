@@ -3,6 +3,9 @@
   "items": [
     "standing_sections",
     "requested_sections",
+    "house_style_applies",
+    "red_flags_applies",
+    "safety_net_applies",
     "summary",
     "patient_line"
   ]
