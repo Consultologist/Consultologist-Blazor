@@ -315,7 +315,7 @@ internal static class V31Contract
         ["A10-061"] = "No snapshot test was written: the migrated package <does not publish: <sentences> | is refused at its run's start | fails its offline run | times out in its offline run | cannot be run offline>.",
         ["A10-062"] = "No document applies to these inputs. <documents>",
         ["A10-063"] = "Each deliverable is now delivered by pdf in a message of its own, where 30 sent one message for the job.",
-        ["A10-064"] = "Node '<id>' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.",
+        ["A10-064"] = "Node '<id>' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.",
         ["A10-065"] = "Renamed format '<id>' to '<new id>': '<id>' is the name of a <built-in | catalogue> format at 31.",
         ["A10-066"] = "the check reads the loop's own nodes (<ids>), which have no value before the first pass; check after the pass, or read a value from outside the loop.",
         ["A10-067"] = "Macro '<id>' is chosen per run by the input '<input id>', but its if reads another boolean input, so a MacroChoices entry for '<id>' is refused at 31; send the input '<input id>' in Inputs instead.",

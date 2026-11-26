@@ -239,11 +239,12 @@ internal static class MigrationSentences
         $"Node '{id}' declared {member} at 30, which 31 has no member for; it was dropped.";
 
     /// <summary>
-    /// A10-064 (#1507, Task 15 fix round 1; D16): classifier <paramref name="id"/>'s <c>with</c> values have no 31 member, and
-    /// are written at the end of its prompt as 30's engine appended them (in place of A10-030 for a classifier's <c>with</c>).
+    /// A10-064 (#1507, Task 15 fix round 1; D16; #1508 item 7): classifier <paramref name="id"/>'s <c>with</c> values have no 31
+    /// member; they are the enum of its answer format, which 31 sends after its prompt (in place of A10-030 for a classifier's
+    /// <c>with</c>); 30's "Answer with exactly one of" line is dropped.
     /// </summary>
-    public static string ValuesInPrompt(string id) =>
-        $"Node '{id}' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.";
+    public static string ValuesInAnswerFormat(string id) =>
+        $"Node '{id}' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.";
 
     /// <summary>
     /// A10-031 (part 02 § 3.3): a reason: a package format whose root is a scalar or <c>null</c>, where a 31 package format

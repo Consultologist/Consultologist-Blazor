@@ -76,22 +76,21 @@ public class MigrateNodesTests
     }
 
     /// <summary>
-    /// #1507 (Task 15; D16, part 10 § 3.1): 30's engine appended its classifier trailer to the rendered prompt
-    /// (<c>ClassificationOutputContract.Trailer</c>, the <c>with</c> values in order); 31 drops <c>with</c> (A10-030) and
-    /// appends nothing, so the migration writes the trailer at the end of the body, and the prompt keeps 30's bytes.
+    /// #1508 (item 7, ruled 2026-11-26; A10-064): 30's engine appended its answer line to a classifier's rendered prompt
+    /// (<c>ClassificationOutputContract.Trailer</c>); 31 sends the answers' format's instruction after the prompt, so the
+    /// migration drops 30's line and the body ends with the last line of 30's prompt.
     /// </summary>
     [Fact]
-    public void AClassifiersPrompt_Ends_WithThe30Trailer()
+    public void AClassifiersPrompt_HasNo30AnswerLine()
     {
         var result = Migrated("example-classifier-scope");
 
         var (_, body) = Md(result, "nodes/scope.md");
-        Assert.EndsWith(
-            "{{ input.consult_draft.content }}\n"
-            + Consultologist.Api.Workflow.ClassificationOutputContract.Trailer(["in_scope", "out_of_scope", "needs_information"]),
-            body,
-            StringComparison.Ordinal);
-        Assert.Contains("Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.", result.Notices);
+        Assert.DoesNotContain("Answer with exactly one of", body, StringComparison.Ordinal);
+        Assert.EndsWith("{{ input.consult_draft.content }}\n", body, StringComparison.Ordinal);
+        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.";
+        Assert.Contains(notice, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-064", notice, ""));
 
         // Only a classifier's: a prose node's prompt is 30's text.
         Assert.DoesNotContain("Answer with exactly one of", Md(result, "nodes/plan_sections/plan_section.md").Body, StringComparison.Ordinal);
@@ -300,14 +299,14 @@ public class MigrateNodesTests
     }
 
     [Fact]
-    public void AClassifiersWith_IsWrittenInItsPrompt_WithANotice()
+    public void AClassifiersWith_IsTheEnumOfItsFormat_WithANotice()
     {
-        // D16: 31 has no with; the values are written at the end of the prompt (Task 15), and A10-064 says so, not A10-030.
+        // D16: 31 has no with; its values are the enum of the answer format (item 7), and A10-064 says so, not A10-030.
         var result = Migrated("example-classifier-scope");
 
         var (header, _) = Md(result, "nodes/scope.md");
         Assert.False(header.ContainsKey("with"));
-        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.";
+        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.";
         Assert.Contains(notice, result.Notices);
         Assert.DoesNotContain(result.Notices, n => n.StartsWith("Node 'scope' declared with at 30", StringComparison.Ordinal) && n.EndsWith("it was dropped.", StringComparison.Ordinal));
         V31Contract.AssertSentence(new SourceRefusal("A10-064", notice, ""));
@@ -332,8 +331,8 @@ public class MigrateNodesTests
         Assert.Equal(Compact("""{ "description": null, "items": ["letter_item", "plan_sections_item", "scope_answer"] }"""),
             Json(result, "formats/index.json").ToJsonString());
 
-        // The 30 trailer stays in the prompt (A10-064), and the migrated package publishes with the reads kept at .value.value.
-        Assert.EndsWith("Answer with exactly one of: in_scope, out_of_scope, needs_information.", Md(result, "nodes/scope.md").Body, StringComparison.Ordinal);
+        // 30's answer line is dropped (A10-064), and the migrated package publishes with the reads kept at .value.value.
+        Assert.DoesNotContain("Answer with exactly one of", Md(result, "nodes/scope.md").Body, StringComparison.Ordinal);
         Assert.Contains("node.scope.value.value", Md(result, "nodes/letter_decline_letter/decline_letter.md").Body, StringComparison.Ordinal);
         var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes(), V31Resolve.CompiledGoldenTests.Fixed);
         Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));

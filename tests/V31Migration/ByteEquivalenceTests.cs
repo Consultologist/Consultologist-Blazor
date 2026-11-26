@@ -52,6 +52,20 @@ public class ByteEquivalenceTests
         }
     }
 
+    /// <summary>#1508 (item 7): a migrated classifier's prompt ends with its format's instruction alone; 30's answer line is credited to <c>sent-format</c>.</summary>
+    [Fact]
+    public async Task AClassifiersPrompt_IsExpected()
+    {
+        var (_, _, texts) = await EquivalenceFixture.Compared("example-classifier-scope", "in-scope");
+        var scope = texts.Single(t => t.Site == "example-classifier-scope/in-scope#prompts/node.scope");
+        Assert.Equal(["sent-format"], scope.Rules);
+        Assert.True(scope.Expected);
+
+        var (_, _, edge) = await EquivalenceFixture.Compared("edge-answer-outside-set", "answer-outside-set");
+        var triage = edge.Single(t => t.Site.EndsWith("#prompts/node.triage", StringComparison.Ordinal));
+        Assert.Equal(["sent-format"], triage.Rules);
+    }
+
     [Fact]
     public async Task ADifferenceNoRuleExplains_IsUnexpected()
     {

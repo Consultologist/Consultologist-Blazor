@@ -130,8 +130,8 @@ public static class ExpectedDifferences
             Bytes = PositionNames,
         },
         new("sent-format",
-            "part 10 § 1.8 (every property required, an optional one nullable); R12 and #1508, comment 5, item 7, #3, ruled by the owner on 2026-11-25 (a format's description sent; a classifier's answers sent as its format); part 10 § 3.2",
-            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order, with the descriptions 31 sends where 30's had none; or a classifier's answers, the values 30 listed, sent as its format after them")
+            "part 10 § 1.8 (every property required, an optional one nullable); R12 and #1508, comment 5, item 7, #3, ruled by the owner on 2026-11-25 (a format's description sent; a classifier's answers sent as its format); #1508, 2026-11-26, item 7 (30's answer line dropped); part 10 § 3.2",
+            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order, with the descriptions 31 sends where 30's had none; or a classifier's answers sent as its format, where 30 listed them in its prompt's last line, which the migration drops")
         {
             Bytes = SentFormat,
         },
@@ -784,10 +784,10 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// #1508 (R12; comment 5, item 7, #3): 30 sent no format to a classifier and ended its prompt with its values
-    /// (<c>Answer with exactly one of: &lt;values&gt;.</c>, kept by the migration); 31 sends its answers' format, bound
+    /// (<c>Answer with exactly one of: &lt;values&gt;.</c>, a last line the migration drops, #1508 item 7); 31 sends its answers' format, bound
     /// <c>custom</c>, after the custom trailer (<see cref="WorkflowCustomPrompt.Compose"/>). Explained when that format is
     /// exactly the answers' (<c>{ value: enum }</c>, closed, nothing else but a description, #3: no title or <c>$id</c>) and
-    /// its values are the ones 30's last line lists, in order; the trailer and format are then taken off 31's text.
+    /// its values are the ones 30's last line lists, in order; 30's line is then taken off 30's text, and the trailer and format off 31's.
     /// </summary>
     private static (string Old, string New)? AnswersSent(string old, string now, int at31, string marker)
     {
@@ -811,7 +811,10 @@ public static class ExpectedDifferences
             return null;
         var listed = $"Answer with exactly one of: {string.Join(", ", values.Select(SourceLayout.Text))}.";
         var before = now[..(at31 - joint.Length)];
-        return before.EndsWith(listed, StringComparison.Ordinal) && old.EndsWith(listed, StringComparison.Ordinal) ? (old, before) : null;
+        var line = joint + listed;
+        // 31 composes the trailer after the rendered prompt with its end trimmed (WorkflowCustomPrompt.Compose), so 30's text
+        // before its line is read with its end trimmed too: the prompt's own last line ending is not a difference.
+        return old.EndsWith(line, StringComparison.Ordinal) ? (old[..^line.Length].TrimEnd(), before) : null;
     }
 
     /// <summary>
