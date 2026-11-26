@@ -18,7 +18,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 public class MigrateRenamesTests
 {
     /// <summary>Options with no hand choice: an account package's (§ 1.9, "the kind is added as a suffix").</summary>
-    private static Migration31Options NoChoice => MigrationFixture.Options("no-choices");
+    private static Migration31Options NoChoice => MigrationFixture.NoChoices;
 
     private static (string Json, Dictionary<string, string> Files) Package(string package)
     {

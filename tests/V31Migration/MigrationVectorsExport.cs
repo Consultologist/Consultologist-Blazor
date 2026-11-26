@@ -245,10 +245,11 @@ public class MigrationVectorsExport
     }
 
     /// <summary>
-    /// The options <paramref name="vector"/> is migrated with: <see cref="MigrationFixture.Options"/> of its package (the
-    /// hand-built one has no hand choices).
+    /// The options <paramref name="vector"/> is migrated with: <see cref="MigrationFixture.Options"/> of its package (its
+    /// <c>options.json</c>); the hand-built one has no hand choices (<see cref="MigrationFixture.NoChoices"/>).
     /// </summary>
-    internal static Migration31Options Options(VectorCase vector) => MigrationFixture.Options(vector.Package ?? HandBuiltName);
+    internal static Migration31Options Options(VectorCase vector) =>
+        vector.Package is { } package ? MigrationFixture.Options(package) : MigrationFixture.NoChoices;
 
     /// <summary>
     /// The files of <paramref name="vector"/>'s case folder, by path within it: <c>source/manifest.json</c> and
@@ -281,28 +282,18 @@ public class MigrationVectorsExport
     }
 
     /// <summary>
-    /// <c>options.json</c>: every option the case was migrated with, every member written. <c>renames</c> (a reserved or
-    /// long 30 id to its hand-chosen 31 id), <c>whenEmpty</c> (a deliverable's id to its hand-chosen <c>whenEmpty</c>) and
-    /// <c>folderFormats</c> (a snippet folder's id to the format its items take), each <c>null</c> when the case chooses
-    /// none; and <c>toolchain</c>, the toolchain the migration publishes its result with, in <c>lock.json</c>'s names
-    /// (<see cref="CompiledDocumentsExport.ToolchainJson"/>). Written as <c>notices.json</c> is.
+    /// <c>options.json</c>: every option the case was migrated with, every member written. The package's own
+    /// <c>options.json</c> (R18, <see cref="Migration31Options.ToJson"/>): <c>renames</c> (a reserved or long 30 id to its
+    /// hand-chosen 31 id), <c>whenEmpty</c> (a deliverable's id to its hand-chosen <c>whenEmpty</c>) and
+    /// <c>folderFormats</c> (a snippet folder's id to the format its items take), each <c>{}</c> when the case chooses
+    /// none; then the vector's own <c>toolchain</c>, the toolchain the migration publishes its result with, in
+    /// <c>lock.json</c>'s names (<see cref="CompiledDocumentsExport.ToolchainJson"/>). Written as <c>notices.json</c> is.
     /// </summary>
-    internal static string OptionsJson(Migration31Options options) => ByteEquivalenceFixtures.WriteJson(new JsonObject
+    internal static string OptionsJson(Migration31Options options)
     {
-        ["renames"] = Map(options.Renames),
-        ["whenEmpty"] = Map(options.WhenEmpty),
-        ["folderFormats"] = Map(options.FolderFormats),
-        ["toolchain"] = JsonNode.Parse(CompiledDocumentsExport.ToolchainJson(options.Toolchain)),
-    });
-
-    private static JsonObject? Map(IReadOnlyDictionary<string, string>? map)
-    {
-        if (map is null)
-            return null;
-        var json = new JsonObject();
-        foreach (var (key, value) in map.OrderBy(p => p.Key, StringComparer.Ordinal))
-            json[key] = value;
-        return json;
+        var json = options.ToJson();
+        json["toolchain"] = JsonNode.Parse(CompiledDocumentsExport.ToolchainJson(options.Toolchain));
+        return ByteEquivalenceFixtures.WriteJson(json);
     }
 
     /// <summary>The case's <c>about.txt</c>: what the package shows, how the case is run, and what the migration said, by count.</summary>

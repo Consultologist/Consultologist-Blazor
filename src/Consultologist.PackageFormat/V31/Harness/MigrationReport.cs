@@ -6,8 +6,9 @@ namespace Consultologist.PackageFormat.V31.Harness;
 
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 3.2, D9; <c>migration-report.schema.json</c>): <c>migration-report.json</c>:
-/// the version migrated from and to, the hand edits made, every notice that needs no edit, and one entry per compared text
-/// (<see cref="ComparedText"/>). Reported, never a gate. <see cref="ToJson"/> writes it canonical (RFC 8785,
+/// the version migrated from and to, the hand edits made, every notice that needs no edit, the choices the package was
+/// migrated with (<see cref="Options"/>, #1508 R18: its <c>options.json</c>, <see cref="Migration31Options.ToJson"/>'s
+/// shape), and one entry per compared text (<see cref="ComparedText"/>). Reported, never a gate. <see cref="ToJson"/> writes it canonical (RFC 8785,
 /// <see cref="CanonicalJson"/>), as the other derived files are; <see cref="Of"/> builds it from a migration and its
 /// comparisons. No member carries a value from an input, a model or a profile: ids, package text, sentences and hashes only.
 /// </summary>
@@ -16,6 +17,7 @@ public sealed record MigrationReport(
     string NewVersion,
     IReadOnlyList<string> HandEdits,
     IReadOnlyList<string> Notices,
+    JsonObject Options,
     IReadOnlyList<ComparedText> Texts)
 {
     /// <summary>The report's file name in a version's folder, beside the publish report (part 10 § 3.2).</summary>
@@ -48,21 +50,25 @@ public sealed record MigrationReport(
             ["newVersion"] = NewVersion,
             ["handEdits"] = Strings(HandEdits),
             ["notices"] = Strings(Notices),
+            ["options"] = Options.DeepClone(),
             ["texts"] = texts,
         });
     }
 
     /// <summary>
     /// The report of <paramref name="migrated"/> (from <paramref name="oldVersion"/>; the new version is its manifest's),
+    /// migrated with the choices <paramref name="options"/> (R18: the package's <c>options.json</c>, recorded as given),
     /// over <paramref name="texts"/>: <c>handEdits</c> its hand-edit notices (S10-002, the edits an operator makes);
     /// <c>notices</c> every other notice of the migration, in its order, then A10-063 when the package has more than one
     /// deliverable (R8: each is delivered in a message of its own, where 30 sent one for the job; no compared text carries
     /// it), then <paramref name="worstCase"/> when given (<see cref="WorstCaseNote"/>, D14).
     /// </summary>
-    public static MigrationReport Of(string oldVersion, Migration31Result migrated, IReadOnlyList<ComparedText> texts, string? worstCase = null)
+    public static MigrationReport Of(
+        string oldVersion, Migration31Result migrated, JsonObject options, IReadOnlyList<ComparedText> texts, string? worstCase = null)
     {
         ArgumentNullException.ThrowIfNull(oldVersion);
         ArgumentNullException.ThrowIfNull(migrated);
+        ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(texts);
 
         var handEdits = migrated.HandEdits.ToHashSet(StringComparer.Ordinal);
@@ -75,7 +81,7 @@ public sealed record MigrationReport(
         var newVersion = StrictJson.Parse(migrated.ManifestJson) is { Fault: null, Value: JsonObject manifest }
             ? SourceLayout.Text(manifest["version"]) ?? ""
             : "";
-        return new MigrationReport(oldVersion, newVersion, [.. migrated.HandEdits], notices, [.. texts]);
+        return new MigrationReport(oldVersion, newVersion, [.. migrated.HandEdits], notices, (JsonObject)options.DeepClone(), [.. texts]);
     }
 
     /// <summary>

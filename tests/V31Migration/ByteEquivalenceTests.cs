@@ -270,6 +270,29 @@ public class ByteEquivalenceTests
     }
 
     [Fact]
+    public async Task TheReport_HoldsTheOptions_AndTheSchemaRequiresThem()
+    {
+        // R18: migration-report.json records the choices the package was migrated with, as its options.json gives them.
+        var report = await EquivalenceFixture.Report("example-nested-note");
+        var schema = V31ContractsTests.SchemaOf("migration-report");
+
+        Assert.True(JsonNode.DeepEquals(ExampleChoices.Json("example-nested-note"), report.Options));
+        var json = JsonNode.Parse(report.ToJson())!.AsObject();
+        Assert.Equal("""{"folderFormats":{},"renames":{"parts":"sections"},"whenEmpty":{"note":"fail"}}""", json["options"]!.ToJsonString());
+        Assert.True(schema.Validate(json.ToJsonString(), null), json.ToJsonString());
+
+        var without = json.DeepClone().AsObject();
+        without.Remove("options");
+        Assert.False(schema.Validate(without.ToJsonString(), null), "A report without options is accepted.");
+        var wrong = json.DeepClone().AsObject();
+        wrong["options"]!["whenEmpty"]!["note"] = "maybe";
+        Assert.False(schema.Validate(wrong.ToJsonString(), null), "A whenEmpty that is not release, hold or fail is accepted.");
+        var unknown = json.DeepClone().AsObject();
+        unknown["options"]!["toolchain"] = new JsonObject();
+        Assert.False(schema.Validate(unknown.ToJsonString(), null), "An unknown option is accepted.");
+    }
+
+    [Fact]
     public async Task TheReport_ListsEveryNoticeThatNeedsNoEdit()
     {
         // D9: every notice but the hand edits, in the migration's order, then A10-063 for a package with more than one
@@ -285,7 +308,7 @@ public class ByteEquivalenceTests
         Assert.DoesNotContain(MigrationReport.OneMessageEach, (await EquivalenceFixture.Report("example-nested-note")).Notices);
 
         var handEdits = MigratedPackagesTests.Migrated("example-macros");
-        var edited = MigrationReport.Of("v2026.11.3", handEdits, []);
+        var edited = MigrationReport.Of("v2026.11.3", handEdits, ExampleChoices.Json("example-macros"), []);
         Assert.Equal(handEdits.HandEdits, edited.HandEdits);
         Assert.Empty(edited.Notices.Intersect(handEdits.HandEdits));
     }
@@ -407,7 +430,7 @@ internal static class EquivalenceFixture
             texts.AddRange((await Compared(package, scenario)).Texts);
         var oldVersion = (string)JsonNode.Parse(ByteEquivalenceFixtures.ReadPackage(package).ManifestJson)!["version"]!;
         var migrated = Migrated(package);
-        return MigrationReport.Of(oldVersion, migrated, texts, MigrationReport.WorstCaseNote(migrated, V31Contract.PublishedTypes()));
+        return MigrationReport.Of(oldVersion, migrated, ExampleChoices.Json(package), texts, MigrationReport.WorstCaseNote(migrated, V31Contract.PublishedTypes()));
     }
 
     private static JsonObject Read(string folder, string package, string scenario) =>

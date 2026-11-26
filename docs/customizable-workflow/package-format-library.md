@@ -2433,6 +2433,17 @@ path, and a `Migration31Options`:
 | `FolderFormats` | a snippet folder's id to the format its items' headers are values of; `<folder>_item` when unsaid |
 | `WriteSnapshot` | whether `Migrate` ends by writing the snapshot test (default `true`) |
 
+#1508 (area 11, R18, the owner's ruling of 2026-11-25, 6): the three choices, `Renames`, `WhenEmpty` and `FolderFormats`,
+live in a file, a package's `options.json` (`MigrationOptionsFile.FileName`) beside its hand edits:
+`{ "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} }`, every member required, each an object of text, `{}` for
+none, and no other member. `Migration31Options.FromJson(json, registry, toolchain, formats30)` reads it into options
+(no contract resolver, the snapshot written), or gives `null` and the first sentence it cannot read: A10-070 (a member
+that is no option), A10-071 (a choice missing or not an object of text), A10-072 (a `whenEmpty` that is not `release`,
+`hold` or `fail`); it never throws on the file's content. `ToJson()` writes the three back (keys in ordinal order, `{}`
+for none), which the migration report records. The tests read every fixture package's
+`tests/Fixtures/ByteEquivalence/hand-edits/<package>/options.json` (`ExampleChoices`, through `MigrationFixture.Options`;
+a package with none fails), and the operator's bulk publish reads the same file (Task 36).
+
 It returns a `Migration31Result` in the earlier rungs' shape (D1): `ManifestJson`, `Files` (without `manifest.json`),
 `Notices` and `Refusals`, with `Succeeded`, and four more members: `HandEdits` (the S10-002 notices, a subset of
 `Notices`), `Report` (`MigrationNotes`: the renames, the `_macro` inputs, the `blank` conversions, the suggested text
@@ -2568,9 +2579,10 @@ bytes rules in order, each at most once, and the text is expected only when they
 `ExpectedDifferences.ConditionReasons` holds the one reason a converted condition may answer otherwise than 30
 (`blank`, R1). Each rule has a test with a pair it explains and a near pair it must not (`ExpectedDifferencesTests`).
 
-`MigrationReport.Of(oldVersion, migrated, texts, worstCase)` builds `migration-report.json`: `oldVersion`,
+`MigrationReport.Of(oldVersion, migrated, options, texts, worstCase)` builds `migration-report.json`: `oldVersion`,
 `newVersion`, `handEdits` (the S10-002 notices), `notices` (every other notice, then A10-063 for a package with more than
-one deliverable, R8, then the worst-case note) and `texts`. `ToJson()` writes it canonical (RFC 8785).
+one deliverable, R8, then the worst-case note), `options` (#1508, R18: the package's `options.json` as given, a
+`JsonObject`, required by the schema) and `texts`. `ToJson()` writes it canonical (RFC 8785).
 `MigrationReport.WorstCaseNote` is A10-014, said only when the worst case's agent calls (S04-080's count)
 divided by `RunLimits.MaxAgentCalls`, rounded up, pass `RunLimits.JobMinutes` (D14); #1508 (D16): the arithmetic is
 publish's S09-016 (`PublishNotes.MinutesNote`), the same words. The report is
@@ -2580,6 +2592,7 @@ never a gate: no test asserts how many texts differ, and each report is pinned a
 
 ```
 dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] [--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]... [--folder-format <folder>=<format>]...
+dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] --options <file>
 dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 --snapshot [--write]
 ```
 
@@ -2589,7 +2602,10 @@ The script reads 31's registry with `PublishedTypeRegistry.Read` from `external/
 (`tests/V31Migration/MigrateScriptTests.cs`). `Migration31Script.Parse` reads the arguments into
 `Migration31Arguments`, whose `Fill` puts `--rename`, `--when-empty` and `--folder-format` (each repeatable, D29) into
 the options; a pair given twice, a `whenEmpty` that is not `release`, `hold` or `fail`, and `--snapshot` with any of the
-three are usage errors.
+three are usage errors. `--options <file>` (#1508, R18; `Migration31Arguments.Options`) gives all three from a package's
+`options.json` instead, read by `Run` with `Migration31Options.FromJson`; given twice, with any of the three flags or
+with `--snapshot` it is a usage error, and a file that cannot be read, is not a JSON object or is refused (A10-070 to
+A10-072) is exit 2, nothing read or written.
 
 `Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line that 31's `dag.mmd` is not this
 script's (`Migration31Script.NoDiagram`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
@@ -2624,8 +2640,8 @@ fixtures' `hand-edits/` form, below), and writes the 31 folder and `migration-re
 `<dir>/_migrated/<package>/`. A package that publishes is compared on D11's account scenario, `migration_snapshot`: the
 snapshot request's inputs run at 30 through `CaptureRun`, that capture replayed at 31 and compared. One with hand edits
 left gets a report of its hand edits and notices with no compared text. The run takes its hand choices from the
-fixtures' `ExampleChoices` by package name, so an account package migrates with the defaults (a suffix for a reserved
-id, `release`, `<folder>_item`); a package that needs a choice is migrated with the script. It writes no snapshot
+operator's `<dir>/_hand-edits/<package>/options.json` (#1508, R18), and a package with no such file migrates with the
+defaults (a suffix for a reserved id, `release`, `<folder>_item`). It writes no snapshot
 test into an edited package: the script's `--snapshot` does that.
 
 ### The goldens
@@ -2658,7 +2674,8 @@ The fixture README says what each folder holds.
 repository named by `CONFORMANCE_EXPORT_V31`: eight cases (the three `composer-*` fixture packages,
 `example-conditional-sections`, `example-macros`, `example-nested-note`, `test-general` and a `hand-built` package for a
 `_macro` input, a union input and a refused condition). Each case holds `source/` (the 30 files, without `dag.mmd`),
-`options.json` (`renames`, `whenEmpty`, `folderFormats`, each `null` when none, and `toolchain`), `expected/` (the 31
+`options.json` (`renames`, `whenEmpty`, `folderFormats`, each `{}` when none as a package's `options.json` has them,
+and the vector's own `toolchain`), `expected/` (the 31
 files, `tests/migration_snapshot.json` among them where the migration writes one), `notices.json` and `about.txt`.
 `MigrationVectorsTests.ThePinnedVectors_AreWhatMigrateGives` holds every pinned case to `Migrate` on its `source/` and
 `options.json`, byte for byte. The content repository's `scripts/check-v31.py` has a `migration-vectors` group, and its
@@ -2674,7 +2691,7 @@ The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
 version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`), for the script and the operator's tools; no publish
 path says it in this build. Every other notice, refusal and reason is an area sentence, A10-001 to
-A10-069 (A10-009 unused), listed in the plan's table and in `V31Contract.MigrationAreaSentences`. Area 10's rulings also
+A10-072 (A10-009 unused; A10-070 to A10-072 are #1508's, an `options.json` that does not read), listed in the plan's table and in `V31Contract.MigrationAreaSentences`. Area 10's rulings also
 added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
 `markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
 summary). No sentence, notice or report entry carries a value from an input, a model or a profile.

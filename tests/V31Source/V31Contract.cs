@@ -200,7 +200,9 @@ internal static class V31Contract
     /// S01-034, D34; A10-066: a checkFirst while whose check reads its own body, a hand edit, A06-002, D34; A10-067: a
     /// migrated macro choice whose if reads another boolean input, refused in MacroChoices at a 31 start, R7, D34; A10-068:
     /// white-space marks rewritten as 31 has them, part 05 § 2.6, D34; A10-069: a
-    /// snippet folder's chosen item format that cannot be used, A10-033's sibling, D34).
+    /// snippet folder's chosen item format that cannot be used, A10-033's sibling, D34; A10-070 to A10-072: an options.json
+    /// the migration cannot read, a member that is no option, a choice that is not an object of text, a whenEmpty that is
+    /// not release, hold or fail, #1508 R18, area 11 Task 29).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -272,6 +274,9 @@ internal static class V31Contract
         ["A10-067"] = "Macro '<id>' is chosen per run by the input '<input id>', but its if reads another boolean input, so a MacroChoices entry for '<id>' is refused at 31; send the input '<input id>' in Inputs instead.",
         ["A10-068"] = "<file>: the white-space marks at <line <n> | lines <list>> of the 30 body became 31's (- is ~; a placement keeps only a {{~ alone on its line), so line endings beside them are now kept.",
         ["A10-069"] = "The chosen format '<format>' for snippet folder '<id>' cannot be used: '<format>' <is already taken | is not a 31 id>; choose another.",
+        ["A10-070"] = "options.json has the member '<member>', which is not an option of the migration; its members are renames, whenEmpty and folderFormats.",
+        ["A10-071"] = "options.json must give <renames | whenEmpty | folderFormats> as an object whose values are text; write {} for none.",
+        ["A10-072"] = "options.json gives deliverable '<id>' a whenEmpty that is not release, hold or fail.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

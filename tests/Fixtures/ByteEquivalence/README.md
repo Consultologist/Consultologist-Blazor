@@ -289,13 +289,17 @@ that migrating twice gives the same bytes. `migrated/general/` is the vendored p
 
 ## `hand-edits/`
 
-`hand-edits/<package>/` holds the edits an operator makes after the migration (part 10 §§ 1.4, 1.5), one folder for
-each package whose migration says a hand edit, and none for any other (`HandEditsTests.EveryPackageWithHandEdits_HasItsEdits`).
-`MigrationFixture.Edited` lays a folder over `migrated/<package>/`:
+`hand-edits/<package>/` holds the edits an operator makes after the migration (part 10 §§ 1.4, 1.5): edits and a
+`README.md` for each package whose migration says a hand edit, and none for any other (`HandEditsTests.EveryPackageWithHandEdits_HasItsEdits`).
+Every package's folder holds its `options.json` (#1508, R18): the migration's choices, `{ "renames", "whenEmpty",
+"folderFormats" }`, each `{}` for none, read by `ExampleChoices` and `Migration31Options.FromJson` (`MigrationOptionsTests`)
+and recorded in `reports/<package>.json`'s `options`; `test/general`'s and `example-nested-note`'s are the only ones
+with a choice. `MigrationFixture.Edited` lays a folder over `migrated/<package>/`:
 
 - a file replaces or adds the file of its path (`manifest.json` the manifest);
 - a file named `<path>.deleted` removes `<path>`, which must be a file the migration wrote (its content is not read);
 - `README.md` is not a package file: it is the account of the edits (below);
+- `options.json` is not a package file: it holds the choices the package was migrated with (above);
 - `keys.json` is not a package file either: when an edit moves a node, it maps each moved 30 node id to its new 31
   rooted key (`{ "section_draft": "node.sections.applies.section_draft" }`), laid over the migration's `Keys` so the
   comparison maps 30's keys to the moved rows; each id must be one the migration keyed. Only `example-problem-list`

@@ -110,7 +110,7 @@ public class HandEditsTests
         {
             var folder = MigrationFixture.HandEditsOf(package);
             var edits = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-                .Where(f => Path.GetRelativePath(folder, f) != MigrationFixture.HandEditsReadme);
+                .Where(f => Path.GetRelativePath(folder, f) is not (MigrationFixture.HandEditsReadme or MigrationOptionsFile.FileName));
             if (NotEdited.ContainsKey(package))
                 Assert.False(edits.Any(), $"{MigrationFixture.HandEditsFolder}/{package} is not edited, but holds edits.");
             else
@@ -186,7 +186,7 @@ public class HandEditsTests
         {
             var edited = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
                 .Select(f => Path.GetRelativePath(folder, f).Replace(Path.DirectorySeparatorChar, '/'))
-                .Where(f => f != MigrationFixture.HandEditsReadme)
+                .Where(f => f is not (MigrationFixture.HandEditsReadme or MigrationOptionsFile.FileName))
                 .Select(f => f.EndsWith(MigrationFixture.DeletedSuffix, StringComparison.Ordinal) ? f[..^MigrationFixture.DeletedSuffix.Length] : f);
             var text = ByteEquivalenceFixtures.ReadText(readme);
             Assert.All(edited, f => Assert.True(text.Contains($"`{f}`", StringComparison.Ordinal), $"{f} is edited, but the README does not name it."));

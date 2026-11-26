@@ -13,14 +13,17 @@ namespace Consultologist.PackageFormat;
 /// (<c>--rename &lt;old&gt;=&lt;new&gt;</c>, repeatable: a reserved 30 id to its hand-chosen 31 id) and
 /// <paramref name="WhenEmpty"/> (<c>--when-empty &lt;deliverable&gt;=&lt;value&gt;</c>, repeatable) and
 /// <paramref name="FolderFormats"/> (<c>--folder-format &lt;folder&gt;=&lt;format&gt;</c>, repeatable: the package format a
-/// snippet folder's items' headers are values of; part 01 § 3).
+/// snippet folder's items' headers are values of; part 01 § 3); or, in place of the three, <paramref name="Options"/>
+/// (<c>--options &lt;file&gt;</c>, #1508 R18: the path of a package's <c>options.json</c>, read with
+/// <see cref="Migration31Options.FromJson"/> by <see cref="Migration31Script.Run"/>).
 /// </summary>
 public sealed record Migration31Arguments(
     bool Write,
     bool Snapshot,
     IReadOnlyDictionary<string, string> Renames,
     IReadOnlyDictionary<string, string> WhenEmpty,
-    IReadOnlyDictionary<string, string> FolderFormats)
+    IReadOnlyDictionary<string, string> FolderFormats,
+    string? Options = null)
 {
     /// <summary><paramref name="options"/> with <see cref="Renames"/>, <see cref="WhenEmpty"/> and <see cref="FolderFormats"/> in place of its own.</summary>
     public Migration31Options Fill(Migration31Options options)
@@ -62,13 +65,14 @@ public static class Migration31Script
     public const string Usage =
         "usage: dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] "
         + "[--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]... [--folder-format <folder>=<format>]... "
+        + "| <package-dir> --to 31 [--write] --options <file> "
         + "| <package-dir> --to 31 --snapshot [--write]";
 
     /// <summary>The <c>whenEmpty</c> values a deliverable takes (part 06).</summary>
-    private static readonly string[] WhenEmptyValues = ["release", "hold", "fail"];
+    private static readonly string[] WhenEmptyValues = Migration31Options.WhenEmptyValues;
 
     /// <summary>The options that take a value.</summary>
-    private static readonly string[] Valued = ["--to", "--rename", "--when-empty", "--folder-format"];
+    private static readonly string[] Valued = ["--to", "--rename", "--when-empty", "--folder-format", "--options"];
 
     private const string Manifest = "manifest.json";
 
@@ -95,8 +99,9 @@ public static class Migration31Script
     /// The <c>--to 31</c> arguments of <paramref name="args"/> (the package directory and <c>--to</c>'s value are the
     /// script's), or <c>null</c> and why they do not read: an unknown option, a second package directory, a
     /// <c>--rename</c>, <c>--when-empty</c> or <c>--folder-format</c> without <c>&lt;key&gt;=&lt;value&gt;</c> or naming
-    /// its key twice, a <c>whenEmpty</c> that is not <c>release</c>, <c>hold</c> or <c>fail</c>, or <c>--snapshot</c> with
-    /// any of the three (a snapshot reads a 31 package, which they do not shape).
+    /// its key twice, a <c>whenEmpty</c> that is not <c>release</c>, <c>hold</c> or <c>fail</c>, <c>--snapshot</c> with
+    /// any of the three (a snapshot reads a 31 package, which they do not shape), or <c>--options</c> without a file, given
+    /// twice, with any of the three (the file holds all three choices, R18) or with <c>--snapshot</c>.
     /// </summary>
     public static (Migration31Arguments? Arguments, string? Usage) Parse(IReadOnlyList<string> args)
     {
@@ -106,6 +111,7 @@ public static class Migration31Script
         var renames = new Dictionary<string, string>(StringComparer.Ordinal);
         var whenEmpty = new Dictionary<string, string>(StringComparer.Ordinal);
         var folderFormats = new Dictionary<string, string>(StringComparer.Ordinal);
+        string? optionsFile = null;
         var directories = 0;
 
         for (var i = 0; i < args.Count; i++)
@@ -121,6 +127,13 @@ public static class Migration31Script
                     break;
                 case "--to":
                     i++;
+                    break;
+                case "--options":
+                    if (i + 1 >= args.Count || args[i + 1].Length == 0)
+                        return (null, "--options takes the path of an options.json.");
+                    if (optionsFile != null)
+                        return (null, "--options is given twice.");
+                    optionsFile = args[++i];
                     break;
                 case "--rename" or "--when-empty" or "--folder-format":
                     var into = arg switch { "--rename" => renames, "--when-empty" => whenEmpty, _ => folderFormats };
@@ -142,8 +155,12 @@ public static class Migration31Script
 
         if (snapshot && (renames.Count > 0 || whenEmpty.Count > 0 || folderFormats.Count > 0))
             return (null, "--snapshot reads a 31 package: --rename, --when-empty and --folder-format choose how a 30 package migrates.");
+        if (optionsFile != null && snapshot)
+            return (null, "--snapshot reads a 31 package: --options chooses how a 30 package migrates.");
+        if (optionsFile != null && (renames.Count > 0 || whenEmpty.Count > 0 || folderFormats.Count > 0))
+            return (null, "--options gives renames, whenEmpty and folderFormats: --rename, --when-empty and --folder-format are not given with it.");
 
-        return (new Migration31Arguments(write, snapshot, renames, whenEmpty, folderFormats), null);
+        return (new Migration31Arguments(write, snapshot, renames, whenEmpty, folderFormats, optionsFile), null);
     }
 
     private static bool TryPair(string text, out string key, out string value)
@@ -156,8 +173,11 @@ public static class Migration31Script
 
     /// <summary>
     /// Runs <paramref name="arguments"/> on the package folder <paramref name="folder"/> with <paramref name="options"/>
-    /// (its <c>Renames</c>, <c>WhenEmpty</c> and <c>FolderFormats</c> replaced by the arguments'), writing notices, the plan and the summary to
-    /// <paramref name="output"/> and refusals to <paramref name="error"/>; returns the exit code.
+    /// (its <c>Renames</c>, <c>WhenEmpty</c> and <c>FolderFormats</c> replaced by the arguments', or by those of the
+    /// <c>--options</c> file, R18), writing notices, the plan and the summary to
+    /// <paramref name="output"/> and refusals to <paramref name="error"/>; returns the exit code. An options file that
+    /// cannot be read, is not a JSON object or that <see cref="Migration31Options.FromJson"/> refuses (A10-070 to A10-072)
+    /// is <see cref="Refused"/>, nothing read or written.
     /// </summary>
     public static int Run(string folder, Migration31Arguments arguments, Migration31Options options, TextWriter output, TextWriter error)
     {
@@ -166,6 +186,14 @@ public static class Migration31Script
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
+
+        var chosen = arguments.Fill(options);
+        if (arguments.Options is { } optionsFile)
+        {
+            if (ReadOptions(optionsFile, options, error) is not { } read)
+                return Refused;
+            chosen = read;
+        }
 
         var root = Path.GetFullPath(folder);
         Dictionary<string, string> before;
@@ -198,7 +226,7 @@ public static class Migration31Script
         var what = arguments.Snapshot ? "the snapshot test" : "the migration to specVersion 31";
         var result = arguments.Snapshot
             ? WorkflowPackageMigration30To31.Snapshot(manifestJson, files, options)
-            : WorkflowPackageMigration30To31.Migrate(manifestJson, files, arguments.Fill(options));
+            : WorkflowPackageMigration30To31.Migrate(manifestJson, files, chosen);
 
         foreach (var notice in result.Notices)
             output.WriteLine($"notice: {notice}");
@@ -259,6 +287,41 @@ public static class Migration31Script
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"{label}: specVersion {from} → 31, {plan}, {result.HandEdits.Count} hand edits{outcome}"));
         return result.HandEdits.Count > 0 ? HandEditsLeft : Clean;
+    }
+
+    /// <summary>
+    /// <paramref name="options"/> with the choices of the <c>options.json</c> at <paramref name="path"/> in place of its
+    /// own, or <c>null</c> once <paramref name="error"/> says why not: the file does not read as strict UTF-8 JSON, is not an
+    /// object, or <see cref="Migration31Options.FromJson"/> refuses it (its sentence).
+    /// </summary>
+    private static Migration31Options? ReadOptions(string path, Migration31Options options, TextWriter error)
+    {
+        var full = Path.GetFullPath(path);
+        string text;
+        try
+        {
+            text = Utf8.GetString(File.ReadAllBytes(full));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
+        {
+            error.WriteLine($"error: {full} could not be read: {ex.Message}");
+            return null;
+        }
+
+        if (V31.StrictJson.Parse(text) is not { Fault: null, Value: JsonObject json })
+        {
+            error.WriteLine($"error: {full} is not a JSON object.");
+            return null;
+        }
+
+        var (read, refusal) = Migration31Options.FromJson(json, options.Registry, options.Toolchain, options.Formats30);
+        if (read is null)
+        {
+            error.WriteLine($"error: {refusal}");
+            return null;
+        }
+
+        return options with { Renames = read.Renames, WhenEmpty = read.WhenEmpty, FolderFormats = read.FolderFormats };
     }
 
     /// <summary>Every file under <paramref name="root"/> by its forward-slash path, read as strict UTF-8 (a byte-order mark kept, for the migration to normalise).</summary>

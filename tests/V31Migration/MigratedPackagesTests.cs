@@ -27,7 +27,7 @@ public class MigratedPackagesTests
     /// <summary>The sixteen packages: the vendored ones in the index's order, then the fixture packages.</summary>
     public static TheoryData<string> Packages() => new(Names);
 
-    private static IEnumerable<string> Names =>
+    internal static IEnumerable<string> Names =>
         ByteEquivalenceFixtures.Vendored.Select(v => v.Name).Concat(ByteEquivalenceFixtures.FixturePackages);
 
     /// <summary>The packages whose migration says no hand edit.</summary>

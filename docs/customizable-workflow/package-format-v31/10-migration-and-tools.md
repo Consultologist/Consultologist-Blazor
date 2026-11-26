@@ -132,6 +132,20 @@ validation fails with sentences until each is made, as the 25 migration did. The
 Notices that need no edit (a renamed id, a `!x` converted to `blank(x)`, a suggested text format)
 are listed in the migration report and block nothing.
 
+**The choices live beside the hand edits** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), 6). The three choices the migration
+cannot make itself, the renames (§ 1.9), each deliverable's `whenEmpty` (§ 1.10) and the format each
+snippet folder's items take, are a package's `options.json`, kept beside its hand edits:
+`{ "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} }`, every member required, each an object of
+text, `{}` for none, and no other member. The script reads it (`--options <file>`, in place of its
+repeatable `--rename`, `--when-empty` and `--folder-format`, which are refused together with it), as do the
+tests and the operator's bulk publish, so the choices have one source, and the migration report records it
+(§ 3.2). A file the migration cannot read is refused, exit **2**: a member that is no option
+(*"options.json has the member '<member>', which is not an option of the migration; its members are
+renames, whenEmpty and folderFormats."*), a choice missing or not an object of text (*"options.json must
+give <member> as an object whose values are text; write {} for none."*), or a `whenEmpty` that is not
+`release`, `hold` or `fail` (*"options.json gives deliverable '<id>' a whenEmpty that is not release, hold
+or fail."*).
+
 The script exits **0** when the package migrated cleanly, **1** with *"written; hand edits remain"*
 (as #1447 decided), and **2** when it refused, writing no package (unreadable input, or a version
 below 5)
@@ -144,7 +158,8 @@ Each notice reads:
 
 - **The operator runs the migration** over every account package and **publishes the migrated
   version as a new version of each owner's package,** making any hand edits, so every package
-  migrates.
+  migrates. Each package's choices are its `options.json` beside its hand edits (§ 1.4), `{}` for
+  each when the operator makes none.
 - **Pins move always:** each account pin moves to the migrated version at publish.
 - **Recorded as a migration:** the version's publish record says *"migrated by the operator from
   <old version>"*, with the byte-equivalence report and the list of hand edits attached. The
@@ -250,7 +265,8 @@ after `.value`, so 30's `title` fields keep their name
 
 - **In example packages each rename is hand-chosen:** `example-nested-note`'s loop `parts` becomes
   **`sections`**, so `nodes/parts/…` becomes `nodes/sections/…` and `node.parts.…` becomes
-  `node.sections.…` everywhere, `ret` values included.
+  `node.sections.…` everywhere, `ret` values included. A hand-chosen rename is the `renames` of the
+  package's `options.json` (§ 1.4): `{ "parts": "sections" }`.
 - **In account packages the kind is added as a suffix:** a `for` loop `parts` becomes `parts_for`.
 - **A rename that collides** with an existing id gets a numeric suffix (`_2`, `_3`, …), the id
   shortened first so the whole stays within 64 characters, and is listed in the report ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
@@ -263,7 +279,10 @@ after `.value`, so 30's `title` fields keep their name
 - **Account packages:** `"release"`, which keeps 30's behaviour (30 produces an empty deliverable
   as is).
 - **Example packages, hand-chosen:** `"hold"` for `test/general`, `"fail"` for
-  `example-nested-note`, and `"release"` for the rest.
+  `example-nested-note`, and `"release"` for the rest. A hand choice is the `whenEmpty` of the
+  package's `options.json` (§ 1.4), by deliverable id: `{ "consult": "hold" }` for `test/general`
+  (whose `folderFormats` is `{ "standards": "standard_section" }`), `{ "note": "fail" }` for
+  `example-nested-note`; a deliverable it does not name takes `"release"`.
 
 ## 2. The converter
 
@@ -419,7 +438,8 @@ conversion**.
 - **Where it goes:** attached to the publish record of each migrated account version, and shown by
   the Editor and History; for the public packages, attached to the migration PR.
 - **Its shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)). One JSON document (`migration-report.json`) beside the publish
-  report in the version's folder: the old and new versions, the hand edits made, the **`notices`** (an array of strings, `[]` for none), and one entry per
+  report in the version's folder: the old and new versions, the hand edits made, the **`notices`** (an array of strings, `[]` for none), the
+  **`options`** the package was migrated with (its `options.json`, § 1.4), and one entry per
   compared text with `{ "site", "oldHash", "newHash", "equal", "expected", "explanation" }`, with
   `explanation` `null` unless `expected` is true. Like the other derived files, it never lives in
   source.

@@ -137,7 +137,8 @@ internal static class OperatorRun
     public static async Task RunAsync(string dir, string package)
     {
         var (manifestJson, files) = Read(Path.Combine(dir, package));
-        var migrated = WorkflowPackageMigration30To31.Migrate(manifestJson, files, MigrationFixture.Options(package));
+        var options = OptionsOf(Path.Combine(dir, HandEditsFolder, package, MigrationOptionsFile.FileName));
+        var migrated = WorkflowPackageMigration30To31.Migrate(manifestJson, files, options);
         Assert.True(migrated.Succeeded, $"{package}: " + string.Join("\n", migrated.Refusals));
         migrated = MigrationFixture.Overlay(migrated, Path.Combine(dir, HandEditsFolder, package));
 
@@ -154,7 +155,7 @@ internal static class OperatorRun
         }
 
         var oldVersion = (string?)JsonNode.Parse(manifestJson)!["version"] ?? "";
-        var report = MigrationReport.Of(oldVersion, migrated, texts, MigrationReport.WorstCaseNote(migrated, V31Contract.PublishedTypes()));
+        var report = MigrationReport.Of(oldVersion, migrated, options.ToJson(), texts, MigrationReport.WorstCaseNote(migrated, V31Contract.PublishedTypes()));
 
         var folder = Path.Combine(dir, MigratedFolder, package);
         if (Directory.Exists(folder))
@@ -163,6 +164,22 @@ internal static class OperatorRun
         foreach (var (path, text) in written)
             Write(Path.Combine([folder, .. path.Split('/')]), text);
         Write(Path.Combine(folder, MigrationReport.FileName), report.ToJson());
+    }
+
+    /// <summary>
+    /// #1508 (R18): the operator's choices for a package, its <c>options.json</c> beside its edits
+    /// (<c>&lt;dir&gt;/_hand-edits/&lt;package&gt;/options.json</c>, read with <see cref="Migration31Options.FromJson"/>; one
+    /// that does not read fails the run), or none (a suffix for a reserved id, <c>release</c>, <c>&lt;folder&gt;_item</c>)
+    /// when the package has no such file.
+    /// </summary>
+    private static Migration31Options OptionsOf(string path)
+    {
+        if (!File.Exists(path))
+            return MigrationFixture.NoChoices;
+        var (options, refusal) = Migration31Options.FromJson(
+            JsonNode.Parse(ByteEquivalenceFixtures.ReadText(path))!.AsObject(), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, TestFormats.Catalog);
+        Assert.True(refusal is null, $"{path}: {refusal}");
+        return options!;
     }
 
     /// <summary>

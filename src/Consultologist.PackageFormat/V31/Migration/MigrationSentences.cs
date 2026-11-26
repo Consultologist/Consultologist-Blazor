@@ -288,6 +288,29 @@ internal static class MigrationSentences
         $"The chosen format '{format}' for snippet folder '{folder}' cannot be used: '{format}' {(taken ? "is already taken" : "is not a 31 id")}; choose another.";
 
     /// <summary>
+    /// A10-070 (#1508, R18; part 10 § 1.4): <c>options.json</c> (<see cref="Migration31Options.FromJson"/>) has the member
+    /// <paramref name="member"/>, which is none of the three choices. A refusal: an option the migration does not read is
+    /// never ignored.
+    /// </summary>
+    public static string UnknownOption(string member) =>
+        $"options.json has the member '{member}', which is not an option of the migration; its members are renames, whenEmpty and folderFormats.";
+
+    /// <summary>
+    /// A10-071 (#1508, R18): <c>options.json</c>'s <paramref name="member"/> (<c>renames</c>, <c>whenEmpty</c> or
+    /// <c>folderFormats</c>) is missing, or is not an object whose every value is text.
+    /// </summary>
+    public static string OptionNotAMap(string member) =>
+        $"options.json must give {member} as an object whose values are text; write {{}} for none.";
+
+    /// <summary>
+    /// A10-072 (#1508, R18; part 10 § 1.10, part 06): <c>options.json</c>'s <c>whenEmpty</c> gives deliverable
+    /// <paramref name="deliverable"/> a value that is not <c>release</c>, <c>hold</c> or <c>fail</c> (the value itself is
+    /// not repeated).
+    /// </summary>
+    public static string WhenEmptyNotAValue(string deliverable) =>
+        $"options.json gives deliverable '{deliverable}' a whenEmpty that is not release, hold or fail.";
+
+    /// <summary>
     /// A10-034 (part 01 § 6, § 7 <c>idLength</c>; part 10 § 1.9): the <paramref name="kind"/> <paramref name="id"/>, longer
     /// than 31's 64 characters (30 had no bound), was shortened to <paramref name="newId"/>.
     /// </summary>

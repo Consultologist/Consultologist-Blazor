@@ -27,7 +27,93 @@ public sealed record Migration31Options(
     IReadOnlyDictionary<string, string>? Renames = null,
     IReadOnlyDictionary<string, string>? WhenEmpty = null,
     IReadOnlyDictionary<string, string>? FolderFormats = null,
-    bool WriteSnapshot = true);
+    bool WriteSnapshot = true)
+{
+    /// <summary>The members of <c>options.json</c> (R18), in the order it is written.</summary>
+    private static readonly string[] Members = ["renames", "whenEmpty", "folderFormats"];
+
+    /// <summary>The <c>whenEmpty</c> values a deliverable takes (part 06).</summary>
+    internal static readonly string[] WhenEmptyValues = ["release", "hold", "fail"];
+
+    /// <summary>
+    /// #1508 (area 11, Task 29; R18, ruled on #1508 2026-11-25, comment 5 item 6): the options of a package's
+    /// <c>options.json</c> (<see cref="MigrationOptionsFile"/>), beside its hand edits, with <paramref name="registry"/>,
+    /// <paramref name="toolchain"/> and <paramref name="formats30"/> as given (no contract resolver; the snapshot written).
+    /// <paramref name="json"/> is <c>{ "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} }</c>, every member required
+    /// and an object of text (<c>{}</c> for none), and no other member. Or <c>null</c> and the first thing it cannot read,
+    /// in written order: a member that is no option (A10-070), then by member a missing one or one that is not an object of
+    /// text (A10-071), then a <c>whenEmpty</c> that is not <c>release</c>, <c>hold</c> or <c>fail</c> (A10-072). Never throws
+    /// on the file's content.
+    /// </summary>
+    public static (Migration31Options? Options, string? Refusal) FromJson(
+        JsonObject json, V31.TypeRegistry registry, V31.Toolchain toolchain, WorkflowFormatCatalog formats30)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(toolchain);
+        ArgumentNullException.ThrowIfNull(formats30);
+
+        if (json.Select(p => p.Key).FirstOrDefault(k => !Members.Contains(k, StringComparer.Ordinal)) is { } unknown)
+            return (null, MigrationSentences.UnknownOption(unknown));
+
+        var maps = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+        foreach (var member in Members)
+        {
+            if (!json.TryGetPropertyValue(member, out var node) || node is not JsonObject map)
+                return (null, MigrationSentences.OptionNotAMap(member));
+            var read = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (key, value) in map)
+            {
+                if (value is not JsonValue text || !text.TryGetValue<string>(out var s))
+                    return (null, MigrationSentences.OptionNotAMap(member));
+                read[key] = s;
+            }
+
+            maps[member] = read;
+        }
+
+        if (maps["whenEmpty"].FirstOrDefault(p => !WhenEmptyValues.Contains(p.Value, StringComparer.Ordinal)) is { Key: { } deliverable })
+            return (null, MigrationSentences.WhenEmptyNotAValue(deliverable));
+
+        return (new Migration31Options(
+            registry, toolchain, formats30,
+            Renames: maps["renames"], WhenEmpty: maps["whenEmpty"], FolderFormats: maps["folderFormats"]), null);
+    }
+
+    /// <summary>
+    /// #1508 (R18): the three choices as <c>options.json</c> has them, what <see cref="FromJson"/> reads:
+    /// <c>renames</c>, <c>whenEmpty</c> and <c>folderFormats</c> in that order, each map's keys in ordinal order, <c>{}</c>
+    /// for none (or <c>null</c>). The migration report records it (<c>options</c>).
+    /// </summary>
+    public JsonObject ToJson()
+    {
+        static JsonObject Map(IReadOnlyDictionary<string, string>? map)
+        {
+            var json = new JsonObject();
+            foreach (var (key, value) in (map ?? new Dictionary<string, string>()).OrderBy(p => p.Key, StringComparer.Ordinal))
+                json[key] = value;
+            return json;
+        }
+
+        return new JsonObject
+        {
+            ["renames"] = Map(Renames),
+            ["whenEmpty"] = Map(WhenEmpty),
+            ["folderFormats"] = Map(FolderFormats),
+        };
+    }
+}
+
+/// <summary>
+/// #1508 (area 11, Task 29; R18): the file that holds a package's migration choices, beside its hand edits
+/// (<c>hand-edits/&lt;package&gt;/options.json</c> for the tests' fixtures, and the operator's bulk publish's own folder),
+/// read with <see cref="Migration31Options.FromJson"/>. It is not a package file: an overlay of hand edits skips it.
+/// </summary>
+public static class MigrationOptionsFile
+{
+    /// <summary>The file's name.</summary>
+    public const string FileName = "options.json";
+}
 
 /// <summary>
 /// #1507 (part 10 § 1.1, D1): what the 30 → 31 migration produced, in the earlier rewriters' shape so that every caller
