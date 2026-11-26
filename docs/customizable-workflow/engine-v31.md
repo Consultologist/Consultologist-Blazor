@@ -596,7 +596,8 @@ resolver, as the pin health report reads it). Each distinct package is read once
 (`IWorkflowPackageSources.ReadSourceAsync`: the stored `manifest.json` text and, below 31, the files the load gathers),
 and a package below 31 is migrated in memory by `WorkflowPackageMigration30To31.Migrate` against the bundled 31 type
 registry (`PublishedTypeRegistry`, read on first use from `package-format/v31/` and `agents/v31/` in the app's
-output), nothing written. The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
+output by the library's one loader, `PackageFormat.V31.PublishedTypeRegistry.Read`, #1508 R20; the ingestor takes the
+same singleton), nothing written. The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
 migrate`: `<n>` the hand-edit notices summed, `<p>` the packages with at least one, `<q>` the packages the migration
 refused or failed on. A package at 31 is not counted. A pin or a package that cannot be read fails alone (a stale
 pin is a normal state): the rest are counted on that line, and A10-059 follows it, `Outstanding migration hand edits:

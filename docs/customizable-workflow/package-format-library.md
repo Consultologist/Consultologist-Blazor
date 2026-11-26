@@ -216,7 +216,9 @@ argument.
 
 **The registry.** `TypeRegistry` is the deployment's: the nine built-in formats, the agents
 catalogue's formats, the catalogue's `bindings.json` and `agents.json`, and the built-in renderer
-names. `TypeRegistry.Read` reads them from the published files. A package never supplies these, so
+names. `TypeRegistry.Read` reads them from the published files, and `PublishedTypeRegistry.Read(packageFormatV31Folder,
+agentsV31Folder)` is the one loader every caller uses (#1508 R20: the Api's bundled copy, the ingestor, the three
+scripts and the tests' `V31Contract.PublishedTypes`). A package never supplies these, so
 a missing or malformed file throws `FormatException` instead of being refused (`AgentBindings.Read`
 likewise). `Names` gives the reader its `SourceRegistry`.
 
@@ -2484,10 +2486,12 @@ profile's fields, the run facts by name (`run.` dropped), the replies to serve b
   rejecting `format`, as every attested agent's entry says) and `AgentTurn.Finish`, `RenderTurn.Render` and
   `RuleTurn.Evaluate`. Every answer is given at once, and the clock is `StartedAtUtc` and never moves, so the run ends
   under `RunLimits` and the same request gives the same rows and hashes.
-- **The stubs** (`OfflineStubs`): a pinned reply is served as given; a missing one is generated from the entry's format
-  by `WorkflowStubOutputs`, seeded by the row key or by `StubSeed`. Each macro the prompt offers whose marker the reply
-  does not hold has its marker appended, in prompt order (D12). A reply that does not fit fails its node as the engine's
-  does.
+- **The stubs** (`OfflineStubs`): a pinned reply is served exactly as written; a missing one is generated from the
+  entry's format by `WorkflowStubOutputs`, seeded by the row key or by `StubSeed`. To a generated reply only, each macro
+  the prompt offers whose marker the reply does not hold has its marker appended, in prompt order (D12; #1508 R14: a
+  pinned reply that leaves a marker out gives the node's `onInvalid` outcome, as live, and the attempt a `retry` asks for
+  has no stub of its own, so a run with `GenerateMissing` false lists it missing). A reply that does not fit fails its
+  node as the engine's does.
 
 `OfflineResult` gives `State` and `Sentence`, every sent prompt and rendered text as an `OfflineText(Key, Text, Hash)`,
 the deliverables' outcomes, every reply served, the rows and decisions, and `UnusedOutputs` (pinned keys no call asked
@@ -2506,7 +2510,8 @@ test a migrated package carries (D13):
   replies as served (markers included) as `outputs`, and `expect` with every prompt by `{ "hash" }` and every
   deliverable by `{ "state", "hash" }`, or `{ "state": "skipped" }` alone (R3). It holds no prompt or deliverable text.
   Its `description` cites "chapter 10 § 10.12", the published document's section (D31).
-- `Request(test)` reads such a file back into a request.
+- `Request(test)` reads such a file back into a request, its clock 10:00 on the file's own `run.date` in its `timeZone`
+  (UTC for a zone this machine does not know; `StartedAtUtc` for a date it cannot read; #1508 item 10).
 
 `Migrate` writes it for a package with no hand edit, publishing it in memory with the options' registry and toolchain
 and running it offline. A package with hand edits gets none (`tests/index.json` keeps `"items": []`) and A10-011 as its
@@ -2569,7 +2574,7 @@ dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to
 dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 --snapshot [--write]
 ```
 
-The script reads 31's registry with `TypeRegistry.Read` from `external/consultologist-package-format/v31/` and
+The script reads 31's registry with `PublishedTypeRegistry.Read` from `external/consultologist-package-format/v31/` and
 `external/consultologist-agents/agents/v31/`, as `V31Contract.PublishedTypes` does, builds the toolchain with
 `Toolchain.Current` and the pinned names, and calls `Migration31Script.Run`, which is in the library so it is tested
 (`tests/V31Migration/MigrateScriptTests.cs`). `Migration31Script.Parse` reads the arguments into
@@ -2769,14 +2774,18 @@ ignores it.
   `test.schema.json`. It checks what the compiled package needs: every declared input listed (S07-010), `profile`
   exactly `needs.profile` (S07-011), `run` exactly the run facts the package reads (S07-012), and each `outputs` key
   and `expect` member of the grammar's shape (A11-005: a member of the wrong shape, an unknown expectation, an
-  `outputs` key that is no row key; a key is described by its position, never printed). `expect.deliverables` takes
+  `outputs` key that is neither a node's nor a check's row key, #1508 item 9; a key is described by its position, never
+  printed). The request is `SnapshotTest.Request`'s: the clock is 10:00 on the test's own `run.date`, in its
+  `timeZone` (#1508 item 10). `expect.deliverables` takes
   `{ "state": "skipped" }` alone (R9). A test it refuses fails, with the empty outcome's hash, and its refusals are
   publish's.
 - **No stub is generated** (D6). `OfflineRequest` has a trailing `GenerateMissing` (default `true`, area 10's
   behaviour); the tests pass `false`. `OfflineHost` then records a call with no stub in `OfflineResult.MissingOutputs`
-  and a stub that does not fit its format (read and validated as a reply is, markers included) in `InvalidOutputs`
+  and a stub that does not fit its format (read and validated as a reply is) in `InvalidOutputs`
   (`StubFault(Key, Format, Error)`, the error a JSON pointer and a keyword, never the value), and fails the node at
-  once: no retry, no repair.
+  once: no retry, no repair. A stub whose macro markers are wrong is used exactly as written (#1508 R14): the node's
+  `onInvalid` decides, as live, so `fail` fails it with the marker's sentence (S05-053 for one left out) and `retry`
+  asks again, an attempt with no stub, which is S07-008.
 - **The verdict** of each test: a missing stub is S07-008 for the first key in ordinal order; else an invalid one is
   S07-009 for the first by key; else the first mismatch (`TestExpectations.First`, D7) is S07-007. A test that has
   none of them passes. Every test runs, so a report holds one refusal for each test that fails. A stub no call asked
