@@ -165,6 +165,12 @@ public static class ExpectedDifferences
         {
             Bytes = WhileNoPassSeparator,
         },
+        new("loop-item-not-run",
+            "#1508, 2026-11-26, item 4, ruled by the owner (Q4 stands; both differences expected); part 10 §§ 1.2, 3.2",
+            "an item of a loop that did not run (past its max, or its body skipped) writes nothing at 31, where 30's template loop wrote its fixed text for it with its reads empty; that text is 30's alone")
+        {
+            Bytes = LoopItemNotRun,
+        },
         new("macro-choice-classifier",
             "#1508, comment 6, items 1 and 2, ruled by the owner on 2026-11-25 (R13, R14); part 10 §§ 1.2, 1.4, 3.2",
             "a macro 30's model chose is gated by a judgement node, answered from 30's reply: the node's prompt is 31's alone, and the placing prompt holds the macro's instruction, its \"otherwise\" clause removed, only where the node answered yes")
@@ -540,14 +546,22 @@ public static class ExpectedDifferences
 
         foreach (var (_, output) in c.Run31.Outputs)
             Leaves(output);
+        // #1508, 2026-11-26, item 3: a deliverable composes each source stripped (| string.strip), so a rendered or computed
+        // node's text counts trimmed as well as whole.
         foreach (var render in c.Run31.Renders)
+        {
             values.Add(render.Text);
+            values.Add(render.Text.Trim());
+        }
 
         // #1508 (comment 5, item 7, #13): a computed node's text (a let of text), as the run held it.
         foreach (var row in c.Run31.Rows.Where(r => r.Kind == PlanKind.Computed))
         {
             if (SourceLayout.Text(row.Text?["content"]) is { } content)
+            {
                 values.Add(content);
+                values.Add(content.Trim());
+            }
         }
         values.Remove("");
         return [.. values.OrderByDescending(v => v.Length).ThenBy(v => v, StringComparer.Ordinal)];
@@ -1516,23 +1530,133 @@ public static class ExpectedDifferences
         {
             // The tag as the migration writes a source (#1508 item 3: stripped) or as a hand-written template reads it.
             foreach (var tag in new[] { $"{{{{ {loop.Key}.content | string.strip }}}}", $"{{{{ {loop.Key}.content }}}}" })
-            for (var at = body.IndexOf(tag, StringComparison.Ordinal); at >= 0; at = body.IndexOf(tag, at + tag.Length, StringComparison.Ordinal))
             {
-                var open = body.LastIndexOf("}}", at, StringComparison.Ordinal);
-                var before = body[(open < 0 ? 0 : open + 2)..at];
-                var next = body.IndexOf("{{", at + tag.Length, StringComparison.Ordinal);
-                var after = body[(at + tag.Length)..(next < 0 ? body.Length : next)];
-                bool Separator(string text) => text.Length > 0 && text.All(char.IsWhiteSpace);
-                if (open < 0 && before.Length == 0 && Separator(after) && undone.StartsWith(after, StringComparison.Ordinal))
-                    undone = Nearest(old, undone, undone[after.Length..]);
-                else if (next < 0 && after.Length == 0 && Separator(before) && undone.EndsWith(before, StringComparison.Ordinal))
-                    undone = Nearest(old, undone, undone[..^before.Length]);
-                else if (Separator(before) && Separator(after))
-                    undone = EachNearer(old, undone, before + after, after);
+                for (var at = body.IndexOf(tag, StringComparison.Ordinal); at >= 0; at = body.IndexOf(tag, at + tag.Length, StringComparison.Ordinal))
+                {
+                    var open = body.LastIndexOf("}}", at, StringComparison.Ordinal);
+                    var before = body[(open < 0 ? 0 : open + 2)..at];
+                    var next = body.IndexOf("{{", at + tag.Length, StringComparison.Ordinal);
+                    var after = body[(at + tag.Length)..(next < 0 ? body.Length : next)];
+                    bool Separator(string text) => text.Length > 0 && text.All(char.IsWhiteSpace);
+                    if (open < 0 && before.Length == 0 && Separator(after) && undone.StartsWith(after, StringComparison.Ordinal))
+                        undone = Nearest(old, undone, undone[after.Length..]);
+                    else if (next < 0 && after.Length == 0 && Separator(before) && undone.EndsWith(before, StringComparison.Ordinal))
+                        undone = Nearest(old, undone, undone[..^before.Length]);
+                    else if (Separator(before) && Separator(after))
+                        undone = EachNearer(old, undone, before + after, after);
+                }
             }
         }
 
         return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// R16's guard as the migration writes it on a 30 template loop over a loop node that needs <c>.items</c>
+    /// (<c>TemplateRewriter</c>): the <c>for</c> tag (30's, with <c>.items</c>), the state test, the body, the empty
+    /// <c>else</c>, and the loop's <c>end</c>.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex GuardedLoop = new(
+        @"\{\{[~-]?\s*for\s+(?<v>\w+)\s+in\s+(?<loop>[\w.]+)\.items\b[^}]*\}\}\{\{ if \k<v>\.state == ""completed"" \}\}(?<body>.*?)\{\{ else \}\}\{\{ end \}\}\{\{[~-]?\s*end\s*[~-]?\}\}",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    private static readonly System.Text.RegularExpressions.Regex Tag =
+        new(@"\{\{.*?\}\}", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 4 (Q4 stands): in a prompt, a rendered node's text or a deliverable's, an item of a loop that
+    /// did not run writes nothing at 31 (R16's guard), where 30's template loop wrote its fixed text with its reads empty.
+    /// The templates the row is made from (its own source file and those of the rendered nodes it reads, in turn) are read
+    /// for R16's guard (<see cref="GuardedLoop"/>), each with its body's literal fragments (the text outside its tags, each
+    /// trimmed, empty ones dropped) and the number of the loop's items in the 31 run that did not complete. 30's and 31's
+    /// lines are aligned (<see cref="Aligned"/>); each run of lines only 30 has that holds a guard's fragments in order, at
+    /// most as many per loop as its items that did not complete, is taken out of 30's text with the line ending that joins
+    /// it (the one before it; the one after, for a run at the start). Null when none is taken.
+    /// </summary>
+    private static (string Old, string New)? LoopItemNotRun(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind is not (ComparedKind.Prompt or ComparedKind.Render or ComparedKind.Deliverable) || c.Key31 is not { } key
+            || !c.Plan.Entries.TryGetValue(EntryOf(key), out var row))
+            return null;
+
+        var guards = new List<(string Loop, List<string> Fragments)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal) { row.Key };
+        var pending = new Queue<PlanEntry>([row]);
+        while (pending.Count > 0)
+        {
+            var entry = pending.Dequeue();
+            if (TemplateOf(c.Migrated, entry.Key) is { } template)
+            {
+                foreach (System.Text.RegularExpressions.Match guard in GuardedLoop.Matches(template))
+                {
+                    var fragments = Tag.Split(guard.Groups["body"].Value).Select(f => f.Trim()).Where(f => f.Length > 0).ToList();
+                    if (fragments.Count > 0)
+                        guards.Add((guard.Groups["loop"].Value, fragments));
+                }
+            }
+
+            foreach (var path in entry.Reads)
+            {
+                var named = c.Plan.Entries.Keys.Where(k => path == k || path.StartsWith(k + ".", StringComparison.Ordinal)).MaxBy(k => k.Length);
+                if (named is not null && c.Plan.Entries[named].Kind == PlanKind.Rendered && seen.Add(named))
+                    pending.Enqueue(c.Plan.Entries[named]);
+            }
+        }
+
+        var left = guards.Select(g => g.Loop).Distinct(StringComparer.Ordinal).ToDictionary(
+            loop => loop,
+            loop => c.Run31.Rows.Count(r => r.EntryKey == loop && r.Key.StartsWith(loop + ":", StringComparison.Ordinal) && r.State != RowState.Completed),
+            StringComparer.Ordinal);
+        if (left.Values.All(n => n == 0))
+            return null;
+
+        var a = old.Split('\n');
+        var b = now.Split('\n');
+        if (Aligned(a, b) is not { } pairs)
+            return null;
+
+        var taken = new HashSet<int>();
+        for (var p = 0; p < pairs.Count; p++)
+        {
+            if (pairs[p].B >= 0)
+                continue;
+            var start = p;
+            while (p + 1 < pairs.Count && pairs[p + 1].B < 0)
+                p++;
+            var lines = pairs.Skip(start).Take(p - start + 1).Select(q => q.A).ToList();
+            var text = string.Join("\n", lines.Select(i => a[i]));
+            var holder = guards.FirstOrDefault(g => left[g.Loop] > 0 && InOrder(text, g.Fragments));
+            if (holder.Loop is null)
+                continue;
+            left[holder.Loop]--;
+            taken.UnionWith(lines);
+        }
+
+        return taken.Count == 0 ? null : (string.Join("\n", a.Where((_, i) => !taken.Contains(i))), now);
+    }
+
+    /// <summary>The template body of the entry <paramref name="key"/> (<c>node.&lt;path&gt;</c> or <c>deliverable.&lt;path&gt;</c>), or null.</summary>
+    private static string? TemplateOf(Migration31Result migrated, string key)
+    {
+        var path = key.StartsWith("node.", StringComparison.Ordinal) ? "nodes/" + key["node.".Length..]
+            : key.StartsWith("deliverable.", StringComparison.Ordinal) ? "deliverables/" + key["deliverable.".Length..]
+            : null;
+        return path is not null && migrated.Files.TryGetValue(path.Replace('.', '/') + ".md", out var file) ? FrontMatter.Split(file)?.Body : null;
+    }
+
+    /// <summary>Whether <paramref name="text"/> holds each of <paramref name="fragments"/>, in order, none overlapping.</summary>
+    private static bool InOrder(string text, IReadOnlyList<string> fragments)
+    {
+        var at = 0;
+        foreach (var fragment in fragments)
+        {
+            var found = text.IndexOf(fragment, at, StringComparison.Ordinal);
+            if (found < 0)
+                return false;
+            at = found + fragment.Length;
+        }
+
+        return true;
     }
 
     /// <summary><paramref name="candidate"/> when it is nearer <paramref name="old"/> than <paramref name="now"/> is, else <paramref name="now"/>.</summary>

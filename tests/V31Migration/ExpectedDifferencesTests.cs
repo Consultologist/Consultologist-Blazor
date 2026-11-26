@@ -22,7 +22,7 @@ public class ExpectedDifferencesTests
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
         "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
         "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
-        "while-no-pass-separator", "macro-choice-classifier", "blank-conversion",
+        "while-no-pass-separator", "loop-item-not-run", "macro-choice-classifier", "blank-conversion",
     ];
 
     [Fact]
@@ -601,7 +601,64 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "Opening line.", "\n\nOpening line.", "node.closing", noPass)));
     }
 
+    [Fact]
+    public async Task ALoopItemThatDidNotRun_IsExpected()
+    {
+        // #1508, 2026-11-26, item 4 (Q4 stands): edge-items-not-run's loop has three items and max 2. 30's template loop
+        // wrote its fixed text for the third with its reads empty; 31's R16 guard writes nothing for it. The deliverable reads
+        // the rendered node as Markdown, so its plain text is escaped as well.
+        var (_, _, texts) = await EquivalenceFixture.Compared("edge-items-not-run", "third-problem-not-run");
+        var render = texts.Single(t => t.Site == "edge-items-not-run/third-problem-not-run#renders/node.problem_lines");
+        var deliverable = texts.Single(t => t.Site == "edge-items-not-run/third-problem-not-run#deliverables/deliverable.problem_list");
+        Assert.Equal((false, true, false), (render.Equal, render.Expected, render.Unexplained));
+        Assert.Equal(["loop-item-not-run"], render.Rules);
+        Assert.Equal((false, true, false), (deliverable.Equal, deliverable.Expected, deliverable.Unexplained));
+        Assert.Equal(["escaped-plain-text", "loop-item-not-run"], deliverable.Rules);
+    }
+
+    [Fact]
+    public void ALoopItemThatDidNotRun_DoesNotExplainANearPair()
+    {
+        // Hand-made pairs on edge-items-not-run's plan: problem_lines guards each item of problem_loop on its state.
+        const string Ran = "- Type 2 diabetes: Diabetes paragraph.\n- Metformin continued: Medication paragraph.\n";
+        const string Third = "- Blood pressure of 148/92: \n";
+        var notRun = ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun);
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, Ran + Third, Ran, "node.problem_lines", notRun)));
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, Third + Ran, Ran, "node.problem_lines", notRun)));
+
+        // A 30-only line that lacks the guarded body's literal text ("- ", ": ").
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + "Blood pressure of 148/92\n", Ran, "node.problem_lines", notRun)));
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + "Blood pressure: 148/92 -\n", Ran, "node.problem_lines", notRun)));
+
+        // Every item of the loop completed.
+        var allRan = ItemsRun(RowState.Completed, RowState.Completed, RowState.Completed);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + Third, Ran, "node.problem_lines", allRan)));
+
+        // One item did not run, but 30 has two lines only it wrote, apart.
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Third + Ran + Third, Ran, "node.problem_lines", notRun)));
+
+        // A template loop that is not the migration's guarded form credits nothing.
+        var unguarded = EquivalenceFixture.Migrated("edge-items-not-run");
+        var files = new Dictionary<string, string>(unguarded.Files, StringComparer.Ordinal);
+        var lines = files["nodes/problem_lines.md"];
+        files["nodes/problem_lines.md"] = lines.Replace("{{ if e.state == \"completed\" }}", "", StringComparison.Ordinal).Replace("{{ else }}{{ end }}", "", StringComparison.Ordinal);
+        Assert.NotEqual(lines, files["nodes/problem_lines.md"]);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + Third, Ran, "node.problem_lines", notRun, unguarded with { Files = files })));
+
+        // A status is never explained.
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Status, "Completed", "Failed", null, notRun)));
+    }
+
     // ---- helpers ---------------------------------------------------------------------------------------------
+
+    /// <summary>A 31 run of edge-items-not-run whose problem_loop items ended as <paramref name="states"/>, in order.</summary>
+    private static OfflineResult ItemsRun(params RowState[] states) =>
+        Run(RunState.Completed, rows: [.. states.Select((s, i) => Row($"node.problem_loop:{i + 1}", PlanKind.For, s))]);
+
+    /// <summary>A context on edge-items-not-run (its hand edits made), so its own plan is read.</summary>
+    private static DifferenceContext ItemsContext(ComparedKind kind, string old, string now, string? key31, OfflineResult run, Migration31Result? migrated = null) =>
+        new("edge-items-not-run", "third-problem-not-run", $"edge-items-not-run/third-problem-not-run#{key31 ?? "status"}", kind, null, key31, old, now,
+            Capture("Completed", null), run, migrated ?? EquivalenceFixture.Migrated("edge-items-not-run"), EquivalenceFixture.Plan("edge-items-not-run"));
 
     // ---- macro-choice-classifier (#1508, comment 6, items 1 and 2; R13, R14) ------------------------------------
 

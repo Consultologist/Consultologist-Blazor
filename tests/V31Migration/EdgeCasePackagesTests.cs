@@ -39,8 +39,6 @@ public class EdgeCasePackagesTests
     /// <summary>The five whose migrated package publishes with its pinned test: the other two pin a reply 31 refuses (D6).</summary>
     private static readonly string[] Publishing = ["edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
 
-    private const string Q4 = "Q4's guard differs from 30's template loop past max; for the owner, #1508.";
-
     /// <summary>
     /// #1508 (Task 35 fix round 1, the controller's ruling): the compared texts that differ from 30's with no ruling, shown, not
     /// avoided, each by site with its reason; no rule explains them, and every other text of the edge packages is equal or
@@ -48,8 +46,6 @@ public class EdgeCasePackagesTests
     /// </summary>
     internal static readonly IReadOnlyDictionary<string, string> Unruled = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["edge-items-not-run/third-problem-not-run#renders/node.problem_lines"] = Q4,
-        ["edge-items-not-run/third-problem-not-run#deliverables/deliverable.problem_list"] = Q4,
         ["edge-unruled-whitespace/default#deliverables/deliverable.letter"] =
             "a macro the model chose loses one line ending at 31 when its body ends in one (31 drops a body's final line ending), where 30 wrote the body whole; for the owner, #1508.",
         ["edge-unruled-whitespace/default#deliverables/deliverable.problems"] =
@@ -116,7 +112,8 @@ public class EdgeCasePackagesTests
     {
         // Steps 0 to 3 at the engine's limits: the check, the compiler, and the package's tests run offline on their stubs,
         // none generated. Each pinned test's expect holds 31's deliverable text: 30's, read from the capture, but where the
-        // comparison found a difference no ruling covers (Unruled), where it is the comparison run's and differs from 30's.
+        // comparison found the texts unequal (F-D17: credited to a rule or not), where it is the comparison run's and differs
+        // from 30's.
         var outcome = await PackagePublish.CheckAsync(Upload(Edged(package)), Options());
 
         Assert.True(outcome.Report.Refusals.Count == 0, Said(outcome.Report.Refusals));
@@ -125,7 +122,7 @@ public class EdgeCasePackagesTests
         Assert.Contains(outcome.Report.Tests, t => t.Id == "edge");
         Assert.DoesNotContain(outcome.Report.Warnings, w => w.Id is "A11-010" or "A11-011" or "S07-014");
 
-        var (capture, run, _) = await EquivalenceFixture.Compared(package, EdgeScenario[package]);
+        var (capture, run, texts) = await EquivalenceFixture.Compared(package, EdgeScenario[package]);
         var expected = Test(package)["expect"]!["deliverables"]!.AsObject();
         foreach (var row in capture["deliverables"]!.AsArray().OfType<JsonObject>())
         {
@@ -133,7 +130,7 @@ public class EdgeCasePackagesTests
             var wanted = expected[key]!;
             if ((string?)row["state"] != "composed")
                 Assert.Equal(("skipped", "skipped"), ((string)row["state"]!, (string)wanted["state"]!));
-            else if (Unruled.ContainsKey($"{package}/{EdgeScenario[package]}#deliverables/{key}"))
+            else if (!texts.Single(t => t.Site == $"{package}/{EdgeScenario[package]}#deliverables/{key}").Equal)
             {
                 Assert.Equal(("released", run.Deliverables.Single(d => d.Key == key).Text), ((string)wanted["state"]!, (string?)wanted["text"]));
                 Assert.NotEqual((string?)row["text"], (string?)wanted["text"]);
@@ -166,8 +163,9 @@ public class EdgeCasePackagesTests
     public async Task TheMigratedPackage_IsByteForByte30s(string package)
     {
         // The three Q3 to Q5 cases: the migration's if, the loop's .content and the object guard give 30's bytes, every text
-        // equal but edge-items-not-run's template loop, Q4's difference (Unruled).
-        Assert.All((await EquivalenceFixture.Report(package)).Texts.Where(t => !Unruled.ContainsKey(t.Site)), t => Assert.True(t.Equal, t.Site));
+        // equal but edge-items-not-run's template loop, Q4's difference, expected as the owner ruled (#1508, 2026-11-26,
+        // item 4: loop-item-not-run).
+        Assert.All((await EquivalenceFixture.Report(package)).Texts, t => Assert.True(t.Equal || (t.Expected && t.Rules.Contains("loop-item-not-run")), t.Site));
     }
 
     // ---- edge-missing-marker -------------------------------------------------------------------------------------
@@ -253,7 +251,7 @@ public class EdgeCasePackagesTests
 
         // problem_lines, a 30 template loop that names each item's problem, keeps .items and is guarded on each item's state
         // (R16), so 31 writes no line for the item not run, where 30's template wrote "- <problem>: " for it: Q4's difference,
-        // for the owner (Unruled).
+        // expected as the owner ruled (#1508, 2026-11-26, item 4: loop-item-not-run).
         Assert.Contains("{{ for e in node.problem_loop.items }}{{ if e.state == \"completed\" }}- {{ e.item.value }}: {{ e.content }}\n{{ else }}{{ end }}{{ end }}",
             EquivalenceFixture.Migrated("edge-items-not-run").Files["nodes/problem_lines.md"], StringComparison.Ordinal);
         var (capture, compared, _) = await EquivalenceFixture.Compared("edge-items-not-run", "third-problem-not-run");
