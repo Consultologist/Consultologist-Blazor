@@ -470,7 +470,8 @@ public sealed partial class PlanRunner
         /// #1506 (area 09; part 08 § 5; R6, D4): records a decision of <paramref name="instance"/> (its owner) at
         /// <paramref name="site"/>: <paramref name="rule"/>'s reads, each with the hash of its value in <paramref name="data"/>
         /// (the data the rule was decided over, inline or sent to the host), and the flags of what they read
-        /// (<see cref="RunScope.Lineage"/>, read in <paramref name="frame"/>, where the rule was decided). A rule the plan does
+        /// (<see cref="RunScope.Lineage"/>, read in <paramref name="frame"/>, where the rule was decided; an input holding an
+        /// earlier run's text model-derived, #1509 D7). A rule the plan does
         /// not hold (never, for a plan <see cref="RunPlan.Build"/> made) records no reads and both flags.
         /// </summary>
         private Task RecordDecisionAsync(
@@ -481,7 +482,7 @@ public sealed partial class PlanRunner
             foreach (var path in rule?.Reads ?? [])
             {
                 reads.Add(new RunRead(path, CanonicalJson.Hash(RunScope.At(data, path))));
-                var (run, model) = RunScope.Lineage(instance.Entry, frame, path);
+                var (run, model) = RunScope.Lineage(instance.Entry, frame, path, inputs.ModelDerivedInputs);
                 runDependent |= run;
                 modelDerived |= model;
             }

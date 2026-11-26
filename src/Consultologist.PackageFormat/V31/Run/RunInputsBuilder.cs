@@ -22,10 +22,13 @@ public static class RunInputsBuilder
     /// declare is refused as today's start refuses it (A06-013, every such id at once). An input's read form is
     /// <c>{ value, content, title }</c> (part 02 § 8): <c>content</c> the text of a text format, <c>title</c> the label of
     /// the labelled choice chosen, each else <c>null</c>. <paramref name="runFacts"/> and <paramref name="profile"/> are
-    /// carried as given (copied).
+    /// carried as given (copied). #1509 (area 12, D7): <paramref name="modelDerived"/> names the supplied inputs holding an
+    /// element from an earlier run's deliverable; those the inputs hold are the run's <see cref="RunInputs.ModelDerivedInputs"/>
+    /// (none when it is not given).
     /// </summary>
     public static (RunInputs? Inputs, IReadOnlyList<SourceRefusal> Refusals) Build(
-        RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, JsonObject runFacts, IReadOnlyDictionary<string, string?> profile)
+        RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, JsonObject runFacts, IReadOnlyDictionary<string, string?> profile,
+        IReadOnlySet<string>? modelDerived = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(supplied);
@@ -74,7 +77,10 @@ public static class RunInputsBuilder
 
         return refusals.Count > 0
             ? (null, refusals)
-            : (new RunInputs(inputs, (JsonObject)runFacts.DeepClone(), new Dictionary<string, string?>(profile, StringComparer.Ordinal)), refusals);
+            : (new RunInputs(inputs, (JsonObject)runFacts.DeepClone(), new Dictionary<string, string?>(profile, StringComparer.Ordinal))
+            {
+                ModelDerivedInputs = (modelDerived ?? Enumerable.Empty<string>()).Where(inputs.ContainsKey).ToHashSet(StringComparer.Ordinal),
+            }, refusals);
     }
 
     /// <summary>A10-043 (#1507; part 10 § 1.3, R7): a <c>MacroChoices</c> entry names no macro of the package.</summary>

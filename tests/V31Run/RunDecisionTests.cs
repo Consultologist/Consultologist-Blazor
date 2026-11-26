@@ -147,6 +147,64 @@ public class RunDecisionTests
         Assert.All(summaries, d => Assert.False(d.ModelDerived || d.RunDependent));
     }
 
+    // ---- an input holding an earlier run's text (#1509, D7; part 08 § 3.1) -------------------------
+
+    [Fact]
+    public async Task ADecisionReadingAPreviousRunInput_IsModelDerived()
+    {
+        // an input one of whose elements came from an earlier run's deliverable starts out model-derived
+        var plan = RunFixture.Plan(KindGated());
+        var inputs = WithInput(PlanRunnerLeavesTests.Inputs(), "kind", JsonValue.Create("table")) with { ModelDerivedInputs = new HashSet<string>(StringComparer.Ordinal) { "kind" } };
+
+        var (result, _, recorder) = await RunAsync(plan, new FakeRunHost(auto: true), inputs);
+
+        Assert.True(result.State == RunState.Completed, result.Sentence);
+        var decision = Assert.Single(recorder.Decisions);
+        Assert.True(decision.ModelDerived);
+        Assert.False(decision.RunDependent);
+
+        // and a loop over such an input: each item's decision reads it through item, so is model-derived too
+        var conditional = RunFixture.Plan("conditional");
+        var listed = RunFixture.GoldenInputs() with { ModelDerivedInputs = new HashSet<string>(StringComparer.Ordinal) { "sections" } };
+        var (_, _, looped) = await RunAsync(conditional, RunFixture.Stubbed(conditional), listed);
+        var summaries = looped.Decisions.Where(d => d.Owner.StartsWith("node.patient_summaries.narrative_only:", StringComparison.Ordinal)).ToList();
+        Assert.Equal(3, summaries.Count);
+        Assert.All(summaries, d => Assert.True(d.ModelDerived));
+        Assert.All(summaries, d => Assert.False(d.RunDependent));
+    }
+
+    [Fact]
+    public async Task ADecisionReadingATypedInput_IsNot()
+    {
+        // the run's inputs name no earlier run's input by default; naming another input leaves this decision clean
+        var plan = RunFixture.Plan(KindGated());
+        var typed = WithInput(PlanRunnerLeavesTests.Inputs(), "kind", JsonValue.Create("table"));
+        Assert.Empty(typed.ModelDerivedInputs);
+
+        foreach (var inputs in new[] { typed, typed with { ModelDerivedInputs = new HashSet<string>(StringComparer.Ordinal) { "consult_draft" } } })
+        {
+            var (_, _, recorder) = await RunAsync(plan, new FakeRunHost(auto: true), inputs);
+            var decision = Assert.Single(recorder.Decisions);
+            Assert.False(decision.ModelDerived || decision.RunDependent);
+        }
+    }
+
+    [Fact]
+    public void TheBuiltInputs_CarryTheInputsHoldingAnEarlierRunsText()
+    {
+        // RunInputsBuilder.Build: empty by default; given, only the ids of inputs it holds
+        var plan = RunFixture.Plan(KindGated());
+        var supplied = new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["consult_draft"] = "Margaret Okafor, 61. (Fictional.)" };
+        var profile = new Dictionary<string, string?>(StringComparer.Ordinal);
+
+        var (plain, _) = RunInputsBuilder.Build(plan, supplied, new JsonObject(), profile);
+        Assert.Empty(plain!.ModelDerivedInputs);
+
+        var (derived, refusals) = RunInputsBuilder.Build(plan, supplied, new JsonObject(), profile, new HashSet<string>(StringComparer.Ordinal) { "consult_draft", "kind" });
+        Assert.Empty(refusals);
+        Assert.Equal(["consult_draft"], derived!.ModelDerivedInputs);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
