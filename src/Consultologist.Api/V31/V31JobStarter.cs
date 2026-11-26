@@ -38,7 +38,9 @@ public sealed class V31JobStarter(
     EngineAttestationResponse engine,
     ILogger<V31JobStarter> logger,
     // #1503 (D9): the drain before a deploy; null (a test) reads as never draining.
-    IEngineDrain? drain = null)
+    IEngineDrain? drain = null,
+    // #1509: the lineage index a 5–30 start writes (History's "Used by" on the source job); null (a test) writes none.
+    IConsultGenerationLinkStore? links = null)
 {
     /// <summary>
     /// #1509 (D7): the held inputs document's member naming, in ordinal order, the inputs that hold an element of an earlier
@@ -190,6 +192,25 @@ public sealed class V31JobStarter(
         if (runInputs.ModelDerivedInputs.Count > 0)
             document[ModelDerivedMember] = new JsonArray(runInputs.ModelDerivedInputs.Order(StringComparer.Ordinal).Select(id => (JsonNode?)id).ToArray());
         var pointer = await inputs.WriteAsync(accountKind, appUserId, jobId, document, cancellationToken);
+
+        // #1509 (#546): the lineage edges, as a 5–30 start writes them after it holds its inputs: one row per element taken
+        // from an earlier run, one for a replay. Best-effort like that start: a storage blip never refuses a start, and the
+        // job's own origins remain the truth this index projects.
+        if (links != null)
+        {
+            var lineageLinks = ConsultGenerationJobStarter.LinksFrom(jobId, appUserId, extraction.Origins, origin.RerunOfJobId, DateTimeOffset.UtcNow);
+            if (lineageLinks.Count > 0)
+            {
+                try
+                {
+                    await links.WriteAsync(lineageLinks, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Lineage links not written; the run proceeds. JobId={JobId}", jobId);
+                }
+            }
+        }
 
         var recorded = limits.Limits.ToJson();
         await client.Entities.SignalEntityAsync(

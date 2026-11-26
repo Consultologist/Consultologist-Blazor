@@ -823,6 +823,41 @@ public class V31JobStartTests
             letters["elements"]!.ToJsonString());
     }
 
+    [Fact]
+    public async Task A31StartFromAnEarlierRun_WritesTheLineageLink_As30Does()
+    {
+        var start = new Start(preview: "31");
+        start.WithSourceRun(SourceRun());
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+        Assert.Null(outcome.Error);
+
+        var written = Assert.Single(start.Links.ReceivedCalls(), c => c.GetMethodInfo().Name == nameof(IConsultGenerationLinkStore.WriteAsync));
+        var rows = (IReadOnlyList<ConsultGenerationLink>)written.GetArguments()[0]!;
+        var link = Assert.Single(rows);
+        Assert.Equal(SourceJob, link.SourceJobId);
+        Assert.Equal(outcome.JobId, link.ConsumerJobId);
+        Assert.Equal(ConsultInputOriginKinds.PreviousRun, link.Kind);
+        Assert.Equal("consult_draft", link.InputId);
+        Assert.Equal("consult", link.ResultId);
+
+        // the rows a 5-30 start writes from the same origins
+        var as30 = ConsultGenerationJobStarter.LinksFrom(
+            outcome.JobId!, "user-1",
+            new Dictionary<string, IReadOnlyList<ConsultInputOrigin>> { ["consult_draft"] = [new ConsultInputOrigin(ConsultInputOriginKinds.PreviousRun, SourceJobId: SourceJob, SourceResultId: "consult")] },
+            null, link.CreatedAtUtc);
+        Assert.Equal(as30, rows);
+    }
+
+    [Fact]
+    public async Task A31StartWithNoRefs_WritesNone()
+    {
+        var start = new Start(preview: "31");
+        Assert.Null((await start.RunAsync(new ConsultGenerationRequest(null, RefText(start.Put("nested-note")), Inputs: Text(Draft)))).Error);
+
+        await start.Links.DidNotReceiveWithAnyArgs().WriteAsync(default!, default);
+    }
+
     [Theory]
     [InlineData("user-2", "Completed", false)]
     [InlineData("user-1", "Completed", true)]
@@ -1394,15 +1429,18 @@ public class V31JobStartTests
                 settings,
                 Substitute.For<IJobOutputsBlobStore>(),
                 Substitute.For<IJobInputsBlobStore>(),
-                Substitute.For<IConsultGenerationLinkStore>(),
+                Links,
                 FormResponses,
                 FormResponseBlobs,
                 Ocr,
                 TestFormats.Catalog,
                 null,
                 null,
-                new V31JobStarter(admission, Store, Inputs, limits, accounts, settings, engine, NullLogger<V31JobStarter>.Instance));
+                new V31JobStarter(admission, Store, Inputs, limits, accounts, settings, engine, NullLogger<V31JobStarter>.Instance, null, Links));
         }
+
+        /// <summary>#1509: the lineage index both starts write to.</summary>
+        public IConsultGenerationLinkStore Links { get; } = Substitute.For<IConsultGenerationLinkStore>();
 
         public FakeRegistry Registry { get; } = new();
 
