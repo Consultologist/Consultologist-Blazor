@@ -374,6 +374,24 @@ public class V31PackagePublisherTests
         rig.AssertNothingWritten();
     }
 
+    [Theory]
+    [InlineData("""{"oldVersion":"v2026.01.1","newVersion":"v2026.12.1","package":"example-minimal","package":"example-minimal"}""")]
+    [InlineData("""{"oldVersion":"v2026.01.1","newVersion":"v2026.11.1","newVersion":"v2026.12.1"}""")]
+    public async Task AMigrationReportWithAMemberWrittenTwice_IsRefused_NotThrown_AndNothingIsRun(string text)
+    {
+        // Final review of Part F, item 6: the report's newVersion is rewritten through JsonNode, which throws on a member
+        // written twice; such a report is refused as one that does not read, a 400, never a 500.
+        var rig = new Rig();
+
+        var result = await rig.Publisher().PublishAsync(OperatorId, Kind, Request(await Files(), migration: Migration(text)), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.Forbidden);
+        Assert.Equal(["MigrationReport must be a JSON object with each member written once."], result.Errors);
+        Assert.Empty(rig.Options);
+        rig.AssertNothingWritten();
+    }
+
     // ---- refused ------------------------------------------------------------------------------------------------------
 
     [Fact]
