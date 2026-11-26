@@ -46,16 +46,27 @@ internal static class MigrationSentences
     }
 
     /// <summary>
-    /// A10-074 (#1508, comment 5, item 2; part 10 § 2.2): in <paramref name="file"/>'s <paramref name="member"/>, a text
-    /// compared with a literal (<see cref="BlankConversion.Written"/>, as the printer shows it), which 31 refuses
-    /// (S03-002), became membership in a list of that literal (<see cref="BlankConversion.Printed"/>), which answers as
-    /// 30's comparison did.
+    /// A10-074 (#1508, comment 5, item 2; #1508, 2026-11-26, item 6; part 10 § 2.2): in <paramref name="file"/>'s
+    /// <paramref name="member"/>, a text compared with a literal (<see cref="BlankConversion.Written"/>, as the printer
+    /// shows it), which 31 refuses (S03-002), became membership in a list of that literal
+    /// (<see cref="BlankConversion.Printed"/>), with <c>trim</c> written on each text read of an input: 30 trimmed an
+    /// input's text at its end before it compared, and 31's <c>trim</c> trims both ends, so an input's text that starts
+    /// with white space now matches where 30's did not.
     /// </summary>
     public static string TextLiteralBecameIn(string file, string member, BlankConversion literal)
     {
         ArgumentNullException.ThrowIfNull(literal);
-        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31.";
+        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
     }
+
+    /// <summary>
+    /// A10-085 (#1508, 2026-11-26, item 6): <paramref name="comparison"/> (as the printer shows it) compares an input's
+    /// text with a literal whose first character is white space: 30 kept an input's leading white space, so it could
+    /// match, and the <c>trim</c> the migration writes on the input never leaves any, so no trim fits. A reason S10-002
+    /// gives.
+    /// </summary>
+    public static string ComparedWithLeadingWhiteSpace(string comparison) =>
+        $"'{comparison}' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.";
 
     /// <summary>
     /// A10-075 (#1508, comment 5, item 2; Task 30 fix round 1): in <paramref name="file"/>'s <paramref name="member"/>, a

@@ -702,7 +702,9 @@ public class MigrateNodesTests
 
     /// <summary>
     /// #1508 (comment 5, item 2): in a migration, a size of a list that can be null is written with its null test, so it
-    /// answers as 30 did, and A10-027 is still said; text compared with a literal becomes <c>in</c>, said with A10-074.
+    /// answers as 30 did, and A10-027 is still said; text compared with a literal becomes <c>in</c> on the input trimmed
+    /// (#1508, 2026-11-26, item 6), said with A10-074, as an item's text compared becomes <c>in</c> untrimmed
+    /// (<c>composer-macros</c>' <c>section_close</c>).
     /// </summary>
     [Fact]
     public void ANullableSizeAndATextLiteral_AreWrittenAs30Meant_AndSaid()
@@ -714,15 +716,19 @@ public class MigrateNodesTests
         });
 
         Assert.Equal(
-            """{"and":[{"and":[{"!==":[{"var":"input.topics.value"},null]},{">":[{"size":[{"var":"input.topics.value"}]},0]}]},{"!":[{"in":[{"var":"input.consult_draft.content"},["none"]]}]}]}""",
+            """{"and":[{"and":[{"!==":[{"var":"input.topics.value"},null]},{">":[{"size":[{"var":"input.topics.value"}]},0]}]},{"!":[{"in":[{"trim":[{"var":"input.consult_draft.content"}]},["none"]]}]}]}""",
             CanonicalJson.Write(Json(result, "nodes/plan_gate/index.json")["if"]));
         Assert.DoesNotContain(result.HandEdits, e => e.Contains("plan_gate", StringComparison.Ordinal));
         const string size = "nodes/plan_gate/index.json, if: size(input.topics.value) is null when input.topics.value is null, where 30 counted 0.";
-        const string literal = "nodes/plan_gate/index.json, if: 'input.consult_draft.content ≠ \"none\"' became not (input.consult_draft.content in [\"none\"]); text is compared with a literal by in at 31.";
+        const string literal = "nodes/plan_gate/index.json, if: 'input.consult_draft.content ≠ \"none\"' became not (trim(input.consult_draft.content) in [\"none\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
         Assert.Contains(size, result.Notices);
         Assert.Contains(literal, result.Notices);
         V31Contract.AssertSentence(new SourceRefusal("A10-027", size, ""));
         V31Contract.AssertSentence(new SourceRefusal("A10-074", literal, ""));
+
+        const string item = "macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (item.value.title in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
+        Assert.Contains(item, Migrated("composer-macros", _ => { }).Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-074", item, ""));
     }
 
     /// <summary>

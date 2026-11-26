@@ -250,7 +250,8 @@ internal static class V31Contract
     /// R11, area 11 Task 33; A10-082: an options.json id or choice that is empty, which the flags refuse, carried from Task 29's
     /// review, and A10-083: the defaults the bulk publish says it used for a package with no options.json, area 11 Task 36;
     /// A10-084: a deliverable whose sources may all not run and whose condition is a hand edit, the term A10-079 would have
-    /// joined, a hand edit's reason, the final review of Part F).
+    /// joined, a hand edit's reason, the final review of Part F; A10-074's words corrected and A10-085: an input's text
+    /// compared with a literal that starts with white space, a hand edit's reason, #1508 2026-11-26 item 6, area 12 Task F6).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -325,7 +326,7 @@ internal static class V31Contract
         ["A10-071"] = "options.json must give <renames | whenEmpty | folderFormats> as an object whose values are text; write {} for none.",
         ["A10-072"] = "options.json gives deliverable '<id>' a whenEmpty that is not release, hold or fail.",
         ["A10-073"] = "The condition '<expression>' uses string.contains on <list>, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.",
-        ["A10-074"] = "<file>, <member>: '<comparison>' became <rule>; text is compared with a literal by in at 31.",
+        ["A10-074"] = "<file>, <member>: '<comparison>' became <rule>; text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.",
         ["A10-075"] = "<file>, <member>: '<comparison>' became <rule>; 31 reads an input not given or blank as null, where 30 read \"\".",
         ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
         ["A10-077"] = "node '<id>' decides whether macro '<macro id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
@@ -336,6 +337,7 @@ internal static class V31Contract
         ["A10-082"] = "options.json gives <renames | whenEmpty | folderFormats> an empty id or an empty choice; name each id and its choice.",
         ["A10-083"] = "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.",
         ["A10-084"] = "every source may not run, and 30 skipped the deliverable when none ran; join <term> to 30's condition by and.",
+        ["A10-085"] = "'<comparison>' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

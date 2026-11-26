@@ -12,8 +12,10 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <item><c>!x</c> is decided by its operand's type first: on a text format it becomes <c>{ "blank": [x] }</c> (§ 2.3,
 /// R1), and the operand is listed; on anything else it stays <c>!</c>, which the checker holds to a boolean
 /// (S03-009).</item>
-/// <item>#1508 (comment 5, item 2): text compared with a literal by <c>===</c> or <c>!==</c> (S03-002 as written) is
-/// membership in a list of that literal, <c>{ "in": [x, ["lit"]] }</c> or its negation, and is listed; with blank text
+/// <item>#1508 (comment 5, item 2; 2026-11-26, item 6): text compared with a literal by <c>===</c> or <c>!==</c> (S03-002
+/// as written) is membership in a list of that literal, <c>{ "in": [x, ["lit"]] }</c> or its negation, with each text read
+/// of an input in <c>x</c> written <c>{ "trim": [read] }</c> (30 trimmed an input's text at its end; <c>trim</c> trims both),
+/// and is listed; a literal that starts with white space compared with an input's text is refused (A10-085); with blank text
 /// (<c>""</c> or white space), where 30 read an input's text not given or blank as <c>""</c> and 31 reads it as null or
 /// as given, a text input read whole compared with <c>""</c> is <c>x === null or x in [""]</c> (listed), and any other comparison with
 /// blank text that reads an input is refused (A10-076, a hand edit's reason); a comparison of the <c>size</c> of a list that can be null is written with the null test that
@@ -275,10 +277,17 @@ internal static class ConditionTyping
     }
 
     /// <summary>
-    /// #1508 (comment 5, item 2): a text <c>x</c> compared by <c>===</c> or <c>!==</c> with a string literal, either side
-    /// (S03-002 as written), is <c>{ "in": [x, ["lit"]] }</c> or <c>{ "!": [{ "in": [x, ["lit"]] }] }</c>, listed in
-    /// <paramref name="found"/>; null for anything else. Membership is exact, as 30's comparison was, and a null <c>x</c> is
-    /// in no list of text, as 30's null equalled no text. Blank text is the exception (Task 30 fix round 1): 30 read an
+    /// #1508 (comment 5, item 2; 2026-11-26, item 6): a text <c>x</c> compared by <c>===</c> or <c>!==</c> with a string
+    /// literal, either side (S03-002 as written), is <c>{ "in": [x', ["lit"]] }</c> or <c>{ "!": [{ "in": [x', ["lit"]] }] }</c>,
+    /// listed in <paramref name="found"/>; null for anything else. <c>x'</c> is <c>x</c> with each text read of an input
+    /// written <c>{ "trim": [read] }</c> (<see cref="TrimInputReads"/>): 30 compared an input's text with its end trimmed
+    /// (<c>CanonicalText.Normalize</c>), and part 03 § 5.2's <c>trim</c>, the one trimming operation 31's JSON Logic has,
+    /// trims both ends, so an input's text that starts with white space now matches where 30's did not (said in A10-074).
+    /// A node's or an item's text, which 30 compared as it was, is not trimmed. Membership is otherwise exact, as 30's
+    /// comparison was, and a null <c>x</c> is in no list of text (<c>trim</c> of null is null), as 30's null equalled no
+    /// text. A literal that starts with white space, compared with a trimmed read, could match at 30 and never matches at
+    /// 31, so no trim fits: it is refused (A10-085, a hand edit's reason). Blank text is the exception (Task 30 fix round 1),
+    /// written as before, with no trim: 30 read an
     /// input's text not given or blank (white space alone, a field's too) as <c>""</c>, where 31's start leaves out a text
     /// input absent or blank, so it reads null, and keeps a field as given. A text input read whole compared with
     /// <c>""</c> is <c>x === null or x in [""]</c> (<c>x !== null and not (x in [""])</c> for <c>!==</c>), the null test
@@ -329,7 +338,16 @@ internal static class ConditionTyping
             }
         }
 
-        var member = new JsonObject { ["in"] = new JsonArray(x.DeepClone(), new JsonArray(literal.DeepClone())) };
+        // #1508, 2026-11-26, item 6: 30 trimmed an input's text at its end before it compared; the migration writes trim on
+        // each text read of an input, which trims both ends, so a literal that starts with white space has no trim that fits.
+        var trimmed = TrimInputReads(x.DeepClone(), operand, scope, formats, 0, out var trims);
+        if (trims && text.Length > 0 && Rune.IsWhiteSpace(Rune.GetRuneAt(text, 0)))
+        {
+            found.Refusals.Add((LeadingWhiteSpaceId, MigrationSentences.ComparedWithLeadingWhiteSpace(written)));
+            return null;
+        }
+
+        var member = new JsonObject { ["in"] = new JsonArray(trimmed, new JsonArray(literal.DeepClone())) };
         JsonNode result = name == "===" ? member : new JsonObject { ["!"] = new JsonArray(member) };
         found.Literals.Add(new BlankConversion(written, JsonLogicPrinter.Print(result), reads));
         return result;
@@ -337,7 +355,69 @@ internal static class ConditionTyping
 
     private const string BlankTextId = "A10-076";
 
-    /// <summary>Whether <paramref name="path"/> reads an input (<c>input.&lt;id&gt;.content</c>, <c>.value</c> or a field of it), whose blank text 30 read as <c>""</c>.</summary>
+    private const string LeadingWhiteSpaceId = "A10-085";
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 6 (F-D10): <paramref name="node"/> (a copy, rewritten in place) with each read of an input
+    /// (<see cref="IsInputRead"/>) whose type is of a text format written <c>{ "trim": [read] }</c>, the trim around the
+    /// read itself where an operation stands over it (<c>lower(trim(input.x))</c>); <paramref name="trimmed"/> says whether
+    /// any was. A node's or an item's text, which 30 did not trim, is left as read, and so is what the author already
+    /// trimmed (<c>input.x | string.strip</c>, a <c>trim</c> as written), which answers as 30's did.
+    /// </summary>
+    private static JsonNode? TrimInputReads(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, int depth, out bool trimmed)
+    {
+        trimmed = false;
+        if (depth > SourceBounds.JsonDepth)
+        {
+            return node;
+        }
+
+        switch (node)
+        {
+            case JsonObject { Count: 1 } written when written.ContainsKey("trim"):
+                return written;
+            case JsonObject { Count: 1 } read when read["var"] is JsonValue path && path.TryGetValue<string>(out var p):
+                if (IsInputRead(p)
+                    && ExpressionChecker.Check(read, operand, scope, formats) is { Refusals.Count: 0, Type.Format: { } format }
+                    && FormatTypes.Shape(format, formats) == FormatShape.Text)
+                {
+                    trimmed = true;
+                    return new JsonObject { ["trim"] = new JsonArray(read.DeepClone()) };
+                }
+
+                return read;
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    var element = array[i];
+                    var rewritten = TrimInputReads(element, operand, scope, formats, depth + 1, out var any);
+                    trimmed |= any;
+                    if (!ReferenceEquals(element, rewritten))
+                    {
+                        array[i] = rewritten;
+                    }
+                }
+
+                return array;
+            case JsonObject obj:
+                foreach (var key in obj.Select(f => f.Key).ToList())
+                {
+                    var value = obj[key];
+                    var rewritten = TrimInputReads(value, operand, scope, formats, depth + 1, out var any);
+                    trimmed |= any;
+                    if (!ReferenceEquals(value, rewritten))
+                    {
+                        obj[key] = rewritten;
+                    }
+                }
+
+                return obj;
+            default:
+                return node;
+        }
+    }
+
+    /// <summary>Whether <paramref name="path"/> reads an input (<c>input.&lt;id&gt;.content</c>, <c>.value</c> or a field of it), whose blank text 30 read as <c>""</c> and whose text 30 trimmed at its end.</summary>
     private static bool IsInputRead(string path) => path.Split('.') is ["input", { Length: > 0 }, "content" or "value", ..];
 
     /// <summary>The comparisons a <c>size</c> may be an operand of, each as it holds for two numbers.</summary>

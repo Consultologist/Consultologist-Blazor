@@ -374,12 +374,14 @@ public class ConditionConverterTests
     }
 
     /// <summary>
-    /// #1508 (comment 5, item 2): text compared with a literal (S03-002 at 31) is written as membership, which answers as
-    /// 30's comparison did: <c>x == "lit"</c> is <c>x in ["lit"]</c>, <c>!=</c> its negation, the literal on either side;
-    /// each is listed for the migration's notice (A10-074). Text compared with text stays S03-003.
+    /// #1508 (comment 5, item 2; #1508, 2026-11-26, item 6): text compared with a literal (S03-002 at 31) is written as
+    /// membership, <c>x == "lit"</c> as <c>x in ["lit"]</c>, <c>!=</c> its negation, the literal on either side, with
+    /// <c>trim</c> written on each text read of an input in <c>x</c>, as 30 trimmed an input's text (at its end) before it
+    /// compared; a node's or an item's text, which 30 did not trim, gets none. Each is listed for the migration's notice
+    /// (A10-074). Text compared with text stays S03-003.
     /// </summary>
     [Fact]
-    public void TextComparedWithALiteral_BecomesIn()
+    public void TextComparedWithALiteral_IsComparedOnTheTrimmedInput()
     {
         var input = Convert("row.input.x");
         var field = Convert("row.input.x-y");
@@ -389,25 +391,87 @@ public class ConditionConverterTests
         var reversed = WorkflowConditionConverter.FromScriban("\"Breathlessness\" != input.reason", NearScope());
         var texts = WorkflowConditionConverter.FromScriban("input.reason == node.summary.content", NearScope());
 
-        Assert.Equal("""{"in":[{"var":"input.reason.content"},["Breathlessness"]]}""", CanonicalJson.Write(input.Logic));
-        Assert.Equal("""{"in":[{"var":"input.patient.value.name"},["Margaret Okafor"]]}""", CanonicalJson.Write(field.Logic));
-        Assert.Equal("""{"in":[{"lower":[{"var":"input.reason.content"}]},["breathlessness"]]}""", CanonicalJson.Write(lower.Logic));
+        Assert.Equal("""{"in":[{"trim":[{"var":"input.reason.content"}]},["Breathlessness"]]}""", CanonicalJson.Write(input.Logic));
+        Assert.Equal("""{"in":[{"trim":[{"var":"input.patient.value.name"}]},["Margaret Okafor"]]}""", CanonicalJson.Write(field.Logic));
+        Assert.Equal("""{"in":[{"lower":[{"trim":[{"var":"input.reason.content"}]}]},["breathlessness"]]}""", CanonicalJson.Write(lower.Logic));
         Assert.Equal("""{"in":[{"var":"node.summary.content"},["Reviewed in clinic."]]}""", CanonicalJson.Write(node.Logic));
         Assert.Equal("""{"!":[{"in":[{"var":"item.value.title"},["Plan"]]}]}""", CanonicalJson.Write(item.Logic));
-        Assert.Equal("""{"!":[{"in":[{"var":"input.reason.content"},["Breathlessness"]]}]}""", CanonicalJson.Write(reversed.Logic));
+        Assert.Equal("""{"!":[{"in":[{"trim":[{"var":"input.reason.content"}]},["Breathlessness"]]}]}""", CanonicalJson.Write(reversed.Logic));
         Assert.All(new[] { input, field, lower, node, item, reversed }, r => Assert.Equal("boolean", r.ResultFormat));
         Assert.All(new[] { input, field, lower, node, item, reversed }, r => Assert.Empty(r.Blanks));
+        Assert.All(new[] { input, field, lower, node, item, reversed }, r => Assert.Empty(r.Notices));
+
+        var trimmed = Assert.Single(reversed.TextLiterals);
+        Assert.Equal("\"Breathlessness\" ≠ input.reason.content", trimmed.Written);
+        Assert.Equal("not (trim(input.reason.content) in [\"Breathlessness\"])", trimmed.Printed);
+        Assert.Equal(["input.reason.content"], trimmed.Reads);
 
         var listed = Assert.Single(item.TextLiterals);
         Assert.Equal("item.value.title ≠ \"Plan\"", listed.Written);
         Assert.Equal("not (item.value.title in [\"Plan\"])", listed.Printed);
         Assert.Equal(["item.value.title"], listed.Reads);
         var sentence = MigrationSentences.TextLiteralBecameIn("macros/section_close.md", "if", listed);
-        Assert.Equal("macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (item.value.title in [\"Plan\"]); text is compared with a literal by in at 31.", sentence);
+        Assert.Equal("macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (item.value.title in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.", sentence);
         V31Contract.AssertSentence(new SourceRefusal("A10-074", sentence, ""));
 
         Assert.Null(texts.Logic);
         Assert.Equal(["S03-003"], texts.NoticeIds);
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 6: the trimmed comparison answers as 30's did where 30 trimmed, an input's text ending in
+    /// white space (30 compared <c>CanonicalText.Normalize</c>'s value, its end trimmed), and a null input matches no
+    /// literal, as 30's <c>""</c> did not. Leading white space, which 30 kept, is trimmed too: there 31 matches where 30
+    /// did not (F-D10, said in A10-074).
+    /// </summary>
+    [Fact]
+    public void TextComparedWithALiteral_AnswersAs30_ForTrailingWhiteSpace()
+    {
+        var equal = WorkflowConditionConverter.FromScriban("input.reason == \"yes\"", NearScope());
+        var unequal = WorkflowConditionConverter.FromScriban("input.reason != \"yes\"", NearScope());
+        var evaluator = new CorvusJsonLogicEvaluator();
+        var holds = evaluator.Compile(equal.Logic!);
+        var differs = evaluator.Compile(unequal.Logic!);
+        static JsonObject Data(string? reason) =>
+            new() { ["input"] = new JsonObject { ["reason"] = new JsonObject { ["content"] = reason, ["value"] = reason } } };
+
+        foreach (var reason in new[] { "yes", "yes ", "yes\n", "yes \r\n\t" })
+        {
+            Assert.Equal("yes", Consultologist.Api.CanonicalText.Normalize(reason));
+            Assert.True(holds.Decide(Data(reason)).Result, reason);
+            Assert.False(differs.Decide(Data(reason)).Result, reason);
+        }
+
+        Assert.False(holds.Decide(Data(null)).Result);
+        Assert.True(differs.Decide(Data(null)).Result);
+        Assert.False(holds.Decide(Data("yes please")).Result);
+
+        // The remainder F-D10 names: leading white space, kept by 30, is trimmed at 31.
+        Assert.NotEqual("yes", Consultologist.Api.CanonicalText.Normalize(" yes"));
+        Assert.True(holds.Decide(Data(" yes")).Result);
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 6: a literal that starts with white space, compared with an input's text, could match at 30
+    /// (which kept leading white space) and never matches a trimmed text at 31, so no trim fits: the migration asks for a
+    /// hand edit (A10-085, a reason S10-002 gives). A node's text, which is not trimmed, still converts.
+    /// </summary>
+    [Fact]
+    public void ALiteralThatStartsWithWhiteSpace_IsAHandEdit()
+    {
+        var refused = WorkflowConditionConverter.FromScriban("input.reason == \" yes\"", NearScope());
+        var lowered = WorkflowConditionConverter.FromScriban("(string.downcase input.reason) != \"\\nyes\"", NearScope());
+        var node = WorkflowConditionConverter.FromScriban("node.summary.content == \" yes\"", NearScope());
+
+        Assert.Null(refused.Logic);
+        Assert.Equal(["A10-085"], refused.NoticeIds);
+        var notice = Assert.Single(refused.Notices);
+        Assert.Equal("'input.reason.content = \" yes\"' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.", notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-085", notice, ""));
+        Assert.Null(lowered.Logic);
+        Assert.Equal(["A10-085"], lowered.NoticeIds);
+
+        Assert.Equal("""{"in":[{"var":"node.summary.content"},[" yes"]]}""", CanonicalJson.Write(node.Logic));
     }
 
     /// <summary>
