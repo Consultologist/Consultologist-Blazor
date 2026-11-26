@@ -330,7 +330,7 @@ the operations themselves, their signatures and their null rules are part 03's.
 | a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x` | `{ "var": "<the same path, with its root>" }` |
 | a read of an input: `input.x`, `input.x.y` | `{ "var": "input.x.value" }` (or `input.x.content` for a text-format input), `{ "var": "input.x.value.y" }` |
 | `a == b`, `a != b` | `{ "===": [a, b] }`, `{ "!==": [a, b] }` |
-| `x == "lit"`, `x != "lit"`, with `x` text | `{ "in": [x, ["lit"]] }`, `{ "!": [ { "in": [x, ["lit"]] } ] }` (text is never compared with a literal by `===`, part 03 § 7), with a notice |
+| `x == "lit"`, `x != "lit"`, with `x` text | `{ "in": [x, ["lit"]] }`, `{ "!": [ { "in": [x, ["lit"]] } ] }` (text is never compared with a literal by `===`, part 03 § 7), with a notice; with `""` and `x` a text input read whole, with its null test (below); another comparison of an input's text with blank text is a hand edit (§ 2.3) |
 | `a < b`, `a <= b`, `a > b`, `a >= b` | the same operators, two operands |
 | `a && b`, `a \|\| b` | `and`, `or` (flattened: `a && b && c` is one `and`) |
 | `!a`, with `a` boolean | `{ "!": [a] }` |
@@ -366,6 +366,17 @@ the operations themselves, their signatures and their null rules are part 03's.
   exact membership in a list of that literal, which answers as 30's comparison did (a `null` text
   is in no list of text, as 30's `null` equalled no text); each one is listed in the migration
   report (A10-074).
+- **Blank text is the exception.** 30 read an input's text not given, or given as white space alone,
+  as `""` (a field's text too), where 31's start leaves out a text input absent or blank, which then
+  reads `null` (part 02 § 8), and keeps a field as given. So a text input read whole compared with
+  `""` is written with its null test, as a nullable list's `size` is: `input.x == ""` is
+  `{ "or": [ { "===": [x, null] }, { "in": [x, [""]] } ] }` and `input.x != ""` is
+  `{ "and": [ { "!==": [x, null] }, { "!": [ { "in": [x, [""]] } ] } ] }`, `x` the input's
+  `{ "var": "input.x.content" }` (or `.value`), so an input not given or blank answers as at 30; each
+  one is listed in the migration report (A10-075). Any other comparison of an input's text with
+  blank text (`string.downcase input.x == ""`, `input.x == " "`, `input.x.y == ""`) is not written: a
+  hand edit (§ 2.3). A node's or an item's text compared with `""` is `in [""]` as above: 30 kept it as
+  written.
 
 ### 2.3 What it refuses, and `!x` on text
 
@@ -378,7 +389,10 @@ turns into a hand edit (§ 1.4), with a notice. In particular:
 - an assignment, a template, or more than one statement;
 - `string.contains` on a list: 30 wrote the list as text and searched it, which 31's `in` on a list
   (membership) is not, so the hand edit's reason says so (A10-073,
-  [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 2).
+  [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 2);
+- a comparison of an input's text with blank text other than a text input read whole with `""`
+  (§ 2.2): 30 read the input's text not given or blank as `""` and 31 reads it as `null` or as given,
+  so no form is written that would answer otherwise, and the hand edit's reason says so (A10-076).
 
 **`!x` on text converts to `blank(x)`**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).

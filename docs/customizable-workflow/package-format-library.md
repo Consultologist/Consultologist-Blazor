@@ -2399,9 +2399,9 @@ It works in three steps, and never throws on package text:
    `{ "var": … }` of its 31 path (an input read bare is `input.x.value`, or `input.x.content` for a text format; a
    classifier's `.value` is `.value.value`); `==` and `!=` are `===` and `!==`; a chain of `&&` or `||` is one `and` or
    `or`; `array.size` and `.size` on a list are `size`; `string.downcase`, `strip`, `starts_with`, `ends_with` and
-   `contains` are `lower`, `trim`, `starts_with`, `ends_with` and `in`, but `string.contains` on a list (which 30 searched
-   as the list written as text, where 31's `in` on a list is membership) is A10-073, a hand edit's reason (#1508,
-   comment 5, item 2); `date.parse` of a `YYYY-MM-DD` literal is the literal; a `let`'s object is the `object`
+   `contains` are `lower`, `trim`, `starts_with`, `ends_with` and `in`, but `string.contains` on a list (which 30
+   searched as the list written as text, where 31's `in` on a list is membership) is A10-073, a hand edit's reason
+   (#1508, comment 5, item 2); `date.parse` of a `YYYY-MM-DD` literal is the literal; a `let`'s object is the `object`
    operation. Anything else is one S10-003 per construct. A rule nested past `SourceBounds.JsonDepth` (counting the
    header that holds it) is S10-003 too.
 3. **Type it** (`V31/Migration/ConditionTyping.cs`) with area 04's `ExpressionChecker` over a `ConversionScope`. A
@@ -2413,15 +2413,22 @@ its reads; `BlankConversions` holds the read paths), and the migration says A10-
 text is written `blank(x)` (`!=` is `!blank(x)`), as part 05 § 7's migrated `test/general` writes it; where `x` can be
 null at 31 and 30 read it as text (a node that did not run, a field of an object input), it is in `TrimBlanks` and the
 migration says A10-050. That difference for a null `x` is expected (#1508, comment 5, item 8: the condition reason
-`blank-conversion` of `ExpectedDifferences.ConditionReasons`).
+`blank-conversion` of `ExpectedDifferences.ConditionReasons`; the bytes rule of the same name, below, is R1's for `!x`
+and does not credit it).
 
 **Kept as 30 meant** (#1508, comment 5, item 2). **Text compared with a literal** (`x == "lit"`, S03-002 as written) is
 `{ "in": [x, ["lit"]] }`, and `!=` its negation: exact membership, which the checker accepts for a text needle in a
-written list of string literals; each is in `TextLiterals` and the migration says A10-074. **A comparison of the `size`
-of a list that can be null** is written with its null test, so a null list counts 0 as 30's absent list did: one that
-holds at 0 is `x === null or …` (`size(x) == 0`), one that does not `x !== null and …` (`size(x) > 0`; `!= 0` is
-written `> 0`), and against an operand not a number literal, `if x === null then <the comparison with 0> else …`. A10-027
-is still said for each such `size`.
+written list of string literals; each is in `TextLiterals` and the migration says A10-074. **Blank text** is the
+exception: 30 read an input's text not given or blank (white space alone, a field's too) as `""`, where 31's start
+leaves out a text input absent or blank, which then reads null, and keeps a field as given. So a text input read whole
+compared with `""` is written with its null test, as a nullable size is: `x === null or x in [""]` (`!=` is
+`x !== null and not (x in [""])`), which answers as 30 did (`EmptyComparisons`, A10-075), and any other comparison
+of an input's text with blank text (`lower(input.x) == ""`, `input.x == " "`, `input.x.y == ""`) is refused with
+A10-076, a hand edit's reason. **A comparison of the `size` of a list that can be null** is written with
+its null test, so a null list counts 0 as 30's absent list did: one that holds at 0 is `x === null or …`
+(`size(x) == 0`), one that does not `x !== null and …` (`size(x) > 0`; `!= 0` is written `> 0`), and against an
+operand not a number literal, `if x === null then c0 else c`, `c0` the comparison with 0 as written (not made null-safe
+for the other operand). A10-027 is still said for each such `size`.
 
 **`ConversionScope(Inputs, Nodes, Item, ItemIsFolderItem, InWhile, Formats)`** is what an expression can read where it
 sits: each input's 31 format, each 30 node as a `ConversionRead(Path, Format)` (where 31 reads it, `node.<id>` or
@@ -2490,8 +2497,9 @@ line endings, a JSON Logic value in canonical order.
 Then, with `WriteSnapshot`, the snapshot test (below). Other notices: A10-021 (a format's free-text field), A10-026 (a
 lone carriage return became a line end), A10-027 (`size` over a list that can be null), A10-030 (a member 31 has no
 form for, dropped), A10-013 (`onInvalid: flag`, written `retry`: one more attempt with the validation error, then the
-node fails; #1508, comment 5, item 3), A10-074 (text compared with a literal written `in`). `V31/Migration/MigrationSentences.cs` holds every S10 and A10 sentence
-the migration says, one method each.
+node fails; #1508, comment 5, item 3), A10-074 (text compared with a literal written `in`), A10-075 (a text input
+compared with `""` written with its null test). `V31/Migration/MigrationSentences.cs` holds every S10 and A10 sentence the
+migration says, one method each.
 
 **Hand edits and the invariant (§ 1.4).** What the rewrite cannot decide is written where the 31 checker refuses it
 (D3: an unconvertible condition stays a JSON string in its member, a body construct stays in the body, a conditional
@@ -2588,8 +2596,11 @@ bytes rules in order, each at most once, and the text is expected only when they
 | `macro-trailing-whitespace` | R5 (a macro the row's text can hold, from the plan's reads and placements) | bytes |
 | `blank-conversion` | R1 (a gate of the text's own instance) | case |
 
-`ExpectedDifferences.ConditionReasons` holds the one reason a converted condition may answer otherwise than 30
-(`blank`, R1). Each rule has a test with a pair it explains and a near pair it must not (`ExpectedDifferencesTests`).
+`ExpectedDifferences.ConditionReasons` holds the reasons a converted condition may answer otherwise than 30: `blank`
+(R1) and `blank-conversion` (`strip(x) == ""` on a null `x`, #1508, comment 5, item 8). The condition reason
+`blank-conversion` and the bytes rule `blank-conversion` above share a name but not a scope: the rule credits a text
+gated by R1's `!x` only, never a `trim(x) == ""`. Each rule has a test with a pair it explains and a near pair it
+must not (`ExpectedDifferencesTests`).
 
 `MigrationReport.Of(oldVersion, migrated, options, texts, worstCase)` builds `migration-report.json`: `oldVersion`,
 `newVersion`, `handEdits` (the S10-002 notices), `notices` (every other notice, then A10-063 for a package with more than
