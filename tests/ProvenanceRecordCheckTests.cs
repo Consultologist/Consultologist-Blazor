@@ -1,6 +1,11 @@
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
+using System.Text;
+using System.Text.Json.Nodes;
+using Consultologist.Api.Tests.V31Engine;
 using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Run;
 
 namespace Consultologist.Api.Tests;
 
@@ -164,5 +169,163 @@ public class ProvenanceRecordCheckTests
 
         Assert.Null(check.Matches);
         Assert.Contains("--inputs", check.Note);
+    }
+
+    // ---- #1509 (Task 6): record storage 12 ----
+
+    private sealed record Sealed(string Document, Dictionary<string, string?> Texts);
+
+    private static async Task<Sealed> SealedRecord()
+    {
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var document = await job.Blobs.ReadRecordAsync(V31Job.AccountKind, "user-1", V31Job.JobId, CancellationToken.None)
+            ?? throw new Xunit.Sdk.XunitException("No record.json was written.");
+        var texts = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var d in JsonNode.Parse(document)!["deliverables"]!.AsArray())
+        {
+            var key = (string)d!["key"]!;
+            var text = await job.Blobs.ReadTextAsync(V31Job.AccountKind, "user-1", V31Job.JobId, key, CancellationToken.None);
+            texts[key] = SourceLayout.Text(text?["content"]);
+        }
+
+        return new Sealed(document, texts);
+    }
+
+    private static ConsultGenerationJobResponse Header12(string document, int? inputVersion = 7, string? inputHash = null) =>
+        Record(inputVersion: inputVersion, inputHash: inputHash) with { SchemaVersion = 12, RecordHash = RecordDocument.Hash(document) };
+
+    private static string Changed(string document, Action<JsonObject> change)
+    {
+        var node = JsonNode.Parse(document)!.AsObject();
+        change(node);
+        return CanonicalJson.Write(node);
+    }
+
+    private static JsonObject FirstDeliverable(JsonObject document) => document["deliverables"]!.AsArray().First(d => d is JsonObject)!.AsObject();
+
+    private static IReadOnlyList<HashCheck> CheckIt(string document, ConsultGenerationJobResponse header, IReadOnlyDictionary<string, string?> texts) =>
+        ProvenanceRecordCheck.CheckRecord(header, Encoding.UTF8.GetBytes(document), texts);
+
+    [Fact]
+    public async Task ASealedRecord_ChecksOut()
+    {
+        var sealedRecord = await SealedRecord();
+        Assert.NotEmpty(sealedRecord.Texts);
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document), sealedRecord.Texts);
+
+        Assert.Equal("recordHash", checks[0].Name);
+        Assert.All(checks, c => Assert.True(c.Matches, $"{c.Name}: {c.Note}"));
+        Assert.Equal(1 + 2 * sealedRecord.Texts.Count, checks.Count);
+    }
+
+    [Fact]
+    public async Task AByteChanged_FailsRecordHash()
+    {
+        var sealedRecord = await SealedRecord();
+        var header = Header12(sealedRecord.Document);
+        var altered = sealedRecord.Document.Replace("\"status\"", "\"statuS\"", StringComparison.Ordinal);
+        Assert.NotEqual(sealedRecord.Document, altered);
+
+        var checks = CheckIt(altered, header, sealedRecord.Texts);
+
+        var line = checks.Single(c => c.Name == "recordHash");
+        Assert.False(line.Matches);
+        Assert.Equal(header.RecordHash, line.Recorded);
+        Assert.Equal(RecordDocument.Hash(altered), line.Recomputed);
+    }
+
+    [Fact]
+    public async Task ADeliverablesTextChanged_FailsComposedHash_AndNamesTheDeliverableKey()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var texts = new Dictionary<string, string?>(sealedRecord.Texts) { [key] = sealedRecord.Texts[key] + " (edited)" };
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document), texts);
+
+        var failed = Assert.Single(checks, c => c.Matches == false);
+        Assert.Contains(key, failed.Name, StringComparison.Ordinal);
+        Assert.Contains("composedHash", failed.Name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASubstitutionMoved_FailsTheReplay_WithRecordReplaysFault()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var text = sealedRecord.Texts[key]!;
+        // one substitution over the text's first five runes, its hash right; then moved one rune along
+        var hash = CanonicalJson.HashText(string.Concat(text.EnumerateRunes().Take(5).Select(r => r.ToString())));
+        string With(int start) => Changed(sealedRecord.Document, d =>
+            FirstDeliverable(d)["substitutions"] = new JsonArray(new JsonObject { ["start"] = start, ["size"] = 5, ["hash"] = hash }));
+        var good = With(0);
+        var moved = With(1);
+
+        Assert.All(CheckIt(good, Header12(good), sealedRecord.Texts), c => Assert.True(c.Matches, $"{c.Name}: {c.Note}"));
+        var checks = CheckIt(moved, Header12(moved), sealedRecord.Texts);
+
+        var failed = Assert.Single(checks, c => c.Matches == false);
+        Assert.Contains("replay", failed.Name, StringComparison.Ordinal);
+        Assert.True(RecordReplay.Verify(text, (JsonArray)JsonNode.Parse($"[{{\"start\":1,\"size\":5,\"hash\":\"{hash}\"}}]")!, out var fault) is false);
+        Assert.Equal(fault, failed.Note);
+    }
+
+    [Fact]
+    public async Task DroppedText_IsNotAFailure()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var texts = new Dictionary<string, string?>(sealedRecord.Texts) { [key] = null };
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document), texts);
+
+        Assert.DoesNotContain(checks, c => c.Matches == false);
+        var line = Assert.Single(checks, c => c.Name.Contains(key, StringComparison.Ordinal) && c.Matches == null);
+        Assert.Contains("text deleted; hash kept", line.Note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Definition7_WithInputs_IsRecomputed()
+    {
+        var inputs = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["history"] = ConsultInputValue.OfText("Margaret Okafor, 61."),
+            ["urgent"] = ConsultInputValue.OfBoolean(true),
+        };
+        var expected = Consultologist.Api.V31.V31JobStarter.EffectiveInputHash(new Dictionary<string, JsonNode?>
+        {
+            ["history"] = JsonValue.Create("Margaret Okafor, 61."),
+            ["urgent"] = JsonValue.Create(true),
+        });
+
+        var good = ProvenanceRecordCheck.InputHash(Record(inputVersion: 7, inputHash: expected), inputs, null);
+        var bad = ProvenanceRecordCheck.InputHash(Record(inputVersion: 7, inputHash: "sha256:00"), inputs, null);
+
+        Assert.True(good.Matches);
+        Assert.Equal(expected, good.Recomputed);
+        Assert.False(bad.Matches);
+    }
+
+    [Fact]
+    public void Definition7_WithoutInputs_AsksForThem()
+    {
+        var check = ProvenanceRecordCheck.InputHash(Record(inputVersion: 7, inputHash: "sha256:00"), null, null);
+
+        Assert.Null(check.Matches);
+        Assert.Contains("--inputs", check.Note);
+    }
+
+    [Fact]
+    public async Task AStorage12Record_WithoutItsBytes_SaysWhereToFetchThem()
+    {
+        var sealedRecord = await SealedRecord();
+
+        var checks = ProvenanceRecordCheck.Check(Header12(sealedRecord.Document));
+
+        var line = Assert.Single(checks);
+        Assert.Null(line.Matches);
+        Assert.Equal("storage 12 is checked through the record: fetch /Record", line.Note);
     }
 }

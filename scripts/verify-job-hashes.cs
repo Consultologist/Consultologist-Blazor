@@ -12,6 +12,13 @@
 //   dotnet run -v q --file scripts/verify-job-hashes.cs -- <job.json>
 //   dotnet run -v q --file scripts/verify-job-hashes.cs -- <job.json> --inputs <inputs.json>
 //   dotnet run -v q --file scripts/verify-job-hashes.cs -- <job.json> --draft <draft.txt>
+//   dotnet run -v q --file scripts/verify-job-hashes.cs -- <job.json> --host https://<function-host>/api   (storage 12; token in $TOKEN)
+//   dotnet run -v q --file scripts/verify-job-hashes.cs -- <job.json> --record <record.json>              (storage 12, offline: texts not checked)
+//
+// A storage 12 job (schemaVersion 12, specVersion 31) is checked through its record: with --host the script fetches
+// ConsultGenerationJobs/<id>/Record and each deliverable.* row's text through Rows?key=, then checks recordHash, each
+// deliverable's composedHash and the replay of its substitutions; with --record only recordHash is checked, and each
+// deliverable says "text deleted; hash kept". The effective-input hash (definition 7) needs --inputs, as above.
 //
 // <job.json> is the record as the API serves it:
 //   curl -sS -H "Authorization: Bearer $TOKEN" \
@@ -93,6 +100,44 @@ if (draftPath != null && !File.Exists(draftPath)) { Console.Error.WriteLine($"er
 Console.Out.WriteLine($"{record.JobId}: {record.WorkflowPackage ?? "(no package)"}, status {record.Status}, storage version {record.SchemaVersion?.ToString() ?? "—"}");
 
 var checks = ProvenanceRecordCheck.Check(record, inputs, draft);
+if (record.SchemaVersion >= 12 && (Option("--host") ?? Option("--record")) is not null)
+{
+    byte[] recordBytes;
+    var texts = new Dictionary<string, string?>(StringComparer.Ordinal);
+    if (Option("--record") is { } recordPath)
+    {
+        if (!File.Exists(recordPath)) { Console.Error.WriteLine($"error: {recordPath} not found"); return 2; }
+        recordBytes = File.ReadAllBytes(recordPath);
+    }
+    else
+    {
+        var host = Option("--host")!.TrimEnd('/');
+        var token = Environment.GetEnvironmentVariable("TOKEN");
+        using var http = new HttpClient();
+        if (!string.IsNullOrEmpty(token)) http.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        try
+        {
+            recordBytes = await http.GetByteArrayAsync($"{host}/ConsultGenerationJobs/{record.JobId}/Record");
+            var document = System.Text.Json.Nodes.JsonNode.Parse(recordBytes);
+            foreach (var key in (document?["deliverables"]?.AsArray() ?? []).Select(d => (string?)d?["key"]).OfType<string>())
+            {
+                var row = System.Text.Json.Nodes.JsonNode.Parse(
+                    await http.GetStringAsync($"{host}/ConsultGenerationJobs/{record.JobId}/Rows?key={Uri.EscapeDataString(key)}"));
+                texts[key] = row?["text"] is System.Text.Json.Nodes.JsonObject text ? (string?)text["content"] : null;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException)
+        {
+            Console.Error.WriteLine($"error: the record could not be fetched: {ex.Message}");
+            return 2;
+        }
+    }
+
+    // the header's own line ("fetch /Record") is replaced by the record's checks; the input hash line stays
+    checks = ProvenanceRecordCheck.CheckRecord(record, recordBytes, texts)
+        .Concat(checks.Where(c => c.Name != "recordHash"))
+        .ToList();
+}
 var mismatches = 0;
 foreach (var check in checks)
 {
