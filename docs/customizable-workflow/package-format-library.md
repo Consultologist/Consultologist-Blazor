@@ -661,8 +661,11 @@ resolution: callers use it to tell a rule's read from a reference string.
 - A `for`'s `.stopped` is `string {until, bound, end}`; a `while`'s is `string {check, until, bound}`.
 - A `for`'s `.content` is `markdown_block` whatever its items' format (part 04 § 2.5, part 05 § 5.3; #1507's
   D23): the standard rendering keeps 30's bytes, so a Markdown deliverable writes it unescaped and a plain-text
-  one refuses it (S06-021). When the loop's `ret` is `plaintext`, the runner escapes each item's name and text where
-  it joins them (#1508, 2026-11-25, item 8), so plain text reaches the Markdown as a direct read of it would. A flow's `.content` is its `ret`'s, so the type follows the `ret` chain
+  one refuses it (S06-021). When an item's text is not Markdown, the runner escapes the item's name and text where
+  it joins them (#1508, 2026-11-25, item 8), so plain text reaches the Markdown as a direct read of it would. "Not
+  Markdown" is the type checker's notion (D10's `ContentOf`, followed through the `ret` chain as below): plain text,
+  a nullable text and an object's or a list's canonical JSON are not; `markdown_block`, `markdown_inline` and a
+  `for`'s rendering are (Task 24's fix round 1). A flow's `.content` is its `ret`'s, so the type follows the `ret` chain
   (`ScopeTree.RenderedContent`): a `while`, an `if` or a `case` whose `ret`s reach a `for` is `markdown_block`, as
   is an item's `.content` in `.items` when the loop's `ret` is a `for`, and an inner `for`'s
   `nodes.<id>.content` (nullable). Branches that differ (a `for` in one, a plain-text leaf in another) give the
@@ -1355,8 +1358,10 @@ because an orchestration does not complete while a durable timer is outstanding.
   (`WorkflowItemNames.FromField`; #1508, 2026-11-25, item 4): trimmed, and when longer than 120 characters cut,
   trimmed again and ended `…`, a surrogate pair never split. An empty field gives `<loop label> <n>`. Every row inside an item carries `itemName` and `positionName`.
 - **What a loop reads:** `.value` (the completed items' values), `.items` (part 04 § 2.6's element), `.content`
-  (D11; with a `plaintext` `ret`, each name and text escaped with `MarkdownEscape` where they are joined, D23 as
-  #1508 ruled; `.items` keeps each text as it is), `.state` and `.stopped`.
+  (D11; an item whose text is not Markdown has its name and text escaped with `MarkdownEscape` where they are
+  joined, D23 as #1508 ruled: `PlanRunner.WritesMarkdown` follows the item's `ret` through what ran, a `for` being
+  Markdown, a `while` its last pass's `ret`, an `if` or a `case` its taken branch's, any other node Markdown only
+  for `markdown_block` or `markdown_inline`; `.items` keeps each text as it is), `.state` and `.stopped`.
 
 **`while`, `if`, `case`** (`PlanRunner.Flow.cs`).
 
@@ -1857,8 +1862,11 @@ is wrapped as `{ "type": "object", "required": ["value"], "additionalProperties"
 <copy> } }`. `Hash` (`sentFormatHash`) is the hash of the format before it is wrapped (#1508). `Unwrap(reply, text)`
 gives the `value` member's JSON text, or null when the reply is not exactly that object; with `text` (a text format,
 as `AgentTurn.Finish` passes `TextReply`), a string member is given as the text itself, with no JSON quotes or escapes
-(#1508, 2026-11-25, item 13). A list or an object is its JSON text either way. A reply that is not the
-envelope is passed on, and its format refuses it.
+(#1508, 2026-11-25, item 13), and any other value (a number, `null`, a list, an object) is no text: null. Without
+`text` a list or an object is its JSON text. A reply that is not the envelope is passed on, and its format refuses
+it; a text format reads any string, so for a wrapped text `AgentTurn.Finish` marks such a reply, and an envelope
+holding no string, `AgentOutcome.NotOfFormat`, and the runner (and the offline host's stub check) refuses it as a
+reply that does not fit, never reading it (Task 24's fix round 1).
 
 **The reply** (part 05 § 8.6). `AgentTurn.Finish(prepared, reply)` unwraps the reply. For a text format it then calls
 `MacroReply.Process(reply, offered, packageMacros, ordered)`:

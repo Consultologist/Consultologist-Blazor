@@ -547,8 +547,10 @@ event that is new in a history is the one the order of calls gives, which only a
 D16 to D21 ([#1532](https://github.com/Consultologist/Consultologist-Blazor/pull/1532)) and these four fixes change
 what the orchestrator computes from an activity's answer it already holds: an item's name cut at 120 characters is
 trimmed before the `…` (item 4); a `markdown_inline` reply loses one trailing line ending before it is validated (item
-8); a `plaintext` item's name and text are escaped where a loop joins them into `.content` (item 8, D23); a text sent
-through a wrapped `via: "custom"` binding is read as its plain value (item 13). An orchestration in flight across the
+8); an item's name and text are escaped where a loop joins them into `.content` when the text is not Markdown (plain
+text, a nullable text, an object's or a list's JSON; item 8, D23); a text sent through a wrapped `via: "custom"`
+binding is read as its plain value, and a reply there that is not the envelope holding a string does not fit (item
+13). An orchestration in flight across the
 build could take another branch on its replay, so the drain before the deploy (above) covers them too.
 
 ## Alerts and the weekly summary
