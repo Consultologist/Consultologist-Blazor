@@ -89,10 +89,16 @@ rulings change some of what the design says. So:
   skill), each question with a recommended answer. Facts are found, never asked. Plan mode before
   writing a plan; plans with `superpowers:writing-plans`.
 - **Small commits grouped by concern,** several per pull request.
-- **Signed with the owner's key:** `timeout 90 git commit --gpg-sign=333983ABC7132E90` (a bare `gpg`
-  defaults to an older key). If the key is locked, ask the owner to run
-  `! echo unlock | gpg --clearsign -u 333983ABC7132E90 >/dev/null` and wait; never commit unsigned.
-  The key expires 2027-01-01: remind the owner to extend it.
+- **Signed with the owner's key for the machine you are on.** The owner plans on more than one machine,
+  and each has its own key:
+  - **The laptop** (`~/Projects/Consultologist/app/M40`): `timeout 90 git commit --gpg-sign=333983ABC7132E90`
+    (a bare `gpg` defaults to an older key). The key expires 2027-01-01: remind the owner to extend it.
+  - **The VPS:** its own key. Find it with `gpg --list-secret-keys --keyid-format long` and
+    `git config user.signingkey`, and if it is unclear which key to use, ask the owner before committing.
+    Then use `timeout 90 git commit --gpg-sign=<that key>`.
+
+  If the key is locked, ask the owner to run `! echo unlock | gpg --clearsign -u <the key> >/dev/null`
+  and wait. Never commit unsigned.
 - **No AI attribution** anywhere: commits, PRs, issues, comments, files. Everything goes out under the
   owner's account and key.
 - **Commit and push only when asked. Merge, close, tag, release only on the owner's word.**
