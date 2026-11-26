@@ -188,7 +188,7 @@ public class MigrateDeliverablesTests
     [Fact]
     public async Task AWhileWithNoPass_KeepsItsSeparator()
     {
-        // #1508 (R15; part 10 § 3.2's unexpected difference 8): with every branch not taken, 30 skipped plan and tone_line and
+        // #1508 (R15; PR #1532's difference 8, now expected under part 10 § 3.2's while-no-pass-separator): with every branch not taken, 30 skipped plan and tone_line and
         // 31 now skips them too (their if), so neither is compared. A while that ran no pass is empty text on both sides
         // (summary is equal), but beside opening 31 keeps the blank line between the two (summary_then_opening): no if
         // can drop a separator and keep the text, so the controller ruled it an expected difference, while-no-pass-separator.

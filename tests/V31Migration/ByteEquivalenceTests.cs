@@ -392,7 +392,7 @@ public class ByteEquivalenceTests
     {
         ["required-blank-refused"] = "no compared capture's 31 start refuses a required text input supplied blank.",
         ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
-        ["macro-trailing-whitespace"] = "no compared package has a macros/ body that ends in more white space than the one line ending 31 drops itself.",
+        ["macro-trailing-whitespace"] = "no compared package has a macro body ending in more white space than one line ending, so no compared text can show the difference.",
         ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
     };
 
@@ -428,6 +428,13 @@ public class ByteEquivalenceTests
         var migrated = EquivalenceFixture.Migrated("composer-macros");
         Assert.Equal([("macro.section_close", false), ("macro.section_intro", true)],
             Equivalence.EnginePlaced(migrated).OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => (p.Key, p.Value)));
+
+        // Read through A10-003's own sentence: a macro placed on both sides is left out (its edit says where), and an edit
+        // that names no macro of the package gives nothing.
+        var both = migrated with { HandEdits = ["Hand edit needed in macros/section_intro.md, instruction: macro 'section_intro' was placed before and after the reply by the engine; say in its instruction where the model writes its marker."] };
+        Assert.Empty(Equivalence.EnginePlaced(both));
+        Assert.Empty(Equivalence.EnginePlaced(migrated with { HandEdits = ["Hand edit needed in macros/ghost.md, instruction: macro 'ghost' was placed before the reply by the engine; say in its instruction where the model writes its marker."] }));
+
         var request = Equivalence.RequestFor(EquivalenceFixture.Scenario("composer-macros", "empty-body"), EquivalenceFixture.Capture("composer-macros", "empty-body"), migrated, EquivalenceFixture.Plan("composer-macros"));
         Assert.Equal(Equivalence.EnginePlaced(migrated), request.EnginePlaced);
 
