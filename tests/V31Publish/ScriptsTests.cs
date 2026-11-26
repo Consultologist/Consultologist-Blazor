@@ -431,6 +431,97 @@ public class ScriptsTests
         }
     }
 
+    private static JsonObject Listing(params (string Owner, string Name, string Version)[] packages) => new()
+    {
+        ["packages"] = new JsonArray([.. packages.Select(p => (JsonNode?)new JsonObject
+        {
+            ["owner"] = p.Owner, ["name"] = p.Name, ["version"] = p.Version, ["specVersion"] = 30,
+        })]),
+        ["notRead"] = 0,
+    };
+
+    [Fact]
+    public async Task ARerunAfterAFault_CarriesForwardWhatWasPublished_AndItsOwnersStayInTheList()
+    {
+        // Fix round 1, ruling (3): A and B publish, C faults (exit 2); the rerun lists only C (A and B are at 31 now), and
+        // the record and the owners' list still hold A and B.
+        var folder = OperatorFolder();
+        try
+        {
+            var engine = new FakeEngine { Faulting = Other };
+            engine.Outcomes.Clear();
+            var (exit, _, _) = await BulkAsync(engine, folder, publish: true);
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Equal([Letters, Nested], ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray().Select(r => (string)r!["name"]!));
+
+            var rerun = new FakeEngine { List = Listing((Owner2, Other, "v2026.11.1")) };
+            string output;
+            (exit, output, _) = await BulkAsync(rerun, folder, publish: true);
+
+            Assert.Equal(BulkPublishScript.Clean, exit);
+            Assert.EndsWith("1 published, 0 would publish, 0 not migrated; 2 published by an earlier run carried forward; written bulk-publish-record.json and owners.json.\n", output, StringComparison.Ordinal);
+            var rows = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
+            Assert.Equal([Letters, Nested, Other], rows.Select(r => (string)r!["name"]!));
+            Assert.All(rows, r => Assert.Equal("published", (string?)r!["outcome"]));
+            var owners = ReadJson(folder, BulkPublishScript.OwnersFile);
+            Assert.Equal([Owner1, Owner2], owners.Select(p => p.Key));
+            Assert.Equal([Letters, Nested], owners[Owner1]!["published"]!.AsArray().Select(p => (string)p!["name"]!));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ADryRunAfterAPublish_KeepsThePublishedRows()
+    {
+        var folder = OperatorFolder();
+        try
+        {
+            var engine = new FakeEngine();
+            engine.Outcomes.Clear();
+            await BulkAsync(engine, folder, publish: true);
+
+            var dry = new FakeEngine { List = Listing((Owner2, "acct-fedcba987654-second", "v2026.11.4")) };
+            var (exit, _, _) = await BulkAsync(dry, folder, publish: false);
+
+            Assert.Equal(BulkPublishScript.Clean, exit);
+            var rows = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
+            Assert.Equal(["published", "published", "published", "would publish"], rows.Select(r => (string)r!["outcome"]!));
+            Assert.False((bool)ReadJson(folder, BulkPublishScript.RecordFile)["publish"]!);
+            Assert.Equal(2, ReadJson(folder, BulkPublishScript.OwnersFile)[Owner2]!["published"]!.AsArray().Count);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AnEarlierRecordThatDoesNotRead_Exits2_NeitherFileOverwritten_AndNothingIsSent()
+    {
+        var folder = OperatorFolder();
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, BulkPublishScript.RecordFile), """{ "rows": [1] }""");
+            File.WriteAllText(Path.Combine(folder, BulkPublishScript.OwnersFile), "kept");
+            var engine = new FakeEngine();
+
+            var (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Contains("is not a bulk publish record", error, StringComparison.Ordinal);
+            Assert.Empty(engine.Requests);
+            Assert.Equal("""{ "rows": [1] }""", File.ReadAllText(Path.Combine(folder, BulkPublishScript.RecordFile)));
+            Assert.Equal("kept", File.ReadAllText(Path.Combine(folder, BulkPublishScript.OwnersFile)));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task AListThatDoesNotAnswer_OrAFolderThatDoesNotRead_Exits2_AndNothingIsSent()
     {

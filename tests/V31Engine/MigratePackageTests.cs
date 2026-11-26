@@ -55,6 +55,9 @@ public class MigratePackageTests
         public CapturingLogger<MigratePackage> Log { get; } = new();
         public CapturingLogger<V31PackagePublisher> PublishLog { get; } = new();
 
+        /// <summary>The engine's configured limits; by default its unset settings, the spec's starting values.</summary>
+        public EngineLimitSettings Limits { get; init; } = new(new ConfigurationBuilder().Build());
+
         /// <summary>Stands in for <see cref="PackagePublish.RunAsync"/> when set.</summary>
         public Func<IReadOnlyDictionary<string, byte[]>, PublishOptions, Task<PublishOutcome>>? Pipeline { get; set; }
 
@@ -91,13 +94,13 @@ public class MigratePackageTests
         {
             var publisher = new V31PackagePublisher(
                 Registry, Writer, Settings, Ownership, Types.Value, V31Job.Toolchain.Value,
-                new EngineLimitSettings(new ConfigurationBuilder().Build()), Alerts, new FixedTimeProvider(Now), PublishLog,
+                Limits, Alerts, new FixedTimeProvider(Now), PublishLog,
                 new HashSet<string>(StringComparer.Ordinal) { OperatorId })
             {
                 Pipeline = (upload, options) => Pipeline?.Invoke(upload, options) ?? PackagePublish.RunAsync(upload, options),
             };
             return new MigratePackage(
-                Accounts, Pins, Sources, publisher, Types.Value, V31Job.Toolchain.Value, TestFormats.Catalog, OutputContractCatalog.Load(), Log);
+                Accounts, Pins, Sources, publisher, Types.Value, V31Job.Toolchain.Value, TestFormats.Catalog, OutputContractCatalog.Load(), Limits, Log);
         }
 
         public Task<JsonObject> RunAsync(MigratePackageRequest request) => Operation().RunAsync(request, CancellationToken.None);
@@ -278,6 +281,64 @@ public class MigratePackageTests
         }
 
         rig.AssertNothingWritten();
+    }
+
+    [Fact]
+    public async Task AHandEditWhoseFileIsNotAmongTheEdits_IsLeft_AndNothingIsWritten()
+    {
+        // Fix round 1, ruling (1): edge-unruled-whitespace has two hand edits, in nodes/follow_up_applies.md (the classifier's
+        // question) and macros/problem_close.md (the instruction). The operator answers the first only: the second is left.
+        const string package = "edge-unruled-whitespace";
+        var rig = new Rig(package, "v2026.11.1");
+        var options = OptionsOf(package);
+        var all = HandEditsOf(package);
+        var one = new Dictionary<string, string?> { ["nodes/follow_up_applies.md"] = all["nodes/follow_up_applies.md"] };
+
+        var answer = await rig.RunAsync(Request(options, one));
+
+        var left = Strings(answer["handEditsLeft"]);
+        var edit = Assert.Single(left);
+        Assert.StartsWith("Hand edit needed in macros/problem_close.md, ", edit, StringComparison.Ordinal);
+        Assert.Equal(MigratePackage.NotMigrated + edit, (string?)answer["outcome"]);
+        Assert.Null(answer["report"]);
+        rig.AssertNothingWritten();
+
+        // every file a hand edit names among the edits: it goes on, and publishes
+        var published = await rig.RunAsync(Request(options, all));
+        Assert.Equal(MigratePackage.Published, (string?)published["outcome"]);
+        Assert.Empty(Strings(published["handEditsLeft"]));
+        Assert.Single(rig.Writes);
+    }
+
+    [Fact]
+    public async Task AtTheConfiguredLimits_APackageOverTheDefaultButWithinThem_Publishes()
+    {
+        // Fix round 1, ruling (2): example-nested-note opens 80,614 instances, past the default 10,000. At a deployment's
+        // JobInstances of 100,000 the migration says no hand edit for it, and the package publishes as migrated.
+        var rig = new Rig("example-nested-note", "v2026.11.2")
+        {
+            Limits = new(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["ConsultGeneration:JobInstances"] = "100000" })
+                .Build()),
+        };
+
+        var answer = await rig.RunAsync(Request(OptionsOf("example-nested-note")));
+
+        Assert.Equal(MigratePackage.Published, (string?)answer["outcome"]);
+        Assert.Empty(Strings(answer["handEditsLeft"]));
+        var (_, files, _) = Assert.Single(rig.Writes);
+        Assert.Contains(files, f => f.Path == SnapshotTest.File);
+
+        // and with an edit given, the snapshot written anew publishes at the same limits
+        var (manifestJson, sources) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
+        var migrated = WorkflowPackageMigration30To31.Migrate(manifestJson, sources, Migration31Options.FromJson(
+            OptionsOf("example-nested-note"), Types.Value.Registry, V31Job.Toolchain.Value.Current(), TestFormats.Catalog).Options! with
+        {
+            Limits = rig.Limits.PublishLimits,
+        });
+        var edited = await rig.RunAsync(Request(OptionsOf("example-nested-note"),
+            new Dictionary<string, string?> { ["nodes/sections/index.json"] = migrated.Files["nodes/sections/index.json"] }));
+        Assert.Equal(MigratePackage.Published, (string?)edited["outcome"]);
     }
 
     [Fact]
