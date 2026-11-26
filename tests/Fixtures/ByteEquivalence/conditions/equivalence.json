@@ -1,6 +1,7 @@
 {
   "reasons": {
-    "blank": "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given."
+    "blank": "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given.",
+    "blank-conversion": "#1508, comment 5, item 8 (2026-11-25); part 05 § 7; part 10 § 2.3: strip(x) == \"\" is blank(x), which also holds for a null x (a node that did not run, a field of an object input left out), where 30's comparison did not."
   },
   "equivalence": [
     {
@@ -15,12 +16,10 @@
     {
       "id": "composer-macros.section_draft.section_close.if",
       "kind": "condition",
-      "converted": false,
-      "noticeIds": [
-        "S03-002"
-      ],
+      "converted": true,
+      "noticeIds": [],
       "cases": 4,
-      "agreed": null,
+      "agreed": 4,
       "listed": []
     },
     {
@@ -427,12 +426,10 @@
     {
       "id": "row.read.node-content",
       "kind": "condition",
-      "converted": false,
-      "noticeIds": [
-        "S03-002"
-      ],
+      "converted": true,
+      "noticeIds": [],
       "cases": 5,
-      "agreed": null,
+      "agreed": 5,
       "listed": []
     },
     {
@@ -474,23 +471,19 @@
     {
       "id": "row.input.x",
       "kind": "condition",
-      "converted": false,
-      "noticeIds": [
-        "S03-002"
-      ],
+      "converted": true,
+      "noticeIds": [],
       "cases": 5,
-      "agreed": null,
+      "agreed": 5,
       "listed": []
     },
     {
       "id": "row.input.x-y",
       "kind": "condition",
-      "converted": false,
-      "noticeIds": [
-        "S03-002"
-      ],
+      "converted": true,
+      "noticeIds": [],
       "cases": 7,
-      "agreed": null,
+      "agreed": 7,
       "listed": []
     },
     {
@@ -713,29 +706,16 @@
       "converted": true,
       "noticeIds": [],
       "cases": 4,
-      "agreed": 3,
-      "listed": [
-        {
-          "case": 0,
-          "scope": {
-            "input.problems": "<absent>"
-          },
-          "at30": true,
-          "error30": null,
-          "at31": "false",
-          "reason": "unruled"
-        }
-      ]
+      "agreed": 4,
+      "listed": []
     },
     {
       "id": "row.downcase",
       "kind": "condition",
-      "converted": false,
-      "noticeIds": [
-        "S03-002"
-      ],
+      "converted": true,
+      "noticeIds": [],
       "cases": 5,
-      "agreed": null,
+      "agreed": 5,
       "listed": []
     },
     {
@@ -763,7 +743,7 @@
           "at30": false,
           "error30": null,
           "at31": "true",
-          "reason": "unruled"
+          "reason": "blank-conversion"
         }
       ]
     },
@@ -783,7 +763,7 @@
           "at30": false,
           "error30": null,
           "at31": "true",
-          "reason": "unruled"
+          "reason": "blank-conversion"
         },
         {
           "case": 2,
@@ -793,7 +773,7 @@
           "at30": false,
           "error30": null,
           "at31": "true",
-          "reason": "unruled"
+          "reason": "blank-conversion"
         }
       ]
     },

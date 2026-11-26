@@ -31,6 +31,7 @@ public static class ExpectedDifferences
     public static IReadOnlyDictionary<string, string> ConditionReasons { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["blank"] = "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given.",
+        ["blank-conversion"] = "#1508, comment 5, item 8 (2026-11-25); part 05 § 7; part 10 § 2.3: strip(x) == \"\" is blank(x), which also holds for a null x (a node that did not run, a field of an object input left out), where 30's comparison did not.",
     };
 
     /// <summary>
@@ -924,7 +925,7 @@ public static class ExpectedDifferences
     /// <summary>
     /// R1, held to the one effect such a decision can have: a text only 31 has (a prompt, a rendered node's text or a
     /// deliverable), whose own gate decided at 31 was exactly <c>blank(x)</c> for a <c>!x</c> the migration converted (an
-    /// A10-008 notice in <see cref="MigrationNotes.BlankConversions"/>; A10-050's <c>trim(x) == ""</c> is unruled and never
+    /// A10-008 notice in <see cref="MigrationNotes.BlankConversions"/>; A10-050's <c>trim(x) == ""</c>, expected as a condition reason (#1508), never
     /// counts), and held while <c>x</c> was not <c>null</c> (its read's hash is not the hash of <c>null</c>): an empty or
     /// white-space-only text, where 30's <c>!x</c> was false, so 30 skipped what 31 ran. The gate is the <c>if</c>
     /// (<c>self</c>) of the text's own row or of a flow around it (its expression's hash that of <c>blank(x)</c> alone). A

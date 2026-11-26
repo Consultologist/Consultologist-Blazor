@@ -31,7 +31,7 @@ internal static class MigrationSentences
     }
 
     /// <summary>
-    /// A10-050 (part 05 § 7; #1507, Task 12 fix rounds 1 and 2; the difference is unruled): in <paramref name="file"/>'s <paramref name="member"/>,
+    /// A10-050 (part 05 § 7; #1507, Task 12 fix rounds 1 and 2; the difference is expected, #1508, comment 5, item 8): in <paramref name="file"/>'s <paramref name="member"/>,
     /// the comparison of a trimmed text with <c>""</c> (<see cref="BlankConversion.Written"/>, as the printer shows it)
     /// became <c>blank(x)</c> or <c>not blank(x)</c> (<see cref="BlankConversion.Printed"/>); 30 compared a null text (a node
     /// that did not run, a field of an object input left out) as not empty, so the rule now holds, or no longer holds, when <c>x</c> is null. The wording
@@ -44,6 +44,26 @@ internal static class MigrationSentences
         var holds = trim.Printed.StartsWith("not ", StringComparison.Ordinal) ? "no longer holds" : "also holds";
         return $"{file}, {member}: '{trim.Written}' became {trim.Printed}; it now {holds} when {string.Join(" or ", trim.Reads)} is null.";
     }
+
+    /// <summary>
+    /// A10-074 (#1508, comment 5, item 2; part 10 § 2.2): in <paramref name="file"/>'s <paramref name="member"/>, a text
+    /// compared with a literal (<see cref="BlankConversion.Written"/>, as the printer shows it), which 31 refuses
+    /// (S03-002), became membership in a list of that literal (<see cref="BlankConversion.Printed"/>), which answers as
+    /// 30's comparison did.
+    /// </summary>
+    public static string TextLiteralBecameIn(string file, string member, BlankConversion literal)
+    {
+        ArgumentNullException.ThrowIfNull(literal);
+        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31.";
+    }
+
+    /// <summary>
+    /// A10-073 (#1508, comment 5, item 2; part 10 § 2.2): the 30 condition <paramref name="expression"/>, as written, calls
+    /// <c>string.contains</c> on <paramref name="list"/> (the 31 read, printed), a list: 30 wrote the list as text and
+    /// searched it, where 31's <c>in</c> on a list is membership, so no rule is written. A reason S10-002 gives.
+    /// </summary>
+    public static string ContainsOnAList(string expression, string list) =>
+        $"The condition '{expression}' uses string.contains on {list}, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.";
 
     /// <summary>
     /// A10-012 (part 10 § 1.4, D2): the package is at specVersion <paramref name="version"/>, below 5, where no rung

@@ -34,7 +34,7 @@ public class ExpectedDifferencesTests
             Assert.False(string.IsNullOrWhiteSpace(rule.Explanation));
             Assert.Equal($"{rule.Id}: {rule.Explanation} ({rule.Basis})", rule.Said);
         });
-        Assert.Equal(["blank"], ExpectedDifferences.ConditionReasons.Keys);
+        Assert.Equal(["blank", "blank-conversion"], ExpectedDifferences.ConditionReasons.Keys);
     }
 
     [Fact]
@@ -308,7 +308,7 @@ public class ExpectedDifferencesTests
         Assert.StartsWith("blank-conversion: ", Explain(Context(ComparedKind.Deliverable, null, "31", run: deliverable, migrated: migrated, package: "example-two-documents", key31: "deliverable.consult_note")));
 
         // Near: a text both sides have, whose bytes the gate does not decide (a deliverable, a prompt); the status; x was null
-        // (30's !x held too); blank did not hold; a gate that is more than blank(x); A10-050's trim == "" (unruled); a text
+        // (30's !x held too); blank did not hold; a gate that is more than blank(x); A10-050's trim == "" (a condition reason only); a text
         // the gate is not on.
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "30", "31", run: deliverable, migrated: migrated, package: "example-two-documents", key31: "deliverable.consult_note")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "30", "31", run: held, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem")));

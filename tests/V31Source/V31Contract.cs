@@ -202,7 +202,8 @@ internal static class V31Contract
     /// white-space marks rewritten as 31 has them, part 05 § 2.6, D34; A10-069: a
     /// snippet folder's chosen item format that cannot be used, A10-033's sibling, D34; A10-070 to A10-072: an options.json
     /// the migration cannot read, a member that is no option, a choice that is not an object of text, a whenEmpty that is
-    /// not release, hold or fail, #1508 R18, area 11 Task 29).
+    /// not release, hold or fail, #1508 R18, area 11 Task 29; A10-073: string.contains on a list, a hand edit's reason, and
+    /// A10-074: text compared with a literal written as in, #1508 comment 5 item 2, area 11 Task 30).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -277,6 +278,8 @@ internal static class V31Contract
         ["A10-070"] = "options.json has the member '<member>', which is not an option of the migration; its members are renames, whenEmpty and folderFormats.",
         ["A10-071"] = "options.json must give <renames | whenEmpty | folderFormats> as an object whose values are text; write {} for none.",
         ["A10-072"] = "options.json gives deliverable '<id>' a whenEmpty that is not release, hold or fail.",
+        ["A10-073"] = "The condition '<expression>' uses string.contains on <list>, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.",
+        ["A10-074"] = "<file>, <member>: '<comparison>' became <rule>; text is compared with a literal by in at 31.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

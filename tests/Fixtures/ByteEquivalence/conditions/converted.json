@@ -21,15 +21,28 @@
     },
     {
       "id": "composer-macros.section_draft.section_close.if",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "!": [
+          {
+            "in": [
+              {
+                "var": "item.value.title"
+              },
+              [
+                "Plan"
+              ]
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.value.title"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition 'item.value.title != \"Plan\"' compares item.value.title (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "notices": []
     },
     {
       "id": "composer-macros.gated.review_note.if",
@@ -811,15 +824,27 @@
     {
       "id": "example-structured-intake.notes_index.if",
       "logic": {
-        ">": [
+        "and": [
           {
-            "size": [
+            "!==": [
               {
                 "var": "input.prior_notes.value"
-              }
+              },
+              null
             ]
           },
-          2
+          {
+            ">": [
+              {
+                "size": [
+                  {
+                    "var": "input.prior_notes.value"
+                  }
+                ]
+              },
+              2
+            ]
+          }
         ]
       },
       "resultFormat": "boolean",
@@ -890,15 +915,24 @@
     },
     {
       "id": "row.read.node-content",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "in": [
+          {
+            "var": "node.summary.content"
+          },
+          [
+            "Reviewed in clinic."
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.summary.content"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition 'node.summary.content == \"Reviewed in clinic.\"' compares node.summary.content (plaintext | null) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "notices": []
     },
     {
       "id": "row.read.item-id",
@@ -978,27 +1012,45 @@
     },
     {
       "id": "row.input.x",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "in": [
+          {
+            "var": "input.reason.content"
+          },
+          [
+            "Breathlessness"
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition 'input.reason == \"Breathlessness\"' compares input.reason.content (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "notices": []
     },
     {
       "id": "row.input.x-y",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "in": [
+          {
+            "var": "input.patient.value.name"
+          },
+          [
+            "Margaret Okafor"
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.patient.value.name"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition 'input.patient.name == \"Margaret Okafor\"' compares input.patient.value.name (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "notices": []
     },
     {
       "id": "row.eq",
@@ -1401,15 +1453,27 @@
     {
       "id": "row.size.pipe",
       "logic": {
-        ">": [
+        "and": [
           {
-            "size": [
+            "!==": [
               {
                 "var": "input.problems.value"
-              }
+              },
+              null
             ]
           },
-          1
+          {
+            ">": [
+              {
+                "size": [
+                  {
+                    "var": "input.problems.value"
+                  }
+                ]
+              },
+              1
+            ]
+          }
         ]
       },
       "resultFormat": "boolean",
@@ -1424,15 +1488,27 @@
     {
       "id": "row.size.member",
       "logic": {
-        "===": [
+        "or": [
           {
-            "size": [
+            "===": [
               {
                 "var": "input.problems.value"
-              }
+              },
+              null
             ]
           },
-          0
+          {
+            "===": [
+              {
+                "size": [
+                  {
+                    "var": "input.problems.value"
+                  }
+                ]
+              },
+              0
+            ]
+          }
         ]
       },
       "resultFormat": "boolean",
@@ -1446,15 +1522,28 @@
     },
     {
       "id": "row.downcase",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "in": [
+          {
+            "lower": [
+              {
+                "var": "input.reason.content"
+              }
+            ]
+          },
+          [
+            "breathlessness"
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition '(string.downcase input.reason) == \"breathlessness\"' compares lower(input.reason.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "notices": []
     },
     {
       "id": "row.strip.input",

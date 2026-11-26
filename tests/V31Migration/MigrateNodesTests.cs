@@ -478,7 +478,7 @@ public class MigrateNodesTests
     public void ATrimComparedWithEmptyText_IsBlank_AndListedWhenItCanBeNull(string condition, string logic, string? notice)
     {
         // Part 05 § 7: a trimmed text compared with "" is blank. A node that did not run (plan_gate, an if whose test
-        // failed) is null at 31, which blank holds, where 30 compared it as not empty: an unruled difference, said (A10-050)
+        // failed) is null at 31, which blank holds, where 30 compared it as not empty: an expected difference (#1508), said (A10-050)
         // and listed beside A10-008. A text input not given read "" at 30, so its form answers as before, unsaid.
         var result = Migrated("composer-sources", root =>
             root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "single")["if"] = condition);
@@ -501,7 +501,7 @@ public class MigrateNodesTests
     {
         // Only a text input read whole read "" at 30 when not given. A field of an object input is null at 30 when it or
         // its object is absent (an unsupplied object input is an empty object), where 30's comparison is false and
-        // blank(null) is true: said (A10-050), an unruled difference for the owner.
+        // blank(null) is true: said (A10-050), an expected difference (#1508).
         var result = Migrated("example-structured-intake", root =>
         {
             var patient = root["inputs"]!.AsArray().OfType<JsonObject>().Single(i => (string?)i["id"] == "patient");
@@ -532,6 +532,70 @@ public class MigrateNodesTests
 
         // A list that always has a value is not said: section_count's plan always completes, and its sections are required.
         Assert.DoesNotContain(Migrated("example-nested-note").Notices, n => n.Contains("size(", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 2): 30's <c>string.contains</c> on a list tested whether the list, written as text, held the
+    /// text; 31's <c>in</c> on a list is membership, so the converter does not write it and the migration asks for a hand
+    /// edit (S10-002, reason A10-073). On text it is still <c>in</c>, the needle first.
+    /// </summary>
+    [Fact]
+    public void StringContainsOverAList_IsAHandEdit()
+    {
+        var list = Format("""{"type":"array","items":{"$ref":"markdown_block"}}""");
+        var scope = new ConversionScope(
+            new Dictionary<string, JsonNode>(StringComparer.Ordinal) { ["problems"] = list, ["reason"] = JsonValue.Create("markdown_block") },
+            new Dictionary<string, ConversionRead>(StringComparer.Ordinal), null, false, false, MigrationFixture.Formats());
+
+        var called = WorkflowConditionConverter.FromScriban("string.contains input.problems \"asthma\"", scope);
+        var piped = WorkflowConditionConverter.FromScriban("input.problems | string.contains \"asthma\"", scope);
+        var text = WorkflowConditionConverter.FromScriban("string.contains input.reason \"asthma\"", scope);
+
+        Assert.Null(called.Logic);
+        Assert.Equal(["A10-073"], called.NoticeIds);
+        const string reason = "The condition 'string.contains input.problems \"asthma\"' uses string.contains on input.problems.value, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.";
+        Assert.Equal([reason], called.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-073", reason, ""));
+        Assert.Null(piped.Logic);
+        Assert.Equal(["A10-073"], piped.NoticeIds);
+        Assert.Equal("""{"in":["asthma",{"var":"input.reason.content"}]}""", CanonicalJson.Write(text.Logic));
+
+        // In a migration: the condition stays 30's text, with one hand edit whose reason is A10-073.
+        const string condition = "string.contains input.topics \"asthma\"";
+        var result = Migrated("composer-sources", root => Node(root, "plan_gate")["if"] = condition);
+        Assert.Equal(JsonValue.Create(condition)!.ToJsonString(), Json(result, "nodes/plan_gate/index.json")["if"]!.ToJsonString());
+        var edit = Assert.Single(result.HandEdits, e => e.Contains("plan_gate", StringComparison.Ordinal));
+        Assert.Equal(
+            $"Hand edit needed in nodes/plan_gate/index.json, if: The condition '{condition}' uses string.contains on input.topics.value, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.",
+            edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "nodes/plan_gate/index.json"));
+
+        static JsonNode Format(string json) => JsonNode.Parse(json)!;
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 2): in a migration, a size of a list that can be null is written with its null test, so it
+    /// answers as 30 did, and A10-027 is still said; text compared with a literal becomes <c>in</c>, said with A10-074.
+    /// </summary>
+    [Fact]
+    public void ANullableSizeAndATextLiteral_AreWrittenAs30Meant_AndSaid()
+    {
+        var result = Migrated("composer-sources", root =>
+        {
+            root["inputs"]!.AsArray().OfType<JsonObject>().Single(i => (string?)i["id"] == "topics")["required"] = false;
+            Node(root, "plan_gate")["if"] = "(input.topics | array.size) > 0 && input.consult_draft != \"none\"";
+        });
+
+        Assert.Equal(
+            """{"and":[{"and":[{"!==":[{"var":"input.topics.value"},null]},{">":[{"size":[{"var":"input.topics.value"}]},0]}]},{"!":[{"in":[{"var":"input.consult_draft.content"},["none"]]}]}]}""",
+            CanonicalJson.Write(Json(result, "nodes/plan_gate/index.json")["if"]));
+        Assert.DoesNotContain(result.HandEdits, e => e.Contains("plan_gate", StringComparison.Ordinal));
+        const string size = "nodes/plan_gate/index.json, if: size(input.topics.value) is null when input.topics.value is null, where 30 counted 0.";
+        const string literal = "nodes/plan_gate/index.json, if: 'input.consult_draft.content ≠ \"none\"' became not (input.consult_draft.content in [\"none\"]); text is compared with a literal by in at 31.";
+        Assert.Contains(size, result.Notices);
+        Assert.Contains(literal, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-027", size, ""));
+        V31Contract.AssertSentence(new SourceRefusal("A10-074", literal, ""));
     }
 
     [Fact]

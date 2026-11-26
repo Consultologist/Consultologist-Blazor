@@ -20,8 +20,9 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <c>{ "!": [a] }</c> (Task 3 turns it into <c>blank</c> on text, § 2.3).</item>
 /// <item><c>(x | array.size)</c> and <c>x.size</c> on a list are <c>size</c>; <c>string.downcase</c>, <c>string.strip</c>,
 /// <c>string.starts_with</c> and <c>string.ends_with</c> are <c>lower</c>, <c>trim</c>, <c>starts_with</c> and
-/// <c>ends_with</c>, called or piped; <c>string.contains x "p"</c> is <c>{ "in": ["p", x] }</c>; <c>date.parse</c> of a
-/// <c>YYYY-MM-DD</c> literal is that literal.</item>
+/// <c>ends_with</c>, called or piped; <c>string.contains x "p"</c> is <c>{ "in": ["p", x] }</c> when <c>x</c> is no list
+/// (on a list 30 searched the list written as text, which 31's membership is not: A10-073, a hand edit's reason; #1508,
+/// comment 5, item 2); <c>date.parse</c> of a <c>YYYY-MM-DD</c> literal is that literal.</item>
 /// <item>A number, <c>true</c>, <c>false</c> and a quoted string are the JSON literal; a <c>let</c>'s object is the
 /// <c>object</c> operation, its fields in canonical (ordinal) order; an array is a JSON array.</item>
 /// </list>
@@ -35,15 +36,21 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// </summary>
 internal static class ConditionTree
 {
+    private const string NoJsonLogicFormId = "S10-003";
+
+    private const string ContainsOnAListId = "A10-073";
+
     private static readonly Regex IsoDate = new(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", RegexOptions.CultureInvariant);
 
     /// <summary>
     /// <paramref name="expression"/>, parsed from <paramref name="text"/> (the author's text, which the notices quote),
     /// as JSON Logic over <paramref name="scope"/>; <c>null</c> with a notice in <paramref name="notices"/> for each
     /// construct § 2.2 has no row for. Each <c>{ "!": [x] }</c> written is added to <paramref name="nots"/>, when given,
-    /// with <c>x</c> as the author wrote it (the span of <paramref name="text"/> it was parsed from).
+    /// with <c>x</c> as the author wrote it (the span of <paramref name="text"/> it was parsed from). Each notice's id is
+    /// added to <paramref name="noticeIds"/>, when given, in the same order (<c>S10-003</c>, or <c>A10-073</c>).
     /// </summary>
-    public static JsonNode? Write(ScriptExpression expression, string text, ConversionScope scope, List<string> notices, IDictionary<JsonObject, string>? nots = null)
+    public static JsonNode? Write(
+        ScriptExpression expression, string text, ConversionScope scope, List<string> notices, IDictionary<JsonObject, string>? nots = null, List<string>? noticeIds = null)
     {
         ArgumentNullException.ThrowIfNull(expression);
         ArgumentNullException.ThrowIfNull(text);
@@ -51,11 +58,11 @@ internal static class ConditionTree
         ArgumentNullException.ThrowIfNull(notices);
 
         var before = notices.Count;
-        var logic = new Writer(text, scope, notices, nots).Rule(expression, 0);
+        var logic = new Writer(text, scope, notices, nots, noticeIds).Rule(expression, 0);
         return notices.Count > before ? null : logic;
     }
 
-    private sealed class Writer(string text, ConversionScope scope, List<string> notices, IDictionary<JsonObject, string>? nots)
+    private sealed class Writer(string text, ConversionScope scope, List<string> notices, IDictionary<JsonObject, string>? nots, List<string>? noticeIds)
     {
         /// <summary>The text the parser read: <c>text</c> trimmed, as the converter parses it; spans are offsets into it.</summary>
         private readonly string parsed = text.Trim();
@@ -287,6 +294,14 @@ internal static class ConditionTree
             var operands = arguments.Select(a => Rule(a, depth + 1)).ToList();
             if (op == "in")
             {
+                // #1508 (comment 5, item 2): on a list, 30 wrote the list as text and searched it; 31's in on a list is
+                // membership, another meaning, so nothing is written (A10-073).
+                if (operands[0] is { } haystack && ConditionTyping.TypeOf(haystack, scope) is { Format: { } format }
+                    && FormatTypes.Shape(format, scope.Formats) == FormatShape.List)
+                {
+                    return Say(MigrationSentences.ContainsOnAList(text, JsonLogicPrinter.Print(haystack)), ContainsOnAListId);
+                }
+
                 // string.contains x "p" is { "in": ["p", x] }: the needle first.
                 operands.Reverse();
             }
@@ -458,12 +473,15 @@ internal static class ConditionTree
             return null;
         }
 
-        private JsonNode? Refuse(string construct)
+        private JsonNode? Refuse(string construct) => Say(MigrationSentences.NoJsonLogicForm(text, construct), NoJsonLogicFormId);
+
+        /// <summary><paramref name="notice"/>, of the sentence <paramref name="id"/>, said once; <c>null</c>.</summary>
+        private JsonNode? Say(string notice, string id)
         {
-            var notice = MigrationSentences.NoJsonLogicForm(text, construct);
             if (!notices.Contains(notice, StringComparer.Ordinal))
             {
                 notices.Add(notice);
+                noticeIds?.Add(id);
             }
 
             return null;

@@ -47,11 +47,12 @@ public static class WorkflowConditionConverter
         }
 
         var notices = new List<string>();
+        var ids = new List<string>();
         var written = new Dictionary<JsonObject, string>(ReferenceEqualityComparer.Instance);
-        var logic = ConditionTree.Write(parsed, expression, scope, notices, written);
+        var logic = ConditionTree.Write(parsed, expression, scope, notices, written, ids);
         if (notices.Count > 0)
         {
-            return new ConversionResult(null, null, [], notices) { NoticeIds = [.. notices.Select(_ => NoJsonLogicFormId)] };
+            return new ConversionResult(null, null, [], notices) { NoticeIds = ids };
         }
 
         // The rule sits in a header member: the header object is one level of the file (S01-041).
@@ -75,6 +76,7 @@ public static class WorkflowConditionConverter
             BlankConversions = [.. typed.Blanks.SelectMany(b => b.Reads).Distinct(StringComparer.Ordinal)],
             Blanks = typed.Blanks,
             TrimBlanks = typed.TrimBlanks,
+            TextLiterals = typed.TextLiterals,
         };
     }
 
@@ -143,10 +145,18 @@ public sealed record ConversionResult(JsonNode? Logic, string? ResultFormat, IRe
     /// written <c>blank(x)</c> (or <c>!blank(x)</c>) whose <c>x</c> can be null at 31 where 30 read text (a node that did
     /// not run, a field of an object input left out): <see cref="BlankConversion.Written"/> the 30 comparison as the printer shows it, <c>Printed</c> the 31 one.
     /// What the migration lists (A10-050); its answer for a null <c>x</c> differs from 30's, which no ruling covers
-    /// (unruled, for the owner). A text input read whole, which 30 read as <c>""</c> when not given, answers as 30's did
+    /// (expected: #1508, comment 5, item 8). A text input read whole, which 30 read as <c>""</c> when not given, answers as 30's did
     /// and is not listed; a field of an object input is.
     /// </summary>
     public IReadOnlyList<BlankConversion> TrimBlanks { get; init; } = [];
+
+    /// <summary>
+    /// #1508 (comment 5, item 2): each text compared with a literal by <c>==</c> or <c>!=</c> (S03-002 at 31) written as
+    /// membership, <c>{ "in": [x, ["lit"]] }</c> or its negation, which answers as 30's comparison did:
+    /// <see cref="BlankConversion.Written"/> the comparison as the printer shows it, <c>Printed</c> the 31 rule. What the
+    /// migration says (A10-074).
+    /// </summary>
+    public IReadOnlyList<BlankConversion> TextLiterals { get; init; } = [];
 
     /// <summary>The id of each notice's sentence, in the order of <see cref="Notices"/>: <c>S10-003</c>, or the 31 checker's own (<c>S03-008</c>, …).</summary>
     public IReadOnlyList<string> NoticeIds { get; init; } = [];

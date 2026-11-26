@@ -164,6 +164,9 @@ public class ExpressionCheckerTypesTests
             "Node 'gate' gives in input.date_of_birth.value (date); in takes a list of its type, or text." },
         { ExpressionSiteKind.NodeIf, null, """{"in":["c",{"var":"input.codes.value"}]}""", "S03-023",
             "Node 'gate' compares input.codes.value with \"c\", which is not one of its values (a, b)." },
+        // #1508 (comment 5, item 2): text is a member only of a written list of string literals.
+        { ExpressionSiteKind.NodeIf, null, """{"in":[{"var":"input.consult_draft.content"},{"var":"input.flags.value"}]}""", "A04-001",
+            "Node 'gate' gives in input.consult_draft.content (plaintext); in takes a list of its type, or text." },
     };
 
     [Theory]
@@ -198,6 +201,9 @@ public class ExpressionCheckerTypesTests
         { ExpressionSiteKind.Expression, "\"number\"", """{"+":[{"var":"node.count.value"},1]}""", "number" },
         { ExpressionSiteKind.NodeIf, null, """{"in":[{"var":"input.date_of_birth.value"},["1960-06-15","1970-01-01"]]}""", "boolean" },
         { ExpressionSiteKind.NodeIf, null, """{"in":["a",{"var":"input.codes.value"}]}""", "boolean" },
+        // #1508 (comment 5, item 2): text in a written list of string literals is exact membership (30's text == "lit").
+        { ExpressionSiteKind.NodeIf, null, """{"in":[{"var":"input.consult_draft.content"},["Reviewed in clinic."]]}""", "boolean" },
+        { ExpressionSiteKind.NodeIf, null, """{"in":[{"lower":[{"var":"input.summary.content"}]},["a","b"]]}""", "boolean" },
         { ExpressionSiteKind.Expression, "\"string\"", """{"cat":["Seen ",{"var":"run.date"}]}""", "string" },
     };
 
