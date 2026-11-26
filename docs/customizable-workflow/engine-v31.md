@@ -125,8 +125,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
 
 1. **A load refusal** becomes a start failure on the job (`RecordStartFailure`, with the clinician's sentence;
    the operator's detail goes to the log). The outcome is `PackageContentRejected`, with the job's id.
-2. **The inputs.** The request's typed `Inputs` (`ConsultDraft` back-fills `consult_draft`, as today) and its
-   documents are read. The documents go through the starter's own extraction, so a document sent to a text input
+2. **The inputs.** The request's typed `Inputs` (`ConsultDraft` back-fills `consult_draft`, as today), its references
+   (below, "Inputs sent by reference") and its documents are read. The documents go through the starter's own extraction, so a document sent to a text input
    arrives as its text, behind the same OCR and speech-to-text gates as today.
    #1508: a document OCR read records the model's dated version in the input's `ocr.model`, `prebuilt-read/2024-11-30`
    (the result's `ApiVersion`: the pinned SDK's `AnalyzeResult` has no `ModelVersion`), and `prebuilt-read` alone when the
@@ -160,7 +160,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    `V31StartChecks.NoDeliverableCanExist` decides it (through `RunInputsBuilder.NoDeliverableCanExist`, since #1507),
    a rule that holds `matches` inline, since no replay exists at a start. The detail names each deliverable by label with its printed `if` (S03-001), and nothing it read.
 5. **The held inputs.** The inputs document
-   (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`) is written where the
+   (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`, with `"modelDerived": [<id>, …]`
+   when an input holds an earlier run's text, below) is written where the
    job's held inputs live: `org-job-inputs` or `personal-job-inputs`, `{appUserId}/{jobId}.json`. The retention
    drop and account closure therefore delete it as they delete a 5–30 job's.
 6. **The record.** The job's entity is initialised at `PackageSpecVersion` 31 and stamped `SchemaVersion` 12 (record
@@ -185,13 +186,32 @@ value sent both ways is accepted, and an input sent as `null` counts as not sent
 through the library's `RunInputsBuilder.Choices`, which the byte-equivalence comparison reads a 30 scenario's choices
 with; its refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
 
-**Not read at 31 yet.** A 31 start reads typed inputs, documents and macro choices only. These request members are
-not read, so an input sent only through one of them reads as missing (A06-011):
+**Inputs sent by reference** (#1509, ruled by the owner, comment 2, ruling 1; D7). A 31 start reads `InputRefs`,
+`InputFormRefs` and `InputFormFiles` with today's resolvers, in today's order and before the documents (step 2), so an
+input sent only by reference is filled, never missing (A06-011). What the resolvers read of a 5–30 declaration they read of
+the plan (`ConsultGenerationJobStarter.DeclaredInput31`): each input's id, whether its format is an array of a text format,
+and whether its channel is `form`.
 
-- `InputRefs`, the references to a previous run's input or result;
-- `InputFormRefs` and `InputFormFiles`, a form response's references and files.
+- **`InputRefs`**, an earlier run's deliverable: the run must be this account's, completed, still holding its text, and
+  have the deliverable. Its text fills the input: a text input takes it as its text, an array of text as an element. A
+  reference standing alone in an array of text is a list of one. Beside typed rows or documents in an array of text, each
+  element takes its request `Position` among them, as at 30 (#1144); without positions the order is typed rows, then
+  documents, then earlier runs.
+- **`InputFormRefs`**, a held form response, and **`InputFormFiles`**, a questionnaire file: they fill only an input whose
+  channel is `form`, which is an object (part 02 § 8.3). The response's answer, or the file's object, is the input's value,
+  held to its format by `RunInputsBuilder` as a typed value is (A06-012), since a 31 format has no 5–30 declaration to coerce
+  by. A value the request sends beside the reference must equal it; one left out is filled from it. A form reference on any
+  other input is refused in today's words for an answer a form cannot fill (*"The response's answer for input '<id>' cannot
+  be filled from a form answer."*), and a questionnaire file in today's words for an input that takes none.
 
-Reruns and the pages that send references are area 12's.
+A refusal is today's, outcome and words: no job is recorded, and the sender is told nothing more than a 5–30 start tells
+it. The header records an element from an earlier run with origin `previous-run`, `jobId` (the run it came from),
+`resultId` (the deliverable) and `modelDerived: true` (part 08 § 3.1). A form-filled input is recorded as `typed`, part 08
+§ 3.1 having no form origin. The held inputs document then has a `modelDerived` member, the ids of the inputs holding such
+an element in ordinal order (absent when none does). The orchestration reads it into the run's
+`RunInputs.ModelDerivedInputs`, so a decision that reads such an input, directly or through a loop's `item` or a call's
+`param`, is `modelDerived: true` (part 08 § 5.1). A node row's flags stay those `resolve.json` writes (part 08 § 4). A 5–30
+start resolves its references exactly as before. Reruns are area 12's (D8).
 
 ### Asking before a start (#1509, D1)
 
