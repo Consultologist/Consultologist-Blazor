@@ -171,6 +171,18 @@ public static class ExpectedDifferences
         {
             Bytes = LoopItemNotRun,
         },
+        new("chosen-macro-final-line-ending",
+            "#1508, 2026-11-26, item 5, ruled by the owner; R5; part 05 § 8.6; part 10 § 3.2",
+            "a macro the model chose whose body ends in a line ending loses that one line ending at 31, where 30 wrote the body whole")
+        {
+            Bytes = ChosenMacroLineEnding,
+        },
+        new("empty-read-trailing-space",
+            "#1508, 2026-11-26, item 5, ruled by the owner; part 10 § 3.2",
+            "a read that rendered empty at a line's end leaves the white space before it at 31, which 31's snippet keeps and 30's macro trimmed")
+        {
+            Bytes = EmptyReadTrailingSpace,
+        },
         new("macro-choice-classifier",
             "#1508, comment 6, items 1 and 2, ruled by the owner on 2026-11-25 (R13, R14); part 10 §§ 1.2, 1.4, 3.2",
             "a macro 30's model chose is gated by a judgement node, answered from 30's reply: the node's prompt is 31's alone, and the placing prompt holds the macro's instruction, its \"otherwise\" clause removed, only where the node answered yes")
@@ -1076,6 +1088,130 @@ public static class ExpectedDifferences
         }
 
         return kept;
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 5 (no migration change): a macro the model chose (<see cref="ChoiceClassifiers"/>, R13) whose
+    /// body ends in a line ending stands, at 31, where the reply's marker stood with that one line ending dropped (R5, part
+    /// 05 § 8.6), where 30 wrote the body whole. Only such a macro the compared row's text can hold counts
+    /// (<see cref="PlacedMacros"/>), whose file is a 30 macro's body (<c>macros/**</c> in
+    /// <see cref="Migration31Result.MacroBodies"/>). A white-space run of 31's text that follows the body's last word (its
+    /// text after its last white space; a body that ends in a tag has no word to find) and is 30's aligned run less that one
+    /// line ending is written as 30's run (<see cref="Aligned"/>); every other run is left as 31 wrote it (R19).
+    /// </summary>
+    private static (string Old, string New)? ChosenMacroLineEnding(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status)
+            return null;
+        var placed = PlacedMacros(c);
+        var bodies = new List<(string Kept, string Ending, string LastWord)>();
+        foreach (var site in ChoiceClassifiers.Of(c.Migrated).Select(k => "macro." + k.Macro).Distinct(StringComparer.Ordinal).Where(placed.Contains))
+        {
+            if (!c.Migrated.MacroBodies.Contains("macros/" + site["macro.".Length..].Replace('.', '/') + ".md")
+                || MacroFile(c.Migrated, site)?.Body is not { } body || !body.EndsWith('\n'))
+                continue;
+            var ending = body.EndsWith("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+            var rendered = body[..^ending.Length];
+            var text = rendered.TrimEnd();
+            var word = text[(text.LastIndexOfAny([' ', '\t', '\n', '\r']) + 1)..];
+            if (word.Length > 0 && !word.EndsWith("}}", StringComparison.Ordinal))
+                bodies.Add((rendered[text.Length..], ending, word));
+        }
+
+        if (bodies.Count == 0)
+            return null;
+        var a = WhiteSpaceRuns(old);
+        var b = WhiteSpaceRuns(now);
+        return Undo(old, now, a, b, (i, j) =>
+            b[j].Space && j > 0 && bodies.Any(k => b[j - 1].Text.EndsWith(k.LastWord, StringComparison.Ordinal)
+                && b[j].Text.StartsWith(k.Kept, StringComparison.Ordinal)
+                && a[i].Text == k.Kept + k.Ending + b[j].Text[k.Kept.Length..]));
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 5 (no migration change): a 30 macro written as a snippet (D4; <c>snippets/**</c> in
+    /// <see cref="Migration31Result.MacroBodies"/>) that the compared row places, itself or through a rendered node it reads,
+    /// with a line that ends in literal text, white space and one read tag (<c>Seen at: {{ input.clinic.content }}</c>):
+    /// where the read rendered empty, 31's snippet keeps the white space before it, where 30 trimmed the rendered macro. In
+    /// 31's text, that white space (spaces or tabs alone) after the line's literal text and just before a line ending or the
+    /// text's end, absent at the aligned place of 30's (<see cref="Aligned"/>), is taken out; every other run is left as 31
+    /// wrote it (R19).
+    /// </summary>
+    private static (string Old, string New)? EmptyReadTrailingSpace(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status || EmptyReadLines(c) is not { Count: > 0 } lines)
+            return null;
+
+        static bool After(string text, (string Literal, string Space) line) => text.EndsWith(line.Literal, StringComparison.Ordinal);
+
+        var undone = now;
+        var a = WhiteSpaceRuns(old);
+        var b = WhiteSpaceRuns(now);
+        if (Undo(old, now, a, b, (i, j) => b[j].Space && j > 0 && lines.Any(line =>
+                b[j].Text.StartsWith(line.Space, StringComparison.Ordinal) && b[j].Text[line.Space.Length..] is var rest
+                && rest.Length > 0 && rest[0] is '\n' or '\r' && a[i].Text == rest
+                && After(now[..b.Take(j).Sum(r => r.Text.Length)], line))) is { } inside)
+            undone = inside.New;
+
+        // At the text's end 30 has no run to align with.
+        foreach (var line in lines)
+        {
+            if (undone.EndsWith(line.Space, StringComparison.Ordinal) && undone[..^line.Space.Length] is var before
+                && After(before, line) && !old.EndsWith(line.Space, StringComparison.Ordinal))
+            {
+                undone = Nearest(old, undone, before);
+                break;
+            }
+        }
+
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// The lines of the 30 macros written as snippets that the compared row places (its own placements, nested ones
+    /// included, and those of each rendered node it reads, in turn) which end in literal text, white space and one read
+    /// tag: each line's literal text, trimmed, and its white space before the tag. None with no literal text.
+    /// </summary>
+    private static List<(string Literal, string Space)> EmptyReadLines(DifferenceContext c)
+    {
+        var lines = new List<(string, string)>();
+        if (c.Key31 is not { } key || !c.Plan.Entries.TryGetValue(EntryOf(key), out var row))
+            return lines;
+
+        var sites = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { row.Key };
+        var pending = new Queue<PlanEntry>([row]);
+        while (pending.Count > 0)
+        {
+            var entry = pending.Dequeue();
+            sites.UnionWith(entry.Placements.Select(p => p.Site).Where(s => s.StartsWith("snippet.", StringComparison.Ordinal)));
+            foreach (var path in entry.Reads)
+            {
+                var named = c.Plan.Entries.Keys.Where(k => path == k || path.StartsWith(k + ".", StringComparison.Ordinal)).MaxBy(k => k.Length);
+                if (named is not null && c.Plan.Entries[named].Kind == PlanKind.Rendered && seen.Add(named))
+                    pending.Enqueue(c.Plan.Entries[named]);
+            }
+        }
+
+        foreach (var site in sites.Order(StringComparer.Ordinal))
+        {
+            var path = "snippets/" + site["snippet.".Length..].Replace('.', '/') + ".md";
+            if (!c.Migrated.MacroBodies.Contains(path) || !c.Migrated.Files.TryGetValue(path, out var file) || FrontMatter.Split(file)?.Body is not { } body)
+                continue;
+            foreach (var raw in body.Split('\n'))
+            {
+                var line = raw.TrimEnd('\r').TrimEnd(' ', '\t');
+                var tags = Tag.Matches(line);
+                if (tags.Count != 1 || tags[0].Index + tags[0].Length != line.Length)
+                    continue;
+                var before = line[..tags[0].Index];
+                var literal = before.TrimEnd(' ', '\t');
+                if (literal.Trim().Length > 0 && literal.Length < before.Length)
+                    lines.Add((literal.Trim(), before[literal.Length..]));
+            }
+        }
+
+        return lines;
     }
 
     /// <summary>

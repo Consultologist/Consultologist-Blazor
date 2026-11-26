@@ -39,19 +39,6 @@ public class EdgeCasePackagesTests
     /// <summary>The five whose migrated package publishes with its pinned test: the other two pin a reply 31 refuses (D6).</summary>
     private static readonly string[] Publishing = ["edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
 
-    /// <summary>
-    /// #1508 (Task 35 fix round 1, the controller's ruling): the compared texts that differ from 30's with no ruling, shown, not
-    /// avoided, each by site with its reason; no rule explains them, and every other text of the edge packages is equal or
-    /// explained.
-    /// </summary>
-    internal static readonly IReadOnlyDictionary<string, string> Unruled = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["edge-unruled-whitespace/default#deliverables/deliverable.letter"] =
-            "a macro the model chose loses one line ending at 31 when its body ends in one (31 drops a body's final line ending), where 30 wrote the body whole; for the owner, #1508.",
-        ["edge-unruled-whitespace/default#deliverables/deliverable.problems"] =
-            "an empty read at a line's end leaves a trailing space that 31's snippet keeps and 30's macro trimmed; for the owner, #1508.",
-    };
-
     /// <summary>The folder of the pinned tests, beside <c>scenarios/</c> and <c>captures/</c>.</summary>
     private const string TestsFolder = "edge-tests";
 
@@ -144,16 +131,14 @@ public class EdgeCasePackagesTests
     [MemberData(nameof(Packages))]
     public async Task TheReport_HasNoUnexplainedText(string package)
     {
-        // R19: every text that differs from 30's is credited to a rule with nothing left (for the two the owner accepted, the
-        // rule named for it, below), but the sites Unruled lists, which stay expected: false, each with a remainder.
+        // R19: every text that differs from 30's is credited to a rule with nothing left; since #1508, 2026-11-26, items 4 and
+        // 5, the owner made the last sites no ruling covered expected (loop-item-not-run, chosen-macro-final-line-ending,
+        // empty-read-trailing-space), so none is partly explained or unexplained.
         var report = await EquivalenceFixture.Report(package);
         var counts = JsonNode.Parse(report.ToJson())!["counts"]!;
-        var unruled = report.Texts.Where(t => Unruled.ContainsKey(t.Site)).ToList();
 
-        Assert.Equal(Unruled.Keys.Count(k => k.StartsWith(package + "/", StringComparison.Ordinal)), unruled.Count);
-        Assert.All(unruled, t => Assert.Equal((false, false, true), (t.Equal, t.Expected, t.Unexplained)));
-        Assert.Equal(unruled.Count, (int)counts["partlyExplained"]! + (int)counts["unexplained"]!);
-        Assert.All(report.Texts.Where(t => !Unruled.ContainsKey(t.Site)), t => Assert.True(t.Equal || t.Expected, t.Site));
+        Assert.All(report.Texts, t => Assert.True(t.Equal || t.Expected, t.Site));
+        Assert.Equal(0, (int)counts["partlyExplained"]! + (int)counts["unexplained"]!);
     }
 
     [Theory]
@@ -277,12 +262,13 @@ public class EdgeCasePackagesTests
     // ---- edge-unruled-whitespace ---------------------------------------------------------------------------------
 
     [Fact]
-    public async Task TwoWhiteSpaceDifferences_NoRulingCovers_AreShown_AndAnAfterMacrosWhiteSpace_IsR5s()
+    public async Task TwoWhiteSpaceDifferences_AreExpected_AndAnAfterMacrosWhiteSpace_IsR5s()
     {
-        // #1508 (Task 35 fix round 1): shown, not avoided. (a) follow_up, a macro the model chose, ends its body with a line
-        // ending: 30 wrote the body whole where the reply's marker stood, 31 drops one final line ending, so the letter has one
-        // line ending fewer. (b) clinic_line, a deliverable's macro at 30 and a snippet at 31, ends its line with a read of the
-        // unset clinic: 30 trimmed the rendered macro, 31's snippet keeps "Seen at: ". Neither is expected.
+        // #1508 (Task 35 fix round 1; 2026-11-26, item 5, ruled by the owner: expected, no migration change). (a) follow_up, a
+        // macro the model chose, ends its body with a line ending: 30 wrote the body whole where the reply's marker stood, 31
+        // drops one final line ending, so the letter has one line ending fewer (chosen-macro-final-line-ending). (b)
+        // clinic_line, a deliverable's macro at 30 and a snippet at 31, ends its line with a read of the unset clinic: 30
+        // trimmed the rendered macro, 31's snippet keeps "Seen at: " (empty-read-trailing-space).
         var (capture, run, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
         string At30(string id) => (string)capture["deliverables"]!.AsArray().Single(d => (string?)d!["id"] == id)!["text"]!;
         string At31(string key) => run.Deliverables.Single(d => d.Key == key).Text!;
@@ -290,18 +276,18 @@ public class EdgeCasePackagesTests
         Assert.Equal(At30("letter").Replace("three months.\n\n", "three months.\n", StringComparison.Ordinal), At31("deliverable.letter"));
         Assert.StartsWith("Seen at:\n\n", At30("problems"), StringComparison.Ordinal);
         Assert.StartsWith("Seen at: \n\n", At31("deliverable.problems"), StringComparison.Ordinal);
-        Assert.Empty(texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.letter", StringComparison.Ordinal)).Rules);
+        Assert.Equal(["chosen-macro-final-line-ending"], texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.letter", StringComparison.Ordinal)).Rules);
 
         // problem_close, placed after each paragraph by 30's engine, ends its body in more white space than one line ending:
         // 30 trimmed it all, 31 keeps all but one line ending (R5). The comparison writes its marker into the captured reply,
         // and macro-trailing-whitespace explains the letter's prompt with nothing left; in the problems deliverable it is
-        // credited beside (b)'s remainder.
+        // credited beside (b).
         var letter = texts.Single(t => t.Site.EndsWith("#prompts/node.letter", StringComparison.Ordinal));
         Assert.Contains("macro-trailing-whitespace", letter.Rules);
         Assert.True(letter.Expected);
         var problems = texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.problems", StringComparison.Ordinal));
-        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker"], problems.Rules);
-        Assert.True(problems.Unexplained);
+        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+        Assert.True(problems.Expected);
     }
 
     // ---- edge-unset-object ---------------------------------------------------------------------------------------

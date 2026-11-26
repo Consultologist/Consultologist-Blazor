@@ -22,7 +22,8 @@ public class ExpectedDifferencesTests
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
         "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
         "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
-        "while-no-pass-separator", "loop-item-not-run", "macro-choice-classifier", "blank-conversion",
+        "while-no-pass-separator", "loop-item-not-run", "chosen-macro-final-line-ending", "empty-read-trailing-space",
+        "macro-choice-classifier", "blank-conversion",
     ];
 
     [Fact]
@@ -649,7 +650,78 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Status, "Completed", "Failed", null, notRun)));
     }
 
+    [Fact]
+    public async Task AChosenMacrosFinalLineEnding_IsExpected()
+    {
+        // #1508, 2026-11-26, item 5 (no migration change): follow_up, a macro the model chose (R13), ends its body in a line
+        // ending, which 31 drops as it renders a body (R5), where 30 wrote the body whole where the reply's marker stood.
+        var (_, _, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
+        var letter = texts.Single(t => t.Site == "edge-unruled-whitespace/default#deliverables/deliverable.letter");
+        Assert.Equal((false, true, false), (letter.Equal, letter.Expected, letter.Unexplained));
+        Assert.Equal(["chosen-macro-final-line-ending"], letter.Rules);
+    }
+
+    [Fact]
+    public void AChosenMacrosFinalLineEnding_DoesNotExplainANearPair()
+    {
+        // Hand-made pairs on edge-unruled-whitespace's plan (its hand edits made).
+        const string Opening = "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\n";
+        const string FollowUp = "A follow-up visit is booked in three months.";
+        Assert.StartsWith("chosen-macro-final-line-ending: ", Explain(WhitespaceContext(
+            Opening + FollowUp + "\n\nYours sincerely, Dr A. Sample", Opening + FollowUp + "\nYours sincerely, Dr A. Sample", "deliverable.letter")));
+
+        // A line ending lost after text that is no chosen macro's body.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(
+            Opening + "\n" + FollowUp + "\nYours sincerely, Dr A. Sample", Opening + FollowUp + "\nYours sincerely, Dr A. Sample", "deliverable.letter")));
+
+        // More than one line ending lost after the body.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(
+            Opening + FollowUp + "\n\n\nYours sincerely, Dr A. Sample", Opening + FollowUp + "\nYours sincerely, Dr A. Sample", "deliverable.letter")));
+
+        // A macro the engine placed: problem_close's line ending lost is not this rule's; its kept white space (R5) is still
+        // macro-trailing-whitespace's.
+        const string Close = "Diabetes paragraph: HbA1c 71 mmol/mol.\nReviewed today (fictional).";
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(Close + "\n\n## Problem list 2", Close + "\n## Problem list 2", "deliverable.problems")));
+        var kept = ExpectedDifferences.Credit(WhitespaceContext(Close + "\n\n## Problem list 2", Close + "\n\n\n\n## Problem list 2", "deliverable.problems"));
+        Assert.True(kept.Expected);
+        Assert.Equal(["macro-trailing-whitespace"], kept.Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task AnEmptyReadsTrailingSpace_IsExpected()
+    {
+        // #1508, 2026-11-26, item 5 (no migration change): clinic_line, a 30 macro written as a snippet (D4), ends its line
+        // with a read of the unset clinic; 31's snippet keeps "Seen at: " where 30 trimmed the rendered macro. problem_close's
+        // white space in the same deliverable is R5's and the engine placement's, credited beside it.
+        var (_, _, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
+        var problems = texts.Single(t => t.Site == "edge-unruled-whitespace/default#deliverables/deliverable.problems");
+        Assert.Equal((false, true, false), (problems.Equal, problems.Expected, problems.Unexplained));
+        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+    }
+
+    [Fact]
+    public void AnEmptyReadsTrailingSpace_DoesNotExplainANearPair()
+    {
+        // Hand-made pairs on edge-unruled-whitespace's plan: deliverable.problems places the snippet clinic_line,
+        // "Seen at: {{ input.clinic.content }}"; deliverable.letter places none.
+        Assert.StartsWith("empty-read-trailing-space: ", Explain(WhitespaceContext("Seen at:\n\n## Problem list 1", "Seen at: \n\n## Problem list 1", "deliverable.problems")));
+        Assert.StartsWith("empty-read-trailing-space: ", Explain(WhitespaceContext("Seen at:", "Seen at: ", "deliverable.problems")));
+
+        // A trailing space after literal text, not a read.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(
+            "Seen at:\n\nDiabetes paragraph.\n", "Seen at:\n\nDiabetes paragraph. \n", "deliverable.problems")));
+
+        // A space 31 has inside a line; a row that places no such snippet.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext("Seen at:Clinic A\n", "Seen at: Clinic A\n", "deliverable.problems")));
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext("Seen at:\n\nYours", "Seen at: \n\nYours", "deliverable.letter")));
+    }
+
     // ---- helpers ---------------------------------------------------------------------------------------------
+
+    /// <summary>A deliverable of edge-unruled-whitespace (its hand edits made), so its own plan is read.</summary>
+    private static DifferenceContext WhitespaceContext(string old, string now, string key31) =>
+        new("edge-unruled-whitespace", "default", $"edge-unruled-whitespace/default#deliverables/{key31}", ComparedKind.Deliverable, null, key31, old, now,
+            Capture("Completed", null), Run(RunState.Completed), EquivalenceFixture.Migrated("edge-unruled-whitespace"), EquivalenceFixture.Plan("edge-unruled-whitespace"));
 
     /// <summary>A 31 run of edge-items-not-run whose problem_loop items ended as <paramref name="states"/>, in order.</summary>
     private static OfflineResult ItemsRun(params RowState[] states) =>
