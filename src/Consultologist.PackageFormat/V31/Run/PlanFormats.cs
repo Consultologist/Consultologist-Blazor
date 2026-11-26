@@ -72,7 +72,9 @@ public sealed class PlanFormats
     /// <c>$id</c> none has, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
     /// <c>false</c>, the schema nothing fits. Too large is past <see cref="FormatTypes.SchemaBudget"/> schemas, counted as
     /// publish counts them (A03-011), so a format file publish accepted is not too large here, or past
-    /// <see cref="NodeBudget"/> nodes written in all. A new tree: the bundle is not changed.
+    /// <see cref="NodeBudget"/> nodes written in all. A new tree: the bundle is not changed. #1508 (R10): each
+    /// <c>propertyOrder</c> is kept, copied as an annotation is, so what reads the expansion has the written order; a value
+    /// is validated as before, the validator ignoring it as JSON Schema ignores a keyword it does not know.
     /// </summary>
     public JsonNode Expand(JsonNode? format)
     {

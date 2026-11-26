@@ -32,7 +32,7 @@ public sealed record SentFormatResult(
 /// <summary>
 /// #1500 (specVersion 31, area 03; D8, D22, D23): part 02 § 3.5 steps 1 to 5 on a format's full
 /// form: descriptions kept; <c>x-*</c>, <c>contentMediaType</c>, <c>title</c>, <c>$id</c>,
-/// <c>$schema</c> and <c>$defs</c> gone (so a text format is a string with its description); a
+/// <c>$schema</c>, <c>$defs</c> and (#1508, R10) <c>resolve.json</c>'s <c>propertyOrder</c> gone (so a text format is a string with its description); a
 /// labelled <c>oneOf</c> an <c>enum</c> of its constants in order; each keyword the agent's strict
 /// mode rejects removed and listed. The engine's envelope is not part of it (D22).
 /// </summary>
@@ -95,7 +95,9 @@ public static class SentFormat
         var result = new JsonObject();
         foreach (var (key, value) in schema)
         {
-            if (key is "title" or "$id" or "$schema" or "$defs" or "contentMediaType" || key.StartsWith("x-", StringComparison.Ordinal))
+            // #1508 (R10): propertyOrder is resolve.json's alone, never sent, so sentFormatHash does not move.
+            if (key is "title" or "$id" or "$schema" or "$defs" or "contentMediaType" or CompiledFormats.PropertyOrder
+                || key.StartsWith("x-", StringComparison.Ordinal))
             {
                 continue;
             }

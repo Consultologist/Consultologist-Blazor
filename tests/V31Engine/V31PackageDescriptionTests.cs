@@ -224,6 +224,7 @@ public class V31PackageDescriptionTests
              "$defs":{"section_request":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:section_request",
                "additionalProperties":false,
                "properties":{"kind":{"enum":["narrative","table","omit"],"title":"Kind","type":"string"},"title":{"title":"Title","type":"string"}},
+               "propertyOrder":["title","kind"],
                "required":["title","kind"],"type":"object"}}}
             """,
             FormatOf(sections));

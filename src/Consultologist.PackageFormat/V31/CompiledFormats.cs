@@ -11,7 +11,8 @@ namespace Consultologist.PackageFormat.V31;
 /// (<see cref="Rewrite"/>).
 /// <see cref="FormatHashes"/> and <see cref="TypeHashes"/> hold each bundled format's two hashes, as
 /// <see cref="FormatTypes.FormatHash"/> and <see cref="FormatTypes.TypeHash"/> give them in the format's own scope
-/// (the rewrite changes neither). <see cref="Bindings"/> is format key, then producer, then
+/// (the rewrite changes neither, nor does the <see cref="PropertyOrder"/> it writes beside every <c>properties</c>, R10).
+/// <see cref="Bindings"/> is format key, then producer, then
 /// <c>{ agentName, agentVersion, via }</c>, one for each format and producer an agent node is bound by.
 /// <see cref="Refusals"/> holds A05-004, a function's own format whose key another used format has, then (#1508, R5)
 /// A11-003, a format whose expansion at run passes the run's node budget.
@@ -26,6 +27,13 @@ public sealed record CompiledFormats(
 {
     /// <summary>The producer every agent binding was found for (part 02 § 1.3: at 31 only <c>generated</c> has bindings).</summary>
     private const string Producer = "generated";
+
+    /// <summary>
+    /// #1508 (area 11; R10, ruled by the owner on #1508): the member beside <c>properties</c>, in every schema object of
+    /// <c>resolve.json</c> that has them, listing the property names in the order the source writes them. It is written into
+    /// the compiled copy alone: the hashes are taken from the source, and a model is never sent it (<see cref="SentFormat"/>).
+    /// </summary>
+    public const string PropertyOrder = "propertyOrder";
 
     /// <summary>As deep as <see cref="FormatSet"/> looks for names, so the rewrite reaches every name the bundle followed.</summary>
     private const int WalkDepth = 64;
@@ -138,7 +146,8 @@ public sealed record CompiledFormats(
     /// holds (a <c>$ref</c>, or a name written as a schema, under <c>properties</c>, <c>items</c>, <c>anyOf</c> and
     /// <c>$defs</c>, as <see cref="FormatSet"/> finds them) likewise. The key is the name, or for a format of
     /// <paramref name="function"/>'s own <c>&lt;function&gt;__&lt;name&gt;</c> (D5). A name the scope does not know, a
-    /// <c>#</c> reference and anything that is not a schema are copied as written. Never throws on package content.
+    /// <c>#</c> reference and anything that is not a schema are copied as written. #1508 (R10): and every schema object it
+    /// walks that has <c>properties</c> gets <see cref="PropertyOrder"/>, their names as written. Never throws on package content.
     /// </summary>
     public static JsonNode? Rewrite(JsonNode? format, FormatSet scope, SourceFunction? function)
     {
@@ -221,6 +230,11 @@ public sealed record CompiledFormats(
                 }
             }
         }
+
+        // #1508 (R10): resolve.json is canonical JSON, which sorts members, so the order the properties were written in is
+        // kept beside them.
+        if (schema["properties"] is JsonObject properties)
+            schema[PropertyOrder] = new JsonArray(properties.Select(p => (JsonNode?)p.Key).ToArray());
 
         if (Member(schema["items"], scope, target, depth) is { } items)
             schema["items"] = items;
