@@ -17,7 +17,10 @@ namespace Consultologist.PackageFormat;
 /// <see cref="WorkflowPackageMigration30To31.Migrate"/> ends by writing the snapshot test (publishing the migrated package
 /// in memory and running it offline). With it <c>false</c> nothing is published or run, no A10-011, A10-060 or A10-061
 /// is said, and <c>tests/index.json</c> is written with <c>"items": []</c>: for a caller that reads only the hand edits
-/// and whether the migration succeeded (the operator's weekly summary).
+/// and whether the migration succeeded (the operator's weekly summary). <paramref name="Limits"/> (#1508, Task 36 fix round 1;
+/// default the engine's starting values, <see cref="WorkflowPackageMigration30To31.EngineLimits"/>): the limits the
+/// migration counts its package against (A10-081) and its snapshot publishes at; the operator's bulk publish gives the
+/// engine's configured ones, so a package within them is neither a hand edit nor refused.
 /// </summary>
 public sealed record Migration31Options(
     V31.TypeRegistry Registry,
@@ -27,7 +30,8 @@ public sealed record Migration31Options(
     IReadOnlyDictionary<string, string>? Renames = null,
     IReadOnlyDictionary<string, string>? WhenEmpty = null,
     IReadOnlyDictionary<string, string>? FolderFormats = null,
-    bool WriteSnapshot = true)
+    bool WriteSnapshot = true,
+    V31.PublishLimits? Limits = null)
 {
     /// <summary>The members of <c>options.json</c> (R18), in the order it is written.</summary>
     private static readonly string[] Members = ["renames", "whenEmpty", "folderFormats"];
@@ -157,6 +161,12 @@ public sealed record Migration31Result(
 
     /// <summary>The hand-edit notices (S10-002, § 1.4), in <see cref="Notices"/>' order.</summary>
     public IReadOnlyList<string> HandEdits { get; init; } = [];
+
+    /// <summary>
+    /// #1508 (Task 36 fix round 1): the file each of <see cref="HandEdits"/> names, in its order (one entry per notice):
+    /// the operator's bulk publish counts a hand edit made only when its file is among the edits it is given.
+    /// </summary>
+    public IReadOnlyList<string> HandEditFiles { get; init; } = [];
 
     /// <summary>The notices that need no edit, by what the migration report lists them as (D9).</summary>
     public MigrationNotes Report { get; init; } = MigrationNotes.None;
@@ -344,7 +354,7 @@ public static class WorkflowPackageMigration30To31
         var check = V31.SourceCheck.Run(upload, m.Options.Registry);
         if (check.Parse.Package is not { } package || check.Resolution is not { } resolution)
             return;
-        if (V31.PublishNotes.PastInstances(package, resolution, EngineLimits) is { } past)
+        if (V31.PublishNotes.PastInstances(package, resolution, m.Options.Limits ?? EngineLimits) is { } past)
             m.HandEdit(past.Path, "max", MigrationSentences.PastTheInstanceLimit(past.Count, past.Through, past.Limit));
     }
 
@@ -437,7 +447,7 @@ public static class WorkflowPackageMigration30To31
             var upload = Upload(manifestJson, files);
             // #1508 (R11): published as the engine publishes it, at its default limits, so a package past the instances one
             // job may open (A11-001) gets no snapshot.
-            var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain, EngineLimits);
+            var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain, options.Limits ?? EngineLimits);
             if (compiled is null)
             {
                 var sentences = publishRefusals.Select(r => r.Sentence).ToList();

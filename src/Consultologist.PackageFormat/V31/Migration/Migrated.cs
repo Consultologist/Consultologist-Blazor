@@ -60,6 +60,7 @@ internal sealed class Migrated
 
     private readonly List<string> _notices = [];
     private readonly List<string> _handEdits = [];
+    private readonly List<string> _handEditFiles = [];
 
     private Migrated(
         WorkflowPackageManifest manifest30,
@@ -324,6 +325,7 @@ internal sealed class Migrated
         var notice = MigrationSentences.HandEdit(file, member, reason);
         _notices.Add(notice);
         _handEdits.Add(notice);
+        _handEditFiles.Add(file);
     }
 
     /// <summary>The package's own 31 formats as written so far (<c>formats/&lt;id&gt;.json</c>), in <c>formats/index.json</c>'s order.</summary>
@@ -410,6 +412,7 @@ internal sealed class Migrated
         return new(Json(Manifest), Files(), [.. chainNotices, .. _notices], [])
         {
             HandEdits = _handEdits.ToList(),
+            HandEditFiles = _handEditFiles.ToList(),
             Report = new MigrationNotes(Renames.ToList(), MacroInputs.ToList(), BlankConversions.ToList(), Suggestions.ToList(), Reproducible.ToList()),
             Keys = keys,
             MacroBodies = MacroBodyFiles.Where(Sources.ContainsKey).ToList(),
