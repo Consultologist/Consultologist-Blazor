@@ -451,6 +451,15 @@ internal static class MigrationSentences
         $"{file}, if: written to skip the deliverable unless {string.Join(" or ", reads)} ran, as 30 skipped a deliverable none of whose sources ran.";
 
     /// <summary>
+    /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
+    /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
+    /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is
+    /// not joined to it: the operator writes 30's condition <c>and</c> the term, or 31 releases empty what 30 skipped.
+    /// </summary>
+    public static string JoinASourceRan(string term) =>
+        $"every source may not run, and 30 skipped the deliverable when none ran; join {term} to 30's condition by and.";
+
+    /// <summary>
     /// A10-080 (#1508, comment 7, Q5; R17; part 10 § 1.4): a reason: the template reads <paramref name="path"/> at
     /// <paramref name="line"/> through <paramref name="through"/>, which can be null (A11-009 refuses it at publish), at a
     /// place the dialect holds no <c>if</c> (a part's text, A07-002; a test or an argument): the migration cannot write the

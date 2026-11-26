@@ -56,8 +56,10 @@ internal static partial class Migrate
     /// <c>else</c>, a <c>case</c> with an empty branch), the <c>if</c> says that one ran:
     /// <c>{ "===": [ { "var": "&lt;source&gt;.state" }, "completed" ] }</c> for each, joined by <c>or</c>, after 30's own
     /// <paramref name="rule"/> by <c>and</c> (A10-079 says it). A deliverable with no sources, a source the migration does
-    /// not read, or one that always runs keeps <paramref name="rule"/>; so does a rule the converter refused (30's text with
-    /// its hand edit: nothing is joined to a condition not yet written). A <c>while</c> source counts as one that runs: 30
+    /// not read, or one that always runs keeps <paramref name="rule"/>. A rule the converter refused (30's text with its
+    /// hand edit) is kept too, since nothing is joined to a condition not yet written; where every source may not run it
+    /// gets a second hand edit on the same <c>if</c> naming the term to join to it by <c>and</c>, verbatim (A10-084, the
+    /// final review of Part F), so the condition the operator writes still skips the deliverable as 30 did. A <c>while</c> source counts as one that runs: 30
     /// composed a while that ran no pass as empty text and released the deliverable, as 31 does, so an <c>if</c> would skip
     /// what 30 released. Beside another source the while's blank-line separator stays, which no <c>if</c> can drop: the
     /// expected difference <c>while-no-pass-separator</c> (the controller's ruling on #1508; part 10 §§ 1.2, 3.2).
@@ -65,7 +67,7 @@ internal static partial class Migrate
     private static JsonNode? WhenASourceRan(Migrated m, WorkflowDeliverableSpec deliverable, string file, JsonNode? rule)
     {
         var sources = (deliverable.Sources ?? []).Where(s => s is not null).ToList();
-        if (sources.Count == 0 || rule is JsonValue)
+        if (sources.Count == 0)
             return rule;
         var reads = new List<string>();
         foreach (var source in sources)
@@ -82,6 +84,12 @@ internal static partial class Migrate
             ["==="] = new JsonArray(new JsonObject { ["var"] = r + ".state" }, "completed"),
         }).ToList();
         JsonNode term = ran.Count == 1 ? ran[0] : new JsonObject { ["or"] = new JsonArray([.. ran]) };
+        if (rule is JsonValue)
+        {
+            m.HandEdit(file, "if", MigrationSentences.JoinASourceRan(term.ToJsonString()));
+            return rule;
+        }
+
         m.Notice(MigrationSentences.SkippedUnlessASourceRan(file, reads));
         if (rule is null)
             return term;
