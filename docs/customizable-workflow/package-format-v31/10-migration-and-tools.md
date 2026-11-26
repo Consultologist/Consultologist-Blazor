@@ -214,7 +214,11 @@ Each notice reads:
   names."*), lays the operator's hand edits over it, and publishes it as that account's next version, or with
   no `--publish` runs that publish in memory and writes nothing. A hand edit counts as made only when the file its
   notice names is among the operator's edits; the migration and the snapshot count the package against the engine's
-  configured limits; and a rerun carries the earlier record's published rows forward, so no owner to be told drops out.
+  configured limits; the record and the owners' list are written after every package; a package the engine did not
+  answer for is recorded *"unknown: <fault>"*, since it may have been published, and listed for the operator to check
+  (A11-017: *"The engine did not answer for this package; check whether it was published before sending this
+  list."*); and a rerun carries the earlier record's published and unknown rows forward, so no package that was or may
+  have been published drops out of the owners' list.
 - **Recorded as a migration:** the version's publish record says *"migrated by the operator from
   <old version>"*, with the byte-equivalence report and the list of hand edits attached. The
   Editor and History show it ([part 09](09-engine-and-pages.md#62-the-job-header)).
@@ -774,6 +778,8 @@ and the pages' in part 09. The wording below is the starting text. It follows th
   is retired."* (A11-015)
 - The bulk publish, asked for a package no account's pin names (§ 1.5): *"<package> is not the account's active
   account package; the bulk publish migrates only the account package an account's pin names."* (A11-016)
+- The bulk publish's owners' list, for a package the engine did not answer for (§ 1.5): *"The engine did not answer
+  for this package; check whether it was published before sending this list."* (A11-017)
 - A converter refusal on type: the 31 checker's own sentence (part 03), unchanged.
 - A converter refusal for anything else: *"The condition '<expression>' uses
   <construct>, which has no JSON Logic form at 31: rewrite it by hand."*

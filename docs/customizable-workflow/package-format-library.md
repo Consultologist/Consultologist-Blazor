@@ -2966,10 +2966,12 @@ names with its `options.json` (or the defaults, A10-083), lays the operator's ed
 its notice names (`Migration31Result.HandEditFiles`) is among the edits. A package it cannot publish (a hand edit left,
 a migration refusal, a publish refusal, A11-001 among them) is `not migrated: <first sentence>`, and nothing is written:
 its 30 version and its pin stay as they were. The script asks for the list, checks every folder before it sends
-anything, sends each package, and writes `bulk-publish-record.json` and `owners.json` (per owner, the packages published
-with the notices the owner must see, and those not migrated with their reason, S10-005 and A11-015). A rerun carries
-forward the earlier record's `published` rows. Without `--publish` it is a dry run: the publish runs in memory and
-nothing is written.
+anything (a folder of choices or edits that names no package is exit 2), sends each package, and after every row
+writes `bulk-publish-record.json` and `owners.json` (per owner, the packages published with the notices the owner must
+see, those not migrated with their reason, S10-005 and A11-015, and those `unknown` with A11-017), each through a
+temporary file. A package the engine did not answer for is `unknown: <fault>` and stops the run (exit 2). A rerun carries
+forward the earlier record's `published` and `unknown` rows, the latest for each package, and refuses a record of
+another engine. Without `--publish` it is a dry run: the publish runs in memory and nothing is written.
 
 ### What it leaves to areas 12 and 13
 

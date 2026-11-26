@@ -531,7 +531,12 @@ dotnet run -v q --file scripts/bulk-publish-v31.cs -- <operator folder> --engine
 ```
 
 `<owner>` is the account's app user id and `<name>` its package (`acct-<root>-<slug>` or `acct-<root>/<path>`, nested
-as it is nested). A package with no folder is migrated with the defaults and no edits.
+as it is nested). A package with no folder is migrated with the defaults and no edits. **A folder that names no
+package stops the run:** a folder holding `options.json` or `hand-edits/` whose `<owner>/<name>` is neither a package
+the engine listed nor one the record carries (below) is printed, by its path, and the run exits 2 before anything is
+sent, neither file written; a misspelt folder would otherwise leave its package at the defaults. The engine counts the
+packages it could not read but does not name them, so a folder of such a package is refused too: set it aside for
+that run.
 
 **A hand edit is made only when the file its notice names is among the edits.** Each S10-002 notice names a file
 (*"Hand edit needed in <file>, <member>: …"*); unless `hand-edits/` holds that file (edited, or `<file>.deleted`), the
@@ -540,7 +545,8 @@ notice by editing another file still puts the named file in `hand-edits/`, uncha
 acknowledgement that it is answered. The script asks the engine for
 the list (`GET`), reads every package's folder before it sends anything (an `options.json` that does not read, A10-019's
 sentence, stops the run with exit 2 and nothing sent), then sends each package in the engine's order, one at a time. It
-talks only to the engine URL it is given, with the token in `ACCESS_TOKEN`.
+talks only to the engine URL it is given, with the token in `ACCESS_TOKEN`; the URL is `https://`, or `http://` only for
+`localhost`, `127.0.0.1` or `[::1]` (any other is a usage error, exit 2, nothing sent).
 
 **The dry run.** Without `--publish` each package is migrated and its publish run in memory by the engine: nothing is
 written in the registry, no pin moves, and no alert is raised. Its outcome is `would publish`, with the version it
@@ -550,24 +556,41 @@ again until every package would publish or is to stay at 30; then run it with `-
 **The record.** `bulk-publish-record.json` is `{ "engine", "publish", "notRead", "rows" }`: one row per package, the
 engine's answer (`owner`, `name`, `oldVersion`, `newVersion`, `outcome`, `handEditsLeft`, `notices`, `report`, the
 `options` used and `defaults`, A10-083 when the package had no `options.json`) and the `time` it was answered (UTC).
-`notRead` counts the accounts' active packages the engine could not read; they are not in the record. **A run carries
-forward** every row of the existing record whose outcome is `published` and whose package it did not answer (a package
-published by an earlier run is at 31, so the engine no longer lists it), and builds both files from the merged rows: the
-earlier rows first, then this run's. So a rerun after a fault, or a dry run after a real run, never drops a published
-package or its owner from the notification. An existing record the script cannot read stops it with exit 2 before
-anything is sent, and neither file is written. `owners.json`
-is the list for the before-and-after notification (#1447): per owner, the packages `published` (in a dry run, those that
-would be; each with its versions and the notices the owner must see, `flag` becoming `retry` among them) and the
-packages `notMigrated` (each with its version, the `reason`, S10-005 as the owner's `notice`, and the `deadline`,
-A11-015: *"This package stops working when specVersion 30 is retired."*).
+`notRead` counts the accounts' active packages the engine could not read; they are not in the record. **Both files are
+written after every row**, each to a temporary file beside it that is then moved over it, so an interruption loses at
+most the package in flight and never leaves half a file. **A package the engine did not answer for** (an error status,
+a timeout, a lost answer, an answer with no outcome) gets the row `{ owner, name, oldVersion, outcome, time }` with the
+outcome `unknown: <fault>` (the status, or the exception's type and message; never the answer's text), and the run
+stops there with exit 2. In a `--publish` run an `unknown` package may have been published (the engine can fail after
+the stamp, or the answer be lost); in a dry run nothing is published, so its `unknown` means only that it was not
+answered. **A run carries forward** every row of the existing record whose outcome is `published` or `unknown: …` and
+whose package it did not answer (a package published by an earlier run is at 31, so the engine no longer lists it),
+the latest row for each package, and builds both files from the merged rows: the earlier rows first, then this run's.
+An existing record the script cannot read, or one written for another engine (its `engine` is not this `--engine`,
+compared after trimming a trailing `/`), stops it with exit 2 before anything is sent, and neither file is written:
+use one operator folder for each engine. So a rerun after a fault or an interruption, or a dry run after a real run,
+keeps every package published or perhaps published, and its owner, in the notification. `owners.json` is the list for
+the before-and-after notification (#1447): per owner, the packages `published` (in a dry run, those that would be;
+each with its versions and the notices the owner must see, `flag` becoming `retry` among them), the packages
+`notMigrated` (each with its version, the `reason`, S10-005 as the owner's `notice`, and the `deadline`, A11-015:
+*"This package stops working when specVersion 30 is retired."*), and the packages `unknown` (each with its `name` and,
+as its `notice`, A11-017 for the operator: *"The engine did not answer for this package; check whether it was
+published before sending this list."*).
+
+**An `unknown` row.** Check the package's version on the engine (its account's pin, and whether a 31 version of it is
+stamped), then rerun. A package the engine still lists is sent again, and its answer replaces the `unknown` row. One the
+engine no longer lists is at 31: it was published, and its row stays `unknown`, and every run exits 2 for it, until the
+operator writes `"published"` as that row's `outcome` in the record (its notices are not known: tell its owner from
+the 31 version's report). Send `owners.json` only when it lists no `unknown` package.
 
 **Exit codes:** 0, every package published (or would); 1, a package is not migrated, or an account's active package
-could not be read; 2, usage, a folder or an earlier record that does not read, or an engine that does not answer as the
-route does. The run stops at the first engine fault, and the two files then hold what was done before it, with the
-earlier record's published rows. Rerun it until it exits 0 or 1: what was published is carried forward, and a package
-the engine still lists is tried again. (A package at 31 that the engine is asked for anyway answers `not migrated: The
-package is already at specVersion 31.`, and its earlier published row is replaced by that answer; keep the earlier
-record when that happens.)
+could not be read; 2, usage, a folder or an earlier record that does not read, a folder that names no package, a
+record of another engine, an engine that does not answer as the route does, or an `unknown` row this run did not
+answer. The run stops at the first engine fault, and the two files then hold every row answered before it, the
+`unknown` row of the package in flight, and the earlier record's carried rows. Rerun it until it exits 0 or 1: what
+was published is carried forward, and a package the engine still lists is tried again. (A package at 31 that the
+engine is asked for anyway answers `not migrated: The package is already at specVersion 31.`, and its earlier
+published row is replaced by that answer; keep the earlier record when that happens.)
 
 **A package it cannot publish.** The owner's clarification of B2 on #1508
 ([2026-11-25](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179842619)), word for word:
