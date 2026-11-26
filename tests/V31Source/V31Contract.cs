@@ -225,7 +225,9 @@ internal static class V31Contract
     /// A10-080: a read through a nullable object where no guard can stand, a hand edit's reason, and A10-081: a package
     /// whose worst case passes the engine's instances limit, a hand edit's reason, #1508 comment 7 (Q3, Q5, B2), R15, R17,
     /// R11, area 11 Task 33; A10-082: an options.json id or choice that is empty, which the flags refuse, carried from Task 29's
-    /// review, and A10-083: the defaults the bulk publish says it used for a package with no options.json, area 11 Task 36).
+    /// review, and A10-083: the defaults the bulk publish says it used for a package with no options.json, area 11 Task 36;
+    /// A10-084: a deliverable whose sources may all not run and whose condition is a hand edit, the term A10-079 would have
+    /// joined, a hand edit's reason, the final review of Part F).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -310,6 +312,7 @@ internal static class V31Contract
         ["A10-081"] = "up to <n> steps could run in one job through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.",
         ["A10-082"] = "options.json gives <renames | whenEmpty | folderFormats> an empty id or an empty choice; name each id and its choice.",
         ["A10-083"] = "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.",
+        ["A10-084"] = "every source may not run, and 30 skipped the deliverable when none ran; join <term> to 30's condition by and.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

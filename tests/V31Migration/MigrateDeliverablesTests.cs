@@ -186,6 +186,47 @@ public class MigrateDeliverablesTests
     }
 
     [Fact]
+    public void ARefusedConditionWhoseSourcesMayNotRun_IsAlsoAHandEditNamingTheTermToJoin()
+    {
+        // #1508 (final review of Part F, finding 2; Q3, R15): when 30's condition is a hand edit, nothing is joined to it, so
+        // the hand edit names the term A10-079 would have joined (A10-084), for the operator to write 30's condition "and" it;
+        // otherwise, once the condition is written, the deliverable has an if, A11-010 is silent, and 31 releases it empty
+        // where 30 skipped it.
+        const string unconvertible = "(input.consult_draft | string.upcase) == \"\"";
+        var refused = MigrateNodesTests.Migrated("composer-sources", root =>
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan")["if"] = unconvertible);
+
+        Assert.Equal(unconvertible, (string?)MigrateNodesTests.Md(refused, "deliverables/plan.md").Header["if"]);
+        const string term = """{"===":[{"var":"node.plan_gate.state"},"completed"]}""";
+        const string reason = "every source may not run, and 30 skipped the deliverable when none ran; join " + term + " to 30's condition by and.";
+        var edits = refused.HandEdits.Where(e => e.StartsWith("Hand edit needed in deliverables/plan.md, if: ", StringComparison.Ordinal)).ToList();
+        Assert.Equal(2, edits.Count);
+        Assert.Equal("Hand edit needed in deliverables/plan.md, if: " + reason, edits[1]);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edits[1], "deliverables/plan.md"));
+        V31Contract.AssertSentence(new SourceRefusal("A10-084", reason, ""));
+        Assert.DoesNotContain(refused.Notices, n => n.StartsWith("deliverables/plan.md, if: written to skip", StringComparison.Ordinal));
+
+        // Two sources that may not run: the term is their "or", as A10-079 joins it.
+        var two = MigrateNodesTests.Migrated("composer-sources", root =>
+        {
+            var plan = root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan");
+            plan["if"] = unconvertible;
+            plan["sources"] = new JsonArray("node.plan_gate", "node.tone_case");
+        });
+        Assert.Contains(
+            "Hand edit needed in deliverables/plan.md, if: every source may not run, and 30 skipped the deliverable when none ran; join "
+            + """{"or":[{"===":[{"var":"node.plan_gate.state"},"completed"]},{"===":[{"var":"node.tone_case.state"},"completed"]}]}"""
+            + " to 30's condition by and.",
+            two.HandEdits);
+
+        // The near miss: a source that always runs keeps today's single hand edit, unchanged.
+        var always = MigrateNodesTests.Migrated("composer-sources", root =>
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "single")["if"] = unconvertible);
+        var only = Assert.Single(always.HandEdits, e => e.StartsWith("Hand edit needed in deliverables/single.md, if: ", StringComparison.Ordinal));
+        Assert.DoesNotContain("30 skipped the deliverable", only, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AWhileWithNoPass_KeepsItsSeparator()
     {
         // #1508 (R15; PR #1532's difference 8, now expected under part 10 § 3.2's while-no-pass-separator): with every branch not taken, 30 skipped plan and tone_line and
