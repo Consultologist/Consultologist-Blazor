@@ -342,6 +342,28 @@ public class MigratePackageTests
     }
 
     [Fact]
+    public async Task TheStoredReportsWorstCaseNote_IsAtTheConfiguredLimits()
+    {
+        var unset = await new Rig().RunAsync(Request());
+        Assert.DoesNotContain(Strings(unset["notices"]), n => n.Contains("in the worst case", StringComparison.Ordinal));
+
+        var rig = new Rig
+        {
+            Limits = new(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConsultGeneration:MaxAgentCallsPerJob"] = "1",
+                    ["ConsultGeneration:JobMinutes"] = "1",
+                })
+                .Build()),
+        };
+
+        var answer = await rig.RunAsync(Request());
+
+        Assert.Contains(Strings(answer["notices"]), n => n.EndsWith("minutes in the worst case; this engine stops a job after 1 minutes.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task APublishRefusal_IsNotMigrated_WithItsFirstSentence_AndNothingIsWritten()
     {
         var rig = new Rig

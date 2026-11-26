@@ -269,6 +269,32 @@ public class V31PackagePublisherTests
         rig.AssertNothingWritten();
     }
 
+    [Fact]
+    public async Task APublish_RunsItsTestsAtTheEngineConfiguredLimits()
+    {
+        var unset = new Rig();
+        var passed = await unset.Publisher().PublishAsync(OwnerId, Kind, Request(await Files()), CancellationToken.None);
+        Assert.True(passed.Succeeded, string.Join(" | ", passed.Errors));
+        Assert.Equal(unset.Limits.Limits, Assert.Single(unset.Options).RunLimits);
+
+        var rig = new Rig
+        {
+            Limits = new EngineLimitSettings(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConsultGeneration:JobInstances"] = "100000",
+                    ["ConsultGeneration:JobAgentCalls"] = "1",
+                })
+                .Build()),
+        };
+
+        var result = await rig.Publisher().PublishAsync(OwnerId, Kind, Request(await Files()), CancellationToken.None);
+
+        Assert.Equal(1, Assert.Single(rig.Options).RunLimits!.JobAgentCalls);
+        Assert.False(result.Succeeded);
+        rig.AssertNothingWritten();
+    }
+
     // ---- where it goes, and who may ----------------------------------------------------------------------------------
 
     [Fact]

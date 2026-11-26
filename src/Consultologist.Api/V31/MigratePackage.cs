@@ -211,6 +211,7 @@ public sealed class MigratePackage(
         {
             ResolveContract = schema => contracts.TryResolveContract(schema, out var id) ? id : null,
             Limits = limits.PublishLimits,
+            RunLimits = limits.Limits,
         };
         answer.Options = options.ToJson();
 
@@ -255,7 +256,7 @@ public sealed class MigratePackage(
             };
         }
 
-        var report = MigrationReport.Of(answer.OldVersion, edited, options.ToJson(), [], MigrationReport.WorstCaseNote(edited, types));
+        var report = MigrationReport.Of(answer.OldVersion, edited, options.ToJson(), [], MigrationReport.WorstCaseNote(edited, types, limits.Limits));
         answer.Notices = [.. report.Notices];
 
         // the publish, as the account's next version, or its dry run
