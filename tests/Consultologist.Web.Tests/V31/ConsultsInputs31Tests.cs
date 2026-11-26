@@ -21,6 +21,7 @@ public class ConsultsInputs31Tests : ClientRenderTestContext
     private IReadOnlyDictionary<string, ConsultInputValue>? sent;
     private IReadOnlyDictionary<string, bool>? sentMacroChoices;
     private IReadOnlyDictionary<string, InputFilePayload>? sentFormFiles;
+    private IReadOnlyDictionary<string, ConsultInputFormRef>? sentFormRefs;
     private bool submitted;
 
     private void Pin(params WorkflowPackageInputResponse[] inputs) => Pin(Package(inputs));
@@ -43,7 +44,7 @@ public class ConsultsInputs31Tests : ClientRenderTestContext
                 Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
                 Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>(),
                 Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>?>(),
-                Arg.Any<IReadOnlyDictionary<string, ConsultInputFormRef>?>(),
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputFormRef>?>(value => sentFormRefs = value),
                 Arg.Do<IReadOnlyDictionary<string, bool>?>(value => sentMacroChoices = value),
                 Arg.Any<IReadOnlyCollection<string>?>(),
                 Arg.Do<IReadOnlyDictionary<string, InputFilePayload>?>(value => sentFormFiles = value),
@@ -454,11 +455,9 @@ public class ConsultsInputs31Tests : ClientRenderTestContext
         Assert.NotNull(slot.QuerySelector("fluent-text-area"));
     }
 
-    [Fact]
-    public void AFormChannel_ShowsItsChip_AndOffersTheQuestionnaireFile()
-    {
-        // The Api fills the 30 members beside Format (part 09 § 4.3); the questionnaire file is read against them.
-        var intake = Input("intake", "Intake questionnaire", false, Closed(Group(
+    // The Api fills the 30 members beside Format (part 09 § 4.3); the questionnaire file is read against them.
+    private static WorkflowPackageInputResponse Intake() =>
+        Input("intake", "Intake questionnaire", false, Closed(Group(
                 ("on_letrozole", """{"type":"boolean","title":"On letrozole"}"""),
                 ("allergies", """{"type":["string","null"],"title":"Allergies"}"""))), WorkflowExpectedContent.Form)
             with
@@ -470,7 +469,17 @@ public class ConsultsInputs31Tests : ClientRenderTestContext
                     new WorkflowPackageFieldResponse("allergies", "Allergies", false),
                 ],
             };
-        Pin(Input("consult_draft", "Consult draft", true, MarkdownBlock), intake);
+
+    private static void ImportQuestionnaire(IRenderedComponent<Consults> page, string json) =>
+        page.FindComponents<Microsoft.FluentUI.AspNetCore.Components.FluentInputFile>()
+            .Single(component => component.Instance.Accept == ".json,application/json")
+            .FindComponent<Microsoft.AspNetCore.Components.Forms.InputFile>()
+            .UploadFiles(InputFileContent.CreateFromText(json, "intake.json", contentType: "application/json"));
+
+    [Fact]
+    public void AFormChannel_ShowsItsChip_AndOffersTheQuestionnaireFile()
+    {
+        Pin(Input("consult_draft", "Consult draft", true, MarkdownBlock), Intake());
 
         var page = Render<Consults>();
 
@@ -480,21 +489,167 @@ public class ConsultsInputs31Tests : ClientRenderTestContext
         Assert.Equal(["On letrozole", "Allergies"],
             slot.QuerySelectorAll(".input31__field-label").Select(label => label.TextContent.Replace("(optional)", "").Trim()));
 
-        page.FindComponents<Microsoft.FluentUI.AspNetCore.Components.FluentInputFile>()
-            .Single(component => component.Instance.Accept == ".json,application/json")
-            .FindComponent<Microsoft.AspNetCore.Components.Forms.InputFile>()
-            .UploadFiles(InputFileContent.CreateFromText("""{ "on_letrozole": true }""", "intake.json", contentType: "application/json"));
+        ImportQuestionnaire(page, """{ "on_letrozole": true }""");
         Assert.Empty(page.FindAll(".input-field__file-error"));
         Assert.Contains("Questionnaire file", Slot(page, "intake").QuerySelector(".input-field__questionnaire")!.TextContent);
         Assert.DoesNotContain("edited", Slot(page, "intake").QuerySelector(".input-field__questionnaire")!.TextContent);
         Slot(page, "consult_draft").QuerySelector("fluent-text-area")!.Change(Draft);
         Start(page).Click();
 
-        var sentIntake = sent!["intake"];
-        Assert.Equal(["on_letrozole", "allergies"], sentIntake.Fields!.Select(f => f.Id));
-        Assert.True(sentIntake.Fields[0].Value.Flag);
-        Assert.True(sentIntake.Fields[1].Value.IsNull);
+        // The 31 start fills a left-out input from its file ("if left out, the form fills it"); a value sent beside
+        // the file would have to equal the file's own object, which { on_letrozole } beside { on_letrozole, allergies: null } is not.
+        Assert.True(submitted);
+        Assert.False(sent!.ContainsKey("intake"));
         Assert.Equal("application/json", sentFormFiles!["intake"].ContentType);
+    }
+
+    [Fact]
+    public void AQuestionnaireFillEditedAfterTheImport_IsSentTyped_WithoutTheFile()
+    {
+        Pin(Input("consult_draft", "Consult draft", true, MarkdownBlock), Intake());
+
+        var page = Render<Consults>();
+        ImportQuestionnaire(page, """{ "on_letrozole": true }""");
+        Field(page, "intake", "allergies").QuerySelector("input[type=text]")!.Change("latex");
+        Slot(page, "consult_draft").QuerySelector("fluent-text-area")!.Change(Draft);
+        Start(page).Click();
+
+        var intake = sent!["intake"];
+        Assert.True(intake.Fields![0].Value.Flag);
+        Assert.Equal("latex", intake.Fields[1].Value.Text);
+        Assert.True(sentFormFiles is null || !sentFormFiles.ContainsKey("intake"));
+    }
+
+    private static readonly DateTimeOffset Submitted = new(2026, 11, 16, 9, 30, 0, TimeSpan.Zero);
+
+    private IRenderedComponent<Consults> FilledFromAFormResponse()
+    {
+        // The Api fills the 30 members beside Format; a held response is read against them.
+        Pin(
+            Input("consult_draft", "Consult draft", true, MarkdownBlock),
+            Input("visit_type", "Visit type", false,
+                    """{"type":"string","oneOf":[{"const":"new_patient","title":"New patient"},{"const":"follow_up","title":"Follow-up"}]}""")
+                with { Type = WorkflowInputTypes.Enum, Values = ["new_patient", "follow_up"] });
+        FormsService.ListResponsesAsync().Returns(new[]
+        {
+            new Consultologist.Web.Services.Forms.FormResponseListRow("triage-intake", "17", Submitted, new[] { "visit_type" }, null),
+        });
+        FormsService.GetResponseAsync("triage-intake", "17").Returns(new Consultologist.Web.Services.Forms.FormResponseValues(
+            "triage-intake", "17", Submitted, new Dictionary<string, string> { ["visit_type"] = "follow_up" }));
+
+        var page = Render<Consults>();
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".form-picker__trigger")));
+        page.Find(".form-picker__trigger").Click();
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".form-picker__choose")));
+        page.FindAll(".form-picker__choose").First(b => !b.HasAttribute("disabled")).Click();
+        Slot(page, "consult_draft").QuerySelector("fluent-text-area")!.Change(Draft);
+        return page;
+    }
+
+    [Fact]
+    public void AnInputFilledFromAFormResponse_SendsTheReference_AndNoValueBesideIt()
+    {
+        var page = FilledFromAFormResponse();
+        Start(page).Click();
+
+        Assert.True(submitted);
+        Assert.False(sent!.ContainsKey("visit_type"));
+        Assert.Equal(new ConsultInputFormRef("triage-intake", "17"), sentFormRefs!["visit_type"]);
+    }
+
+    [Fact]
+    public void AFormResponseFillEditedAfterwards_IsSentTyped_WithoutTheReference()
+    {
+        var page = FilledFromAFormResponse();
+        Slot(page, "visit_type").QuerySelector("fluent-select")!.Change("new_patient");
+        Start(page).Click();
+
+        Assert.Equal("new_patient", sent!["visit_type"].Text);
+        Assert.True(sentFormRefs is null || !sentFormRefs.ContainsKey("visit_type"));
+    }
+
+    [Fact]
+    public void ADataInputWithAChannel_IsStillInput31_AndShowsTheChip()
+    {
+        // Publish refuses this (part 02 § 8.3); the page still draws and sends what it edits.
+        Pin(Input("seen_on", "Date seen", true, Date, "transcript"));
+
+        var page = Render<Consults>();
+
+        var slot = Slot(page, "seen_on");
+        Assert.Equal("Transcript", slot.QuerySelector(".input-field__channel")!.TextContent.Trim());
+        Assert.NotNull(slot.QuerySelector(".input31"));
+        slot.QuerySelector("input[type=date]")!.Change("2026-11-16");
+        Start(page).Click();
+
+        Assert.Equal("2026-11-16", sent!["seen_on"].Text);
+    }
+
+    [Fact]
+    public void ABlankRow_SaysItIsEmpty_WhenNothingElseWould()
+    {
+        Pin(Input("notes", "Notes", false, "{\"type\":\"array\",\"items\":" + Closed(Group(
+            ("note", """{"type":["string","null"],"title":"Note"}"""))) + "}"));
+
+        var page = Render<Consults>();
+        Slot(page, "notes").QuerySelector("fluent-button.input31__add")!.Click();
+
+        Assert.True(Start(page).HasAttribute("disabled"));
+        Assert.Equal("Row 1 is empty; fill it in or remove it.", Problem(page, "notes"));
+    }
+
+    [Fact]
+    public void ABlankSubGroupWhoseFieldsAreAllNullable_SaysRequired()
+    {
+        var sub = Closed(Group(("x", """{"type":["string","null"],"title":"Detail"}""")))
+            .Replace("{\"type\":\"object\"", "{\"title\":\"Details\",\"type\":\"object\"");
+        Pin(Input("visit", "Visit", false, Closed(Group(
+            ("where", """{"type":["string","null"],"title":"Where"}"""),
+            ("details", sub)))));
+
+        var page = Render<Consults>();
+        Field(page, "visit", "where").QuerySelector("input[type=text]")!.Change("Sample Oncology Clinic");
+
+        Assert.True(Start(page).HasAttribute("disabled"));
+        Assert.Equal("Required.", Field(page, "visit", "details").QuerySelector(".input31__problem")!.TextContent.Trim());
+    }
+
+    [Fact]
+    public void ATextMemento_IsRestoredIntoADataInput_WhenItReadsAsItsValue()
+    {
+        const string JobId = "0123456789abcdef0123456789abcdef";
+        Pin(
+            Input("consult_draft", "Consult draft", true, MarkdownBlock),
+            Input("seen_on", "Date seen", false, Date),
+            Input("on_letrozole", "On letrozole", false, """{"type":"boolean"}"""),
+            Input("medicines", "Medicines", false, "{\"type\":\"array\",\"items\":" + Closed(Group(
+                ("drug", """{"type":"string","title":"Drug"}"""))) + "}"),
+            Input("visit", "Visit", false, Closed(Group(("where", """{"type":"string","title":"Where"}""")))));
+        JobSession.Current = new ConsultJobMemento(
+            JobId,
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Draft,
+                ["seen_on"] = "2026-11-16",
+                ["on_letrozole"] = "true",
+                ["medicines"] = """[{"drug":"Letrozole"},{"drug":"Anastrozole"}]""",
+                ["visit"] = "Where: Sample Oncology Clinic",
+            },
+            [new ConsultJobBlock("node.plan", "Planning the sections")]);
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed", TotalBlockCount: 1, CompletedBlockCount: 1, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string> { ["node.plan"] = "Section prose." },
+            FailedBlocks: new Dictionary<string, string>(), Success: true, AssembledDocument: "The note."));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit inputs")).Click();
+        Start(page).Click();
+
+        Assert.Equal("2026-11-16", sent!["seen_on"].Text);
+        Assert.True(sent["on_letrozole"].Flag);
+        Assert.Equal(["Letrozole", "Anastrozole"], sent["medicines"].Elements!.Select(row => row.Fields![0].Value.Text));
+        // Text that is not the group's value leaves it blank, never half-filled.
+        Assert.False(sent.ContainsKey("visit"));
     }
 
     [Fact]

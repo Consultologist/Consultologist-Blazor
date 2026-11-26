@@ -222,6 +222,14 @@ public class InputShapeTests
     }
 
     [Fact]
+    public void ANullableDate_WrittenWithAnyOf_IsADate_Nullable()
+    {
+        var shape = Of("""{"anyOf":[{"$ref":"@P@date"},{"type":"null"}],"$defs":{"d":@DateDef@}}""");
+        Assert.Equal(InputWidget.Date, shape.Widget);
+        Assert.True(shape.Nullable);
+    }
+
+    [Fact]
     public void ANullableFieldWrittenWithAnyOf_IsNotRequired()
     {
         const string schema = """{"type":"object","properties":{"notes":{"anyOf":[{"$ref":"@P@plaintext"},{"type":"null"}]}},"required":["notes"],"$defs":{"p":@PlainDef@}}""";

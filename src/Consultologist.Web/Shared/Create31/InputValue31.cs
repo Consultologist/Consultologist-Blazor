@@ -161,6 +161,51 @@ public sealed class InputValue31
         };
     }
 
+    /// <summary>
+    /// Fills this value from the text that ran (a re-attached run's text memento): a scalar's canonical text (a choice's
+    /// value, a date, <c>true</c>/<c>false</c>, a number's spelling) or a structure's JSON. Text that is not this shape's
+    /// value leaves it blank.
+    /// </summary>
+    public void RestoreText(string? text)
+    {
+        Clear();
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        if (Kind != InputValueKind.Scalar)
+        {
+            JsonNode? parsed;
+            try
+            {
+                parsed = JsonNode.Parse(text);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return;
+            }
+
+            Restore(parsed);
+            if (!JsonNode.DeepEquals(parsed, ToJson()) || Problem(Shape, required: false) is not null)
+                Clear();
+            return;
+        }
+
+        switch (Shape.Widget)
+        {
+            case InputWidget.Boolean:
+                Flag = text switch { "true" => true, "false" => false, _ => null };
+                return;
+            case InputWidget.Select when Shape.Choices.All(choice => choice.Value != text):
+                return;
+            case InputWidget.Date when !DateOnly.TryParseExact(text, "yyyy-MM-dd", out _):
+                return;
+        }
+
+        Text = text;
+        if (NumberProblem() is not null)
+            Clear();
+    }
+
     /// <summary>Fills this value from what was sent or held (a re-attached run, a form response, a questionnaire file).</summary>
     public void Restore(JsonNode? node)
     {

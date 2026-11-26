@@ -207,9 +207,15 @@
                                 </div>
                                 continue;
                             }
-                            @if (field.Value31 is { } value31 && field.ExpectedContent is null)
+                            @if (field.Value31 is { } value31 && !field.TakesQuestionnaireFile)
                             {
                                 <div class="input-field" @key="field.Id" data-input-id="@field.Id">
+                                    @* A channel on a data input is refused at publish (part 02 § 8.3); its chip is
+                                       still shown, and Input31 draws what is sent. *@
+                                    @if (field.ChannelLabel is { } dataChannel)
+                                    {
+                                        <span class="input-field__channel">@dataChannel</span>
+                                    }
                                     <Input31 Shape="@(field.Shape31!)" Value="@value31" Label="@field.Label" Help="@Help31(field)"
                                              Required="@field.Required" SnippetItems="@snippetSet.Items" Changed="@OnInput31Changed" />
                                 </div>
@@ -3589,6 +3595,11 @@
     questionnaireFills[field.Id] = (bytes, field.Value31 is not null ? field.Supplied ?? value : value, value.Fields?.Count ?? 0);
   }
 
+  private bool FormFillIntact(ConsultInputField field) =>
+    formFills.TryGetValue(field.Id, out var fill)
+    && field is { HasFile: false, HasLoaded: false, Supplied: { } supplied }
+    && System.Text.Json.JsonSerializer.Serialize(supplied) == System.Text.Json.JsonSerializer.Serialize(fill.Value);
+
   private bool QuestionnaireIntact(ConsultInputField field) =>
     questionnaireFills.TryGetValue(field.Id, out var fill)
     && field.Supplied is { } supplied
@@ -3693,10 +3704,13 @@
   // deliverables via SuppliedRefs() — and the engine combines them into one
   // array. A single-value input stays one-or-the-other: its typed value only
   // travels when it has no file and no loaded deliverable.
+  // #1509: a 31 data input still as its questionnaire file or form response filled it sends no value beside
+  // them: the 31 start fills a left-out input from its form, and a value sent beside must equal the form's own.
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
       .Where(field => field.Supplied is not null
-        && (field.TakesSeveralDocuments || (!field.HasLoaded && !field.HasFile)))
+        && (field.TakesSeveralDocuments || (!field.HasLoaded && !field.HasFile))
+        && !(field.Value31 is not null && (QuestionnaireIntact(field) || FormFillIntact(field))))
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #510: the references. The server copies each run's text and records the
@@ -5197,6 +5211,14 @@
     public void RestoreText(string text)
     {
       Clear();
+
+      if (Value31 is { } value31)
+      {
+        // #1509: the text that ran (EffectiveText) — a scalar's canonical text, a structure's JSON — read back into
+        // the 31 value when it is that shape's value; anything else leaves the input blank.
+        value31.RestoreText(text);
+        return;
+      }
 
       if (Type == WorkflowInputTypes.Boolean)
       {

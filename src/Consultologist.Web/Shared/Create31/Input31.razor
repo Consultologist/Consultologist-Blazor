@@ -78,6 +78,12 @@
                             @Control(field.Shape, child, field.Label, field.Required && (due || touched))
                         </div>
                     }
+                    @* A blank group that must be filled in, whose fields are all nullable: no field says it, so the
+                       group does (its Problem holds Start). *@
+                    @if (due && value.IsBlank && !shape.Fields.Any(member => member.Required))
+                    {
+                        <span class="input31__problem">Required.</span>
+                    }
                 </div>
                 break;
 
@@ -91,7 +97,12 @@
                         <div class="input31__row" @key="row">
                             <span class="input31__row-number">@(index + 1).</span>
                             <div class="input31__row-body">
-                                @Control(shape.Items!, row, $"{label} row {index + 1}", true)
+                                @* A blank row says so once, rather than each of its fields saying "Required.". *@
+                                @Control(shape.Items!, row, $"{label} row {index + 1}", !row.IsBlank)
+                                @if (row.IsBlank)
+                                {
+                                    <span class="input31__problem">Row @(index + 1) is empty; fill it in or remove it.</span>
+                                }
                             </div>
                             @* preventDefault (AGENTS.md, #1137): a Remove whose button the re-render drops must not
                                reach an enclosing <label>'s activation. *@
