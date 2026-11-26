@@ -2534,8 +2534,9 @@ profile's fields, the run facts by name (`run.` dropped), the replies to serve b
   entry's format by `WorkflowStubOutputs`, seeded by the row key or by `StubSeed`. To a generated reply only, each macro
   the prompt offers whose marker the reply does not hold has its marker appended, in prompt order (D12; #1508 R14: a
   pinned reply that leaves a marker out gives the node's `onInvalid` outcome, as live, and the attempt a `retry` asks for
-  has no stub of its own, so a run with `GenerateMissing` false lists it missing). A reply that does not fit fails its
-  node as the engine's does.
+  has no stub of its own, so a run with `GenerateMissing` false lists it missing). The one exception is a macro the
+  request names in `EnginePlaced` (the comparison's, below): its marker is written into a pinned text reply that lacks
+  it. A reply that does not fit fails its node as the engine's does.
 
 `OfflineResult` gives `State` and `Sentence`, every sent prompt and rendered text as an `OfflineText(Key, Text, Hash)`,
 the deliverables' outcomes, every reply served, the rows and decisions, and `UnusedOutputs` (pinned keys no call asked
@@ -2570,7 +2571,13 @@ does not publish is refused with the checker's sentences.
 inputs under their 31 ids through 31's start (a scalar given to a list input as a list of one; an object's missing
 fields `null`, § 1.8), its macro choices through `RunInputsBuilder.Choices` (R7), its profile, 30's run date
 `2026-11-10` and clock, and the capture's replies under their 31 row keys (`KeyMap.To31`); a reply the capture lacks is
-generated, seeded with 30's key (`KeyMap.To30`).
+generated, seeded with 30's key (`KeyMap.To30`). A captured reply is replayed as 30's model wrote it, with no marker
+added for a macro the model chose (R14; each macro-choice classifier is answered from the capture, `ChoiceAnswers`). A
+macro 30's engine placed before or after the reply (#1508 comment 5, item 7, #10) is the exception: 30's reply never held
+its marker, so `ByteEquivalence.EnginePlaced(migrated)` (read from the A10-003 hand edits) goes into the request as
+`OfflineRequest.EnginePlaced`, and `OfflineStubs.WithEngineMarkers` writes each such offered macro's marker into the
+pinned reply where its instruction asks: alone on the first line (`{{~ marker }}\n` before the reply) or the last
+(`\n{{~ marker }}` after it).
 
 `ByteEquivalence.Compare(package, scenario, capture30, run31, migrated, plan, request31)` lists every compared text as a
 `ComparedText(Site, OldHash, NewHash, Equal, Expected, Explanation)`: `#status` first (the status word, D24), then the

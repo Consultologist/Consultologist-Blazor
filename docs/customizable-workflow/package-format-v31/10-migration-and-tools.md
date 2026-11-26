@@ -519,8 +519,9 @@ and the migration report lists each such conversion (A10-050).
     `failed-item`).
   - **A `before`/`after` node macro is a marker** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #10; D3, § 1.4):
     30's engine placed the macro's body before or after the node's reply, joined by a blank line; at 31 the model writes
-    its marker where the hand-edited instruction says. The comparison writes the marker into a captured reply that lacks
-    it, alone on the reply's first line (before) or its last (after). The rule `before-after-macro-marker` explains the
+    its marker where the hand-edited instruction says. 30's reply never held a marker for it, so the comparison writes
+    the marker into the captured reply where the instruction asks, alone on the reply's first line (before) or its last
+    (after); a macro the model chose is never given one (above). The rule `before-after-macro-marker` explains the
     placing prompt's instruction, and in a text that holds the body only the white space between the body and the reply
     (`composer-macros`).
   - **A `while` that ran no pass beside another source** (the controller's ruling on #1508, as the owner
@@ -534,7 +535,8 @@ and the migration report lists each such conversion (A10-050).
   - **A macro the model chose, gated by its classifier** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), items 1
     and 2; § 1.2): the classifier's prompt is 31's alone, and the comparison answers it from the capture, `answer: true`
     exactly where 30's reply for the placing node held the macro's marker (`macro.<id>.content`, with the macro's 30 id where the migration renamed it); a captured reply is
-    replayed as written, no marker added. The rule `macro-choice-classifier` explains the classifier's prompt, and the
+    replayed as 30's model wrote it, no marker added for a macro the model chose (for one 30's engine placed before or after
+    the reply, below, 30's reply never held a marker, and the comparison writes it in). The rule `macro-choice-classifier` explains the classifier's prompt, and the
     placing prompt only where it holds the macro's 31 instruction in place of its 30 one, that one or it with one
     "otherwise" clause removed, where the classifier answered yes, and lacks that 30 instruction where it answered no.
   - **One message per deliverable, where 30 sent one per job** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968), 1): a migrated package delivers each
