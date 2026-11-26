@@ -4,7 +4,10 @@
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Workflow
 @using Consultologist.Web.Services.Provenance
+@using Consultologist.Web.Services.Provenance.V31
+@using Consultologist.Web.Shared.History31
 @inject IAccountEndpointService AccountService
+@inject TimeProvider Clock
 @inject IAIEndpointService AIService
 @inject IWorkflowEndpointService WorkflowService
 @inject NavigationManager Navigation
@@ -117,10 +120,16 @@
                                 @* #1326: the server answered 404 — named, and no longer polled. *@
                                 <span class="job-status-badge job-status-badge--notfound" title="The run behind this entry no longer exists">Not found</span>
                             }
+                            else if (IsStopped31(context))
+                            {
+                                @* #1509 (D9): a 31 job not terminal long after it began; the stored status is unchanged. *@
+                                <span class="job-status-badge job-status-badge--stopped">Stopped</span>
+                                <span class="job-status-note muted-text">@HistorySentences31.Stopped</span>
+                            }
                             else
                             {
                                 <span class="job-status-badge job-status-badge--@context.Status.ToLowerInvariant()">
-                                    @(context.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(context.FailedAtStart, context.DecisionFailureKind) ?? context.Status)
+                                    @(context.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(context.FailedAtStart, context.DecisionFailureKind) ?? StatusWord(context.Status))
                                 </span>
                             }
                             @if (context.Source == "email")
@@ -385,6 +394,23 @@
                                             </div>
                                         }
 
+                                        @* #1509 (Task 16; part 09 § 6.1): a storage 12 job is drawn from its record, in place of
+                                           the 5–30 provenance list, the rerun comparison (D8) and the node grid. *@
+                                        @if (IsStorage12(detail))
+                                        {
+                                            @if (_records.TryGetValue(detail.JobId, out var record31) && _rowTexts.TryGetValue(detail.JobId, out var texts31))
+                                            {
+                                                <RecordView31 Detail="@detail" Record="@record31" Texts="@texts31"
+                                                              Content="@_contents.GetValueOrDefault(detail.JobId)"
+                                                              RowsError="@_recordErrors.GetValueOrDefault(detail.JobId)" />
+                                            }
+                                            else
+                                            {
+                                                <SkeletonText Lines="4" />
+                                            }
+                                        }
+                                        else
+                                        {
                                         <details class="job-detail-section">
                                             <summary class="muted-text">Provenance</summary>
                                             @* #402: recompute the deliverable hashes from the texts this
@@ -740,6 +766,7 @@
                                                 </div>
                                             </details>
                                         }
+                                        }
 
                                         @* #546: the other direction — who used this run. Rendered
                                            only when there is something to say (an edge, or a fetch
@@ -768,6 +795,8 @@
                                             </details>
                                         }
 
+                                        @if (!IsStorage12(detail))
+                                        {
                                         var nodeGroups = BuildNodeGroups(detail);
                                             var setupBadge = detail.StartedAtUtc != null
                                                 ? ("✓", "node-status--success")
@@ -964,6 +993,7 @@
                                                 }
                                             </div>
                                         </details>
+                                        }
                                     }
                                 </div>
             </section>
@@ -1480,7 +1510,8 @@
                     return;
                 }
 
-                var fastCadence = active.Any(job => job.Status is "Queued" or "Running");
+                // #1509 (R7, D9): a 31 job delivering is followed as closely; a 31 job shown as stopped is not.
+                var fastCadence = active.Any(job => job.Status is "Queued" or "Running" or ConsultDelivering && !IsStopped31(job));
                 await Task.Delay(fastCadence ? FastPollInterval : TimeSpan.FromSeconds(60), cts.Token);
 
                 if (jobsLoading)
@@ -1500,9 +1531,15 @@
                             jobs[index] = SummaryFromDetail(detail);
                         }
 
+                        if (IsStorage12(detail))
+                        {
+                            _storage12.Add(job.JobId);
+                        }
+
                         if (_jobDetails.ContainsKey(job.JobId))
                         {
                             _jobDetails[job.JobId] = detail;
+                            await RefreshRecord31Async(detail);
                         }
                     }
                     catch (AccessTokenNotAvailableException exception)
@@ -1855,7 +1892,15 @@
             _jobDetails[jobId] = detail;
             await EnsureCatalogLoadedAsync(detail?.CatalogRef);
             await EnsureLineageLoadedAsync(detail?.WorkflowPackage);
-            await EnsureRerunSourceLoadedAsync(jobId, detail);
+            if (detail != null && IsStorage12(detail))
+            {
+                await LoadRecord31Async(detail);
+            }
+            else
+            {
+                await EnsureRerunSourceLoadedAsync(jobId, detail);
+            }
+
             await EnsureUsedByLoadedAsync(jobId);
         }
         catch (AccessTokenNotAvailableException exception)
@@ -1900,6 +1945,99 @@
         {
             _usedByErrors[jobId] = ex.Message;
         }
+    }
+
+    // ----- #1509 (Task 16): a storage 12 job's record -----
+
+    /// <summary>The status a 31 job holds while it delivers (part 09 § 3.8); shown as "Delivering…" (S09-019).</summary>
+    private const string ConsultDelivering = "delivering";
+
+    // The rows of each loaded 31 job as listed, the record sorted from them, the job's Rows count at that listing, the
+    // per-view row fetches, the listing's failure in the route's words, and the job's package content (for D10's line).
+    private readonly Dictionary<string, IReadOnlyList<RecordRowRef>> _recordRows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Record31> _records = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int?> _rowsListedAt = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RowText31> _rowTexts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _recordErrors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, WorkflowPackageContentResponse?> _contents = new(StringComparer.Ordinal);
+
+    // The jobs known to be at storage 12, from any detail fetched; only these can be shown as stopped (D9).
+    private readonly HashSet<string> _storage12 = new(StringComparer.Ordinal);
+
+    private static bool IsStorage12(ConsultGenerationJobResponse detail) => detail.SchemaVersion >= 12;
+
+    /// <summary>One vocabulary (R6): the stored word, but "delivering" reads "Delivering…".</summary>
+    private static string StatusWord(string status) =>
+        string.Equals(status, ConsultDelivering, StringComparison.Ordinal) ? HistorySentences31.Delivering : status;
+
+    private bool IsStopped31(AccountJobSummaryResponse job) =>
+        _storage12.Contains(job.JobId) && JobLiveness31.IsStopped(job.Status, job.StartedAtUtc, Clock.GetUtcNow());
+
+    /// <summary>A detail load of a 31 job: its rows listed once, a cache for its rows' texts, and its package's content.</summary>
+    private async Task LoadRecord31Async(ConsultGenerationJobResponse detail)
+    {
+        _storage12.Add(detail.JobId);
+        _rowTexts[detail.JobId] = new RowText31(AIService, detail.JobId);
+        await ListRows31Async(detail);
+
+        try
+        {
+            _contents[detail.JobId] = detail.WorkflowPackage is { Length: > 0 } packageRef
+                ? await WorkflowService.GetCurrentPackageContentAsync(packageRef)
+                : null;
+        }
+        catch (AccessTokenNotAvailableException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // no migration line without the content; the rest of the header stands
+            _contents[detail.JobId] = null;
+        }
+    }
+
+    private async Task ListRows31Async(ConsultGenerationJobResponse detail)
+    {
+        try
+        {
+            _recordRows[detail.JobId] = await AIService.GetJobRowsAsync(detail.JobId);
+            _rowsListedAt[detail.JobId] = detail.Rows;
+            _recordErrors.Remove(detail.JobId);
+        }
+        catch (AccessTokenNotAvailableException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (!_recordRows.ContainsKey(detail.JobId))
+        {
+            // the first listing failed: the header and the route's sentence; a poll whose count moves asks again
+            _recordErrors[detail.JobId] = ex is ConsultGenerationRefusedException ? ex.Message : HistorySentences31.RecordNotAvailable;
+            _recordRows[detail.JobId] = Array.Empty<RecordRowRef>();
+        }
+        catch (Exception)
+        {
+            // a later listing failed: the earlier one stays on screen, and the next poll asks again
+        }
+
+        _records[detail.JobId] = Record31.From(detail, _recordRows[detail.JobId]);
+    }
+
+    /// <summary>A poll of a loaded 31 job: the rows are listed again only when its Rows count has moved.</summary>
+    private async Task RefreshRecord31Async(ConsultGenerationJobResponse detail)
+    {
+        if (!IsStorage12(detail) || !_recordRows.TryGetValue(detail.JobId, out var rows))
+        {
+            return;
+        }
+
+        if (_rowsListedAt.GetValueOrDefault(detail.JobId) != detail.Rows)
+        {
+            await ListRows31Async(detail);
+            return;
+        }
+
+        _records[detail.JobId] = Record31.From(detail, rows);
     }
 
     private async Task EnsureRerunSourceLoadedAsync(string jobId, ConsultGenerationJobResponse? detail)

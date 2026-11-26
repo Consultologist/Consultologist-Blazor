@@ -71,6 +71,9 @@ public abstract class ClientRenderTestContext : BunitContext
         // editor keeps its open pane here so a page switch returns to it.
         Services.AddSingleton(EditorSession);
 
+        // #1509 (D9): History reads its time here; a test registers its own clock after this one to set the time.
+        Services.AddSingleton(TimeProvider.System);
+
         // History.LoadAgentNamesAsync and WorkflowPackagePicker.OnInitializedAsync
         // have no try/catch around these, so a throwing substitute fails the
         // render outright. Null is a value both handle.

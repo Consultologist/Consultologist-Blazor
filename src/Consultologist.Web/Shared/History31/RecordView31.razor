@@ -1,0 +1,214 @@
+@using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance.V31
+@using Consultologist.Web.Services.Workflow
+@inject IAIEndpointService AIService
+@inject IJSRuntime JS
+@inject TimeProvider Clock
+@*
+    #1509 (Task 16; part 09 §§ 6.1 to 6.4): History's view of a storage 12 job, in place of the 5–30 provenance list and
+    node grid. The header (with the record's download and Verify, for a terminal job only), then one banner per deliverable
+    that was held, failed or blocked and per destination not sent or failed, each linking to its row (#row-<key>), then the
+    five sections in the order the job runs. When the rows cannot be listed, the header and the route's sentence only.
+*@
+<div class="history31">
+    <Header31 Detail="@Detail" Content="@Content" Stopped="@Stopped">
+        @if (Terminal)
+        {
+            <div class="history31-actions">
+                <FluentButton Appearance="Appearance.Outline" Class="history31-download" Disabled="@_busy"
+                              OnClick="DownloadAsync" title="Download this job's sealed record">Download record</FluentButton>
+                <FluentButton Appearance="Appearance.Outline" Class="history31-verify" Disabled="@_busy"
+                              OnClick="VerifyAsync" title="Check the record's hash and replay each deliverable's text in your browser">Verify</FluentButton>
+            </div>
+            @if (_downloadError is { } downloadError)
+            {
+                <p class="history31-download-error" role="alert">@downloadError</p>
+            }
+            @if (_verifyError is { } verifyError)
+            {
+                <p class="history31-verify-error" role="alert">@verifyError</p>
+            }
+            else if (_check is { } check)
+            {
+                <div class="history31-verified @(check.Ok ? "history31-verified--ok" : "history31-verified--failed")" role="status">
+                    <span class="history31-verified__summary">@(check.Ok ? "Verify: passed" : "Verify: failed")</span>
+                    <ul class="history31-check-lines">
+                        @foreach (var line in check.Lines)
+                        {
+                            <li class="history31-check-line" data-ok="@(line.Ok switch { true => "true", false => "false", null => "attested" })">
+                                <span class="history31-check-line__mark" aria-hidden="true">@(line.Ok switch { true => "✓", false => "✗", null => "–" })</span>
+                                <code class="history31-check-line__what">@line.What</code>
+                                <span class="history31-check-line__detail hash-text">@line.Detail</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        }
+    </Header31>
+
+    @if (RowsError is { } rowsError)
+    {
+        <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false"><span class="history31-rows-error">@rowsError</span></FluentMessageBar>
+    }
+    else
+    {
+        @if (Banners31.Of(Record) is { Count: > 0 } banners)
+        {
+            <div class="history31-banners">
+                @foreach (var banner in banners)
+                {
+                    <p class="history31-banner history31-banner--@banner.Kind" role="status">
+                        @if (banner.LinkKey is { } linkKey)
+                        {
+                            <a href="#row-@linkKey">@banner.Text</a>
+                        }
+                        else
+                        {
+                            @banner.Text
+                        }
+                    </p>
+                }
+            </div>
+        }
+
+        @* § 6.4's order: Tasks 17 to 20 fill each section *@
+        <section class="history31-section" id="history31-inputs"><h3 class="history31-section__title">Inputs</h3></section>
+        <section class="history31-section" id="history31-run-facts"><h3 class="history31-section__title">Run facts</h3></section>
+        <section class="history31-section" id="history31-nodes"><h3 class="history31-section__title">Nodes</h3></section>
+        <section class="history31-section" id="history31-checks"><h3 class="history31-section__title">Checks</h3></section>
+        <section class="history31-section" id="history31-deliverables"><h3 class="history31-section__title">Deliverables</h3></section>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConsultGenerationJobResponse Detail { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Record31 Record { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public RowText31 Texts { get; set; } = default!;
+
+    [Parameter]
+    public WorkflowPackageContentResponse? Content { get; set; }
+
+    /// <summary>The sentence said when the rows could not be listed; the header is shown, and nothing that needs the rows.</summary>
+    [Parameter]
+    public string? RowsError { get; set; }
+
+    private bool _busy;
+    private string? _downloadError;
+    private string? _verifyError;
+    private RecordCheckResult? _check;
+
+    private bool Terminal => Detail.Status is "Completed" or "Failed" or "Cancelled";
+
+    private bool Stopped => JobLiveness31.IsStopped(Detail.Status, Detail.StartedAtUtc, Clock.GetUtcNow());
+
+    private async Task DownloadAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _downloadError = null;
+        try
+        {
+            var record = await AIService.DownloadJobRecordAsync(Detail.JobId);
+            await JS.InvokeVoidAsync("consultologistDownload", record.FileName, "application/json", Convert.ToBase64String(record.Bytes));
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (ConsultGenerationRefusedException refused)
+        {
+            // 409 and 500 carry the route's sentence
+            _downloadError = refused.Message;
+        }
+        catch (Exception)
+        {
+            _downloadError = HistorySentences31.RecordNotAvailable;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// The record once, then each deliverable's text through <see cref="Texts"/> (null once dropped), checked by
+    /// <see cref="RecordCheck31.Check"/>. What cannot be read is said with A12-005, and nothing is checked.
+    /// </summary>
+    private async Task VerifyAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _verifyError = null;
+        _check = null;
+        try
+        {
+            byte[] bytes;
+            try
+            {
+                bytes = (await AIService.DownloadJobRecordAsync(Detail.JobId)).Bytes;
+            }
+            catch (AccessTokenNotAvailableException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                _verifyError = HistorySentences31.RecordNotChecked("the record file");
+                return;
+            }
+
+            var texts = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var deliverable in Record.Deliverables)
+            {
+                RecordRowText? row;
+                try
+                {
+                    row = await Texts.Get(deliverable.Key);
+                }
+                catch (AccessTokenNotAvailableException)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    row = null;
+                }
+
+                if (row is null)
+                {
+                    _verifyError = HistorySentences31.RecordNotChecked($"the text of '{LabelOf(deliverable)}'");
+                    return;
+                }
+
+                texts[deliverable.Key] = RowText31.Content(row);
+            }
+
+            _check = RecordCheck31.Check(Detail.RecordHash, bytes, texts);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string LabelOf(Row31 deliverable) =>
+        deliverable.Text("label") is { Length: > 0 } label ? label : deliverable.Key;
+}

@@ -55,5 +55,7 @@ builder.Services.AddScoped<Consultologist.Web.Services.AI.ConsultJobSession>();
 // #412: one watcher per tab; UpdateBanner in MainLayout starts it.
 builder.Services.AddScoped<IAppUpdateService, AppUpdateService>();
 builder.Services.AddScoped<Consultologist.Web.Services.Workflow.WorkflowEditorSession>();
+// #1509 (D9): History's clock, so a job not terminal long after it began reads "Stopped"; a test sets the time.
+builder.Services.AddSingleton(TimeProvider.System);
 
 await builder.Build().RunAsync();

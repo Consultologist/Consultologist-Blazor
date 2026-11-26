@@ -1,0 +1,105 @@
+/* #1509 (Task 16): History's view of a storage 12 job. */
+.history31 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+/* Header31's lines */
+.history31 ::deep .history31-header__list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+}
+
+.history31 ::deep .history31-header__list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-hash-label {
+    color: var(--neutral-foreground-hint, #616161);
+    margin-left: 0.5rem;
+}
+
+.history31 ::deep .history31-migrated {
+    display: block;
+}
+
+.history31 ::deep .history31-stopped {
+    display: block;
+    color: var(--error, #b00020);
+}
+
+.history31 ::deep .history31-limits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.history31-download-error,
+.history31-verify-error {
+    color: var(--error, #b00020);
+    margin: 0.25rem 0 0;
+}
+
+.history31-verified--ok .history31-verified__summary {
+    color: var(--success, #107c10);
+}
+
+.history31-verified--failed .history31-verified__summary {
+    color: var(--error, #b00020);
+}
+
+.history31-check-lines {
+    list-style: none;
+    margin: 0.25rem 0 0;
+    padding: 0;
+}
+
+.history31-check-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+}
+
+.history31-check-line__detail {
+    overflow-wrap: anywhere;
+}
+
+.history31-banners {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history31-banner {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid var(--warning, #c87400);
+    background: var(--neutral-layer-2, #f5f5f5);
+}
+
+.history31-banner--blocked,
+.history31-banner--failed,
+.history31-banner--delivery-failed {
+    border-left-color: var(--error, #b00020);
+}
+
+.history31-section__title {
+    margin: 0.5rem 0 0.25rem;
+    font-size: 1rem;
+}
