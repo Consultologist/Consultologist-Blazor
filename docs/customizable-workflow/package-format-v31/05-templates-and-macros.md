@@ -52,7 +52,7 @@ a `kind: agent` node's header holds the members that govern its prompt and reply
 
 | Member | Type | Null | Meaning |
 |---|---|---|---|
-| `onInvalid` | `"retry"` or `"fail"` | no | what an invalid reply does: a reply that fails its format, or a macro marker check (§ 8.6). `retry` asks once more; `fail` fails the job. As at version 30. |
+| `onInvalid` | `"retry"` or `"fail"` | no | what an invalid reply does: a reply that fails its format, or a macro marker check (§ 8.6). `retry` asks once more; `fail` fails the job. As at version 30, but for 30's `flag`, which kept a reply that did not fit: the migration writes it `retry` (part 10 § 1.2). |
 | `failIfEmpty` | string | yes: an empty value doesn't fail | the sentence the job fails with when the reply's value is empty. Carried over from version 30 unchanged, and always written (`null` when unused). |
 | `parts` | object | yes: none | the node's conditional prompt text (§ 7) |
 | `ordered` | boolean | no | whether triggered macro markers must come back in order (§ 8.5) |

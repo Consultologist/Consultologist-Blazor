@@ -2399,9 +2399,11 @@ It works in three steps, and never throws on package text:
    `{ "var": … }` of its 31 path (an input read bare is `input.x.value`, or `input.x.content` for a text format; a
    classifier's `.value` is `.value.value`); `==` and `!=` are `===` and `!==`; a chain of `&&` or `||` is one `and` or
    `or`; `array.size` and `.size` on a list are `size`; `string.downcase`, `strip`, `starts_with`, `ends_with` and
-   `contains` are `lower`, `trim`, `starts_with`, `ends_with` and `in`; `date.parse` of a `YYYY-MM-DD` literal is the
-   literal; a `let`'s object is the `object` operation. Anything else is one S10-003 per construct. A rule nested past
-   `SourceBounds.JsonDepth` (counting the header that holds it) is S10-003 too.
+   `contains` are `lower`, `trim`, `starts_with`, `ends_with` and `in`, but `string.contains` on a list (which 30 searched
+   as the list written as text, where 31's `in` on a list is membership) is A10-073, a hand edit's reason (#1508,
+   comment 5, item 2); `date.parse` of a `YYYY-MM-DD` literal is the literal; a `let`'s object is the `object`
+   operation. Anything else is one S10-003 per construct. A rule nested past `SourceBounds.JsonDepth` (counting the
+   header that holds it) is S10-003 too.
 3. **Type it** (`V31/Migration/ConditionTyping.cs`) with area 04's `ExpressionChecker` over a `ConversionScope`. A
    `Condition` must yield a boolean (S03-025); a `Value` (a `let`, a `case` subject) may yield any type, and is held to
    `declared` when given (S03-026). A refusal is the checker's sentence, unchanged.
@@ -2410,7 +2412,16 @@ It works in three steps, and never throws on package text:
 its reads; `BlankConversions` holds the read paths), and the migration says A10-008 for it. **`trim(x) == ""`** on a
 text is written `blank(x)` (`!=` is `!blank(x)`), as part 05 § 7's migrated `test/general` writes it; where `x` can be
 null at 31 and 30 read it as text (a node that did not run, a field of an object input), it is in `TrimBlanks` and the
-migration says A10-050. That difference for a null `x` is unruled: it goes to the owner (the plan's *Results*).
+migration says A10-050. That difference for a null `x` is expected (#1508, comment 5, item 8: the condition reason
+`blank-conversion` of `ExpectedDifferences.ConditionReasons`).
+
+**Kept as 30 meant** (#1508, comment 5, item 2). **Text compared with a literal** (`x == "lit"`, S03-002 as written) is
+`{ "in": [x, ["lit"]] }`, and `!=` its negation: exact membership, which the checker accepts for a text needle in a
+written list of string literals; each is in `TextLiterals` and the migration says A10-074. **A comparison of the `size`
+of a list that can be null** is written with its null test, so a null list counts 0 as 30's absent list did: one that
+holds at 0 is `x === null or …` (`size(x) == 0`), one that does not `x !== null and …` (`size(x) > 0`; `!= 0` is
+written `> 0`), and against an operand not a number literal, `if x === null then <the comparison with 0> else …`. A10-027
+is still said for each such `size`.
 
 **`ConversionScope(Inputs, Nodes, Item, ItemIsFolderItem, InWhile, Formats)`** is what an expression can read where it
 sits: each input's 31 format, each 30 node as a `ConversionRead(Path, Format)` (where 31 reads it, `node.<id>` or
@@ -2478,7 +2489,8 @@ line endings, a JSON Logic value in canonical order.
 
 Then, with `WriteSnapshot`, the snapshot test (below). Other notices: A10-021 (a format's free-text field), A10-026 (a
 lone carriage return became a line end), A10-027 (`size` over a list that can be null), A10-030 (a member 31 has no
-form for, dropped), A10-013 (`onInvalid: flag`). `V31/Migration/MigrationSentences.cs` holds every S10 and A10 sentence
+form for, dropped), A10-013 (`onInvalid: flag`, written `retry`: one more attempt with the validation error, then the
+node fails; #1508, comment 5, item 3), A10-074 (text compared with a literal written `in`). `V31/Migration/MigrationSentences.cs` holds every S10 and A10 sentence
 the migration says, one method each.
 
 **Hand edits and the invariant (§ 1.4).** What the rewrite cannot decide is written where the 31 checker refuses it

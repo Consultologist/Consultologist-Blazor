@@ -315,7 +315,7 @@ nullable; "text" is any text format (`plaintext`, `markdown_block`, `markdown_in
 | `-` | 1 (negation) or 2 | `number` | `number` | `null` if any operand is `null` | |
 | `/`, `%` | 2 | `number` | `number` | `null` if any operand is `null`; division or remainder by zero gives `null` | |
 | `min`, `max` | 1 or more | `number` | `number` | `null` if any operand is `null` | part of arithmetic |
-| `in` (list) | 2: `[needle, list]` | data needle; a `list` of the same data type | `boolean` | `null` needle: true only if the list holds `null`; `null` list: false | membership: `input.note_type.value in ["consult", "follow_up"]` |
+| `in` (list) | 2: `[needle, list]` | data needle; a `list` of the same data type; or a text needle and a written list of string literals ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 2) | `boolean` | `null` needle: true only if the list holds `null`; `null` list: false | membership: `input.note_type.value in ["consult", "follow_up"]`; a text is a member when it is exactly one of the literals (ordinal), the form the migration gives 30's `x == "lit"` on text |
 | `in` (text) | 2: `[needle, haystack]` | a `string` needle; a text or `string` haystack | `boolean` | either `null`: false | exact, case-sensitive substring search (ordinal); on Markdown it searches the source ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878673101)) |
 | `cat` | 2 or more | `string`, `number`, plain-text formats | `string` when every operand is `string`; `plaintext` otherwise | a `null` operand contributes `""` (json-logic-js writes `"null"`) | Markdown operands refused (convert with `plain` first, so one result has one media type); numbers in the invariant culture |
 
@@ -550,8 +550,9 @@ The checker types every rule against the dialect (part 02), reading formats as t
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878621423)):
   - **data** (`string`, `number`, `boolean`, `date`) supports `===`, `!==`, `in` (membership),
     and orderings on numbers and dates;
-  - **text** supports `blank`, `size`, `words`, `lines`, `in` (search), `starts_with`,
-    `ends_with`, `matches`, `has_word`, `lower`, `trim`, `plain` and `cat` (plain text only).
+  - **text** supports `blank`, `size`, `words`, `lines`, `in` (search, and membership in a written
+    list of string literals), `starts_with`, `ends_with`, `matches`, `has_word`, `lower`, `trim`,
+    `plain` and `cat` (plain text only).
 - **Refused on text:** `===`/`!==` against a literal or another text; `<`, `>`, `<=`, `>=`;
   `substr`; `!` as a blank test.
 - **Numbers** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) are IEEE doubles. An operation whose result isn't finite (an overflow,
