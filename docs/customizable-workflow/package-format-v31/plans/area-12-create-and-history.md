@@ -613,7 +613,7 @@ at l.310; `Run.Read`, l.1031, its `input` case l.1056–1068); Tests `tests/V31M
 **Interfaces — Produces:** `TemplateRewriter.ThirtyDatePattern = "%d %b %Y"` (internal const); `Run.Read(…, bool wrap,
 bool output = false)`.
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
   - `MigrateTemplatesTests.AWholeDateInput_IsWrittenIn30sForm`: `example-conditional-documents`'
     `nodes/sections_consult_note_section/consult_note_section.md` body holds
     `Encounter date: {{ input.seen_on.value | date.to_string "%d %b %Y" }}`; `example-v12-constructs`' `nodes/patient_header.md`
@@ -625,12 +625,12 @@ bool output = false)`.
     `#prompts/node.sections_consult_note_section.consult_note_section:assessment` and `example-v12-constructs/default`'s
     `#renders/node.patient_header` are equal (absent 31-only prompts aside, F1's).
   - The migrated packages still publish (`MigratedPackagesTests.NoHandEdit_MeansPublishRefusesNothing`).
-- [ ] **Step 2: Run, fail.**
-- [ ] **Step 3: Implement.** `Output` calls `Read(chain, head, vars, sink, false, output: true)`. In `Read`'s `input` case
+- [x] **Step 2: Run, fail.**
+- [x] **Step 3: Implement.** `Output` calls `Read(chain, head, vars, sink, false, output: true)`. In `Read`'s `input` case
   with `steps.Count == 1`, when `output` and the input's format is the JSON string `"date"`, the inserted text at `End(token)`
   is `.value | date.to_string "%d %b %Y"` (one edit, so `Order` sees one insertion) in place of `.value`. Nothing else.
-- [ ] **Step 4: Run** the V31 run.
-- [ ] **Step 5: Docs.** Part 10 § 1.2's bare-read row (l.78) gains: *"a date input read whole is written
+- [x] **Step 4: Run** the V31 run.
+- [x] **Step 5: Docs.** Part 10 § 1.2's bare-read row (l.78) gains: *"a date input read whole is written
   `{{ input.x.value | date.to_string "%d %b %Y" }}`, 30's `09 Nov 2026` ([ruled](…#issuecomment-7199237966), item 2); a new
   package keeps the ISO form (#357)"*; twin § 10.1. **Commit** `PackageFormat (#1509): a date input read whole migrates in 30's "%d %b %Y" form`,
   `Docs (#1509): …`; tick; push.
@@ -1007,3 +1007,4 @@ is registered at l.211, so DI needs no change).
 - Task 18: a row's disclosure is a button with `aria-expanded` (as Task 17's), and a collapsed row draws only its line (title, key, kind, stored status, a call's function, the run-dependent mark, its `stateReason`); its body (hashes, agent, sub-rows, decisions, text, the rows inside it) is drawn only once opened, which is when its text is fetched (an owner with no row fetches nothing). Which rows are open is held by `Nodes31` and shared with each row through `Nodes31.View`; a `#row-<key>` fragment, on arrival or on `LocationChanged`, and a sub-row's link clicked in the section (`@onclick:preventDefault`, since `<base href="/">` resolves a bare `#…` link to the home page), open the row holding the target (the row, a decision's owner, or the longest leading part of a sub-row id cut at `/` that is a row) and every row it sits in, by the tree `NodeTree31` built, then focus it (`ElementReference.FocusAsync`, `tabindex="-1"`). The engine stores S09-010 to S09-012 whole (with *Run the workflow again later.*) though part 08 calls that History's half: `HistorySentences31.StateReason` shows a stored reason as it is and adds `RunAgainLater` only to a limits sentence that lacks it. *computed from model text: <keys>* names the model-derived `node.*` sources of the row's rooted key (`nodeId`) in the job's `resolve.json` `graph.edges` (kinds `reads`, `for`, `ret`; model-derived as `resolve.json`'s `nodes` declare, else as a record row says), passed from the content History already loads; with no graph the row says *model-derived*; an agent row says neither. *substituted, not sent* and *no single classifier* are constants of `HistorySentences31` (labels from part 08 and R4, not registry sentences). A sub-row repeated per template `pass` carries `id="row-<id>"` on its first occurrence only (an id must be unique in the page) and shows its `pass` on each; a node's run spots use the classes `history31-node-spot*`, apart from Run facts' `history31-spot*`. `Record31Fixtures` gained `NodeRow` and `DecisionRow` (the engine's writers, the decision's two flags given).
 - Task F9: the weekly summary's `OutstandingHandEdits` takes `EngineLimitSettings` and counts at `PublishLimits` only (it writes no snapshot, so `RunLimits` is not given there); `MigratePackage` also passes `limits.Limits` to `MigrationReport.WorstCaseNote` (its existing `limits` parameter), which the ruling's "all count at the configured limits" covers though the brief's call-site list named it. Not done here: the PR's minors (#1535 § 6, first bullet) live in the PR body, not the repo.
 - Task F7: `AnswersSent` reads 30's text before its answer line with its end trimmed (`old[..^line.Length].TrimEnd()`, not the brief's untrimmed slice), as 31's `WorkflowCustomPrompt.Compose` trims the rendered prompt's end before the trailer; without it the prompt's own last line ending (`…}}\n`) stays a remainder. The goldens turned red by F7: `MigratedPackagesTests.TheMigratedSource_IsTheGolden`, `ByteEquivalenceTests.TheReport_IsTheGolden`, `HandEditsTests.TheReport_IsTheGolden`.
+- Task F2: `ByteEquivalenceTests.ADifferenceNoRuleExplains_IsUnexpected` used the encounter date as its unexpected difference, which is now equal; it builds its difference from a captured prompt with an added line instead. `MigrateNodesTests.TheRenderedFormat_IsARenderedNode_OfATextFormat_ItsTemplateKept` expects the date in 30's form. No golden turned red that F7 had not (the same three are red).
