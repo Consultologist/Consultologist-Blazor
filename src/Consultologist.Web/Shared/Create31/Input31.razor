@@ -179,9 +179,14 @@
                 @Hint(shape, value, due)
                 break;
 
-            case InputWidget.Area:
             case InputWidget.Markdown:
-                @* Task 10 (D5): a Markdown field becomes MarkdownInput here and in the page's slot; until then, the text area. *@
+                <MarkdownInput Value="@value.Text" Label="@label" Rows="6"
+                               ValueChanged="@(text => EditAsync(() => value.Text = text ?? string.Empty))" />
+                @Snippet(value)
+                @Hint(shape, value, due)
+                break;
+
+            case InputWidget.Area:
                 <FluentTextArea class="input31__control" Rows="3"
                                 @bind-Value="value.Text" @bind-Value:after="NotifyAsync"
                                 aria-label="@label" />

@@ -1394,11 +1394,18 @@
                  placeholder="@input.Placeholder"
                  aria-label="@input.Label" />
         }
+        else if (input.IsMarkdown)
+        {
+          @* #1509 (D5): a 31 Markdown input replaces only the text control; the slot's documents, runs and snippets stay. *@
+          <MarkdownInput Value="@input.Value"
+                         ValueChanged="@(text => input.Value = text ?? string.Empty)"
+                         Label="@input.Label" Required="@input.Required" Rows="@input.Rows"
+                         Placeholder="@input.Placeholder" />
+        }
         else
         {
         @* Bound to the input's own property: Blazor's expression formatter
-           cannot parse an indexer whose argument is a property access.
-           #1509: a 31 Markdown input draws this text area until Task 10's MarkdownInput (D5). *@
+           cannot parse an indexer whose argument is a property access. *@
         <FluentTextArea @ref="input.TextArea"
                         @bind-Value="input.Value"
                         Placeholder="@input.Placeholder"
@@ -4354,6 +4361,9 @@
     /// <summary>#1509: a 31 `string` (InputWidget.Line) draws a single-line field in place of the text area.</summary>
     public bool SingleLine { get; set; }
 
+    /// <summary>#1509 (D5): a 31 `markdown_block` draws MarkdownInput in place of the plain text area.</summary>
+    public bool IsMarkdown { get; set; }
+
     public bool IsTouched => Type == WorkflowInputTypes.Boolean ? Flag.HasValue : !string.IsNullOrWhiteSpace(Value);
 
     /// <summary>What this input sends, or null when nothing was chosen — or, for a number, nothing parseable.</summary>
@@ -4551,11 +4561,13 @@
 
     /// <summary>#1509: the rows of a 31 array of `string` are single-line fields.</summary>
     public bool RowsSingleLine { get; set; }
+    public bool RowsMarkdown { get; set; }
 
     public ConsultInputNode AddRow()
     {
       var row = new ConsultInputNode(Id, Label, true, Element?.Type, Element?.Values, Element?.Items, Element?.Fields, Depth + 1);
       row.Scalar.SingleLine = RowsSingleLine;
+      row.Scalar.IsMarkdown = RowsMarkdown;
       Rows.Add(row);
       return row;
     }
@@ -4724,7 +4736,9 @@
       if (shape31 is not null)
       {
         Root.Scalar.SingleLine = shape31.Widget == InputWidget.Line;
+        Root.Scalar.IsMarkdown = shape31.Widget == InputWidget.Markdown;
         Root.RowsSingleLine = shape31.Items?.Widget == InputWidget.Line;
+        Root.RowsMarkdown = shape31.Items?.Widget == InputWidget.Markdown;
       }
     }
 

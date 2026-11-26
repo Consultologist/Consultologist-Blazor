@@ -1,0 +1,90 @@
+@using Consultologist.Web.Shared.WorkflowEditor
+@inject IJSRuntime JS
+@* #1509 (D5, part 09 § 5.1): a `markdown_block` input. A text area holding Markdown, a toolbar that wraps or prefixes
+   the selection, and a Preview toggle rendered by MarkdownPreview (the same sanitising as every other preview). The
+   value reported is the Markdown text; no HTML is stored. Only the text control: the page's slot keeps the documents,
+   earlier runs and snippets around it. The toolbar sits in the preventDefault wrapper the repo's traps ask for, because
+   the page may draw this inside a <label>. *@
+
+<div class="markdown-input">
+    <div class="markdown-input__toolbar" role="toolbar" aria-label="@(Label) formatting"
+         @onclick:preventDefault="true" @onclick:stopPropagation="true">
+        @if (!previewing)
+        {
+            @foreach (var tool in Tools)
+            {
+                <button type="button" class="markdown-input__button" data-format="@tool.Key" aria-label="@tool.Label"
+                        title="@tool.Label" @onclick="() => ApplyAsync(tool)">@tool.Glyph</button>
+            }
+        }
+        <button type="button" class="markdown-input__button markdown-input__toggle" data-action="preview"
+                aria-pressed="@(previewing ? "true" : "false")"
+                @onclick="() => previewing = !previewing">@(previewing ? "Edit" : "Preview")</button>
+    </div>
+    @if (previewing)
+    {
+        <div class="markdown-input__preview" aria-label="@(Label) preview">
+            @((MarkupString)MarkdownPreview.Render(Value ?? string.Empty))
+        </div>
+    }
+    else
+    {
+        <FluentTextArea @ref="area" class="markdown-input__text"
+                        Value="@(Value ?? string.Empty)"
+                        ValueChanged="ReportAsync"
+                        Rows="@Rows"
+                        Placeholder="@Placeholder"
+                        aria-label="@Label" />
+    }
+</div>
+
+@code {
+    private sealed record Tool(string Key, string Label, string Glyph, string Before, string After, string LinePrefix);
+
+    private static readonly Tool[] Tools =
+    [
+        new("bold", "Bold", "B", "**", "**", string.Empty),
+        new("italic", "Italic", "I", "*", "*", string.Empty),
+        new("heading", "Heading", "H", string.Empty, string.Empty, "## "),
+        new("bulleted", "Bulleted list", "•", string.Empty, string.Empty, "- "),
+        new("numbered", "Numbered list", "1.", string.Empty, string.Empty, "1. "),
+    ];
+
+    private FluentTextArea? area;
+    private bool previewing;
+
+    [Parameter] public string? Value { get; set; }
+
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter] public string Label { get; set; } = string.Empty;
+
+    [Parameter] public bool Required { get; set; }
+
+    [Parameter] public int Rows { get; set; } = 10;
+
+    [Parameter] public string? Placeholder { get; set; }
+
+    private async Task ReportAsync(string? text)
+    {
+        Value = text;
+        await ValueChanged.InvokeAsync(text);
+    }
+
+    private async Task ApplyAsync(Tool tool)
+    {
+        if (area?.Element is not { } element)
+        {
+            return;
+        }
+
+        var result = await JS.InvokeAsync<WrapResult?>(
+            "consultologistMarkdown.wrapSelection", element, tool.Before, tool.After, tool.LinePrefix);
+        if (result?.Value is { } value)
+        {
+            await ReportAsync(value);
+        }
+    }
+
+    private sealed record WrapResult(string? Value, int SelectionStart, int SelectionEnd);
+}
