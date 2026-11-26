@@ -7,6 +7,7 @@ using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Migration;
 
 namespace Consultologist.Api.Tests.V31Migration;
 
@@ -224,6 +225,117 @@ public class MigrateDeliverablesTests
             root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "single")["if"] = unconvertible);
         var only = Assert.Single(always.HandEdits, e => e.StartsWith("Hand edit needed in deliverables/single.md, if: ", StringComparison.Ordinal));
         Assert.DoesNotContain("30 skipped the deliverable", only, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RanTerm_PrefersState_ThenTheValue_ThenNothing()
+    {
+        // #1508 (2026-11-26, item 8; F-D12): R15's term is the source's state where the deliverable's if can read it, else
+        // its value not null (the fallback), else none: the source is one the migration does not read.
+        Assert.Equal("""{"===":[{"var":"node.x.state"},"completed"]}""", Migrate.RanTerm("node.x", _ => true)!.ToJsonString());
+        Assert.Equal(
+            """{"!==":[{"var":"node.x.value"},null]}""",
+            Migrate.RanTerm("node.x", t => !t.ToJsonString().Contains(".state", StringComparison.Ordinal))!.ToJsonString());
+        Assert.Null(Migrate.RanTerm("node.x", _ => false));
+    }
+
+    [Fact]
+    public void TheStateTerm_TypesAtADeliverableIf_AndACheckReadDoesNot()
+    {
+        // F-D12: the migration's typing scope reads a node's .state as ScopeTree types it, and a deliverable's if may read it
+        // (ExpressionChecker's site rule refuses only .content and check.* there, S03's).
+        var scope = TemplateRewriterTests.Working("composer-sources").Scope((string?)null);
+        Assert.True(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"===":[{"var":"node.plan_gate.state"},"completed"]}""")!, scope));
+        Assert.True(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"!==":[{"var":"node.plan_gate.value"},null]}""")!, scope));
+        Assert.False(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"===":[{"var":"check.note_coverage.state"},"completed"]}""")!, scope));
+
+        // Near misses: a read of .content is refused at the site, and a state that is not compared is no condition.
+        Assert.False(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"===":[{"var":"node.plan_gate.content"},"x"]}""")!, scope));
+        Assert.False(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"var":"node.plan_gate.state"}""")!, scope));
+    }
+
+    /// <summary>
+    /// <c>composer-sources</c> with <c>plan</c>'s 30 condition and sources set, migrated through the deliverables pass with
+    /// <paramref name="unread"/> taken out of <see cref="Migrated.NodeReads"/> first: the seam where a source is one the
+    /// migration does not read (30 refuses a source naming no node, so no package given reaches it).
+    /// </summary>
+    private static Migration31Result WithUnread(string? condition, string[] sources, params string[] unread)
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var root = JsonNode.Parse(json)!.AsObject();
+        var plan = root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan");
+        plan["if"] = condition;
+        plan["sources"] = new JsonArray([.. sources.Select(s => (JsonNode)s)]);
+        var (given, refusals) = Migrated.Read(root.ToJsonString(), new Dictionary<string, string>(files, StringComparer.Ordinal), MigrationFixture.Options("composer-sources"));
+        Assert.True(given is not null, string.Join("\n", refusals));
+        var (m, renames) = Migrate.Renames.Apply(given!);
+        Assert.True(m is not null, string.Join("\n", renames));
+        Migrate.Layout(m!);
+        Migrate.Inputs(m!);
+        Migrate.Nodes(m!);
+        Migrate.Templates(m!);
+        Migrate.Macros(m!);
+        Migrate.Checks(m!);
+        foreach (var id in unread)
+            Assert.True(m!.NodeReads.Remove(id));
+        Migrate.Deliverables(m!);
+        return m!.Result([]);
+    }
+
+    [Fact]
+    public void ASourceTheMigrationDoesNotRead_IsAHandEdit()
+    {
+        // #1508 (2026-11-26, item 8; F-D13): every source may not run and the migration cannot read whether one ran, so it
+        // writes no if that would leave it out: a hand edit (A10-086), so nothing is released empty without a notice. 30's
+        // condition is kept as converted, and the term of the sources it can read is named for the operator to join.
+        const string start = "Hand edit needed in deliverables/plan.md, if: ";
+        var two = WithUnread("input.tone == \"formal\"", ["node.plan_gate", "node.tone_case"], "tone_case");
+        Assert.Equal("""{"===":[{"var":"input.tone.value"},"formal"]}""", MigrateNodesTests.Md(two, "deliverables/plan.md").Header["if"]!.ToJsonString());
+        AssertHandEdit(two, "deliverables/plan.md", "if", "A10-086",
+            "every source may not run, and the migration cannot read whether node.tone_case ran; write the if that skips the deliverable "
+            + """when none of its sources ran, as 30 skipped it, joining {"===":[{"var":"node.plan_gate.state"},"completed"]} for the others.""");
+        Assert.Single(two.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+        Assert.DoesNotContain(two.Notices, n => n.StartsWith("deliverables/plan.md, if: written to skip", StringComparison.Ordinal));
+
+        // Every source unread: the clause for the others is not said, and the if stays as 30 wrote it (none).
+        var all = WithUnread(null, ["node.plan_gate", "node.tone_case"], "plan_gate", "tone_case");
+        Assert.Null(MigrateNodesTests.Md(all, "deliverables/plan.md").Header["if"]);
+        AssertHandEdit(all, "deliverables/plan.md", "if", "A10-086",
+            "every source may not run, and the migration cannot read whether node.plan_gate, node.tone_case ran; write the if that "
+            + "skips the deliverable when none of its sources ran, as 30 skipped it.");
+
+        // The near miss: beside a source that always runs, the deliverable is never empty: no if, no hand edit, as today.
+        var always = WithUnread(null, ["node.plan_gate", "node.tone_case", "node.opening"], "tone_case");
+        Assert.Null(MigrateNodesTests.Md(always, "deliverables/plan.md").Header["if"]);
+        Assert.DoesNotContain(always.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+
+        // Every source read, through the same seam: today's if, no hand edit.
+        var read = WithUnread(null, ["node.plan_gate", "node.tone_case"]);
+        Assert.Equal(
+            """{"or":[{"===":[{"var":"node.plan_gate.state"},"completed"]},{"===":[{"var":"node.tone_case.state"},"completed"]}]}""",
+            MigrateNodesTests.Md(read, "deliverables/plan.md").Header["if"]!.ToJsonString());
+        Assert.DoesNotContain(read.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NoPackage30Accepts_HasASourceTheMigrationDoesNotRead()
+    {
+        // Why ASourceTheMigrationDoesNotRead_IsAHandEdit works at the seam: 30 refuses a source that names no node and one
+        // that is a check (whose check.* read no deliverable if can hold), and every other source is a node whose .state the
+        // deliverable's if reads. So A10-086 and R15's .value fallback guard what 30 never let through (item 8, F-D12).
+        static string Refused(string source)
+        {
+            var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-gates");
+            var root = JsonNode.Parse(json)!.AsObject();
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "patient_copy")["sources"] =
+                new JsonArray("node.patient_line", source);
+            var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), new Dictionary<string, string>(files, StringComparer.Ordinal), MigrationFixture.Options("composer-gates"));
+            Assert.False(result.Succeeded);
+            return string.Join("\n", result.Refusals);
+        }
+
+        Assert.Contains("Deliverable 'patient_copy' source names unknown node 'nowhere'.", Refused("node.nowhere"), StringComparison.Ordinal);
+        Assert.Contains("Deliverable 'patient_copy' source node.note_coverage is a check;", Refused("node.note_coverage"), StringComparison.Ordinal);
     }
 
     [Fact]

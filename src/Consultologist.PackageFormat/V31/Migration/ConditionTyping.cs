@@ -92,6 +92,21 @@ internal static class ConditionTyping
     }
 
     /// <summary>
+    /// #1508 (2026-11-26, item 8; F-D12): whether <paramref name="logic"/> is a condition a deliverable's <c>if</c> can hold
+    /// over <paramref name="conversion"/>: checked at a site of kind <see cref="ExpressionSiteKind.DeliverableIf"/> (so
+    /// part 03's site rule refuses a <c>check.*</c> read and a node's <c>.content</c> there), with no refusal and a
+    /// boolean type. What R15 asks of the term it would join (<c>Migrate.RanTerm</c>).
+    /// </summary>
+    public static bool ReadsAtDeliverableIf(JsonNode logic, ConversionScope conversion)
+    {
+        ArgumentNullException.ThrowIfNull(logic);
+        ArgumentNullException.ThrowIfNull(conversion);
+        var site = new ExpressionSite(ExpressionSiteKind.DeliverableIf, "The read", "if", "", null, null);
+        var check = ExpressionChecker.Check(logic, site, new Scope(conversion), conversion.Formats);
+        return check.Refusals.Count == 0 && check.Type?.Format is { } format && FormatTypes.Shape(format, conversion.Formats) == FormatShape.Boolean;
+    }
+
+    /// <summary>
     /// Each operand of a <c>size</c> in <paramref name="logic"/>, printed, whose list can be <c>null</c> over
     /// <paramref name="conversion"/> (a nullable format, an optional input, a node not always valued): there 31's
     /// <c>size</c> is <c>null</c> where 30 counted 0 (the Task 4 ruling), in written order, each once.
@@ -494,7 +509,8 @@ internal static class ConditionTyping
     /// <item><c>input.&lt;id&gt;</c>, each input of the scope, read through <c>.value</c>, <c>.content</c> or
     /// <c>.title</c> of its format, nullable unless it is in <see cref="ConversionScope.RequiredInputs"/>;</item>
     /// <item>each node at its <see cref="ConversionRead.Path"/> (the longest that starts the path), read the same way,
-    /// nullable unless it is <see cref="ConversionRead.AlwaysValued"/>;</item>
+    /// nullable unless it is <see cref="ConversionRead.AlwaysValued"/>, and its <c>.state</c> one of the words
+    /// <c>completed</c>, <c>skipped</c>, <c>not_run</c> (#1508, item 8: what R15's term reads);</item>
     /// <item><c>item.id</c> a <c>string</c> inside a loop; <c>item.value</c> the loop's element when the scope has one;
     /// <c>item.content</c> a snippet folder item's <c>markdown_block</c> (as area 05's <c>ScopeTree</c> has them);</item>
     /// <item><c>pass.number</c> an integer inside a <c>while</c>; <c>run.&lt;fact&gt;</c> as <see cref="PackageScope"/> types it.</item>
@@ -539,22 +555,32 @@ internal static class ConditionTyping
         /// <summary>A two-segment head already a value of <paramref name="format"/>.</summary>
         private static ScopeHead Value(JsonNode format) => new(ScopeHeadKind.Value, 2, format, false, null);
 
-        /// <summary>The node whose path is the longest that starts <paramref name="segments"/>, as a head of that many segments.</summary>
+        /// <summary>
+        /// The node whose path is the longest that starts <paramref name="segments"/>, as a head of that many segments; or,
+        /// when the next segment is <c>state</c> (#1508, item 8, F-D12), its run's state, a value one segment longer of the
+        /// three words <c>completed</c>, <c>skipped</c>, <c>not_run</c>, as <c>ScopeTree.Member</c> types it.
+        /// </summary>
         private ScopeHead? Node(IReadOnlyList<string> segments)
         {
-            ScopeHead? found = null;
+            ConversionRead? found = null;
+            var length = 0;
             foreach (var read in conversion.Nodes.Values)
             {
                 var path = read.Path.Split('.');
-                if (path.Length <= segments.Count && (found is null || path.Length > found.Length)
+                if (path.Length <= segments.Count && path.Length > length
                     && path.Select((s, i) => string.Equals(s, segments[i], StringComparison.Ordinal)).All(same => same))
                 {
-                    // A node that may not have completed reads null (part 03 § 6.1), as ScopeTree types it.
-                    found = new ScopeHead(ScopeHeadKind.Format, path.Length, read.Format, !read.AlwaysValued, null);
+                    found = read;
+                    length = path.Length;
                 }
             }
 
-            return found;
+            if (found is null)
+                return null;
+            if (length < segments.Count && segments[length] == "state")
+                return new ScopeHead(ScopeHeadKind.Value, length + 1, new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("completed", "skipped", "not_run") }, false, null);
+            // A node that may not have completed reads null (part 03 § 6.1), as ScopeTree types it.
+            return new ScopeHead(ScopeHeadKind.Format, length, found.Format, !found.AlwaysValued, null);
         }
     }
 }

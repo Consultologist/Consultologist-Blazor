@@ -251,7 +251,9 @@ internal static class V31Contract
     /// review, and A10-083: the defaults the bulk publish says it used for a package with no options.json, area 11 Task 36;
     /// A10-084: a deliverable whose sources may all not run and whose condition is a hand edit, the term A10-079 would have
     /// joined, a hand edit's reason, the final review of Part F; A10-074's words corrected and A10-085: an input's text
-    /// compared with a literal that starts with white space, a hand edit's reason, #1508 2026-11-26 item 6, area 12 Task F6).
+    /// compared with a literal that starts with white space, a hand edit's reason, #1508 2026-11-26 item 6, area 12 Task F6;
+    /// A10-086: a deliverable whose sources may all not run and one of whose runs the migration cannot read, a hand edit's
+    /// reason, #1508 2026-11-26 item 8, area 12 Task F8).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -338,6 +340,7 @@ internal static class V31Contract
         ["A10-083"] = "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.",
         ["A10-084"] = "every source may not run, and 30 skipped the deliverable when none ran; join <term> to 30's condition by and.",
         ["A10-085"] = "'<comparison>' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.",
+        ["A10-086"] = "every source may not run, and the migration cannot read whether <sources> ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it<, joining <term> for the others>.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>
@@ -539,6 +542,14 @@ internal static class V31Contract
             // The row must still start with the word the slice below replaces.
             Assert.StartsWith("Loop '", row);
             pattern = "^(?:Loop|While|If|Case)" + pattern["^Loop".Length..];
+        }
+
+        // A10-086's last clause (", joining <term> for the others") is said only when another source has a term.
+        if (refusal.Id == "A10-086")
+        {
+            const string optional = " it.+?\\.$";
+            Assert.EndsWith(optional, pattern, StringComparison.Ordinal);
+            pattern = pattern[..^optional.Length] + " it(?:, joining .+? for the others)?\\.$";
         }
 
         Assert.True(

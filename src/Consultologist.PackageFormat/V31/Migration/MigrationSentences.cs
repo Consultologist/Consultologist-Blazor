@@ -472,6 +472,17 @@ internal static class MigrationSentences
         $"every source may not run, and 30 skipped the deliverable when none ran; join {term} to 30's condition by and.";
 
     /// <summary>
+    /// A10-086 (#1508, 2026-11-26, item 8; R15, F-D13): a reason: every source of the deliverable may not run, and the
+    /// migration cannot read whether the <paramref name="unread"/> ones ran (a node it does not know, or one whose run the
+    /// deliverable's <c>if</c> cannot read), so it writes no <c>if</c> and the operator writes the one that skips the
+    /// deliverable as 30 did; <paramref name="others"/>, when given, is the term (canonical JSON Logic) that says one of the
+    /// other sources ran.
+    /// </summary>
+    public static string SourceRunNotRead(IReadOnlyList<string> unread, string? others) =>
+        $"every source may not run, and the migration cannot read whether {string.Join(", ", unread)} ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it"
+        + (others is null ? "." : $", joining {others} for the others.");
+
+    /// <summary>
     /// A10-080 (#1508, comment 7, Q5; R17; part 10 § 1.4): a reason: the template reads <paramref name="path"/> at
     /// <paramref name="line"/> through <paramref name="through"/>, which can be null (A11-009 refuses it at publish), at a
     /// place the dialect holds no <c>if</c> (a part's text, A07-002; a test or an argument): the migration cannot write the
