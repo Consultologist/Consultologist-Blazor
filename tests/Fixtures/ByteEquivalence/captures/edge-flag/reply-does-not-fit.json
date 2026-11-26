@@ -1,0 +1,41 @@
+{
+  "package": "edge-flag",
+  "tag": null,
+  "scenario": "reply-does-not-fit",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "summary": {
+      "line": 71
+    },
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued."
+  },
+  "prompts": [
+    {
+      "key": "summary",
+      "hash": "sha256:fe8b60a262c5e43533969a07d3bb0ff8886d1b6f71db541328882b0e4d0f6f11",
+      "text": "Summarise this draft in one line.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"line\"],\"properties\":{\"line\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:5b52f748691d0da4caf302bd3ecce53be049cc1ee1d7dc5abd9fe5a63aa35cb4",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this summary.\n{\"line\":71}\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:84f92bf6746822ab33fb36425a7d6fc1f1542288c356f8ecd2e6291f3e4131fc",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this summary.\n{\"line\":71}\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:afc6525340b0861b6b43777b3e8752fd333bdb46dafc4f69a55375a162117691",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+    }
+  ]
+}

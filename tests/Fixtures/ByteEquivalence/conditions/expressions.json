@@ -91,6 +91,22 @@
       "reads": { "node.topic_loop": { "type": "text", "settled": true } }
     },
     {
+      "id": "edge-answer-outside-set.note.if",
+      "kind": "condition",
+      "expression": "node.triage.value == \"routine\"",
+      "letType": null,
+      "origin": "package edge-answer-outside-set, deliverable note, if",
+      "reads": { "node.triage": { "type": "classification", "values": ["routine", "urgent"] } }
+    },
+    {
+      "id": "edge-no-branch.plan_gate.if",
+      "kind": "condition",
+      "expression": "input.include_plan == true",
+      "letType": null,
+      "origin": "package edge-no-branch, node plan_gate, if",
+      "reads": { "input.include_plan": "boolean" }
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "kind": "condition",
       "expression": "node.scope.value == \"in_scope\"",

@@ -107,6 +107,24 @@
       "listed": []
     },
     {
+      "id": "edge-answer-outside-set.note.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
+      "id": "edge-no-branch.plan_gate.if",
+      "kind": "condition",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 3,
+      "agreed": 3,
+      "listed": []
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "kind": "condition",
       "converted": true,

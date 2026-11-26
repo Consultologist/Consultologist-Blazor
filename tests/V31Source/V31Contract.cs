@@ -133,7 +133,8 @@ internal static class V31Contract
     /// A11-009, Task 26: a member read through a nullable object with no guard on it, Q5 of 2026-11-26, R17;
     /// A11-010 and A11-011, Task 28: the publish warnings of a deliverable that could be released empty and of a loop's fixed
     /// text for items that did not run, Q3 and Q4 of 2026-11-26, R15 and R16; A11-013, Task 32: a judgement node whose prompt
-    /// asks no question, #1508 comment 6 item 1, R13).
+    /// asks no question, #1508 comment 6 item 1, R13; A11-014, Task 35: an agent's onInvalid that is not retry or fail, 30's
+    /// flag among them, comment 5 item 3 and comment 6 item 3).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
@@ -150,6 +151,7 @@ internal static class V31Contract
         ["A11-011"] = "Deliverable '<id>' writes fixed text for every item of <loop key> at line <n>, also for items that did not run. Loop over .value, or guard on state.",
         ["A11-012"] = "<Subject> uses <part or macro> at line <n> in an expression; a part or a macro is placed on its own, as {{ <part or macro> }}, never piped or used in an expression.",
         ["A11-013"] = "Node '<id>' asks nothing: its prompt has no question.",
+        ["A11-014"] = "Node '<id>' has onInvalid <value>; write retry or fail.",
     };
 
     /// <summary>

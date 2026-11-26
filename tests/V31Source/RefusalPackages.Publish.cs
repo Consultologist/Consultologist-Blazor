@@ -8,7 +8,9 @@ namespace Consultologist.Api.Tests.V31Source;
 /// <summary>
 /// #1508 (specVersion 31, area 11): the cases of the publish refusals the owner ruled on #1508: A11-001 (R1, a worst case
 /// that opens more instances than the engine runs for one job), A11-002 (R4, a format file that names a format and defines
-/// the same name itself) and A11-003 (R5, a format past the run's expansion budget). A11-002 is the type step's;
+/// the same name itself) and A11-003 (R5, a format past the run's expansion budget); and (Task 35) A11-014, an agent's
+/// <c>onInvalid</c> that is not <c>retry</c> or <c>fail</c>, the new-package side of the edge-case package <c>edge-flag</c>,
+/// the reader's. A11-002 is the type step's;
 /// A11-001 and A11-003 are publish's compiler's (<see cref="ResolveCompiler.Compile"/>), so an <c>A11-</c> case is judged
 /// by <see cref="Judge"/>: the check, then the compiler against <see cref="CaseLimits"/>, the engine's default limits, which
 /// each case's <c>about</c> states.
@@ -65,6 +67,13 @@ internal static partial class RefusalPackages
             + "definition small, an enum of 2 values.",
             WithChart(),
             WithChart().Edit("formats/codes.json", "\"$ref\": \"#/$defs/small\"", "\"$ref\": \"#/$defs/big\""));
+
+        yield return new RefusalCase("A11-014",
+            "An agent's onInvalid is retry or fail (chapter 5 § 5.1.2); 30's flag, which kept a reply that did not fit its format, "
+            + "has no 31 form, and the migration writes retry (ruled by the owner on #1508, 2026-11-25, item 3; the edge-case "
+            + "package edge-flag, 2026-11-25T19:06Z, item 3). Valid: the plan's onInvalid is retry. Invalid: it is flag.",
+            Minimal(),
+            Minimal().Edit("nodes/plan.md", "\"onInvalid\": \"retry\"", "\"onInvalid\": \"flag\""));
     }
 
     /// <summary>

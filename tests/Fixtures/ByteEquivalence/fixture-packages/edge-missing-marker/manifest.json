@@ -1,0 +1,62 @@
+{
+  "name": "edge-missing-marker",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Edge case: a reply that leaves the macro out",
+  "description": "An edge-case fixture (#1508, comment 6 item 3): the letter's prompt offers the macro follow_up, which the model used to choose (its instruction says \"otherwise nothing\"), and the reply leaves it out, or holds it. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    }
+  ],
+  "macros": [
+    "follow_up"
+  ],
+  "nodes": [
+    {
+      "id": "problem_loop",
+      "label": "Problem list",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose"
+    },
+    {
+      "id": "letter",
+      "label": "Drafting the letter",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "letter",
+      "label": "Clinic letter",
+      "sources": [
+        "node.letter"
+      ]
+    }
+  ]
+}

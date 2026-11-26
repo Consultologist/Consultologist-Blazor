@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "producer": "custom",
+  "outputMacros": false,
+  "description": "A one-line summary of the draft.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "line"
+    ],
+    "properties": {
+      "line": {
+        "type": "string"
+      }
+    }
+  }
+}

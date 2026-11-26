@@ -9,7 +9,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.2 the template rows, § 1.4; part 05 §§ 2, 3, 6, 7; R6): the templates pass
 /// over whole packages. Every prompt and <c>rendered</c> body, snippet body, folder item's body and macro body of the
-/// sixteen packages is in the 31 dialect, or carries a hand edit naming its file; an agent's lifted <c>if</c>s are its
+/// fixture packages (#1508: the edge cases too) is in the 31 dialect, or carries a hand edit naming its file; an agent's lifted <c>if</c>s are its
 /// <c>parts</c>; a macro body is kept for the macros pass.
 /// </summary>
 public class MigrateTemplatesTests

@@ -1,0 +1,25 @@
+{
+  "description": [
+    "edge-answer-outside-set, scenario answer-outside-set (#1508, comment 6 item 3; comment 5 item 1): the 30 capture's",
+    "triage reply, soon, under its 31 key, and the problem stubs of scenario answer-in-set (30's job stopped at triage, so its",
+    "capture has none). soon is not one of triage_answer's values, so the stub does not fit its format and publish refuses",
+    "the test (S07-009) before any expectation is read, as 30 refused the reply and failed the job (so expect states nothing)."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, referred for review of type 2 diabetes with an HbA1c of 71 mmol/mol. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ]
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.problem_loop.problem_draft:1": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "node.problem_loop.problem_draft:2": "Medication paragraph: metformin continued.",
+    "node.triage": {
+      "value": "soon"
+    }
+  },
+  "expect": {}
+}

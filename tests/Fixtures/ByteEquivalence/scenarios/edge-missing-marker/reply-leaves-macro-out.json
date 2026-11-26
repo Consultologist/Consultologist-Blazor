@@ -1,0 +1,24 @@
+{
+  "description": [
+    "The letter's prompt offers follow_up (its instruction, then 30's mechanics sentence), and the",
+    "pinned reply leaves the macro out: the draft books no follow-up, so the model wrote no marker.",
+    "The letter is composed from the reply alone."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; no follow-up booked. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "letter": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\nMetformin is continued at 1 g twice daily.\nYours sincerely, Dr A. Sample"
+  }
+}

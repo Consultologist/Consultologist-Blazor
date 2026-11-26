@@ -1,0 +1,23 @@
+{
+  "description": [
+    "triage pinned soon, which is neither routine nor urgent: 30 refuses the reply (onInvalid",
+    "fail), the node fails and so does the job."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, referred for review of type 2 diabetes with an HbA1c of 71 mmol/mol. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "triage": {
+      "value": "soon"
+    }
+  }
+}

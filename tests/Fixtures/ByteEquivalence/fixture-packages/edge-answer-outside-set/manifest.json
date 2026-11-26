@@ -1,0 +1,67 @@
+{
+  "name": "edge-answer-outside-set",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Edge case: a classifier answer outside its set",
+  "description": "An edge-case fixture (#1508, comment 6 item 3; comment 5 item 1): the classifier triage answers routine or urgent, and the note is written for a routine referral; a reply outside the two is refused. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "triage",
+      "label": "Is the referral routine?",
+      "format": "classification",
+      "with": {
+        "values": [
+          "routine",
+          "urgent"
+        ]
+      },
+      "onInvalid": "fail"
+    },
+    {
+      "id": "problem_loop",
+      "label": "Problem list",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Clinic note",
+      "sources": [
+        "node.problem_loop"
+      ],
+      "if": "node.triage.value == \"routine\""
+    }
+  ]
+}

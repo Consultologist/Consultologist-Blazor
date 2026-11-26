@@ -330,6 +330,60 @@
       ]
     },
     {
+      "id": "edge-answer-outside-set.note.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.triage": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": "routine"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": "urgent"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "edge-no-branch.plan_gate.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.include_plan": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.include_plan": true
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.include_plan": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "refused": null,
       "cases": [

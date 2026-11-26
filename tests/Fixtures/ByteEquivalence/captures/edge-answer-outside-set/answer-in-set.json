@@ -1,0 +1,41 @@
+{
+  "package": "edge-answer-outside-set",
+  "tag": null,
+  "scenario": "answer-in-set",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "triage": {
+      "value": "routine"
+    },
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued."
+  },
+  "prompts": [
+    {
+      "key": "triage",
+      "hash": "sha256:eada0a52b122c44a07a20dd2c065454c52dab2999153f8a4e98c4e5ad9ef0429",
+      "text": "Decide whether this referral is routine or urgent.\nMargaret Okafor, 58, referred for review of type 2 diabetes with an HbA1c of 71 mmol/mol. (Fictional.)\n\n\nAnswer with exactly one of: routine, urgent."
+    },
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:9d5a5387e264016ad03eba6e01928799585db0e39ca7026684dad022373e1739",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nMargaret Okafor, 58, referred for review of type 2 diabetes with an HbA1c of 71 mmol/mol. (Fictional.)\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:17c408294f7c43a3da21cbf5ea139487491aae2254d7dfd1c0844065572ff877",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nMargaret Okafor, 58, referred for review of type 2 diabetes with an HbA1c of 71 mmol/mol. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:afc6525340b0861b6b43777b3e8752fd333bdb46dafc4f69a55375a162117691",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+    }
+  ]
+}

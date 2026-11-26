@@ -1,0 +1,53 @@
+{
+  "name": "edge-unset-object",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Edge case: an unset optional object input",
+  "description": [
+    "An edge-case fixture (#1508, comment 6 item 3; comment 7 Q5): the optional object input intake, left unset, whose member reason the problem prompt and the note's prepended macro read. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "problems": {
+      "label": "Problem list",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "intake": {
+      "label": "Intake",
+      "description": null,
+      "format": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "$ref": "markdown_block",
+            "title": "Reason for referral"
+          }
+        }
+      },
+      "required": false,
+      "channel": null
+    }
+  }
+}

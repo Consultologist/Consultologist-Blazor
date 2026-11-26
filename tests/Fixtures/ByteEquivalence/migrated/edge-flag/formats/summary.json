@@ -1,0 +1,14 @@
+{
+  "$schema": "urn:consultologist:spec:31:dialect",
+  "type": "object",
+  "description": "A one-line summary of the draft.",
+  "additionalProperties": false,
+  "required": [
+    "line"
+  ],
+  "properties": {
+    "line": {
+      "type": "string"
+    }
+  }
+}

@@ -232,6 +232,48 @@
       ]
     },
     {
+      "id": "edge-answer-outside-set.note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.triage.value.value"
+          },
+          "routine"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.triage.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
+      "id": "edge-no-branch.plan_gate.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.include_plan.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.include_plan.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "logic": {
         "===": [

@@ -1,0 +1,40 @@
+{
+  "description": [
+    "edge-no-branch, scenario plan-left-out (#1508, comment 6 item 3; comment 7 Q3): the 30 capture's replies under",
+    "their 31 keys. include_plan is not given, so plan_gate takes no branch; the plan's if, which the migration wrote, does",
+    "not hold, so plan is skipped as 30 skipped it, and the note is 30's text."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "include_plan": null
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.problem_loop.problem_draft:1": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "node.problem_loop.problem_draft:2": "Medication paragraph: metformin continued."
+  },
+  "expect": {
+    "skipped": [
+      "node.plan_gate",
+      "node.plan_gate.plan_note"
+    ],
+    "decisions": {
+      "node.plan_gate/if:self": false,
+      "deliverable.plan/if:self": false
+    },
+    "deliverables": {
+      "deliverable.note": {
+        "state": "released",
+        "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+      },
+      "deliverable.plan": {
+        "state": "skipped"
+      }
+    }
+  }
+}

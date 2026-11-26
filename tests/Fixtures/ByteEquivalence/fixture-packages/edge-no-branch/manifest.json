@@ -1,0 +1,83 @@
+{
+  "name": "edge-no-branch",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Edge case: a flow that takes no branch",
+  "description": "An edge-case fixture (#1508, comment 6 item 3; comment 7 Q3): the deliverable plan reads only the if plan_gate, which takes no branch when the plan is not asked for, so 30 skips the deliverable. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    },
+    {
+      "id": "include_plan",
+      "label": "Include the plan",
+      "required": false,
+      "type": "boolean"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "problem_loop",
+      "label": "Problem list",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose"
+    },
+    {
+      "id": "plan_gate",
+      "label": "The plan, when asked for",
+      "if": "input.include_plan == true",
+      "then": {
+        "nodes": [
+          "plan_note"
+        ],
+        "ret": "node.plan_note"
+      }
+    },
+    {
+      "id": "plan_note",
+      "label": "Drafting the plan",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Clinic note",
+      "sources": [
+        "node.problem_loop"
+      ]
+    },
+    {
+      "id": "plan",
+      "label": "Plan",
+      "sources": [
+        "node.plan_gate"
+      ]
+    }
+  ]
+}

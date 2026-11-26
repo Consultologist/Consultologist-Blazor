@@ -1,0 +1,33 @@
+{
+  "package": "edge-unset-object",
+  "tag": null,
+  "scenario": "intake-unset",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued."
+  },
+  "prompts": [
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:3db9c63e31e7a7abb75599919b93c9a025f7e3dfe345e2fb72b3bb7bd20da0cd",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nReason for referral: \nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:075199ed60d9f07fa2d7b7a8dd081990b4506a611910199ce21e83b5869bbb0b",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nReason for referral: \nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:ce7c63935a63988c696809d1ce6fb7c6931abd75d8237179a5e10b98863c1e7b",
+      "text": "Referred for:  (from the intake form).\n\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+    }
+  ]
+}

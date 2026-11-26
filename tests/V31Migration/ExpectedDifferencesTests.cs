@@ -20,7 +20,7 @@ public class ExpectedDifferencesTests
     private static readonly string[] RuleIds =
     [
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
-        "failed-job-dispatch-order", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
+        "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
         "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
         "while-no-pass-separator", "macro-choice-classifier", "blank-conversion",
     ];
@@ -475,6 +475,58 @@ public class ExpectedDifferencesTests
         var completed30 = (JsonObject)capture.DeepClone();
         completed30["status"] = "Completed";
         Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "List the points.", null, "node.section_loop.outline:1", failed, completed30)));
+    }
+
+    [Fact]
+    public void FailedJobDispatchOrder_ExplainsAReplyItsFormatRefusedAtBoth()
+    {
+        // #9; #1508 (comment 6, item 3, edge-answer-outside-set): triage answered outside its values, which 30 refused (onInvalid:
+        // fail) and 31's enum refuses too; 30 stopped there, 31 had sent the problem prompts beside it.
+        var capture = Capture("Failed", "Is the referral routine? failed: Node 'triage' reply does not conform to format 'classification' (onInvalid: fail): Classifier 'triage' answered outside its values.");
+        capture["outputs"]!["triage"] = JsonNode.Parse("""{ "value": "soon" }""");
+        JsonObject Invalid(string action) => new() { ["invalid"] = new JsonObject { ["reason"] = "Node 'triage' gave a reply that isn't triage_answer.", ["action"] = action, ["attempts"] = 1 } };
+        var failed = Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "Node 'triage' gave a reply that isn't triage_answer.", Invalid("fail"))]);
+        DifferenceContext Outside(OfflineResult run, JsonObject captured, string? old = null) =>
+            Context(ComparedKind.Prompt, old, "Write one paragraph.", "edge-answer-outside-set", "answer-outside-set", captured, run, key30: "problem_draft:0", key31: "node.problem_loop.problem_draft:1");
+        Assert.StartsWith("failed-job-dispatch-order: ", Explain(Outside(failed, capture)));
+
+        // Near: a text both sides have; 31's row failed another way (no invalid reply); 30 failed on another node; 30 holds no reply.
+        Assert.Null(ExpectedDifferences.Explain(Outside(failed, capture, old: "Write one paragraph!")));
+        Assert.Null(ExpectedDifferences.Explain(Outside(Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "The call could not be made.")]), capture)));
+        var other = (JsonObject)capture.DeepClone();
+        other["failure"] = "Drafting a problem failed: Node 'problem_draft' reply does not conform to format 'prose' (onInvalid: fail).";
+        Assert.Null(ExpectedDifferences.Explain(Outside(failed, other)));
+        var unanswered = (JsonObject)capture.DeepClone();
+        unanswered["outputs"]!.AsObject().Remove("triage");
+        Assert.Null(ExpectedDifferences.Explain(Outside(failed, unanswered)));
+    }
+
+    [Fact]
+    public void FlagBecomesRetry_ExplainsTheRetry_TheStatus_AndWhat30RanOnTheKeptReply()
+    {
+        // #1508 (comment 5, item 3; comment 6, item 3; edge-flag): summary declared onInvalid: flag, so 30 kept a reply that did
+        // not fit and composed the note; at 31 it is retry, asked once more with the validation error, then failed.
+        var capture = Capture("Completed", null);
+        JsonObject Invalid(string action, int attempts) => new() { ["invalid"] = new JsonObject { ["reason"] = "Node 'summary' gave a reply that isn't summary.", ["action"] = action, ["attempts"] = attempts } };
+        OfflineResult Failed(string action = "retry", int attempts = 2, string key = "node.summary") =>
+            Run(RunState.Failed, rows: [Row(key, PlanKind.Agent, RowState.Failed, "Node 'summary' gave a reply that isn't summary.", Invalid(action, attempts))]);
+        DifferenceContext Flag(ComparedKind kind, string? old, string? now, string? key30, string? key31, OfflineResult run, JsonObject? captured = null, Migration31Result? migrated = null) =>
+            Context(kind, old, now, "edge-flag", "reply-does-not-fit", captured ?? capture, run, migrated, key30, key31);
+
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed())));
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Prompt, "Summarise.", "Summarise.\n\nYour last reply could not be used.", "summary", "node.summary", Failed())));
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Prompt, "Write one paragraph.", null, "problem_draft:0", "node.problem_loop.problem_draft:1", Failed())));
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Deliverable, "## Problem list 1", null, null, "deliverable.note", Failed())));
+
+        // Near: a text only 31 has; another prompt both have; the node was not asked again (fail), or asked once; 30 failed too;
+        // the node was never flag at 30 (its notice not among the migration's).
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Prompt, null, "Only 31.", "problem_draft:0", "node.problem_loop.problem_draft:1", Failed())));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Prompt, "Write one paragraph.", "Write one paragraph!", "problem_draft:0", "node.problem_loop.problem_draft:1", Failed())));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed(action: "fail", attempts: 1))));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed(attempts: 1))));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Failed", "Failed", null, null, Failed(), Capture("Failed", "x"))));
+        var notFlag = EquivalenceFixture.Migrated("edge-flag") with { Notices = [] };
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed(), migrated: notFlag)));
     }
 
     [Fact]

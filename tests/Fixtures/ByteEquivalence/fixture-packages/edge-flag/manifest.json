@@ -1,0 +1,66 @@
+{
+  "name": "edge-flag",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Edge case: onInvalid flag",
+  "description": "An edge-case fixture (#1508, comment 6 item 3; comment 5 item 3): the node summary declares onInvalid flag, so 30 keeps a reply that does not fit its format, and each problem paragraph reads it. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    }
+  ],
+  "formats": [
+    {
+      "id": "summary",
+      "file": "formats/summary.json"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "summary",
+      "label": "Summarising the draft",
+      "format": "summary",
+      "onInvalid": "flag"
+    },
+    {
+      "id": "problem_loop",
+      "label": "Problem list",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Clinic note",
+      "sources": [
+        "node.problem_loop"
+      ]
+    }
+  ]
+}

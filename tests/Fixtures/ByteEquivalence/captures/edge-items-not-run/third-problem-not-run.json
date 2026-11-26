@@ -1,0 +1,33 @@
+{
+  "package": "edge-items-not-run",
+  "tag": null,
+  "scenario": "third-problem-not-run",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued."
+  },
+  "prompts": [
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:eecbde77782c9b940068d7afb7ede93cb8625a51219082f9c600be065731d2a8",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin, and a blood pressure of 148/92. (Fictional.)\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:8bdc3be253adf9cdcfe4a4f314e7c0328d50ea281e0967a4e2c669da7c49905c",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin, and a blood pressure of 148/92. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:afc6525340b0861b6b43777b3e8752fd333bdb46dafc4f69a55375a162117691",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+    }
+  ]
+}

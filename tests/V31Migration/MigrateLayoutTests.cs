@@ -15,7 +15,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// </summary>
 public class MigrateLayoutTests
 {
-    /// <summary>The sixteen packages of the fixtures: area 01's vendored packages and its composer fixtures.</summary>
+    /// <summary>The packages of the fixtures: area 01's vendored packages and its composer fixtures, and (#1508) the six edge cases.</summary>
     public static TheoryData<string> Packages() => new(
         "example-classifier-scope", "example-conditional-documents", "example-conditional-sections", "example-macros",
         "example-macros-warnings", "example-nested-note", "example-prior-letters", "example-problem-list",

@@ -1,0 +1,32 @@
+{
+  "description": [
+    "edge-flag, scenario reply-does-not-fit (#1508, comment 6 item 3; comment 5 item 3): the 30 capture's replies",
+    "under their 31 keys, and 30's note as what is expected. summary's reply does not fit its format (line is a number); 30",
+    "kept it (onInvalid: flag) and composed the note, but 31 never keeps such a reply: as a test's stub it is refused at",
+    "publish (S07-009), and live the node, now onInvalid: retry, asks once more and then fails."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ]
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.problem_loop.problem_draft:1": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "node.problem_loop.problem_draft:2": "Medication paragraph: metformin continued.",
+    "node.summary": {
+      "line": 71
+    }
+  },
+  "expect": {
+    "deliverables": {
+      "deliverable.note": {
+        "state": "released",
+        "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+      }
+    }
+  }
+}

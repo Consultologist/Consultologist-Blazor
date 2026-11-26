@@ -1,0 +1,40 @@
+{
+  "description": [
+    "edge-missing-marker, scenario reply-leaves-macro-out (#1508, comment 6 item 3): the 30 capture's replies under",
+    "their 31 keys, used as written. follow_up_applies answers no, as 30's reply placed no follow_up, so the letter's prompt",
+    "does not offer the macro, the reply needs no marker, and the letter is 30's text."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; no follow-up booked. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ]
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.follow_up_applies": {
+      "answer": false,
+      "reason": "Answered from the 30 capture: whether the reply placed the macro."
+    },
+    "node.letter": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\nMetformin is continued at 1 g twice daily.\nYours sincerely, Dr A. Sample",
+    "node.problem_loop.problem_draft:1": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "node.problem_loop.problem_draft:2": "Medication paragraph: metformin continued."
+  },
+  "expect": {
+    "ran": [
+      "node.follow_up_applies",
+      "node.letter"
+    ],
+    "decisions": {
+      "node.letter/if:macro.follow_up": false
+    },
+    "deliverables": {
+      "deliverable.letter": {
+        "state": "released",
+        "text": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\nMetformin is continued at 1 g twice daily.\nYours sincerely, Dr A. Sample"
+      }
+    }
+  }
+}

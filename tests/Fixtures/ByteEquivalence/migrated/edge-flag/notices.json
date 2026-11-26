@@ -1,0 +1,8 @@
+{
+  "notices": [
+    "Format 'summary', field 'line' holds free text; consider a text format.",
+    "Node 'summary' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails."
+  ],
+  "handEdits": [],
+  "refusals": []
+}
