@@ -2431,7 +2431,10 @@ and does not credit it).
 
 **Kept as 30 meant** (#1508, comment 5, item 2). **Text compared with a literal** (`x == "lit"`, S03-002 as written) is
 `{ "in": [x, ["lit"]] }`, and `!=` its negation: exact membership, which the checker accepts for a text needle in a
-written list of string literals; each is in `TextLiterals` and the migration says A10-074. **Blank text** is the
+written list of string literals; each is in `TextLiterals` and the migration says A10-074. Each text read of an input in
+`x` (not one the author already trimmed) is written `{ "trim": [read] }` (`TrimInputReads`; #1508, 2026-11-26, item 6):
+30 trimmed an input's text at its end, `trim` trims both, so leading white space now matches where 30's did not; a
+literal that starts with white space compared with an input's text is refused with A10-085. **Blank text** is the
 exception: 30 read an input's text not given or blank (white space alone, a field's too) as `""`, where 31's start
 leaves out a text input absent or blank, which then reads null, and keeps a field as given. So a text input read whole
 compared with `""` is written with its null test, as a nullable size is: `x === null or x in [""]` (`!=` is
@@ -2756,7 +2759,7 @@ The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
 version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`): the bulk publish writes it into `owners.json` as the
 notice of each package it could not migrate; no publish says it. Every other notice, refusal and reason is an area
-sentence, A10-001 to A10-084 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-084 are #1508's:
+sentence, A10-001 to A10-085 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-085 are #1508's:
 an `options.json` that does not read or was not given, the conversions kept as 30 meant, the macro-choice classifiers,
 the migration's `if`s and guards, and the instances limit), listed in the plans' tables and in
 `V31Contract.MigrationAreaSentences`. Area 10's rulings also

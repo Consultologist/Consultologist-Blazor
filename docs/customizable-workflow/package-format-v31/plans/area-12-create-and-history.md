@@ -751,7 +751,7 @@ conformance README rows A10-074 (l.1058) and A10-085.
   which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer."*
 - The written form: `{ "in": [ <x with each text input read r as { "trim": [r] }>, ["lit"] ] }`, and `{ "!": [ … ] }` for `!=`.
 
-- [ ] **Step 1: Failing tests** (`ConditionConverterTests`, the converter over `MigrationFixture.ScopeOf`).
+- [x] **Step 1: Failing tests** (`ConditionConverterTests`, the converter over `MigrationFixture.ScopeOf`).
   - `TextComparedWithALiteral_IsComparedOnTheTrimmedInput`: `input.reply == "yes"` (a text input) →
     `{"in":[{"trim":[{"var":"input.reply.content"}]},["yes"]]}`; `!=` its negation; `string.downcase input.reply == "yes"` →
     `{"in":[{"lower":[{"trim":[{"var":"input.reply.content"}]}]},["yes"]]}`; a text field `input.intake.note == "yes"` →
@@ -762,19 +762,19 @@ conformance README rows A10-074 (l.1058) and A10-085.
     (`V31Contract.AssertSentence`).
   - `MigrateNodesTests` (or the test that pins A10-074 today): the notice's new words, word for word, for `composer-macros`'
     `section_close.if`.
-- [ ] **Step 2: Run, fail.**
-- [ ] **Step 3: Implement.** In `TextLiteral`, after the blank-text branch and before `member` (l.332): a literal whose first
+- [x] **Step 2: Run, fail.**
+- [x] **Step 3: Implement.** In `TextLiteral`, after the blank-text branch and before `member` (l.332): a literal whose first
   rune is white space and whose `reads` hold an input read → `found.Refusals.Add(("A10-085", …))`, return null (as A10-076
   does, l.325–329). Else `x` is rewritten by a new `TrimInputReads(JsonNode x, ExpressionSite operand, Scope scope,
   FormatSet formats)`: each `{ "var": p }` subtree with `IsInputRead(p)` whose type (`ExpressionChecker.Check`) has
   `FormatShape.Text` becomes `{ "trim": [ that ] }`; the blank-text branch (l.309–330) is unchanged. Correct
   `TextLiteral`'s summary and `TextLiteralBecameIn`'s doc to say what is written (F-D10's words), and A10-074's text as above.
-- [ ] **Step 4: Run** the V31 run. `ConditionEquivalenceTests.TheUnruledDifferences_AreTheseOnes` (expects none) must stay
+- [x] **Step 4: Run** the V31 run. `ConditionEquivalenceTests.TheUnruledDifferences_AreTheseOnes` (expects none) must stay
   green: if a vector case now differs only because `trim` dropped leading white space, add the reason `trim-both-ends`
   (*"#1508, 2026-11-26, item 6: an input's text compared with a literal is trimmed by trim, which also drops the leading white
   space 30 kept"*) to `ConditionReasons` and the reason picker (l.275); none is expected (no vector input has leading text
   white space; checked).
-- [ ] **Step 5: Docs.** Part 10 § 2.2 l.390 row: `{ "in": [ trim(x)…, ["lit"] ] }` "with `trim` on each text read of an input
+- [x] **Step 5: Docs.** Part 10 § 2.2 l.390 row: `{ "in": [ trim(x)…, ["lit"] ] }` "with `trim` on each text read of an input
   in `x` (30 trimmed an input's text at its end; `trim` trims both); a literal that starts with white space is a hand edit
   (A10-085)"; l.423–426 bullet corrected the same (no longer "answers as 30's comparison did" without the trim); § 1.2 l.66;
   twin §§ 10.1, 10.9; README rows A10-074 (new words) and A10-085; content check; push. **Commit**
@@ -1008,3 +1008,4 @@ is registered at l.211, so DI needs no change).
 - Task F9: the weekly summary's `OutstandingHandEdits` takes `EngineLimitSettings` and counts at `PublishLimits` only (it writes no snapshot, so `RunLimits` is not given there); `MigratePackage` also passes `limits.Limits` to `MigrationReport.WorstCaseNote` (its existing `limits` parameter), which the ruling's "all count at the configured limits" covers though the brief's call-site list named it. Not done here: the PR's minors (#1535 § 6, first bullet) live in the PR body, not the repo.
 - Task F7: `AnswersSent` reads 30's text before its answer line with its end trimmed (`old[..^line.Length].TrimEnd()`, not the brief's untrimmed slice), as 31's `WorkflowCustomPrompt.Compose` trims the rendered prompt's end before the trailer; without it the prompt's own last line ending (`…}}\n`) stays a remainder. The goldens turned red by F7: `MigratedPackagesTests.TheMigratedSource_IsTheGolden`, `ByteEquivalenceTests.TheReport_IsTheGolden`, `HandEditsTests.TheReport_IsTheGolden`.
 - Task F2: `ByteEquivalenceTests.ADifferenceNoRuleExplains_IsUnexpected` used the encounter date as its unexpected difference, which is now equal; it builds its difference from a captured prompt with an added line instead. `MigrateNodesTests.TheRenderedFormat_IsARenderedNode_OfATextFormat_ItsTemplateKept` expects the date in 30's form. No golden turned red that F7 had not (the same three are red).
+- Task F6: A10-085 is said when a `trim` was written on the comparison (`TrimInputReads` wrapped a read), not on "`reads` hold an input read": an input read that is not text (a number inside `cat`) gets no trim and differs from 30 in nothing. A read the author already trimmed (`| string.strip`, a `trim` as written) gets no second `trim` and is no A10-085 case (30 trimmed it at both ends too). A10-085's `<comparison>` is the printed comparison, as A10-074's. Part 10 § 2.3 and the twin § 10.10 gain a refusal bullet for A10-085, and `package-format-library.md`'s converter note and A10 range say it. No vector case differed (`TheUnruledDifferences_AreTheseOnes` green), so no `trim-both-ends` reason. No hand-maintained fixture moved. Goldens turned red by F6: `ConditionConverterTests.TheGolden_IsWhatTheConverterGives`, `MigrationVectorsTests.ThePinnedVectors_AreWhatMigrateGives` (five of six red; `ConditionEquivalenceTests.TheGolden_IsWhatTheRunGives` stays green).
