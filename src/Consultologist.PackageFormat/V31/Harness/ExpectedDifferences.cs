@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Migration;
 using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
 
@@ -92,9 +93,15 @@ public static class ExpectedDifferences
         },
         new("failed-job-dispatch-order",
             "#1508, comment 5, item 7, #9, ruled by the owner on 2026-11-25; part 10 § 3.2",
-            "both jobs failed at the same reply, which its node's failIfEmpty refused at both; each sent what its dispatch order reached first, so a text only one side has is the order's")
+            "both jobs failed at the same reply, which its node's failIfEmpty, or its node's format (onInvalid: fail), refused at both; each sent what its dispatch order reached first, so a text only one side has is the order's")
         {
             Case = FailedAlike,
+        },
+        new("flag-becomes-retry",
+            "#1508, comment 5, item 3, ruled by the owner on 2026-11-25 (onInvalid: flag becomes retry); comment 6, item 3; part 05 § 1.2; part 10 §§ 1.2, 3.2",
+            "a node that declared onInvalid: flag kept a reply that did not fit its format at 30, and the job ran on; at 31 the node asks once more with the validation error, then fails, so its prompt is the retry's, the job fails, and a text only 30 has is what 30 ran on the kept reply")
+        {
+            Case = FlagRetried,
         },
         new("reply-never-a-template",
             "#1508, comment 5, item 7, #5, ruled by the owner on 2026-11-25; part 05 § 1; part 10 § 3.2",
@@ -1198,10 +1205,11 @@ public static class ExpectedDifferences
     // ---- #1508, comment 5, item 7 (ruled by the owner on 2026-11-25), and the controller's ruling on Task 33 ------------
 
     /// <summary>
-    /// #9: a text only one side has, in a job that failed at both because the same reply was empty: every agent row 31 failed
-    /// failed with its node's <c>failIfEmpty</c> sentence, on a reply the capture holds blank under its 30 key (30's model
-    /// gave it, and 30's <c>failIfEmpty</c> refused it too). Each engine dispatched in its own order, so each sent a text the
-    /// other's failure came before. A text both sides have, or the status, is never explained here.
+    /// #9: a text only one side has, in a job that failed at both because the same reply was refused at both: every agent row
+    /// 31 failed is a reply the capture holds under its 30 key, refused alike: by its node's <c>failIfEmpty</c>, the reply
+    /// blank (<see cref="EmptyRefusedAlike"/>), or by its node's format under <c>onInvalid: fail</c> (#1508, comment 6, item 3:
+    /// <see cref="FormatRefusedAlike"/>). Each engine dispatched in its own order, so each sent a text the other's failure came
+    /// before. A text both sides have, or the status, is never explained here.
     /// </summary>
     private static bool FailedAlike(DifferenceContext c)
     {
@@ -1209,11 +1217,48 @@ public static class ExpectedDifferences
             || SourceLayout.Text(c.Capture30["status"]) != nameof(RunState.Failed) || c.Run31.State != RunState.Failed)
             return false;
         var outputs = c.Capture30["outputs"] as JsonObject;
+        var failure = SourceLayout.Text(c.Capture30["failure"]);
         var failed = c.Run31.Rows.Where(r => r.State == RowState.Failed).ToList();
         return failed.Count > 0 && failed.All(r => r.Kind == PlanKind.Agent
-            && c.Plan.Entries.TryGetValue(r.EntryKey, out var entry) && SourceLayout.Text(entry.Json["failIfEmpty"]) is { } sentence && r.Reason == sentence
             && KeyMap.To30(r.Key, c.Migrated, c.Plan) is { } key30 && outputs?.TryGetPropertyValue(key30, out var reply) == true
-            && SourceLayout.Text(reply) is { } text && text.EnumerateRunes().All(Rune.IsWhiteSpace));
+            && (EmptyRefusedAlike(c, r, reply) || FormatRefusedAlike(r, key30, failure)));
+    }
+
+    /// <summary>#9: the node's <c>failIfEmpty</c> refused it at 31, and 30's reply was empty or white space only.</summary>
+    private static bool EmptyRefusedAlike(DifferenceContext c, RunRow row, JsonNode? reply) =>
+        c.Plan.Entries.TryGetValue(row.EntryKey, out var entry) && SourceLayout.Text(entry.Json["failIfEmpty"]) is { } sentence && row.Reason == sentence
+        && SourceLayout.Text(reply) is { } text && text.EnumerateRunes().All(Rune.IsWhiteSpace);
+
+    /// <summary>
+    /// #9, #1508 (comment 5, item 1; comment 6, item 3): the node's format refused its reply at 31 under <c>onInvalid: fail</c>
+    /// (the row's <c>invalid</c> action), and 30's job failed with that node's own format sentence
+    /// (<c>Node '&lt;id&gt;' reply does not conform to format</c>): an answer outside a classifier's values, say.
+    /// </summary>
+    private static bool FormatRefusedAlike(RunRow row, string key30, string? failure) =>
+        SourceLayout.Text(row.Detail["invalid"]?["action"]) == "fail" && failure is not null
+        && failure.Contains($"Node '{NodeOf30(key30)}' reply does not conform to format", StringComparison.Ordinal);
+
+    /// <summary>A 30 instance key's node id: the key before its first <c>:</c>.</summary>
+    private static string NodeOf30(string key30) => key30.IndexOf(':', StringComparison.Ordinal) is var colon and >= 0 ? key30[..colon] : key30;
+
+    /// <summary>
+    /// #1508 (comment 5, item 3; comment 6, item 3): 30 completed and 31 failed, at an agent row that asked again
+    /// under <c>onInvalid: retry</c> (its row's <c>invalid</c>: action <c>retry</c>, two attempts) and failed, whose 30 node the
+    /// migration turned from <c>onInvalid: flag</c> (<see cref="MigrationSentences.FlagBecomesRetry"/> among its notices): the
+    /// status, that row's own prompt (31's is the retry's, with the validation error), and each text only 30 has.
+    /// </summary>
+    private static bool FlagRetried(DifferenceContext c)
+    {
+        if (SourceLayout.Text(c.Capture30["status"]) != nameof(RunState.Completed) || c.Run31.State != RunState.Failed)
+            return false;
+        var retried = c.Run31.Rows.Where(r => r.State == RowState.Failed && r.Kind == PlanKind.Agent
+            && SourceLayout.Text(r.Detail["invalid"]?["action"]) == "retry" && (int?)(r.Detail["invalid"]?["attempts"] as JsonValue) == 2
+            && KeyMap.To30(r.Key, c.Migrated, c.Plan) is { } key30
+            && c.Migrated.Notices.Contains(MigrationSentences.FlagBecomesRetry(NodeOf30(key30)), StringComparer.Ordinal)).ToList();
+        return retried.Count > 0
+            && (IsStatus(c, nameof(RunState.Completed), nameof(RunState.Failed))
+                || (c.Kind == ComparedKind.Prompt && c.OldText is not null && c.NewText is not null && retried.Any(r => r.Key == c.Key31))
+                || (c.Kind != ComparedKind.Status && c.OldText is not null && c.NewText is null));
     }
 
     /// <summary>

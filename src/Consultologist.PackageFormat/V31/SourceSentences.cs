@@ -157,6 +157,14 @@ internal static class SourceSentences
     public static SourceRefusal UnknownKind(string id, string kind, string path) =>
         new("S02-007", $"Node '{id}' declares unknown kind '{kind}' (accepted: agent, rendered, computed, for, while, if, case, call).", path);
 
+    /// <summary>
+    /// A11-014 (#1508, Task 35; comment 5, item 3, and comment 6, item 3, ruled by the owner): an agent whose <c>onInvalid</c>
+    /// (<paramref name="value"/>, as written) is not <c>retry</c> or <c>fail</c>, the two <c>node-agent.schema.json</c> lists;
+    /// 30's <c>flag</c>, which kept a reply that did not fit, has no 31 form (the migration writes <c>retry</c>).
+    /// </summary>
+    public static SourceRefusal OnInvalidValue(string id, string value, string path) =>
+        new("A11-014", $"Node '{id}' has onInvalid {value}; write retry or fail.", path);
+
     /// <summary>A02-006 (D21): a <c>.md</c> leaf that declares a flow kind.</summary>
     public static SourceRefusal FlowKindInFile(string id, string kind, string path) =>
         new("A02-006", $"Node '{id}' is kind {kind} in a file; a {kind} is a folder with an index.json.", path);

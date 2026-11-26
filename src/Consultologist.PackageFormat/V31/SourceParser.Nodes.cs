@@ -122,6 +122,10 @@ public static partial class SourceParser
                 walk.Refuse(SourceSentences.ProducerDisagrees(word, key, kind, producer, expected, path));
         }
 
+        // #1508 (Task 35; A11-014): onInvalid is one of the schema's two values; the member table only types it.
+        if (kind == "agent" && SourceLayout.Text(header["onInvalid"]) is { } onInvalid && onInvalid is not ("retry" or "fail"))
+            walk.Refuse(SourceSentences.OnInvalidValue(member.Id, onInvalid, path));
+
         if (kind == "agent" && header["parts"] is JsonObject parts)
         {
             foreach (var (partId, _) in parts)
