@@ -135,7 +135,8 @@ internal static class V31Contract
     /// text for items that did not run, Q3 and Q4 of 2026-11-26, R15 and R16; A11-013, Task 32: a judgement node whose prompt
     /// asks no question, #1508 comment 6 item 1, R13; A11-014, Task 35: an agent's onInvalid that is not retry or fail, 30's
     /// flag among them, comment 5 item 3 and comment 6 item 3; A11-015 and A11-016, Task 36: the bulk publish's deadline for a
-    /// package it cannot publish, comment 8, R11, and a package that is not the account's active account package, R21).
+    /// package it cannot publish, comment 8, R11, and a package that is not the account's active account package, R21; A11-017,
+    /// the final review of Part F: a package the engine did not answer for, in the bulk publish's owners' list).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
@@ -155,12 +156,14 @@ internal static class V31Contract
         ["A11-014"] = "Node '<id>' has onInvalid <value>; write retry or fail.",
         ["A11-015"] = "This package stops working when specVersion 30 is retired.",
         ["A11-016"] = "<package> is not the account's active account package; the bulk publish migrates only the account package an account's pin names.",
+        ["A11-017"] = "The engine did not answer for this package; check whether it was published before sending this list.",
     };
 
     /// <summary>
     /// #1508 (R8 item 4): the audience of an area sentence whose audience is not the author's, as the refusal-sentences table
     /// gives it: A08-006 is logged for the operator; A11-008 is shown to the clinician, who is told to tell the operator;
-    /// A11-015 is the owner's, in the bulk publish's owners' list, and A11-016 the operator's, in its record (Task 36).
+    /// A11-015 is the owner's, in the bulk publish's owners' list, and A11-016 the operator's, in its record (Task 36); A11-017 the
+    /// operator's, in the owners' list, to check before it is sent (the final review of Part F).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> AreaSentenceAudiences = new Dictionary<string, string>
     {
@@ -168,6 +171,7 @@ internal static class V31Contract
         ["A11-008"] = "clinician",
         ["A11-015"] = "clinician",
         ["A11-016"] = "operator",
+        ["A11-017"] = "operator",
     };
 
     /// <summary>

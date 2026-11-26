@@ -251,6 +251,9 @@ public class ScriptsTests
         /// <summary>A name whose POST is answered with a 500.</summary>
         public string? Faulting { get; set; }
 
+        /// <summary>Called with the package's name when its POST arrives, before it is answered.</summary>
+        public Action<string>? OnPost { get; set; }
+
         private static JsonObject Row(string owner, string name, string version) =>
             new() { ["owner"] = owner, ["name"] = name, ["version"] = version, ["specVersion"] = 30 };
 
@@ -262,6 +265,7 @@ public class ScriptsTests
                 return Json(HttpStatusCode.OK, List);
 
             var name = (string)body!["name"]!;
+            OnPost?.Invoke(name);
             if (name == Faulting)
                 return Json(HttpStatusCode.InternalServerError, new JsonObject { ["error"] = "boom" });
             var publish = (bool)body["publish"]!;
@@ -409,21 +413,176 @@ public class ScriptsTests
         }
     }
 
+    private const string A11017 = "The engine did not answer for this package; check whether it was published before sending this list.";
+
     [Fact]
-    public async Task AnEngineFault_Exits2_TheRecordHoldingWhatWasDoneBeforeIt()
+    public async Task AFaultOnTheSecondOfThree_KeepsTheFirstsRow_RecordsTheSecondAsUnknown_AndSendsNothingForTheThird()
     {
+        // Final review of Part F, finding 1: both files are written after every answered row, so when the second request
+        // arrives the first's row is on disk and readable; the in-flight package of a fault is recorded "unknown: <fault>"
+        // (it may have been published), the run stops with exit 2, and owners.json names everything known.
         var engine = new FakeEngine { Faulting = Nested };
+        engine.Outcomes.Clear();
         var folder = OperatorFolder();
+        JsonArray? onDiskAtSecond = null;
+        JsonObject? ownersAtSecond = null;
+        engine.OnPost = name =>
+        {
+            if (name != Nested)
+                return;
+            onDiskAtSecond = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
+            ownersAtSecond = ReadJson(folder, BulkPublishScript.OwnersFile);
+        };
         try
         {
             var (exit, _, error) = await BulkAsync(engine, folder, publish: true);
 
             Assert.Equal(BulkPublishScript.Fault, exit);
             Assert.Contains($"error: POST https://engine.example.test/api/Admin/MigratePackage for {Owner1} {Nested}: 500 boom", error, StringComparison.Ordinal);
+
+            // what was on disk when the second request arrived: the first's row
+            Assert.NotNull(onDiskAtSecond);
+            Assert.Equal([(Letters, "published")], onDiskAtSecond!.Select(r => ((string)r!["name"]!, (string)r["outcome"]!)));
+            Assert.Equal([Letters], ownersAtSecond![Owner1]!["published"]!.AsArray().Select(p => (string)p!["name"]!));
+
             // the run stops at the fault: the third package is never sent
             Assert.Equal(3, engine.Requests.Count);
             var rows = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
-            Assert.Equal([Letters], rows.Select(r => (string)r!["name"]!));
+            Assert.Equal([(Letters, "published"), (Nested, "unknown: the engine answered 500")],
+                rows.Select(r => ((string)r!["name"]!, (string)r["outcome"]!)));
+            Assert.Equal(["owner", "name", "oldVersion", "outcome", "time"], rows[1]!.AsObject().Select(p => p.Key));
+            Assert.Equal("v2026.11.2", (string?)rows[1]!["oldVersion"]);
+            Assert.DoesNotContain("boom", rows.ToJsonString(), StringComparison.Ordinal);
+
+            var owners = ReadJson(folder, BulkPublishScript.OwnersFile);
+            Assert.Equal([Owner1], owners.Select(p => p.Key));
+            Assert.Equal(["published", "notMigrated", "unknown"], owners[Owner1]!.AsObject().Select(p => p.Key));
+            Assert.Equal([Letters], owners[Owner1]!["published"]!.AsArray().Select(p => (string)p!["name"]!));
+            var unknown = Assert.Single(owners[Owner1]!["unknown"]!.AsArray())!;
+            Assert.Equal(["name", "notice"], unknown.AsObject().Select(p => p.Key));
+            Assert.Equal(Nested, (string?)unknown["name"]);
+            Assert.Equal(A11017, (string?)unknown["notice"]);
+            Assert.Equal(PackagePublishSentences.NotAnswered, A11017);
+            V31Contract.AssertSentence(new SourceRefusal("A11-017", A11017, ""));
+            Assert.False(File.Exists(Path.Combine(folder, BulkPublishScript.RecordFile + ".tmp")));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ACarriedUnknownRow_StaysInTheOwnersList_AndTheRunExits2UntilThePackageIsAnswered()
+    {
+        var folder = OperatorFolder();
+        try
+        {
+            var engine = new FakeEngine { Faulting = Other };
+            engine.Outcomes.Clear();
+            await BulkAsync(engine, folder, publish: true);
+
+            // a rerun the engine no longer lists the package for: the unknown row is carried, and the run exits 2
+            var rerun = new FakeEngine { List = Listing() };
+            var (exit, _, error) = await BulkAsync(rerun, folder, publish: true);
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Contains($"error: {Owner2} {Other} is unknown in the record", error, StringComparison.Ordinal);
+            var rows = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
+            Assert.Equal([Letters, Nested, Other], rows.Select(r => (string)r!["name"]!));
+            Assert.StartsWith("unknown: ", (string?)rows[2]!["outcome"], StringComparison.Ordinal);
+            Assert.Equal([Other], ReadJson(folder, BulkPublishScript.OwnersFile)[Owner2]!["unknown"]!.AsArray().Select(p => (string)p!["name"]!));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ARecordFromAnotherEngine_Exits2_NeitherFileChanged_AndNothingIsSent()
+    {
+        var folder = OperatorFolder();
+        try
+        {
+            var record = """{ "engine": "https://dev.example.test/", "publish": true, "notRead": 0, "rows": [] }""";
+            File.WriteAllText(Path.Combine(folder, BulkPublishScript.RecordFile), record);
+            File.WriteAllText(Path.Combine(folder, BulkPublishScript.OwnersFile), "kept");
+            var engine = new FakeEngine();
+
+            var (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Contains("was written for the engine https://dev.example.test/, not https://engine.example.test/", error, StringComparison.Ordinal);
+            Assert.Empty(engine.Requests);
+            Assert.Equal(record, File.ReadAllText(Path.Combine(folder, BulkPublishScript.RecordFile)));
+            Assert.Equal("kept", File.ReadAllText(Path.Combine(folder, BulkPublishScript.OwnersFile)));
+
+            // the same engine, written without the trailing '/', is this engine
+            File.WriteAllText(Path.Combine(folder, BulkPublishScript.RecordFile), record.Replace("https://dev.example.test/", "https://engine.example.test", StringComparison.Ordinal));
+            (exit, _, _) = await BulkAsync(engine, folder, publish: true);
+            Assert.Equal(BulkPublishScript.NotMigratedExit, exit);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task TwoCarriedRowsForOnePackage_GiveOne_TheLatest()
+    {
+        var folder = OperatorFolder();
+        try
+        {
+            JsonObject Published(string name, string newVersion) => new()
+            {
+                ["owner"] = Owner1, ["name"] = name, ["oldVersion"] = "v2026.11.3", ["newVersion"] = newVersion,
+                ["outcome"] = "published", ["notices"] = new JsonArray(), ["time"] = "2026-11-30T09:00:00.000Z",
+            };
+            var record = new JsonObject
+            {
+                ["engine"] = Engine.AbsoluteUri, ["publish"] = true, ["notRead"] = 0,
+                ["rows"] = new JsonArray(Published(Letters, "v2026.12.1"), Published(Nested, "v2026.12.1"), Published(Letters, "v2026.12.2")),
+            };
+            File.WriteAllText(Path.Combine(folder, BulkPublishScript.RecordFile), record.ToJsonString());
+            var engine = new FakeEngine { List = Listing((Owner2, Other, "v2026.11.1")) };
+
+            var (exit, _, _) = await BulkAsync(engine, folder, publish: true);
+
+            Assert.Equal(BulkPublishScript.Clean, exit);
+            var rows = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
+            Assert.Equal([(Nested, "v2026.12.1"), (Letters, "v2026.12.2"), (Other, "v2026.12.1")],
+                rows.Select(r => ((string)r!["name"]!, (string)r["newVersion"]!)));
+            Assert.Equal([Nested, Letters], ReadJson(folder, BulkPublishScript.OwnersFile)[Owner1]!["published"]!.AsArray().Select(p => (string)p!["name"]!));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AFolderThatMatchesNoPackage_Exits2_NothingSent_NeitherFileWritten()
+    {
+        // Final review of Part F, finding 4: a misspelt <owner>/<name> folder would leave the real package at the defaults.
+        var folder = OperatorFolder();
+        try
+        {
+            var misspelt = Path.Combine(folder, Owner2, "acct-fedcba987654-othr");
+            Directory.CreateDirectory(misspelt);
+            File.WriteAllText(Path.Combine(misspelt, "options.json"), """{ "renames": {}, "whenEmpty": { "note": "hold" }, "folderFormats": {} }""");
+            var edits = Path.Combine(folder, Owner1, "acct-0123456789ab", "nestd", "hand-edits");
+            Directory.CreateDirectory(edits);
+            var engine = new FakeEngine();
+
+            var (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Contains($"error: {Path.Combine(folder, Owner1, "acct-0123456789ab", "nestd")} matches no package", error, StringComparison.Ordinal);
+            Assert.Contains($"error: {misspelt} matches no package", error, StringComparison.Ordinal);
+            Assert.Equal([HttpMethod.Get], engine.Requests.Select(r => r.Method));
+            Assert.False(File.Exists(Path.Combine(folder, BulkPublishScript.RecordFile)));
+            Assert.False(File.Exists(Path.Combine(folder, BulkPublishScript.OwnersFile)));
         }
         finally
         {
@@ -452,8 +611,10 @@ public class ScriptsTests
             engine.Outcomes.Clear();
             var (exit, _, _) = await BulkAsync(engine, folder, publish: true);
             Assert.Equal(BulkPublishScript.Fault, exit);
-            Assert.Equal([Letters, Nested], ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray().Select(r => (string)r!["name"]!));
+            Assert.Equal(["published", "published", "unknown: the engine answered 500"],
+                ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray().Select(r => (string)r!["outcome"]!));
 
+            // the rerun answers the unknown package: its answer replaces the unknown row
             var rerun = new FakeEngine { List = Listing((Owner2, Other, "v2026.11.1")) };
             string output;
             (exit, output, _) = await BulkAsync(rerun, folder, publish: true);
@@ -466,6 +627,7 @@ public class ScriptsTests
             var owners = ReadJson(folder, BulkPublishScript.OwnersFile);
             Assert.Equal([Owner1, Owner2], owners.Select(p => p.Key));
             Assert.Equal([Letters, Nested], owners[Owner1]!["published"]!.AsArray().Select(p => (string)p!["name"]!));
+            Assert.Empty(owners[Owner2]!["unknown"]!.AsArray());
         }
         finally
         {
@@ -583,6 +745,9 @@ public class ScriptsTests
     [InlineData(new[] { "--engine", "https://engine.example.test" }, "The operator folder is not given.")]
     [InlineData(new[] { "folder", "--engine", "engine.example.test" }, "--engine takes the engine's URL (https://<host>), with no query.")]
     [InlineData(new[] { "folder", "--engine", "https://engine.example.test/?code=x" }, "--engine takes the engine's URL (https://<host>), with no query.")]
+    [InlineData(new[] { "folder", "--engine", "http://engine.example.test" }, "--engine takes https:// (http:// only for localhost, 127.0.0.1 or [::1]): the token is sent to it.")]
+    [InlineData(new[] { "folder", "--engine", "http://127.0.0.2" }, "--engine takes https:// (http:// only for localhost, 127.0.0.1 or [::1]): the token is sent to it.")]
+    [InlineData(new[] { "folder", "--engine", "ftp://engine.example.test" }, "--engine takes the engine's URL (https://<host>), with no query.")]
     [InlineData(new[] { "folder", "--engine", "https://a.test", "--engine", "https://b.test" }, "--engine is given twice.")]
     [InlineData(new[] { "folder", "other", "--engine", "https://a.test" }, "'other' is a second operator folder.")]
     [InlineData(new[] { "folder", "--engine", "https://a.test", "--write" }, "--write is not an option of the bulk publish.")]
@@ -598,6 +763,9 @@ public class ScriptsTests
             BulkPublishScript.Parse(["folder", "--engine", "https://engine.example.test", "--publish"]));
         Assert.Equal((new BulkPublishArguments("folder", new Uri("https://a.test"), false), null),
             BulkPublishScript.Parse(["--engine", "https://a.test", "folder"]));
+        // http:// only to this machine (final review of Part F, item 7: the bearer token is sent to the engine)
+        foreach (var local in new[] { "http://localhost:7071", "http://127.0.0.1:7071", "http://[::1]:7071" })
+            Assert.Equal((new BulkPublishArguments("folder", new Uri(local), false), null), BulkPublishScript.Parse(["folder", "--engine", local]));
 
         var script = Script("bulk-publish-v31.cs");
         Assert.Contains("BulkPublishScript.Parse(args)", script, StringComparison.Ordinal);
