@@ -106,7 +106,7 @@ public sealed class V31JobStarter(
         // #1507 (ruled by the owner on #1507, 2026-11-22, 3): each MacroChoices entry is the value of the boolean input its macro's if reads.
         var (supplied, choiceRefusals) = V31StartChecks.Choices(plan, Supplied(request), request.MacroChoices);
         var (profile, signature) = await ProfileAsync(plan, appUserId, request.SignatureBlockId, cancellationToken);
-        var timeZone = (await settings.GetAsync(appUserId, AccountSettingKeys.TimeZone, cancellationToken))?.Value;
+        var timeZone = await TimeZoneAsync(settings, appUserId, cancellationToken);
 
         // #1505 (R8): the run facts known now as the orchestration will know them (its RunFactsBase, and run.package when the
         // plan reads it); run.date is worked out when the orchestration starts (D6), so an if that reads it is the run's to decide.
@@ -115,12 +115,7 @@ public sealed class V31JobStarter(
             startFacts["package"] = $"{plan.Package}@{plan.Version}";
 
         var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, startFacts, profile);
-        var accountRefusals = V31StartChecks.Account(plan, profile, timeZone);
-        if (signature.Refusal is { } notTheAccounts)
-        {
-            // #1505 (D15): a block named that the account lacks is A08-004, said in S06-031's place (the account may have one).
-            accountRefusals = accountRefusals.Where(r => r.Id != "S06-031").Prepend(new SourceRefusal("A08-004", notTheAccounts, "")).ToList();
-        }
+        var accountRefusals = AccountRefusals(plan, profile, timeZone, signature.Refusal);
 
         var refusals = accountRefusals.Concat(choiceRefusals).Concat(inputRefusals).ToList();
         var header = Header(jobId, appUserId, $"{plan.Package}@{plan.Version}", origin, request, plan) with
@@ -275,8 +270,16 @@ public sealed class V31JobStarter(
     /// <paramref name="requested"/> (#1505, D15), the others their settings. With them, the block used, by id, and how it was
     /// chosen, or A08-004's sentence; all null when the plan reads no signature.
     /// </summary>
-    private async Task<(Dictionary<string, string?> Profile, (string? BlockId, string? Chosen, string? Refusal) Signature)> ProfileAsync(
-        RunPlan plan, string appUserId, string? requested, CancellationToken cancellationToken)
+    private Task<(Dictionary<string, string?> Profile, (string? BlockId, string? Chosen, string? Refusal) Signature)> ProfileAsync(
+        RunPlan plan, string appUserId, string? requested, CancellationToken cancellationToken) =>
+        ProfileAsync(settings, accounts, plan, appUserId, requested, cancellationToken);
+
+    /// <summary>
+    /// <see cref="ProfileAsync(RunPlan, string, string?, CancellationToken)"/> over the given stores, which the start-checks
+    /// route (D1 of #1509) reads an account with, so it answers what a start would.
+    /// </summary>
+    internal static async Task<(Dictionary<string, string?> Profile, (string? BlockId, string? Chosen, string? Refusal) Signature)> ProfileAsync(
+        IAccountSettingsStore settings, IAccountStore accounts, RunPlan plan, string appUserId, string? requested, CancellationToken cancellationToken)
     {
         var profile = new Dictionary<string, string?>(StringComparer.Ordinal);
         (string? BlockId, string? Chosen, string? Refusal) signature = (null, null, null);
@@ -300,6 +303,23 @@ public sealed class V31JobStarter(
         }
 
         return (profile, signature);
+    }
+
+    /// <summary>The account's time zone setting, as the start reads it (null when unset).</summary>
+    internal static async Task<string?> TimeZoneAsync(IAccountSettingsStore settings, string appUserId, CancellationToken cancellationToken) =>
+        (await settings.GetAsync(appUserId, AccountSettingKeys.TimeZone, cancellationToken))?.Value;
+
+    /// <summary>
+    /// The account's refusals as a start orders them (#1505, D15): <see cref="V31StartChecks.Account"/>'s, with a signature
+    /// block named that the account lacks (<paramref name="signatureRefusal"/>) as A08-004, said in S06-031's place.
+    /// </summary>
+    internal static IReadOnlyList<SourceRefusal> AccountRefusals(
+        RunPlan plan, IReadOnlyDictionary<string, string?> profile, string? timeZone, string? signatureRefusal)
+    {
+        var refusals = V31StartChecks.Account(plan, profile, timeZone);
+        if (signatureRefusal is { } notTheAccounts)
+            refusals = refusals.Where(r => r.Id != "S06-031").Prepend(new SourceRefusal("A08-004", notTheAccounts, "")).ToList();
+        return refusals;
     }
 
     /// <summary>

@@ -193,6 +193,19 @@ not read, so an input sent only through one of them reads as missing (A06-011):
 
 Reruns and the pages that send references are area 12's.
 
+### Asking before a start (#1509, D1)
+
+`GET WorkflowPackages/Current/StartChecks?ref=<package ref>&signatureBlockId=<id>`
+(`[Function("WorkflowPackageStartChecks")]`, `V31StartChecksRoute`) answers the account's refusals before a start, for the
+Create page to say them where the person is looking. It is authorised, CORS'd, and resolves `ref` (the pin when absent;
+an account package only for its owner) and loads the package as `Current` does. The answer is
+`WorkflowPackageStartChecksResponse(Refusals, NeedsProfile)`: `Refusals` are the sentences of a start's account step, in the
+start's order (A08-004 in S06-031's place when `signatureBlockId` names a block the account lacks, then S06-031, S06-032,
+S06-008), and `NeedsProfile` is the plan's `needs.profile`. It reads the account with the starter's own code
+(`V31JobStarter.ProfileAsync`, `TimeZoneAsync` and `AccountRefusals`), so a start gives the same sentences. Input
+refusals are not in it (the page's own checks cover them and the start repeats them), and no profile value is. A load
+refusal is the same 400 `{ error }` as `Current`'s, S09-001 when 31 is not admitted; a version below 31 answers two empty lists.
+
 ## The orchestration
 
 `ConsultGenerationOrchestratorV31` takes a `ConsultGenerationOrchestrationInputV31(JobId, AppUserId, PackageName,
