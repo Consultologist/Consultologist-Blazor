@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.JSInterop;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
 using Consultologist.Web.Shared.Create31;
@@ -37,6 +38,10 @@ public class MarkdownInputTests : ClientRenderTestContext
             ["Bold", "Italic", "Heading", "Bulleted list", "Numbered list"],
             buttons.Select(b => b.GetAttribute("aria-label")!).ToArray());
         Assert.All(buttons, b => Assert.Equal("button", b.GetAttribute("type")));
+        // The page may draw this inside a <label>: the toolbar's clicks must not reach it.
+        var toolbar = cut.Find(".markdown-input__toolbar");
+        Assert.True(toolbar.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.True(toolbar.HasAttribute("blazor:onclick:stoppropagation"));
     }
 
     [Fact]
@@ -52,6 +57,40 @@ public class MarkdownInputTests : ClientRenderTestContext
         Assert.Equal(string.Empty, call.Arguments[3]);
         // The browser gave nothing back (loose mode): the component still stands.
         Assert.NotNull(cut.Find("fluent-text-area"));
+    }
+
+    [Fact]
+    public void AWrapsResult_BecomesTheValue_AndIsReported()
+    {
+        JSInterop.Setup<MarkdownInput.WrapResult?>("consultologistMarkdown.wrapSelection", _ => true)
+            .SetResult(new MarkdownInput.WrapResult("**x**", 2, 3));
+        string? reported = null;
+        var cut = Render<MarkdownInput>(p => p
+            .Add(c => c.Label, "Consult draft")
+            .Add(c => c.Value, "x")
+            .Add(c => c.ValueChanged, (string? v) => reported = v));
+
+        cut.Find("button[data-format=bold]").Click();
+
+        Assert.Equal("**x**", reported);
+        Assert.Equal("**x**", cut.Find("fluent-text-area").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void AWrapThatFailsInTheBrowser_LeavesTheValueAlone()
+    {
+        JSInterop.Setup<MarkdownInput.WrapResult?>("consultologistMarkdown.wrapSelection", _ => true)
+            .SetException(new JSException("no selection on this element"));
+        var reported = false;
+        var cut = Render<MarkdownInput>(p => p
+            .Add(c => c.Label, "Consult draft")
+            .Add(c => c.Value, "x")
+            .Add(c => c.ValueChanged, (string? _) => reported = true));
+
+        cut.Find("button[data-format=bold]").Click();
+
+        Assert.False(reported);
+        Assert.Equal("x", cut.Find("fluent-text-area").GetAttribute("value"));
     }
 
     [Fact]

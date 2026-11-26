@@ -78,13 +78,23 @@
             return;
         }
 
-        var result = await JS.InvokeAsync<WrapResult?>(
-            "consultologistMarkdown.wrapSelection", element, tool.Before, tool.After, tool.LinePrefix);
+        WrapResult? result;
+        try
+        {
+            result = await JS.InvokeAsync<WrapResult?>(
+                "consultologistMarkdown.wrapSelection", element, tool.Before, tool.After, tool.LinePrefix);
+        }
+        catch (JSException)
+        {
+            // The browser could not wrap (no such control, no selection): the text stays as it is.
+            return;
+        }
+
         if (result?.Value is { } value)
         {
             await ReportAsync(value);
         }
     }
 
-    private sealed record WrapResult(string? Value, int SelectionStart, int SelectionEnd);
+    public sealed record WrapResult(string? Value, int SelectionStart, int SelectionEnd);
 }
