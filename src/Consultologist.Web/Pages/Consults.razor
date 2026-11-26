@@ -723,7 +723,7 @@
                                            Blocks="SignatureChoice31"
                                            Pick="@signaturePick31"
                                            PickChanged="PickSignature31Async"
-                                           Disabled="@(isAiRequestLoading || isSchedulingRequest)" />
+                                           Disabled="@(isAiRequestLoading || isSchedulingRequest || askingBeforeStart31)" />
                         }
 
                         <div class="action-row">
@@ -2137,7 +2137,16 @@
       windowFocusReference31 = DotNetObjectReference.Create(this);
       try
       {
-        windowFocusListener31 = await JS.InvokeAsync<int>("consultologistWindowFocus.listen", windowFocusReference31);
+        var listener = await JS.InvokeAsync<int>("consultologistWindowFocus.listen", windowFocusReference31);
+        if (disposed31)
+        {
+          // The page went while the listener was registering: DisposeAsync could not stop it, so stop it here.
+          await StopWindowFocusListenerAsync(listener);
+        }
+        else
+        {
+          windowFocusListener31 = listener;
+        }
       }
       catch (Exception exception) when (exception is JSException or InvalidOperationException)
       {
@@ -2576,17 +2585,19 @@
     // tab); they are asked again, and a refusal holds the start, said above Start.
     if (asksStartChecks31)
     {
+      // Decided by this ask's own answer: one replaced, failed or refused starts nothing.
+      bool cleared;
       askingBeforeStart31 = true;
       try
       {
-        await AskStartChecks31Async();
+        cleared = await AskStartChecks31Async();
       }
       finally
       {
         askingBeforeStart31 = false;
       }
 
-      if (StartHeldBy31)
+      if (!cleared || StartHeldBy31)
       {
         return;
       }
@@ -4028,6 +4039,8 @@
   private string? signaturePick31;
   private DotNetObjectReference<Consults>? windowFocusReference31;
   private int? windowFocusListener31;
+  // Set by DisposeAsync, so a listener that finishes registering afterwards is stopped.
+  private bool disposed31;
 
   private IReadOnlyList<string> StartSentences31 =>
     currentRefusal31 is { } refusal ? [refusal]
@@ -4069,8 +4082,8 @@
 
   private async Task PickSignature31Async(string? choice)
   {
-    // A FluentSelect pick can arrive twice (AGENTS.md); the same pick asks nothing more.
-    if (choice == signaturePick31)
+    // A FluentSelect pick can arrive twice (AGENTS.md). The same pick asks nothing more; nor does one during the ask before a start, which decides that start.
+    if (choice == signaturePick31 || askingBeforeStart31)
     {
       return;
     }
@@ -4080,8 +4093,9 @@
   }
 
   // Reads the account's blocks afresh (one removed in another tab falls back to the chosen one), then asks the checks
-  // with the pick.
-  private async Task AskStartChecks31Async()
+  // with the pick. True only when this ask was answered, is still the latest, and nothing is refused. A failed ask keeps
+  // the last answer's NeedsProfile (so the signature choice and the pick stay) and says A12-004.
+  private async Task<bool> AskStartChecks31Async()
   {
     var asked = ++startChecksAsked31;
     var followedDefault = signaturePick31 == ChosenSignature31;
@@ -4094,7 +4108,7 @@
     catch (AccessTokenNotAvailableException exception)
     {
       exception.Redirect();
-      return;
+      return false;
     }
     catch
     {
@@ -4111,35 +4125,46 @@
       var answer = await WorkflowService.GetStartChecksAsync(currentPackageRef, SignatureBlockIdToSend31);
       if (asked != startChecksAsked31)
       {
-        return;
+        return false;
+      }
+
+      if (answer is null)
+      {
+        startChecksLoadRefusal31 = null;
+        startChecksUnreachable31 = true;
+        return false;
       }
 
       startChecks31 = answer;
       startChecksLoadRefusal31 = null;
-      startChecksUnreachable31 = answer is null;
+      startChecksUnreachable31 = false;
+      return (answer.Refusals?.Count ?? 0) == 0;
     }
     catch (AccessTokenNotAvailableException exception)
     {
       exception.Redirect();
+      return false;
     }
     catch (HttpRequestException exception) when (exception.StatusCode == System.Net.HttpStatusCode.BadRequest)
     {
       if (asked == startChecksAsked31)
       {
-        startChecks31 = null;
         startChecksLoadRefusal31 = exception.Message;
         startChecksUnreachable31 = false;
       }
+
+      return false;
     }
     catch (Exception exception)
     {
       Logger.LogWarning(exception, "Start checks could not be asked");
       if (asked == startChecksAsked31)
       {
-        startChecks31 = null;
         startChecksLoadRefusal31 = null;
         startChecksUnreachable31 = true;
       }
+
+      return false;
     }
   }
 
@@ -5747,7 +5772,8 @@
   [JSInvokable]
   public async Task OnWindowFocusAsync()
   {
-    if (!asksStartChecks31 || isBlocksLoading || isAiRequestLoading || isSchedulingRequest)
+    // The ask before a start is the one that decides it; a focus during it asks nothing.
+    if (!asksStartChecks31 || isBlocksLoading || isAiRequestLoading || isSchedulingRequest || askingBeforeStart31)
     {
       return;
     }
@@ -5758,6 +5784,7 @@
 
   public async ValueTask DisposeAsync()
   {
+    disposed31 = true;
     Navigation.LocationChanged -= HandleLocationChanged;
     CancelActiveEventStream("component-disposed");
     activeEventStreamCancellationTokenSource?.Dispose();
@@ -5766,17 +5793,22 @@
 
     if (windowFocusListener31 is { } listener)
     {
-      try
-      {
-        await JS.InvokeVoidAsync("consultologistWindowFocus.stop", listener);
-      }
-      catch (Exception exception) when (exception is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
-      {
-        // The page is going; a listener the browser already dropped needs no stopping.
-      }
+      await StopWindowFocusListenerAsync(listener);
     }
 
     windowFocusReference31?.Dispose();
+  }
+
+  private async Task StopWindowFocusListenerAsync(int listener)
+  {
+    try
+    {
+      await JS.InvokeVoidAsync("consultologistWindowFocus.stop", listener);
+    }
+    catch (Exception exception) when (exception is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
+    {
+      // The page is going; a listener the browser already dropped needs no stopping.
+    }
   }
 
   // #684: mark when the run started and re-render once a second so the elapsed

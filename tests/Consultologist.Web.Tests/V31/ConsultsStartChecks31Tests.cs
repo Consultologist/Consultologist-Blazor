@@ -5,6 +5,7 @@ using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Accounts;
 using Consultologist.Web.Services.AI;
 using Consultologist.Web.Services.Workflow;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using static Consultologist.Web.Tests.V31.Package31Fixtures;
 
@@ -437,6 +438,136 @@ public class ConsultsStartChecks31Tests : ClientRenderTestContext
         Assert.True(submitted);
         Assert.Contains(NoTimeZone, page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Error calling agent", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AFocusDuringTheBeforeStartAsk_DoesNotLetARefusalPass()
+    {
+        // Fix round 1: a focus arriving while the click's own ask is in flight must not replace it with an older clean answer.
+        Pin();
+        Signatures(Blocks("sig-1", "sig-1", "sig-2"));
+        var beforeStart = new TaskCompletionSource<WorkflowPackageStartChecksResponse>();
+        var asks = 0;
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(_ => ++asks == 2 ? beforeStart.Task : Task.FromResult(Answer(needs: ["signature"])));
+
+        var page = Render<Consults>();
+        Fill(page);
+
+        var clicking = page.InvokeAsync(() => Start(page).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs()));
+        Assert.True(SignatureSelect(page)!.HasAttribute("disabled"));
+        await page.InvokeAsync(() => page.Instance.OnWindowFocusAsync());
+        beforeStart.SetResult(Answer([NoTimeZone], ["signature"]));
+        await clicking;
+
+        Assert.False(submitted);
+        Assert.Equal([NoTimeZone], Refusals(page));
+        Assert.True(Start(page).HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void ASignInNeededDuringTheBeforeStartAsk_StopsTheStart()
+    {
+        Pin();
+        var asks = 0;
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(_ => ++asks == 1
+                ? Task.FromResult(Answer())
+                : throw new Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenNotAvailableException(
+                    navigation,
+                    new Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenResult(
+                        Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenResultStatus.RequiresRedirect, null!, "authentication/login",
+                        new Microsoft.AspNetCore.Components.WebAssembly.Authentication.InteractiveRequestOptions
+                        {
+                            Interaction = Microsoft.AspNetCore.Components.WebAssembly.Authentication.InteractionType.GetToken,
+                            ReturnUrl = "/create",
+                        }),
+                    null));
+
+        var page = Render<Consults>();
+        Fill(page);
+        Start(page).Click();
+
+        Assert.False(submitted);
+    }
+
+    [Fact]
+    public void AFailureDuringTheBeforeStartAsk_StopsTheStart()
+    {
+        Pin();
+        var asks = 0;
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(_ => ++asks == 1 ? Task.FromResult(Answer()) : throw new HttpRequestException("boom", null, HttpStatusCode.ServiceUnavailable));
+
+        var page = Render<Consults>();
+        Fill(page);
+        Start(page).Click();
+
+        Assert.False(submitted);
+        Assert.Equal([A12004], Refusals(page));
+    }
+
+    [Fact]
+    public async Task AnUnreachableAnswer_KeepsTheSignatureChoiceAndThePick()
+    {
+        Pin();
+        Signatures(Blocks("sig-1", "sig-1", "sig-2"));
+        var asks = 0;
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(_ => ++asks <= 2 ? Task.FromResult(Answer(needs: ["signature"])) : throw new HttpRequestException("boom", null, HttpStatusCode.ServiceUnavailable));
+
+        var page = Render<Consults>();
+        Fill(page);
+        SignatureSelect(page)!.Change("sig-2");
+
+        await page.InvokeAsync(() => page.Instance.OnWindowFocusAsync());
+
+        Assert.Equal([A12004], Refusals(page));
+        Assert.Equal("sig-2", SignatureSelect(page)!.GetAttribute("current-value"));
+        Assert.True(Start(page).HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task AfterAnUnreachableAnswer_AFocusThatSucceeds_EnablesStart()
+    {
+        Pin();
+        var asks = 0;
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(_ => ++asks == 1 ? throw new HttpRequestException("boom", null, HttpStatusCode.ServiceUnavailable) : Task.FromResult(Answer()));
+
+        var page = Render<Consults>();
+        Fill(page);
+        Assert.Equal([A12004], Refusals(page));
+        Assert.True(Start(page).HasAttribute("disabled"));
+
+        await page.InvokeAsync(() => page.Instance.OnWindowFocusAsync());
+
+        Assert.Empty(Refusals(page));
+        Assert.False(Start(page).HasAttribute("disabled"));
+        Start(page).Click();
+        Assert.True(submitted);
+    }
+
+    [Fact]
+    public async Task DisposingWhileTheListenerRegisters_StopsItOnceRegistered()
+    {
+        Pin();
+        Checks(Answer());
+        var listen = JSInterop.Setup<int>("consultologistWindowFocus.listen", _ => true);
+
+        Render<Consults>();
+        await DisposeComponentsAsync();
+        Assert.Empty(JSInterop.Invocations["consultologistWindowFocus.stop"]);
+
+        listen.SetResult(9);
+        for (var wait = 0; wait < 100 && JSInterop.Invocations["consultologistWindowFocus.stop"].Count == 0; wait++)
+        {
+            await Task.Delay(10);
+        }
+
+        var stop = Assert.Single(JSInterop.Invocations["consultologistWindowFocus.stop"]);
+        Assert.Equal(9, stop.Arguments[0]);
     }
 
     [Fact]
