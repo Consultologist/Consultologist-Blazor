@@ -593,6 +593,15 @@ and the migration report lists each such conversion (A10-050).
     item 4; Q4 stands): past a loop's `max`, or with its body skipped, an item writes nothing at 31 (§ 1.2's guard), where
     30's template loop wrote its fixed text for it; that text is 30's alone (`loop-item-not-run`; `edge-items-not-run`).
     30's fixed text for an item that never ran was 30's defect.
+  - **A chosen macro's final line ending** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7199237966),
+    item 5; no migration change; R5): a macro the model chose whose body ends in a line ending stands where its marker
+    stood with that one line ending dropped, as 31 renders every body (part 05 § 8.6), where 30 wrote the body whole: the
+    white space after the body's last word is 30's less one line ending (`chosen-macro-final-line-ending`;
+    `edge-unruled-whitespace`).
+  - **An empty read's trailing space** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7199237966),
+    item 5; no migration change): a 30 macro written as a snippet (D4) whose line ends in text, white space and one read
+    keeps that white space at 31 where the read rendered empty, which 30's macro trimmed: the spaces or tabs before the
+    line ending, or the text's end, are 31's alone (`empty-read-trailing-space`; `edge-unruled-whitespace`).
   - **An item named by its position** (part 04 § 2.7; an empty `itemLabel` field too,
     [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 4): the loop's
     label and the position at 31, where 30 gave the input's label (`position-names-from-the-loop`).
