@@ -196,6 +196,104 @@ public class EndpointUrlTests
         Assert.Equal("Workflow package endpoint failed: ServiceUnavailable", thrown.Message);
     }
 
+    private AIEndpointService Jobs(HttpMessageHandler handler) =>
+        new(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<AIEndpointService>>());
+
+    private const string JobId31 = "0123456789abcdef0123456789abcdef";
+
+    [Fact]
+    public async Task TheRowsClient_ListsAJobsRows_WithoutText()
+    {
+        // #1509 (Task 12): the route writes camelCase ({ rows: [ { key, section, row } ] }), in key order.
+        var handler = new RecordingHandler("""
+            {"rows":[{"key":"deliverable.note","section":"deliverable","row":{"key":"deliverable.note","state":"released"}},
+                     {"key":"node.plan","section":"node","row":{"status":"Completed"}}]}
+            """);
+
+        var rows = await Jobs(handler).GetJobRowsAsync(JobId31);
+
+        Assert.Equal($"https://west.ca.api.consultologist.ai/api/ConsultGenerationJobs/{JobId31}/Rows", handler.Requested?.ToString());
+        Assert.Equal(["deliverable.note", "node.plan"], rows.Select(row => row.Key));
+        Assert.Equal(["deliverable", "node"], rows.Select(row => row.Section));
+        Assert.Equal("released", rows[0].Row.GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task TheRowsClient_FetchesOneRowByItsKey_WithItsText()
+    {
+        // a deliverable's text is an object of named texts; "content" is the composed text
+        var handler = new RecordingHandler("""
+            {"key":"node.sections.paragraphs.draft_paragraph:2/1","section":"node","row":{"status":"Completed"},
+             "text":{"content":"Dr A. Sample saw Margaret Okafor."},"textDeleted":false}
+            """);
+
+        var row = await Jobs(handler).GetJobRowAsync(JobId31, "node.sections.paragraphs.draft_paragraph:2/1");
+
+        Assert.Equal(
+            $"https://west.ca.api.consultologist.ai/api/ConsultGenerationJobs/{JobId31}/Rows?key=node.sections.paragraphs.draft_paragraph%3A2%2F1",
+            handler.Requested?.AbsoluteUri);
+        Assert.NotNull(row);
+        Assert.Equal("node", row.Section);
+        Assert.Equal("Dr A. Sample saw Margaret Okafor.", row.Text!.Value.GetProperty("content").GetString());
+        Assert.False(row.TextDeleted);
+    }
+
+    [Fact]
+    public async Task TheRowsClient_ReadsADroppedText_AsNull_AndA404AsNoRow()
+    {
+        var dropped = await Jobs(new RecordingHandler("""{"key":"deliverable.note","section":"deliverable","row":{"state":"released"},"text":null,"textDeleted":true}"""))
+            .GetJobRowAsync(JobId31, "deliverable.note");
+        Assert.Null(dropped!.Text);
+        Assert.True(dropped.TextDeleted);
+
+        Assert.Null(await Jobs(new StatusHandler(HttpStatusCode.NotFound, """{"error":"The job has no row with that key."}"""))
+            .GetJobRowAsync(JobId31, "node.nothing"));
+
+        var failed = await Assert.ThrowsAsync<ConsultGenerationRefusedException>(() =>
+            Jobs(new StatusHandler(HttpStatusCode.InternalServerError, """{"error":"The record isn't available yet. Try again."}""")).GetJobRowsAsync(JobId31));
+        Assert.Equal("The record isn't available yet. Try again.", failed.Message);
+    }
+
+    [Fact]
+    public async Task TheRecordDownload_CarriesTheBytes_TheHash_AndTheFileName()
+    {
+        var handler = new RecordHandler();
+
+        var record = await Jobs(handler).DownloadJobRecordAsync(JobId31);
+
+        Assert.Equal($"https://west.ca.api.consultologist.ai/api/ConsultGenerationJobs/{JobId31}/Record", handler.Requested?.ToString());
+        Assert.Equal("{\"jobId\":\"j\"}"u8.ToArray(), record.Bytes);
+        Assert.Equal("sha256:abc", record.RecordHash);
+        Assert.Equal($"record-{JobId31}.json", record.FileName);
+    }
+
+    [Fact]
+    public async Task TheRecordDownload_Says409And500InTheRoutesWords()
+    {
+        var unfinished = await Assert.ThrowsAsync<ConsultGenerationRefusedException>(() =>
+            Jobs(new StatusHandler(HttpStatusCode.Conflict, """{"error":"The job hasn't finished."}""")).DownloadJobRecordAsync(JobId31));
+        Assert.Equal("The job hasn't finished.", unfinished.Message);
+
+        var unreadable = await Assert.ThrowsAsync<ConsultGenerationRefusedException>(() =>
+            Jobs(new StatusHandler(HttpStatusCode.InternalServerError, """{"error":"The record isn't available yet. Try again."}""")).DownloadJobRecordAsync(JobId31));
+        Assert.Equal("The record isn't available yet. Try again.", unreadable.Message);
+    }
+
+    private sealed class RecordHandler : HttpMessageHandler
+    {
+        public Uri? Requested { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requested = request.RequestUri;
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent("{\"jobId\":\"j\"}"u8.ToArray()) };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+            response.Content.Headers.ContentDisposition = System.Net.Http.Headers.ContentDispositionHeaderValue.Parse($"attachment; filename=\"record-{JobId31}.json\"");
+            response.Headers.Add("X-Record-Hash", "sha256:abc");
+            return Task.FromResult(response);
+        }
+    }
+
     private sealed class StatusHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
