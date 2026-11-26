@@ -8,7 +8,8 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// #1507 (specVersion 31, area 10; part 10 § 3.2, D9; <c>migration-report.schema.json</c>): <c>migration-report.json</c>:
 /// the version migrated from and to, the hand edits made, every notice that needs no edit, the choices the package was
 /// migrated with (<see cref="Options"/>, #1508 R18: its <c>options.json</c>, <see cref="Migration31Options.ToJson"/>'s
-/// shape), and one entry per compared text (<see cref="ComparedText"/>). Reported, never a gate. <see cref="ToJson"/> writes it canonical (RFC 8785,
+/// shape), one entry per compared text (<see cref="ComparedText"/>) and how many of those that differ are explained, partly
+/// explained and unexplained (<see cref="Counts"/>, #1508 R19). Reported, never a gate. <see cref="ToJson"/> writes it canonical (RFC 8785,
 /// <see cref="CanonicalJson"/>), as the other derived files are; <see cref="Of"/> builds it from a migration and its
 /// comparisons. No member carries a value from an input, a model or a profile: ids, package text, sentences and hashes only.
 /// </summary>
@@ -24,8 +25,9 @@ public sealed record MigrationReport(
     public const string FileName = "migration-report.json";
 
     /// <summary>
-    /// The report as its schema has it, every member present (<c>explanation</c> <c>null</c> unless <c>expected</c>), as
-    /// canonical JSON text (RFC 8785: members in code-point order, no white space).
+    /// The report as its schema has it, every member present (<c>explanation</c> <c>null</c> unless <c>expected</c>; each
+    /// text's <c>rules</c> credited and whether it is <c>unexplained</c>, R19), with the <c>counts</c> of the texts that
+    /// differ (<see cref="Counts"/>), as canonical JSON text (RFC 8785: members in code-point order, no white space).
     /// </summary>
     public string ToJson()
     {
@@ -41,9 +43,12 @@ public sealed record MigrationReport(
                 ["equal"] = text.Equal,
                 ["expected"] = text.Expected,
                 ["explanation"] = text.Expected ? text.Explanation : null,
+                ["rules"] = Strings(text.Rules),
+                ["unexplained"] = text.Unexplained,
             });
         }
 
+        var (explained, partly, unexplained) = Counts;
         return CanonicalJson.Write(new JsonObject
         {
             ["oldVersion"] = OldVersion,
@@ -51,8 +56,22 @@ public sealed record MigrationReport(
             ["handEdits"] = Strings(HandEdits),
             ["notices"] = Strings(Notices),
             ["options"] = Options.DeepClone(),
+            ["counts"] = new JsonObject { ["explained"] = explained, ["partlyExplained"] = partly, ["unexplained"] = unexplained },
             ["texts"] = texts,
         });
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 5; R19): of the texts that differ, how many the rules explain whole (expected), how many in
+    /// part (a rule credited, a remainder left) and how many not at all (no rule credited).
+    /// </summary>
+    public (int Explained, int PartlyExplained, int Unexplained) Counts
+    {
+        get
+        {
+            var differ = Texts.Where(t => !t.Equal).ToList();
+            return (differ.Count(t => t.Expected), differ.Count(t => !t.Expected && t.Rules.Count > 0), differ.Count(t => !t.Expected && t.Rules.Count == 0));
+        }
     }
 
     /// <summary>

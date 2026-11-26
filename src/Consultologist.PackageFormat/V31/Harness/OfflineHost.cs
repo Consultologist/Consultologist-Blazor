@@ -78,7 +78,7 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
             return Task.FromResult(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"));
         }
 
-        var (value, reply) = OfflineStubs.Reply(plan, call, prepared, given, pinned, (request.StubSeed ?? (key => key))(call.Key));
+        var (value, reply) = OfflineStubs.Reply(plan, call, prepared, given, pinned, (request.StubSeed ?? (key => key))(call.Key), request.EnginePlaced);
         var outcome = AgentTurn.Finish(prepared, reply);
         if (!request.GenerateMissing && Fault(call, outcome) is { } fault)
         {

@@ -17,6 +17,10 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// <see cref="OfflineResult.InvalidOutputs"/>. Neither is asked again, whatever the node's <c>onInvalid</c>. #1508 (comment 6
 /// item 2; R14): a pinned reply is served exactly as written; one whose macro markers are wrong is not a stub fault but the
 /// node's <c>onInvalid</c>'s, as live, and the attempt a <c>retry</c> asks for has no stub (missing, when not generating).
+/// #1508 (comment 5, item 7, #10; area 11 Task 34): <paramref name="EnginePlaced"/>, by macro site (<c>macro.&lt;id&gt;</c>),
+/// each macro 30's engine placed before (<c>true</c>) or after (<c>false</c>) its node's reply, which a 31 model writes the
+/// marker of: a pinned text reply that lacks the marker of such a macro its prompt offers is given it there
+/// (<see cref="OfflineStubs.Reply"/>), as the macro's instruction asks. Null for none.
 /// </summary>
 public sealed record OfflineRequest(
     IReadOnlyDictionary<string, JsonNode?> Inputs,
@@ -26,7 +30,8 @@ public sealed record OfflineRequest(
     DateTime StartedAtUtc,
     RunLimits? Limits = null,
     Func<string, string>? StubSeed = null,
-    bool GenerateMissing = true);
+    bool GenerateMissing = true,
+    IReadOnlyDictionary<string, bool>? EnginePlaced = null);
 
 /// <summary>
 /// #1508 (specVersion 31, area 11; part 07 § 8.2; D6): a stub that does not fit its node's format (or whose markers are

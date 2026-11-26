@@ -59,7 +59,8 @@ internal static partial class Migrate
     /// not read, or one that always runs keeps <paramref name="rule"/>; so does a rule the converter refused (30's text with
     /// its hand edit: nothing is joined to a condition not yet written). A <c>while</c> source counts as one that runs: 30
     /// composed a while that ran no pass as empty text and released the deliverable, as 31 does, so an <c>if</c> would skip
-    /// what 30 released (its separator beside another source is the expected difference part 10 § 1.2 pins).
+    /// what 30 released. Beside another source the while's blank-line separator stays, which no <c>if</c> can drop: the
+    /// expected difference <c>while-no-pass-separator</c> (the controller's ruling on #1508; part 10 §§ 1.2, 3.2).
     /// </summary>
     private static JsonNode? WhenASourceRan(Migrated m, WorkflowDeliverableSpec deliverable, string file, JsonNode? rule)
     {

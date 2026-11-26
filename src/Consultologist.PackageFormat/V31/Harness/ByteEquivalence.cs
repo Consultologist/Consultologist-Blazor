@@ -7,8 +7,13 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// #1507 (specVersion 31, area 10; part 10 § 3.2): one compared text of <c>migration-report.json</c>: its site (D11), the
 /// hash of the text at 30 and at 31 (the hash of the empty text for a side that lacks it), whether the two are equal (both
 /// present, the same bytes), whether the difference is expected, and why (<c>null</c> unless <paramref name="Expected"/>).
+/// #1508 (comment 5, item 5; R19): the ids of the rules credited with part or all of the difference, in
+/// <see cref="ExpectedDifferences.Rules"/>' order (<paramref name="Rules"/>, none for an equal text), and whether a
+/// remainder no rule explains is left (<paramref name="Unexplained"/>); <paramref name="Expected"/> is a difference with a
+/// rule credited and no remainder.
 /// </summary>
-public sealed record ComparedText(string Site, string OldHash, string NewHash, bool Equal, bool Expected, string? Explanation);
+public sealed record ComparedText(
+    string Site, string OldHash, string NewHash, bool Equal, bool Expected, string? Explanation, IReadOnlyList<string> Rules, bool Unexplained);
 
 /// <summary>#1507 (D11): what a compared text is: the job's state, a sent prompt, a rendered node's text, a deliverable's text.</summary>
 public enum ComparedKind
@@ -54,8 +59,9 @@ public sealed record DifferenceContext(
 /// the 31 request of a 30 scenario and its capture: the scenario's inputs and macro choices through 31's start, its profile,
 /// 30's run date, and the capture's replies replayed under 31's row keys (<see cref="KeyMap"/>), a reply the capture lacks
 /// generated from 30's key. <see cref="Compare"/> lists every compared text: the job's state, every prompt, every rendered
-/// node's text and every deliverable's, each at its site (D11), a difference marked expected only when a rule of
-/// <see cref="ExpectedDifferences"/> explains it ("when in doubt, a difference is unexpected").
+/// node's text and every deliverable's, each at its site (D11), each difference credited to the rules of
+/// <see cref="ExpectedDifferences"/> that explain part of it (R19), and marked expected only when they explain all of it
+/// ("when in doubt, a difference is unexpected").
 /// </summary>
 public static class ByteEquivalence
 {
@@ -92,7 +98,9 @@ public static class ByteEquivalence
     /// (<see cref="KeyMap.To30"/>). #1508 (comment 6 item 2; R14): a captured reply is replayed exactly as 30's model
     /// wrote it, no 31 marker added (<see cref="OfflineStubs.Reply"/>), so one that holds no marker for a macro 31 offers
     /// fails its node as it would live. Each macro-choice classifier (<see cref="ChoiceClassifiers"/>, R14) is answered from
-    /// the capture (<see cref="ChoiceAnswers"/>).</item>
+    /// the capture (<see cref="ChoiceAnswers"/>). #1508 (comment 5, item 7, #10): each macro 30's engine placed before or after
+    /// a node's reply (<see cref="EnginePlaced"/>) has its marker written into a captured reply that lacks it, where the
+    /// macro's instruction asks for it (<see cref="OfflineRequest.EnginePlaced"/>).</item>
     /// </list>
     /// </summary>
     public static OfflineRequest RequestFor(JsonObject scenario30, JsonObject capture30, Migration31Result migrated, RunPlan plan)
@@ -159,7 +167,39 @@ public static class ByteEquivalence
             facts,
             outputs,
             CapturedAtUtc,
-            StubSeed: key31 => KeyMap.To30(key31, migrated, plan) ?? key31);
+            StubSeed: key31 => KeyMap.To30(key31, migrated, plan) ?? key31,
+            EnginePlaced: EnginePlaced(migrated) is { Count: > 0 } placed ? placed : null);
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 7, #10): each macro 30's engine placed on one side of a node's reply, by its 31 site
+    /// (<c>macro.&lt;id&gt;</c>), <c>true</c> before and <c>false</c> after, read from <paramref name="migrated"/>'s hand edits
+    /// (A10-003, <see cref="Migration.MigrationSentences.PlacedByTheEngine"/>: the edit writes the instruction that says
+    /// where the model writes its marker). A macro placed on both sides is left out: where its marker goes is the edit's own.
+    /// </summary>
+    public static IReadOnlyDictionary<string, bool> EnginePlaced(Migration31Result migrated)
+    {
+        ArgumentNullException.ThrowIfNull(migrated);
+        const string Head = "macro '";
+        const string Placed = "' was placed ";
+        const string Tail = " the reply by the engine; ";
+        var ids31 = migrated.MacroIds30.Where(m => !m.Key.Contains('/', StringComparison.Ordinal))
+            .ToDictionary(m => m.Value, m => m.Key, StringComparer.Ordinal);
+        var placed = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var edit in migrated.HandEdits)
+        {
+            var at = edit.IndexOf(Head, StringComparison.Ordinal);
+            var end = at < 0 ? -1 : edit.IndexOf(Placed, at + Head.Length, StringComparison.Ordinal);
+            var tail = end < 0 ? -1 : edit.IndexOf(Tail, end + Placed.Length, StringComparison.Ordinal);
+            if (tail < 0)
+                continue;
+            var id = edit[(at + Head.Length)..end];
+            var side = edit[(end + Placed.Length)..tail];
+            if (side is "before" or "after")
+                placed["macro." + ids31.GetValueOrDefault(id, id).Replace('/', '.')] = side == "before";
+        }
+
+        return placed;
     }
 
     /// <summary>
@@ -189,14 +229,13 @@ public static class ByteEquivalence
         void Add(ComparedKind kind, string site, string? key30, string? key31, (string Text, string Hash)? old, (string Text, string Hash)? now)
         {
             var equal = old is { } o && now is { } n && o.Hash == n.Hash && o.Text == n.Text;
-            string? explanation = null;
-            if (!equal)
-            {
-                explanation = ExpectedDifferences.Explain(new DifferenceContext(
+            var credited = equal
+                ? new ExpectedDifferences.Credited([], false)
+                : ExpectedDifferences.Credit(new DifferenceContext(
                     package, scenario, at + site, kind, key30, key31, old?.Text, now?.Text, capture30, run31, migrated, plan, request31));
-            }
 
-            texts.Add(new ComparedText(at + site, old?.Hash ?? EmptyHash, now?.Hash ?? EmptyHash, equal, explanation != null, explanation));
+            texts.Add(new ComparedText(at + site, old?.Hash ?? EmptyHash, now?.Hash ?? EmptyHash, equal, credited.Expected,
+                credited.Expected ? credited.Explanation : null, [.. credited.Rules.Select(r => r.Id)], credited.Unexplained));
         }
 
         var status30 = SourceLayout.Text(capture30["status"]) ?? "";
