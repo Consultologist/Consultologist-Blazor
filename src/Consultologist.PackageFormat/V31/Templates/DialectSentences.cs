@@ -312,6 +312,13 @@ public static class DialectSentences
     public static SourceRefusal WritesAnObjectOrList(string subject, string readPath, int line, string what, string path) =>
         new("A07-007", $"{subject} writes {readPath} at line {Line(line)}, which is {what}; read a member, loop over it or pipe it into a renderer.", path);
 
+    /// <summary>
+    /// A11-012 (#1508, ruling 12; part 05 § 2.6): a part or a macro, <paramref name="unit"/>, read in an expression (piped,
+    /// a pipe's argument, beside another value) rather than placed on its own.
+    /// </summary>
+    public static SourceRefusal UnitInExpression(string subject, string unit, int line, string path) =>
+        new("A11-012", $"{subject} uses {unit} at line {Line(line)} in an expression; a part or a macro is placed on its own, as {{{{ {unit} }}}}, never piped or used in an expression.", path);
+
     /// <summary>A07-008: a bare <c>node.x</c>, <c>input.x</c>, <c>check.x</c>, <c>param.x</c> (or <c>item</c>); <paramref name="member"/> is <c>.value</c>, <c>.content</c> or <c>.title</c>.</summary>
     public static SourceRefusal ReadsBare(string subject, string readPath, int line, string member, string path) =>
         new("A07-008", $"{subject} reads {readPath} at line {Line(line)}; read {member} of it.", path);

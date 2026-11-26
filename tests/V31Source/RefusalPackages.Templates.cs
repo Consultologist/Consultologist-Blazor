@@ -137,6 +137,13 @@ internal static partial class RefusalPackages
             SectionNotes(),
             SectionNotes().Edit("nodes/closing.md", "{{~ macro.section_notes.hpi }}", "{{ macro.section_notes.hpi.anything }}"));
 
+        // #1508 (ruling 12; Task 25's fix round 1): a unit is placed on its own, never read in an expression.
+        yield return new RefusalCase("A11-012",
+            "A part or a macro is placed on its own (chapter 5 § 5.2.6). The agent closing places the macro follow_up. "
+            + "Invalid: it pipes macro.follow_up into string.upcase, which is no placement. Valid: it places it.",
+            FollowUp(),
+            FollowUp().Edit("nodes/closing.md", FollowUpPlaced, "{{ macro.follow_up | string.upcase }}\n"));
+
         yield return new RefusalCase("S05-020",
             "A template reads only its site's roots (chapter 5 § 5.3.1). The plan's prompt writes the draft. Invalid: it reads "
             + "deliverable.note.content, which a prompt never reads. Valid: input.consult_draft.content.",

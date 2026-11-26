@@ -360,7 +360,12 @@ public static partial class SourceTemplates
                         continue;
                     }
 
-                    var read = Record(output.Tag.Start, order++, Typed(path, output.Tag.Line, scope));
+                    var typed = Typed(path, output.Tag.Line, scope);
+                    var read = Record(output.Tag.Start, order++, typed);
+                    // #1508 (ruling 12): a part or a macro is placed on its own; read in an expression it is no placement
+                    // (the run reads it as null there), so it is refused (A11-012).
+                    if (typed is (null, null) && IsUnit(path) && scope.All(v => v.Name != path.Split('.')[0]) && Unit(output) is null)
+                        Refusals.Add(DialectSentences.UnitInExpression(host.Subject, path, output.Tag.Line, host.Path));
                     if (path == output.Path)
                         head ??= read;
                     // #1505 (area 08): a deliverable's outputs are held to its format instead (part 06 § 6.4, D8).
@@ -449,7 +454,7 @@ public static partial class SourceTemplates
             if (typed.Item1 is { Format: { } format } && FormatTypes.Shape(format, formats) != FormatShape.List)
                 return (null, DialectSentences.ForOverNotAList(host.Subject, source, line, host.Path));
             // #1508 (ruling 12): a part or a macro is text placed, never a list, so its variable reads nothing.
-            if (typed is (null, null) && IsUnit(source))
+            if (typed is (null, null) && IsUnit(source) && Scope(start, depth).All(v => v.Name != source.Split('.')[0]))
                 return (null, DialectSentences.ForOverNotAList(host.Subject, source, line, host.Path));
             return typed;
         }

@@ -474,3 +474,4 @@ The build's area sentences for area 11, which are not rows of `sentences.json` a
 | A11-006 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"Version \<version\> of \<package\> is already published. Publish a new version."* | author | |
 | A11-007 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"The workflow couldn't be published because the engine failed. Tell the operator."* | author | |
 | A11-008 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"\<Subject\> couldn't be rendered because the engine failed. Tell the operator."* | clinician | |
+| A11-012 | [2.6 Placement forms and whitespace](05-templates-and-macros.md#26-placement-forms-and-whitespace) | *"\<Subject\> uses \<part or macro\> at line \<n\> in an expression; a part or a macro is placed on its own, as {{ \<part or macro\> }}, never piped or used in an expression."* | author | |

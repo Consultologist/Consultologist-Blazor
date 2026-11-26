@@ -1594,10 +1594,11 @@ The rules for one read:
 - `part.<id>`, `macro.<id>` and `macro.<folder>.<id>` are placements, judged where they are placed. #1508 (ruling 12):
   a unit has no members, so any longer path under `part` or `macro` (`macro.<folder>.<id>.x`, a marker
   `macro.<id>.content` outside its own instruction, `part.<id>.x`) is S05-011, said of the text that reads it, naming
-  the longest part of the path that names a unit. A `for` over a part or a macro is S05-006. Every step of every
-  other head is read too, so no member read passes untyped. What stays untyped: a read under a loop whose own source
-  is refused (said there), a renderer's `value` when its `input` is refused (S02-017), and a whole unit, placed or
-  piped (`{{ macro.x | string.upcase }}` is not a placement and is not refused yet).
+  the longest part of the path that names a unit. A whole unit read other than alone in its tag (piped, a pipe's
+  argument, beside another value: `{{ macro.x | string.upcase }}`) is A11-012, since the run reads it as nothing
+  there; in a body `if` it is S05-007, and a `for` over it is S05-006. Every step of every other head is read too, so
+  no member read passes untyped. What stays untyped is said elsewhere: a read under a loop whose own source is
+  refused (said there), and a renderer's `value` when its `input` is refused (S02-017).
 - These are refused:
   - a root the site does not read: S05-020, or S05-021 for `profile.*` in a prompt, a part or a `rendered` node;
   - an unknown root or member, at any step: S05-011;

@@ -82,7 +82,11 @@ public class MemberReadTests
 
                 Assert.True(refusals.Count > 0, $"{head} {site} {read} passed as untyped");
                 Assert.All(refusals, V31Contract.AssertSentence);
-                Assert.True(refusals.Any(r => r.Sentence.Contains(Named(read), StringComparison.Ordinal)), $"{head} {site} {read}: " + Said(refusals));
+                // The read is named whole by S05-011 (S05-022 where a snippet's placer is what lacks it); S06-028 names the field.
+                Assert.True(refusals.Any(r => r.Id is "S05-011" or "S05-022"
+                        ? r.Sentence.Contains($" reads {read} ", StringComparison.Ordinal) || r.Sentence.Contains($" reads {read},", StringComparison.Ordinal)
+                        : r.Id == "S06-028" && r.Sentence.Contains($" reads {Named(read)},", StringComparison.Ordinal)),
+                    $"{head} {site} {read}: " + Said(refusals));
             }
         }
     }
@@ -96,6 +100,55 @@ public class MemberReadTests
         "item" or "pass" or "param" => site != "deliverable",
         _ => true,
     } && (place == "top" || site != "deliverable"));
+
+    [Fact]
+    public void AStepPastASingleMacro_IsSaidAsItsPlacement()
+    {
+        // macro.<id>.<x> has a folder macro's placement form, so the placement says it, once: no macro is named so.
+        var (files, path) = At("prompt", "top", "macro.follow_up.x");
+
+        var refusal = Assert.Single(Publish(files));
+
+        V31Contract.AssertSentence(refusal);
+        Assert.Equal(("S05-011", path, "Node 'draft' reads macro.follow_up.x at line 2, which macro.* doesn't have."),
+            (refusal.Id, refusal.Path, refusal.Sentence));
+    }
+
+    [Theory]
+    [InlineData("Note: {{ macro.follow_up | string.upcase }}", "macro.follow_up")]
+    [InlineData("Note: {{ macro.notes.hpi | string.upcase }}", "macro.notes.hpi")]
+    [InlineData("Note: {{ macro.follow_up | renderer.concept_bullets }}", "macro.follow_up")]
+    [InlineData("Note: {{ part.brief | string.upcase }}", "part.brief")]
+    [InlineData("Note: {{ node.plan.value.sections | array.join macro.follow_up }}", "macro.follow_up")]
+    [InlineData("Note: {{ macro.follow_up == \"x\" }}", "macro.follow_up")]
+    public void AUnitInAnExpression_IsRefused(string line, string unit)
+    {
+        // #1508 (ruling 12): a part or a macro is placed on its own; in an expression the run reads it as null.
+        var (files, path) = At("prompt", "top", "node.plan.content");
+        files.With(path, Agent("Agent draft", Plain, "Draft the note.\n" + line + "\n"))
+            .WithJson(path, h => h["parts"] = JsonNode.Parse("{ \"brief\": { \"if\": null, \"text\": [\"Be brief.\"] } }"));
+
+        var refusals = Publish(files);
+
+        var refusal = Assert.Single(refusals, r => r.Id == "A11-012");
+        V31Contract.AssertSentence(refusal);
+        Assert.Equal((path, $"Node 'draft' uses {unit} at line 2 in an expression; a part or a macro is placed on its own, as {{{{ {unit} }}}}, never piped or used in an expression."),
+            (refusal.Path, refusal.Sentence));
+    }
+
+    [Fact]
+    public void AForVariableNamedLikeAUnit_IsReadAsTheVariable()
+    {
+        // A for variable named part shadows the root: its members are its element's, not a unit's (no S05-006, no A11-012).
+        var (files, path) = At("prompt", "top", "node.plan.content");
+        files.With(path, Agent("Agent draft", Plain,
+            "Draft the note.\n{{ for part in node.plan.value.sections }}{{ for y in part.nope }}{{ y }}{{ end }}{{ part.title | string.upcase }}{{ end }}\n"));
+
+        var refusal = Assert.Single(Publish(files));
+
+        Assert.Equal(("S05-011", path), (refusal.Id, refusal.Path));
+        Assert.StartsWith("Node 'draft' reads part.nope at line 2, which ", refusal.Sentence, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void AMacrosMemberInASnippet_IsSaidOfTheSnippet()
@@ -211,7 +264,7 @@ public class MemberReadTests
         }
     }
 
-    /// <summary>What the refusal names at least: the read's head and first step (S06-028 names <c>profile.nope</c> of <c>profile.nope.content</c>).</summary>
+    /// <summary>The read's head and first step, which S06-028 names (<c>profile.nope</c> of <c>profile.nope.content</c>).</summary>
     private static string Named(string read) => string.Join('.', read.Split('.').Take(2));
 
     /// <summary>
