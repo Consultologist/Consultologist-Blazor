@@ -63,7 +63,7 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | `labelField` on an input | `itemLabel` on **each loop** that iterates the input (several loops get the same value) | [04](04-loops-and-functions.md) |
 | a node's `when` gate | `if` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064)); a `case` branch keeps `when` | [03](03-expressions.md) |
 | a `case` with no `else` whose branches miss some values (which 30 skipped) | **an explicitly empty branch for the missing values**, `{ "when": [<values>], "nodes": [], "ret": null }`, so every `case` is exhaustive and those values still read as skipped, with the reason *"case '<id>': arm for <value> does nothing"*. The `case` keeps its shape and keys: `example-conditional-sections`' `route` gains `{ "when": ["omit"], "nodes": [], "ret": null }` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) | [04](04-loops-and-functions.md) |
-| string conditions (Scriban) | JSON Logic, by the converter (§ 2); `==`/`!=` written `===`/`!==`; `!x` on text → `blank(x)`, each listed in the migration report (§ 2.3); text compared with a literal → `in` a list of that literal, with `trim` on each text read of an input (30 trimmed an input's text at its end; `trim` trims both), and a nullable list's `size` compared → with its null test (§ 2.2) | [03](03-expressions.md) |
+| string conditions (Scriban) | JSON Logic, by the converter (§ 2); `==`/`!=` written `===`/`!==`; `!x` on text → `blank(x)`, each listed in the migration report (§ 2.3); text compared with a literal → `in` a list of that literal, with `trim` on each text read of an input (an item of an input's list too; 30 trimmed an input's text at its end; `trim` trims both), and a nullable list's `size` compared → with its null test (§ 2.2) | [03](03-expressions.md) |
 | `let` (a Scriban expression) | `kind: computed` with JSON Logic in `expression`, by the converter | [03](03-expressions.md) |
 | a `terms_subset` check node | a file in `checks/`, `kind: computed`, `format: check_result`, `failWith` a literal; every reader of `node.x` rewritten to `check.x` | [06](06-checks-deliverables-profile.md) |
 | deliverables with `sources`, composed by the engine | a file in `deliverables/` whose generated template **reproduces today's composer bytes**, with `whenEmpty` chosen as § 1.10 says | [06](06-checks-deliverables-profile.md) |
@@ -387,7 +387,7 @@ the operations themselves, their signatures and their null rules are part 03's.
 | a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x` | `{ "var": "<the same path, with its root>" }` |
 | a read of an input: `input.x`, `input.x.y` | `{ "var": "input.x.value" }` (or `input.x.content` for a text-format input), `{ "var": "input.x.value.y" }` |
 | `a == b`, `a != b` | `{ "===": [a, b] }`, `{ "!==": [a, b] }` |
-| `x == "lit"`, `x != "lit"`, with `x` text | `{ "in": [ trim(x)…, ["lit"] ] }`, `{ "!": [ { "in": [ trim(x)…, ["lit"] ] } ] }` (text is never compared with a literal by `===`, part 03 § 7), with `trim` on each text read of an input in `x` (30 trimmed an input's text at its end; `trim` trims both), with a notice; a literal that starts with white space is a hand edit (A10-085); with `""` and `x` a text input read whole, with its null test (below); another comparison of an input's text with blank text is a hand edit (§ 2.3) |
+| `x == "lit"`, `x != "lit"`, with `x` text | `{ "in": [ trim(x)…, ["lit"] ] }`, `{ "!": [ { "in": [ trim(x)…, ["lit"] ] } ] }` (text is never compared with a literal by `===`, part 03 § 7), with `trim` on each text read of an input in `x`, an item of an input's list too (30 trimmed an input's text at its end; `trim` trims both), with a notice; a literal that starts with white space is a hand edit (A10-085); with `""` and `x` a text input read whole, with its null test (below); another comparison of an input's text with blank text is a hand edit (§ 2.3) |
 | `a < b`, `a <= b`, `a > b`, `a >= b` | the same operators, two operands |
 | `a && b`, `a \|\| b` | `and`, `or` (flattened: `a && b && c` is one `and`) |
 | `!a`, with `a` boolean | `{ "!": [a] }` |
@@ -428,10 +428,18 @@ the operations themselves, their signatures and their null rules are part 03's.
   trimmed an input's text (a field's and an element's too) at its end before it compared; `trim`
   (part 03 § 5.2), the one trimming operation 31's JSON Logic has, trims both ends, so an input's text
   with trailing white space answers as at 30, and one with **leading** white space, which 30 kept,
-  now matches where 30's did not. A read the author already trimmed (`| string.strip`) gets no second
-  `trim`; a node's or an item's text, which 30 compared as it was, gets none. A `null` text is in no
-  list of text (`trim` of `null` is `null`), as 30's `null` equalled no text. Each one is listed in
-  the migration report (A10-074). A literal that starts with white space, compared with an input's
+  now matches where 30's did not. Production's 31 start already normalises an input's text as 30's
+  did (`V31JobStarter` calls `ConsultGenerationJobStarter.NormalizeInputs`, whose
+  `CanonicalText.Normalize` turns CRLF into LF and trims the end), so in production the written `trim`
+  changes an answer only through leading white space (`" yes"` now matches `"yes"`); its end-trim
+  matters where inputs reach the engine as given (the byte-equivalence harness, publish's in-package
+  tests). An item of a loop over an input's list (`item.value` and its fields, and a nested loop's
+  item over a list field of such an item) is an input's text, which 30 trimmed per element and per
+  field, so its text reads are trimmed the same. A read the author already trimmed (`| string.strip`)
+  gets no second `trim`; a node's text, or an item of a node's list or of a snippet folder, which 30
+  compared as it was, gets none. A `null` text is in no list of text (`trim` of `null` is `null`), as
+  30's `null` equalled no text. Each one is listed in the migration report (A10-074), whose clause on
+  the trim is said only where a `trim` was written. A literal that starts with white space, compared with an input's
   text, could match at 30 and never matches a trimmed text, so no trim fits: a hand edit (§ 2.3).
 - **Blank text is the exception.** 30 read an input's text not given, or given as white space alone,
   as `""` (a field's text too), where 31's start leaves out a text input absent or blank, which then
@@ -441,8 +449,9 @@ the operations themselves, their signatures and their null rules are part 03's.
   `{ "and": [ { "!==": [x, null] }, { "!": [ { "in": [x, [""]] } ] } ] }`, `x` the input's
   `{ "var": "input.x.content" }` (or `.value`), so an input not given or blank answers as at 30; each
   one is listed in the migration report (A10-075). Any other comparison of an input's text with
-  blank text (`string.downcase input.x == ""`, `input.x == " "`, `input.x.y == ""`) is not written: a
-  hand edit (§ 2.3). A node's or an item's text compared with `""` is `in [""]` as above: 30 kept it as
+  blank text (`string.downcase input.x == ""`, `input.x == " "`, `input.x.y == ""`, and an item of an
+  input's list's `item.value.y == ""`) is not written: a hand edit (§ 2.3). A node's text, or an item
+  of a node's list or of a snippet folder, compared with `""` is `in [""]` as above: 30 kept it as
   written.
 
 ### 2.3 What it refuses, and `!x` on text

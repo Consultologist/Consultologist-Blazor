@@ -2434,12 +2434,17 @@ and does not credit it).
 written list of string literals; each is in `TextLiterals` and the migration says A10-074. Each text read of an input in
 `x` (not one the author already trimmed) is written `{ "trim": [read] }` (`TrimInputReads`; #1508, 2026-11-26, item 6):
 30 trimmed an input's text at its end, `trim` trims both, so leading white space now matches where 30's did not; a
-literal that starts with white space compared with an input's text is refused with A10-085. **Blank text** is the
+literal that starts with white space compared with an input's text is refused with A10-085. An item of a loop over an
+input's list is an input's text (`ConversionScope.ItemIsInputElement`, from the migration's `SitePlace`: the loop
+iterates `input.<id>`, or a list field of an outer such item), so its `item.value…` text reads are trimmed and refused
+the same; an item of a node's list or a snippet folder is not. `BlankConversion.Trimmed` says whether a trim was
+written, and A10-074's clause on the trim is said only then. **Blank text** is the
 exception: 30 read an input's text not given or blank (white space alone, a field's too) as `""`, where 31's start
 leaves out a text input absent or blank, which then reads null, and keeps a field as given. So a text input read whole
 compared with `""` is written with its null test, as a nullable size is: `x === null or x in [""]` (`!=` is
 `x !== null and not (x in [""])`), which answers as 30 did (`EmptyComparisons`, A10-075), and any other comparison
-of an input's text with blank text (`lower(input.x) == ""`, `input.x == " "`, `input.x.y == ""`) is refused with
+of an input's text with blank text (`lower(input.x) == ""`, `input.x == " "`, `input.x.y == ""`, an input item's
+`item.value.y == ""`) is refused with
 A10-076, a hand edit's reason. **A comparison of the `size` of a list that can be null** is written with
 its null test, so a null list counts 0 as 30's absent list did: one that holds at 0 is `x === null or …`
 (`size(x) == 0`), one that does not `x !== null and …` (`size(x) > 0`; `!= 0` is written `> 0`), and against an
