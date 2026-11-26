@@ -165,8 +165,9 @@ public static class SnapshotTest
     /// <summary>
     /// The request a test file <paramref name="test"/> (part 07 § 8.1) states: its <c>inputs</c> as given (a member
     /// <c>null</c> is an input left unset), its <c>profile</c>'s strings, its <c>run</c> with the date's <c>value</c> as
-    /// the date, its <c>outputs</c> pinned, the clock <see cref="StartedAtUtc"/>. A member missing or of another type
-    /// reads as empty: the run then says what is missing.
+    /// the date, its <c>outputs</c> pinned, and (#1508, 2026-11-25 item 10) the clock 10:00 on the test's own date in its
+    /// <c>timeZone</c> (<see cref="ClockOf"/>). A member missing or of another type reads as empty: the run then says what
+    /// is missing.
     /// </summary>
     public static OfflineRequest Request(JsonObject test)
     {
@@ -180,14 +181,50 @@ public static class SnapshotTest
             profile[field] = SourceLayout.Text(value);
 
         var facts = new JsonObject();
+        var clock = StartedAtUtc;
         foreach (var (fact, value) in test["run"] as JsonObject ?? [])
-            facts[fact] = fact == "date" && value is JsonObject date ? date["value"]?.DeepClone() : value?.DeepClone();
+        {
+            if (fact == "date" && value is JsonObject date)
+            {
+                facts[fact] = date["value"]?.DeepClone();
+                clock = ClockOf(SourceLayout.Text(date["value"]), SourceLayout.Text(date["timeZone"]));
+            }
+            else
+            {
+                facts[fact] = value?.DeepClone();
+            }
+        }
 
         var outputs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
         foreach (var (key, value) in test["outputs"] as JsonObject ?? [])
             outputs[key] = value?.DeepClone();
 
-        return new OfflineRequest(inputs, profile, facts, outputs, StartedAtUtc);
+        return new OfflineRequest(inputs, profile, facts, outputs, clock);
+    }
+
+    /// <summary>
+    /// A test's clock (#1508, 2026-11-25 item 10): 10:00 on <paramref name="date"/> (<c>yyyy-MM-dd</c>) in
+    /// <paramref name="timeZone"/>, as UTC, the hour <see cref="StartedAtUtc"/> is in <see cref="TimeZone"/>; UTC when the
+    /// zone is none this machine knows (as a job's date is taken, part 08 § 8.1). A date it cannot read gives
+    /// <see cref="StartedAtUtc"/>; the run's date fact is the test's text either way. Never throws.
+    /// </summary>
+    private static DateTime ClockOf(string? date, string? timeZone)
+    {
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day))
+            return StartedAtUtc;
+        var zone = timeZone is { Length: > 0 } && TimeZoneInfo.TryFindSystemTimeZoneById(timeZone, out var found) ? found : TimeZoneInfo.Utc;
+        var local = day.ToDateTime(new TimeOnly(10, 0), DateTimeKind.Unspecified);
+        if (zone.IsInvalidTime(local))
+            return DateTime.SpecifyKind(local, DateTimeKind.Utc);
+        try
+        {
+            return TimeZoneInfo.ConvertTimeToUtc(local, zone);
+        }
+        catch (ArgumentException)
+        {
+            // 0001-01-01 or 9999-12-31 in a zone whose offset takes it out of DateTime's range.
+            return StartedAtUtc;
+        }
     }
 
     /// <summary>The run facts <paramref name="plan"/> reads, by name with <c>run.</c> dropped, in its order.</summary>

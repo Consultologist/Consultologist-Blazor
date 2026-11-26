@@ -358,6 +358,44 @@ public class SnapshotTestTests
     }
 
     [Fact]
+    public void Request_UsesTheTestsOwnDate()
+    {
+        // #1508 (2026-11-25, item 10): the run's date is the test's, in its zone, and the clock is 10:00 there on that day.
+        var test = JsonNode.Parse("""
+            { "inputs": {}, "profile": {}, "outputs": {},
+              "run": { "date": { "value": "2027-02-03", "timeZone": "America/Vancouver" }, "package": "p@v1" } }
+            """)!.AsObject();
+
+        var request = SnapshotTest.Request(test);
+
+        Assert.Equal("""{"date":"2027-02-03","package":"p@v1"}""", request.RunFacts.ToJsonString());
+        var vancouver = TimeZoneInfo.FindSystemTimeZoneById("America/Vancouver");
+        Assert.Equal(TimeZoneInfo.ConvertTimeToUtc(new DateTime(2027, 2, 3, 10, 0, 0, DateTimeKind.Unspecified), vancouver), request.StartedAtUtc);
+        Assert.Equal(DateTimeKind.Utc, request.StartedAtUtc.Kind);
+        Assert.Equal(new DateTime(2027, 2, 3, 10, 0, 0), TimeZoneInfo.ConvertTimeFromUtc(request.StartedAtUtc, vancouver));
+
+        // the snapshot's own date gives the snapshot's clock, as before
+        test["run"] = JsonNode.Parse("""{ "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } }""");
+        Assert.Equal(SnapshotTest.StartedAtUtc, SnapshotTest.Request(test).StartedAtUtc);
+    }
+
+    [Theory]
+    [InlineData("""{ "value": "3 February", "timeZone": "America/Vancouver" }""")]
+    [InlineData("""{ "value": "2027-02-03", "timeZone": "Nowhere/Fictional" }""")]
+    [InlineData("""{ "value": 2027, "timeZone": "America/Vancouver" }""")]
+    [InlineData("""{ "value": "0001-01-01", "timeZone": "Pacific/Kiritimati" }""")]
+    [InlineData("\"2027-02-03\"")]
+    public void Request_OfADateItCannotPlace_NeverThrows(string date)
+    {
+        var test = JsonNode.Parse("""{ "inputs": {}, "profile": {}, "outputs": {}, "run": {} }""")!.AsObject();
+        test["run"]!["date"] = JsonNode.Parse(date);
+
+        var request = SnapshotTest.Request(test);
+
+        Assert.Equal(DateTimeKind.Utc, request.StartedAtUtc.Kind);
+    }
+
+    [Fact]
     public void Fictional_GivesExactlyTheProfileAndRunFactsThePlanReads()
     {
         var plan = V31Engine.V31StartChecksTests.Plan(needs: ["signature", "name"], facts: ["run.date", "run.package", "run.id", "run.engine"]);
