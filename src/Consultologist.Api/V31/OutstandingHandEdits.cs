@@ -135,46 +135,11 @@ public sealed class OutstandingHandEdits(
     {
         ArgumentNullException.ThrowIfNull(accounts);
 
-        // the packages, each read once: a pin many accounts share (general@latest) is one read, and a latest ref and
-        // its version are one package. Each pin and each read fails alone: what it would have named is not counted.
-        var notCounted = 0;
-        var refs = new Dictionary<string, WorkflowPackageRef>(StringComparer.Ordinal);
-        foreach (var account in accounts)
-        {
-            try
-            {
-                var pin = await _pins.ResolvePinAsync(account.AppUserId, ct);
-                refs.TryAdd(pin.ToString(), pin);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogWarning("Operator weekly summary: could not resolve an account's active package. ExceptionType={ExceptionType}", ex.GetType().FullName);
-                notCounted++;
-            }
-        }
-
-        var read = new Dictionary<string, WorkflowPackageSource>(StringComparer.Ordinal);
-        foreach (var packageRef in refs.Values)
-        {
-            try
-            {
-                var source = await _sources.ReadSourceAsync(packageRef, ct);
-                read.TryAdd(source.Ref, source);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogWarning("Operator weekly summary: could not read an account's active package. ExceptionType={ExceptionType}", ex.GetType().FullName);
-                notCounted++;
-            }
-        }
-
+        var (read, notCounted) = await ActivePackages.ReadAsync(_pins, _sources, accounts.Select(a => a.AppUserId), _logger, ct);
         if (read.Count == 0 && notCounted > 0)
             return MigrationFigures.NoneRead(notCounted);
 
-        var below31 = read.Values
-            .Where(source => source.SpecVersion is not { } version || version < WorkflowPackageMigration30To31.Target)
-            .OrderBy(source => source.Ref, StringComparer.Ordinal)
-            .ToList();
+        var below31 = read.Select(package => package.Source).Where(ActivePackages.IsBelow31).ToList();
         if (below31.Count == 0)
             return MigrationFigures.Counted(0, 0, 0, notCounted);
 
@@ -221,5 +186,77 @@ public sealed class OutstandingHandEdits(
         }
 
         return MigrationFigures.Counted(handEdits, packages, doNotMigrate, notCounted);
+    }
+}
+
+/// <summary>
+/// #1507 (R11, D22), shared by #1508 (area 11, Task 36): the accounts' active packages, each the one a consult would run
+/// (<see cref="IWorkflowPackagePinResolver"/>), each distinct package read once as stored (<see cref="IWorkflowPackageSources"/>):
+/// a pin many accounts share (<c>general@latest</c>) is one read, and a <c>latest</c> ref and its version are one package.
+/// Read by the weekly summary's hand-edits line (<see cref="OutstandingHandEdits"/>) and by the operator's bulk publish
+/// (<see cref="MigratePackage"/>, its list). Each pin and each read fails alone (logged with its exception's type, never
+/// its message) and is counted as not read.
+/// </summary>
+public static class ActivePackages
+{
+    /// <summary>A package read: its source and the accounts whose pin names it, in the order they were given.</summary>
+    public sealed record Read(WorkflowPackageSource Source, IReadOnlyList<string> Owners);
+
+    /// <summary>
+    /// The packages <paramref name="appUserIds"/>' pins name, in the ordinal order of their resolved refs, and how many
+    /// pins or packages could not be read. Never an exception but cancellation.
+    /// </summary>
+    public static async Task<(IReadOnlyList<Read> Packages, int NotRead)> ReadAsync(
+        IWorkflowPackagePinResolver pins, IWorkflowPackageSources sources, IEnumerable<string> appUserIds, ILogger logger, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(pins);
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(appUserIds);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        var notRead = 0;
+        var refs = new Dictionary<string, (WorkflowPackageRef Ref, List<string> Owners)>(StringComparer.Ordinal);
+        foreach (var appUserId in appUserIds)
+        {
+            try
+            {
+                var pin = await pins.ResolvePinAsync(appUserId, ct);
+                if (!refs.TryGetValue(pin.ToString(), out var named))
+                    refs[pin.ToString()] = named = (pin, []);
+                named.Owners.Add(appUserId);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning("Active packages: could not resolve an account's active package. ExceptionType={ExceptionType}", ex.GetType().FullName);
+                notRead++;
+            }
+        }
+
+        var read = new Dictionary<string, (WorkflowPackageSource Source, List<string> Owners)>(StringComparer.Ordinal);
+        foreach (var (packageRef, owners) in refs.Values)
+        {
+            try
+            {
+                var source = await sources.ReadSourceAsync(packageRef, ct);
+                if (read.TryGetValue(source.Ref, out var known))
+                    known.Owners.AddRange(owners);
+                else
+                    read[source.Ref] = (source, [.. owners]);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning("Active packages: could not read an account's active package. ExceptionType={ExceptionType}", ex.GetType().FullName);
+                notRead++;
+            }
+        }
+
+        return (read.Values.OrderBy(p => p.Source.Ref, StringComparer.Ordinal).Select(p => new Read(p.Source, p.Owners)).ToList(), notRead);
+    }
+
+    /// <summary>Whether <paramref name="source"/> is below 31 (or its manifest does not read): the migration's to make.</summary>
+    public static bool IsBelow31(WorkflowPackageSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.SpecVersion is not { } version || version < WorkflowPackageMigration30To31.Target;
     }
 }

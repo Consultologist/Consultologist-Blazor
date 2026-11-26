@@ -218,6 +218,10 @@ public static class ApiServices
         services.AddSingleton<IDrainBlobs, TextDrainBlobs>();
         services.AddSingleton<IEngineDrain, EngineDrain>();
         services.AddScoped<AdminDrain>();
+        // #1508 (area 11, Task 36; R21): the operator's bulk publish, one account package a call (Admin/MigratePackage, gated
+        // as Admin/Drain is), driven by scripts/bulk-publish-v31.cs.
+        services.AddSingleton<Consultologist.Api.V31.MigratePackage>();
+        services.AddScoped<AdminMigratePackage>();
         // #449/#398: the build's attestation, computed once — served at Public/Engine
         // and stamped on every record's packageFormatRef/provenanceRef.
         services.AddSingleton(sp => EngineAttestation.Current(

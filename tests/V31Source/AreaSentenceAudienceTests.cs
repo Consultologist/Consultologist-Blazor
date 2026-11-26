@@ -20,4 +20,14 @@ public class AreaSentenceAudienceTests
         Assert.Equal("clinician", V31Contract.AreaSentenceAudiences["A11-008"]);
         Assert.Equal("clinician", V31Contract.RefusalSentencesAudience("A11-008"));
     }
+
+    [Theory]
+    [InlineData("A11-015", "clinician")]
+    [InlineData("A11-016", "operator")]
+    public void TheBulkPublishsSentences_AreForTheOwnerAndTheOperator(string id, string audience)
+    {
+        // #1508 (Task 36): the deadline is told to the owner; a package no pin names is the operator's to see.
+        Assert.Equal(audience, V31Contract.AreaSentenceAudiences[id]);
+        Assert.Equal(audience, V31Contract.RefusalSentencesAudience(id));
+    }
 }

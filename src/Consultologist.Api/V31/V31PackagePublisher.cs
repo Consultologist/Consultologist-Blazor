@@ -129,13 +129,7 @@ public sealed class V31PackagePublisher(
         ArgumentNullException.ThrowIfNull(targetName);
         var files = request.Files ?? new Dictionary<string, string>();
         var name = targetName;
-
-        var publishedBy = request.MigrationReport != null ? ByOperatorMigration : request.Source != null ? ByEditor : ByApi;
-        var options = new PublishOptions(
-            types.Registry, toolchain.Current(), limits.PublishLimits, publishedBy, clock,
-            MigrationReport: request.MigrationReport?.GetRawText(),
-            MigratedFrom: request.MigrationReport is { } migration ? MigratedFrom(migration) : null,
-            MatchTimeLimit: limits.RegexLimit);
+        var options = OptionsOf(request);
 
         var nowUtc = clock.GetUtcNow();
         var version = CalVerVersion.AssignNext(await ReadLatestAsync(accountKind, name, ct), nowUtc);
@@ -143,7 +137,7 @@ public sealed class V31PackagePublisher(
 
         for (var attempt = 1; ; attempt++)
         {
-            var outcome = await Pipeline(Upload(files, name, version.ToString()), options);
+            var outcome = await Pipeline(Upload(files, name, version.ToString()), OnVersion(options, version.ToString()));
             if (!outcome.Published)
                 return (null, await RefusedAsync(name, outcome.Report, ct));
 
@@ -182,6 +176,51 @@ public sealed class V31PackagePublisher(
                 "31 publish version taken; retrying. Package={Package}, Conflicted={Conflicted}, Next={Next}", name, version, next);
             version = next;
         }
+    }
+
+    /// <summary>
+    /// #1508 (Task 36): the publish of <see cref="PublishAsync"/> run once in memory at the version it would assign first,
+    /// nothing written, no pointer or pin moved, no alert raised: the version and the report as they would be.
+    /// <see cref="Admit"/> has said yes.
+    /// </summary>
+    public async Task<(string Version, PublishReport Report)> CheckAsync(
+        string? accountKind, WorkflowPackagePublishRequest request, string targetName, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(targetName);
+        var version = CalVerVersion.AssignNext(await ReadLatestAsync(accountKind, targetName, ct), clock.GetUtcNow()).ToString();
+        var outcome = await Pipeline(
+            Upload(request.Files ?? new Dictionary<string, string>(), targetName, version), OnVersion(OptionsOf(request), version));
+        return (version, outcome.Report);
+    }
+
+    /// <summary>The pipeline's options for <paramref name="request"/>: the engine's registry, toolchain, limits and clock, D4's <c>publishedBy</c>, D5's report.</summary>
+    private PublishOptions OptionsOf(WorkflowPackagePublishRequest request)
+    {
+        var publishedBy = request.MigrationReport != null ? ByOperatorMigration : request.Source != null ? ByEditor : ByApi;
+        return new PublishOptions(
+            types.Registry, toolchain.Current(), limits.PublishLimits, publishedBy, clock,
+            MigrationReport: request.MigrationReport?.GetRawText(),
+            MigratedFrom: request.MigrationReport is { } migration ? MigratedFrom(migration) : null,
+            MatchTimeLimit: limits.RegexLimit);
+    }
+
+    /// <summary>
+    /// #1508 (Task 36): <paramref name="options"/> for a publish at <paramref name="version"/>: a migration report whose
+    /// <c>newVersion</c> is not that version gets it (a member replacement, written canonical, RFC 8785), so the stored report
+    /// names the version it is stored in; one that names it already is stored as sent.
+    /// </summary>
+    private static PublishOptions OnVersion(PublishOptions options, string version)
+    {
+        if (options.MigrationReport is not { } text
+            || JsonNode.Parse(text) is not JsonObject report
+            || report["newVersion"] is JsonValue newVersion && newVersion.TryGetValue<string>(out var named) && named == version)
+        {
+            return options;
+        }
+
+        report["newVersion"] = version;
+        return options with { MigrationReport = CanonicalJson.Write(report) };
     }
 
     /// <summary>The report as the response and the 400's body carry it.</summary>

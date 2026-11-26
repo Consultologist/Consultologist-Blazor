@@ -134,7 +134,8 @@ internal static class V31Contract
     /// A11-010 and A11-011, Task 28: the publish warnings of a deliverable that could be released empty and of a loop's fixed
     /// text for items that did not run, Q3 and Q4 of 2026-11-26, R15 and R16; A11-013, Task 32: a judgement node whose prompt
     /// asks no question, #1508 comment 6 item 1, R13; A11-014, Task 35: an agent's onInvalid that is not retry or fail, 30's
-    /// flag among them, comment 5 item 3 and comment 6 item 3).
+    /// flag among them, comment 5 item 3 and comment 6 item 3; A11-015 and A11-016, Task 36: the bulk publish's deadline for a
+    /// package it cannot publish, comment 8, R11, and a package that is not the account's active account package, R21).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
@@ -152,16 +153,21 @@ internal static class V31Contract
         ["A11-012"] = "<Subject> uses <part or macro> at line <n> in an expression; a part or a macro is placed on its own, as {{ <part or macro> }}, never piped or used in an expression.",
         ["A11-013"] = "Node '<id>' asks nothing: its prompt has no question.",
         ["A11-014"] = "Node '<id>' has onInvalid <value>; write retry or fail.",
+        ["A11-015"] = "This package stops working when specVersion 30 is retired.",
+        ["A11-016"] = "<package> is not the account's active account package; the bulk publish migrates only the account package an account's pin names.",
     };
 
     /// <summary>
     /// #1508 (R8 item 4): the audience of an area sentence whose audience is not the author's, as the refusal-sentences table
-    /// gives it: A08-006 is logged for the operator; A11-008 is shown to the clinician, who is told to tell the operator.
+    /// gives it: A08-006 is logged for the operator; A11-008 is shown to the clinician, who is told to tell the operator;
+    /// A11-015 is the owner's, in the bulk publish's owners' list, and A11-016 the operator's, in its record (Task 36).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> AreaSentenceAudiences = new Dictionary<string, string>
     {
         ["A08-006"] = "operator",
         ["A11-008"] = "clinician",
+        ["A11-015"] = "clinician",
+        ["A11-016"] = "operator",
     };
 
     /// <summary>
@@ -214,7 +220,8 @@ internal static class V31Contract
     /// R13, area 11 Task 32; A10-079: a deliverable whose sources may all not run given the if that skips it as 30 did,
     /// A10-080: a read through a nullable object where no guard can stand, a hand edit's reason, and A10-081: a package
     /// whose worst case passes the engine's instances limit, a hand edit's reason, #1508 comment 7 (Q3, Q5, B2), R15, R17,
-    /// R11, area 11 Task 33).
+    /// R11, area 11 Task 33; A10-082: an options.json id or choice that is empty, which the flags refuse, carried from Task 29's
+    /// review, and A10-083: the defaults the bulk publish says it used for a package with no options.json, area 11 Task 36).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -297,6 +304,8 @@ internal static class V31Contract
         ["A10-079"] = "<file>, if: written to skip the deliverable unless <reads> ran, as 30 skipped a deliverable none of whose sources ran.",
         ["A10-080"] = "the template reads <path> at line <n> through <object path>, which can be null, where no {{ if <object path> }} can enclose the read; move the read where that guard can stand.",
         ["A10-081"] = "up to <n> steps could run in one job through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.",
+        ["A10-082"] = "options.json gives <renames | whenEmpty | folderFormats> an empty id or an empty choice; name each id and its choice.",
+        ["A10-083"] = "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

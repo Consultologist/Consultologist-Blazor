@@ -70,6 +70,20 @@ public static class PackagePublishSentences
     public static SourceRefusal StaysAt30(string package, string reason) =>
         new("S10-005", $"{package} stays at version 30 for now: {reason}. Its pin is unchanged; you can migrate it in the Editor when Milestone 41 arrives.", "");
 
+    /// <summary>
+    /// A11-015 (#1508, Task 36; comment 8, R11): the deadline the bulk publish gives the owner of a package it cannot publish
+    /// at 31, beside S10-005: it keeps its 30 version and its pin, and runs at 30 until 30 is retired (#1450).
+    /// </summary>
+    public const string StopsWhen30Retired = "This package stops working when specVersion 30 is retired.";
+
+    /// <summary>
+    /// A11-016 (#1508, Task 36; R21): the bulk publish was asked to migrate <paramref name="package"/> for an account whose
+    /// pin does not name it, or <paramref name="package"/> is not an account package (<c>acct-…</c>): only an account's active
+    /// account package is published as the account's.
+    /// </summary>
+    public static string NotTheActivePackage(string package) =>
+        $"{package} is not the account's active account package; the bulk publish migrates only the account package an account's pin names.";
+
     private static string List(IEnumerable<string> items)
     {
         var sorted = items.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
