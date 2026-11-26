@@ -460,9 +460,9 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 **Interfaces:** Produces `Migration31Options.FromJson` (R18) → `(Migration31Options? Options, string? Refusal)`; `MigrationOptionsFile.FileName = "options.json"`; `MigrationReport` gains `Options` (`JsonObject`, required in `ToJson`).
 
-- [ ] **Step 1: Failing tests.** `ExampleChoices_ReadTheFiles` (no dictionary literal is left in `ExampleChoices`; a package with no `options.json` fails loudly); `FromJson` refuses an unknown member, a non-string value and a `whenEmpty` outside `release|hold|fail`, each with a sentence (next A10 ids) and never an exception; the script with `--options` gives the same package as the three flags did; `--options` with `--rename` is exit 2; the report holds the options and validates against the schema.
-- [ ] **Step 2 to 4: Run, implement, run** `--filter "FullyQualifiedName~V31"`. Regenerate `reports/` and the vectors; only the new member may move.
-- [ ] **Step 5:** part 10 §§ 1.4, 1.5, 1.9, 1.10 and `package-format-library.md` say where the choices live; content repo pushed; pin. **Commit** `PackageFormat (#1508): the migration's choices are read from options.json and recorded in the report`; tick; push.
+- [x] **Step 1: Failing tests.** `ExampleChoices_ReadTheFiles` (no dictionary literal is left in `ExampleChoices`; a package with no `options.json` fails loudly); `FromJson` refuses an unknown member, a non-string value and a `whenEmpty` outside `release|hold|fail`, each with a sentence (next A10 ids) and never an exception; the script with `--options` gives the same package as the three flags did; `--options` with `--rename` is exit 2; the report holds the options and validates against the schema.
+- [x] **Step 2 to 4: Run, implement, run** `--filter "FullyQualifiedName~V31"`. Regenerate `reports/` and the vectors; only the new member may move.
+- [x] **Step 5:** part 10 §§ 1.4, 1.5, 1.9, 1.10 and `package-format-library.md` say where the choices live; content repo pushed; pin. **Commit** `PackageFormat (#1508): the migration's choices are read from options.json and recorded in the report`; tick; push.
 
 ### Task 30: Conversions that changed meaning; `flag` becomes `retry`
 
