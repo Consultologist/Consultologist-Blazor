@@ -106,8 +106,8 @@ public class MigrateNodesTests
             { "kind": "rendered", "producer": "computed", "label": "Patient header", "description": null, "format": "plaintext",
               "reproducible": true, "modelDerived": false, "runDependent": false, "profileCarrying": false, "if": null }
             """), header.ToJsonString());
-        // The templates pass rewrites its reads (a date input is read as its value); the rest is 30's template.
-        Assert.Equal(files["prompts/patient_header.md"].Replace("{{ input.seen_on }}", "{{ input.seen_on.value }}", StringComparison.Ordinal), body);
+        // The templates pass rewrites its reads (a date input is read as its value, in 30's form); the rest is 30's template.
+        Assert.Equal(files["prompts/patient_header.md"].Replace("{{ input.seen_on }}", "{{ input.seen_on.value | date.to_string \"%d %b %Y\" }}", StringComparison.Ordinal), body);
     }
 
     [Fact]

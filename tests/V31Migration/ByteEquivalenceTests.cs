@@ -67,11 +67,39 @@ public class ByteEquivalenceTests
     }
 
     [Fact]
+    public async Task AMigratedDate_RendersAs30Did()
+    {
+        // #1508 (item 2): the migration writes 30's "%d %b %Y", so the dated prompt and render are equal.
+        var (_, _, billing) = await EquivalenceFixture.Compared("example-conditional-documents", "new-patient-billing");
+        var date = billing.Single(t => t.Site.EndsWith("#prompts/node.sections_consult_note_section.consult_note_section:assessment", StringComparison.Ordinal));
+        Assert.True(date.Equal);
+        Assert.Equal(date.OldHash, date.NewHash);
+
+        var (_, _, v12) = await EquivalenceFixture.Compared("example-v12-constructs", "default");
+        var header = v12.Single(t => t.Site.EndsWith("#renders/node.patient_header", StringComparison.Ordinal));
+        Assert.True(header.Equal);
+    }
+
+    [Fact]
     public async Task ADifferenceNoRuleExplains_IsUnexpected()
     {
-        // 30 wrote the encounter date as Scriban's default "09 Nov 2026"; 31 writes the date ISO (part 05 § 1): no ruling.
-        var (_, _, texts) = await EquivalenceFixture.Compared("example-conditional-documents", "new-patient-no-billing");
-        var date = texts.Single(t => t.Site.EndsWith("#prompts/node.sections_consult_note_section.consult_note_section:assessment", StringComparison.Ordinal));
+        // A prompt 30 sent with a line 31 does not write, which no rule explains (the encounter date's form was one; #1508 item 2
+        // made it equal).
+        var package = "example-conditional-documents";
+        var capture = EquivalenceFixture.Capture(package, "new-patient-no-billing");
+        var site = "#prompts/node.sections_consult_note_section.consult_note_section:assessment";
+        var prompt = capture["prompts"]!.AsArray().OfType<JsonObject>().Single(p =>
+            KeyMap.To31((string)p["key"]!, EquivalenceFixture.Migrated(package), EquivalenceFixture.Plan(package)) == site["#prompts/".Length..]);
+        var text = (string)prompt["text"]! + "\nAn extra line only 30 wrote.";
+        prompt["text"] = text;
+        prompt["hash"] = CanonicalJson.HashText(text);
+
+        var migrated = EquivalenceFixture.Migrated(package);
+        var plan = EquivalenceFixture.Plan(package);
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(package, "new-patient-no-billing"), capture, migrated, plan);
+        var run = await OfflineRun.RunAsync(plan, request);
+        var texts = Equivalence.Compare(package, "new-patient-no-billing", capture, run, migrated, plan, request);
+        var date = texts.Single(t => t.Site.EndsWith(site, StringComparison.Ordinal));
 
         Assert.Equal((false, false, (string?)null), (date.Equal, date.Expected, date.Explanation));
         Assert.NotEqual(date.OldHash, date.NewHash);
