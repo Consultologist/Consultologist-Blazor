@@ -249,14 +249,16 @@ public sealed class PlanFormats
 
     /// <summary>
     /// A model's <paramref name="reply"/> as a value of <paramref name="format"/>: for a text format the reply itself, as a
-    /// string; otherwise the reply parsed as JSON (to <see cref="MaxReplyDepth"/> levels, a repeated member refused), with
-    /// <c>Parsed</c> false when it is not.
+    /// string (for <c>markdown_inline</c> with one trailing line ending, <c>\r\n</c>, <c>\n</c> or <c>\r</c>, taken off:
+    /// #1508, 2026-11-25, item 8; a second is still a line ending inside it); otherwise the reply parsed as JSON (to
+    /// <see cref="MaxReplyDepth"/> levels, a repeated member refused), with <c>Parsed</c> false when it is not. The runner
+    /// and the offline host's stub check both read a reply here.
     /// </summary>
     public (JsonNode? Value, bool Parsed) Read(string reply, JsonNode? format)
     {
         ArgumentNullException.ThrowIfNull(reply);
-        if (IsText(format))
-            return (JsonValue.Create(reply), true);
+        if (TextFormat(format) is { } text)
+            return (JsonValue.Create(text == "markdown_inline" ? WithoutOneLineEnding(reply) : reply), true);
 
         try
         {
@@ -271,6 +273,12 @@ public sealed class PlanFormats
             return (null, false);
         }
     }
+
+    /// <summary><paramref name="text"/> with one trailing line ending (<c>\r\n</c>, <c>\n</c> or <c>\r</c>) taken off, if it ends in one.</summary>
+    private static string WithoutOneLineEnding(string text) =>
+        text.EndsWith("\r\n", StringComparison.Ordinal) ? text[..^2]
+        : text.EndsWith('\n') || text.EndsWith('\r') ? text[..^1]
+        : text;
 
     /// <summary>The bundle entry <paramref name="format"/> refers to, when it is exactly one <c>$ref</c> to a key there.</summary>
     private JsonObject? Target(JsonNode? format) =>
