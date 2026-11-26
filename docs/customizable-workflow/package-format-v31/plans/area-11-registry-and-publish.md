@@ -450,9 +450,9 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 - A11-010 (author): *"Deliverable '\<id\>' could be released with nothing in it: everything it reads may not run. Give it an if, or whenEmpty: hold."* When the deliverable has no `if`, `whenEmpty` is `release`, it reads at least one node, and every node or check it reads may not run.
 - A11-011 (author): *"Deliverable '\<id\>' writes fixed text for every item of \<loop key\> at line \<n\>, also for items that did not run. Loop over .value, or guard on state."* When a `for` over a loop's `.items` has literal text or a non-item read in its body outside any `if` that tests the loop variable's `state`.
 
-- [ ] **Step 1: Failing tests,** one saying and two near misses each (A11-010: an `if` present; `whenEmpty: hold`; one source that always runs. A11-011: a loop over `.value`; a body wholly inside `{{ if e.state == "completed" }}`; a body that is only the item's own reads, with no literal text beyond white space).
-- [ ] **Step 2 to 4: Run, implement, run** V31 tests; regenerate compiled goldens whose `warnings` move, read them, list them.
-- [ ] **Step 5:** README rows, `refusal-sentences.md`, part 06 § 6 and part 07 § 10 with the twins; content check; pin. **Commit** `PackageFormat (#1508): publish warns of a deliverable released empty and of loop text for items not run`; tick; push.
+- [x] **Step 1: Failing tests,** one saying and two near misses each (A11-010: an `if` present; `whenEmpty: hold`; one source that always runs. A11-011: a loop over `.value`; a body wholly inside `{{ if e.state == "completed" }}`; a body that is only the item's own reads, with no literal text beyond white space).
+- [x] **Step 2 to 4: Run, implement, run** V31 tests; regenerate compiled goldens whose `warnings` move, read them, list them.
+- [x] **Step 5:** README rows, `refusal-sentences.md`, part 06 § 6 and part 07 § 10 with the twins; content check; pin. **Commit** `PackageFormat (#1508): publish warns of a deliverable released empty and of loop text for items not run`; tick; push.
 
 ### Task 29: The migration's options live in a file
 
