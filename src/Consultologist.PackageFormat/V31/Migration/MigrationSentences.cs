@@ -429,6 +429,32 @@ internal static class MigrationSentences
         $"macro '{macro}' is placed by {nodes.Count.ToString(CultureInfo.InvariantCulture)} nodes, with a classifier each ({string.Join(", ", nodes)}), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.";
 
     /// <summary>
+    /// A10-079 (#1508, comment 7, Q3; R15; part 10 § 1.2): the deliverable <paramref name="file"/> was given the <c>if</c>
+    /// that skips it unless one of its sources (<paramref name="reads"/>, the 31 reads, in <c>sources</c> order) ran: 30
+    /// skipped a deliverable none of whose sources ran, where 31 would compose it empty and release it.
+    /// </summary>
+    public static string SkippedUnlessASourceRan(string file, IReadOnlyList<string> reads) =>
+        $"{file}, if: written to skip the deliverable unless {string.Join(" or ", reads)} ran, as 30 skipped a deliverable none of whose sources ran.";
+
+    /// <summary>
+    /// A10-080 (#1508, comment 7, Q5; R17; part 10 § 1.4): a reason: the template reads <paramref name="path"/> at
+    /// <paramref name="line"/> through <paramref name="through"/>, which can be null (A11-009 refuses it at publish), at a
+    /// place the dialect holds no <c>if</c> (a part's text, A07-002; a test or an argument): the migration cannot write the
+    /// guard there.
+    /// </summary>
+    public static string NoGuardHere(string path, string through, int line) =>
+        $"the template reads {path} at line {line.ToString(CultureInfo.InvariantCulture)} through {through}, which can be null, where no {{{{ if {through} }}}} can enclose the read; move the read where that guard can stand.";
+
+    /// <summary>
+    /// A10-081 (#1508, comment 7, B2, and comment 8; R11; part 10 § 1.4): a reason: the migrated package's worst case opens
+    /// <paramref name="count"/> instances through <paramref name="loop"/>, past <paramref name="limit"/>, the engine's
+    /// default (<c>RunLimits.JobInstances</c>), so publish refuses it (A11-001); the migration guesses no <c>max</c>. The
+    /// numbers are grouped as A11-001 groups them.
+    /// </summary>
+    public static string PastTheInstanceLimit(long count, string loop, int limit) =>
+        $"up to {count.ToString("N0", CultureInfo.InvariantCulture)} steps could run in one job through {loop}, and this engine runs at most {limit.ToString("N0", CultureInfo.InvariantCulture)} for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.";
+
+    /// <summary>
     /// A10-077 (#1508, comment 6, item 1; R13; part 10 § 1.4): a reason: the <c>judgement</c> node <paramref name="node"/>
     /// the migration wrote decides whether macro <paramref name="macro"/> is offered, which 30's model chose from the
     /// instruction; its prompt ends with an empty question line, which publish refuses (A11-013), and the instruction's

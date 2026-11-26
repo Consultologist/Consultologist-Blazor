@@ -91,27 +91,43 @@ public static class PublishNotes
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(resolution);
         ArgumentNullException.ThrowIfNull(limits);
+        return PastInstances(package, resolution, limits) is { } past
+            ? [ResolveSentences.TooManySteps(past.Count, past.Through, past.Limit, past.Path)]
+            : [];
+    }
+
+    /// <summary>
+    /// #1508 (area 11, Task 33; R11): what <see cref="Refusals"/> says A11-001 of, as facts: the instances the worst case
+    /// could open, the key of the outermost loop (or call) on the heaviest path and its file (a loop's <c>index.json</c>),
+    /// and the limit passed; null when <see cref="PublishLimits.Instances"/> is null or the count is within it. The migration
+    /// says it as a hand edit before the bulk publish refuses it.
+    /// </summary>
+    internal static InstancesPast? PastInstances(SourcePackage package, Resolution resolution, PublishLimits limits)
+    {
         if (limits.Instances is not { } most)
-            return [];
+            return null;
 
         var walk = new Walk(resolution, limits);
         var deliverables = Deliverables(package.Deliverables).ToList();
         var top = package.Nodes.Nodes.Concat(package.Checks.Nodes).ToList();
         var total = Add(walk.Instances(top), deliverables.Count);
         if (total <= most)
-            return [];
+            return null;
 
         if (walk.Heaviest(top) is not { } heaviest)
         {
             // No node at all: only the deliverables count (a limit set below their number).
             var first = deliverables.FirstOrDefault();
-            return [ResolveSentences.TooManySteps(total, first?.Key ?? "", most, first?.Path ?? "")];
+            return new InstancesPast(total, first?.Key ?? "", first?.Path ?? "", most);
         }
 
         var through = walk.Through(heaviest);
         var path = through is SourceLeaf ? through.Path : SourceLayout.Join(through.Path, "index.json");
-        return [ResolveSentences.TooManySteps(total, through.Key, most, path)];
+        return new InstancesPast(total, through.Key, path, most);
     }
+
+    /// <summary>A11-001's facts (<see cref="PastInstances"/>): the count, the loop it runs through and its file, the limit.</summary>
+    internal sealed record InstancesPast(long Count, string Through, string Path, int Limit);
 
     /// <summary>
     /// #1508 (area 11; D16) S09-016 of <paramref name="package"/> against <paramref name="limits"/>' job minutes, or null

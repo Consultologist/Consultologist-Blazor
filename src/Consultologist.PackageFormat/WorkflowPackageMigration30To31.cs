@@ -291,6 +291,7 @@ public static class WorkflowPackageMigration30To31
             V31.Migration.Migrate.Checks(migrated);
             V31.Migration.Migrate.Deliverables(migrated);
             V31.Migration.Migrate.Derived(migrated);
+            PastTheInstanceLimit(migrated);
             return migrated.Result(at30.Notices);
         }
 
@@ -305,10 +306,41 @@ public static class WorkflowPackageMigration30To31
     }
 
     /// <summary>
+    /// #1508 (ruled by the owner, B2 of 2026-11-26 and its clarification; R11): publish refuses a package whose worst case
+    /// opens more instances than one job may (A11-001, <see cref="V31.PublishNotes.Refusals"/>), so the migration says it
+    /// first: the migrated package, as written, is checked and counted against the engine's default limits
+    /// (<see cref="V31.Run.RunLimits"/>), and when it passes them, a hand edit on the outermost loop's <c>max</c> on the
+    /// heaviest path (A10-081) carries A11-001's count and limit. No <c>max</c> is written: the owner ruled that none is
+    /// guessed (#1508). A package whose check stops before its nodes are resolved (an earlier hand edit's construct) is not
+    /// counted; its publish counts it once the edits are made.
+    /// </summary>
+    private static void PastTheInstanceLimit(Migrated m)
+    {
+        var upload = m.Files().ToDictionary(f => f.Key, f => System.Text.Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
+        upload["manifest.json"] = System.Text.Encoding.UTF8.GetBytes(Migrated.Json(m.Manifest));
+        var check = V31.SourceCheck.Run(upload, m.Options.Registry);
+        if (check.Parse.Package is not { } package || check.Resolution is not { } resolution)
+            return;
+        if (V31.PublishNotes.PastInstances(package, resolution, EngineLimits) is { } past)
+            m.HandEdit(past.Path, "max", MigrationSentences.PastTheInstanceLimit(past.Count, past.Through, past.Limit));
+    }
+
+    /// <summary>
+    /// #1508 (R11): the engine's default limits (<see cref="V31.Run.RunLimits"/>' starting values) as publish measures a
+    /// package against them: the agent calls at once, the items a loop, the agent calls a job and the instances a job.
+    /// The migration counts its package against them, and its snapshot publishes at them.
+    /// </summary>
+    internal static V31.PublishLimits EngineLimits { get; } = Limits(new V31.Run.RunLimits());
+
+    private static V31.PublishLimits Limits(V31.Run.RunLimits run) =>
+        new(run.MaxAgentCalls, run.LoopItems, run.JobAgentCalls, run.JobInstances);
+
+    /// <summary>
     /// #1507 (part 10 § 4; part 07 § 8; D13): the 31 source <paramref name="manifestJson"/> and <paramref name="files"/>
     /// (without <c>manifest.json</c>) with its snapshot test: published in memory with <paramref name="options"/>'
     /// <see cref="Migration31Options.Registry"/> and <see cref="Migration31Options.Toolchain"/>
-    /// (<see cref="V31.CompiledPackage.Publish"/>), run offline on <see cref="V31.Harness.SnapshotTest.Fictional"/>'s request
+    /// (<see cref="V31.CompiledPackage.Publish"/>; #1508, R11: at <see cref="EngineLimits"/>, so a package past the instances
+    /// limit is refused with A11-001), run offline on <see cref="V31.Harness.SnapshotTest.Fictional"/>'s request
     /// (<see cref="V31.Harness.OfflineRun"/>), and written (<see cref="V31.Harness.SnapshotTest.Write"/>): the same files with
     /// <c>tests/migration_snapshot.json</c> (written anew when the source has one) and <c>tests/index.json</c> listing
     /// <c>migration_snapshot</c>. It is what the operator runs once a package's hand edits are made. A source that does
@@ -380,7 +412,9 @@ public static class WorkflowPackageMigration30To31
         try
         {
             var upload = Upload(manifestJson, files);
-            var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain);
+            // #1508 (R11): published as the engine publishes it, at its default limits, so a package past the instances one
+            // job may open (A11-001) gets no snapshot.
+            var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain, EngineLimits);
             if (compiled is null)
             {
                 var sentences = publishRefusals.Select(r => r.Sentence).ToList();
