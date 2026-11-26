@@ -377,12 +377,38 @@ public class AgentTurnTests
         Assert.Equal(CanonicalJson.HashText(quoted), run.Rows.Single(r => r.Key == "node.plan").ValueHash);
         Assert.Equal(quoted + "\n", Assert.Single(run.Deliverables).Text);
 
+        // fix round 1: an envelope holding no string, or a reply that is not the envelope, is no text: not of its format,
+        // which the runner refuses as not plaintext (plaintext itself would read any string)
+        Assert.Null(prepared.Format.Unwrap("{\"value\":5}", text: true));
+        Assert.Null(prepared.Format.Unwrap("{\"value\":null}", text: true));
+        Assert.Equal("5", prepared.Format.Unwrap("{\"value\":5}"));
+        foreach (var notText in new[] { "{\"value\":5}", "{\"value\":null}", "{\"value\":[\"a\"]}", "{\"other\":\"a\"}", "She said yes." })
+        {
+            var finished = AgentTurn.Finish(prepared, notText);
+            Assert.Equal((AgentOutcomeKind.Completed, notText, true), (finished.Kind, finished.Reply, finished.NotOfFormat));
+        }
+
+        Assert.False(AgentTurn.Finish(prepared, reply).NotOfFormat);
+
+        foreach (var generate in new[] { true, false })
+        {
+            var refused = await OfflineRun.RunAsync(plan, new OfflineRequest(inputs, new Dictionary<string, string?>(StringComparer.Ordinal),
+                new JsonObject { ["date"] = "2026-11-21" }, new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.plan"] = 5 },
+                FakeRunHost.Start, GenerateMissing: generate));
+            Assert.Equal(RunState.Failed, refused.State);
+            Assert.Equal(RowState.Failed, refused.Rows.Single(r => r.Key == "node.plan").State);
+            if (generate)
+                Assert.Equal("Node 'plan' gave a reply that isn't plaintext.", refused.Sentence);
+            else
+                Assert.Equal("node.plan", Assert.Single(refused.InvalidOutputs).Key);
+        }
+
         // a list or an object value is its JSON text, as before
         var list = Prepared(AgentTurn.Prepare(RunFixture.Plan(CustomFormats()), Call("node.list_points", PlanScope()), 100_000, Rejects));
         var points = AgentTurn.Finish(list, "{\"value\":[\"She said \\\"yes\\\".\"]}").Reply!;
         Assert.StartsWith("[", points, StringComparison.Ordinal);
         Assert.Equal(quoted, (string?)JsonNode.Parse(points)![0]);
-        Assert.Equal("{\"a\":1}", list.Format!.Unwrap("{\"value\":{\"a\":1}}", text: true));
+        Assert.Equal("{\"a\":1}", list.Format!.Unwrap("{\"value\":{\"a\":1}}"));
     }
 
     [Fact]

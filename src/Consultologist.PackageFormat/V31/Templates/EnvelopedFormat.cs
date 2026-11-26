@@ -42,8 +42,9 @@ public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, I
     /// <summary>
     /// The reply as its format's value is read from: for an enveloped format, the JSON text of the reply's
     /// <see cref="Member"/> (with <paramref name="text"/>, a text format's, which is read as the text itself: a string
-    /// member's plain value, no quotes or escapes; #1508, 2026-11-25, item 13), or <c>null</c> when the reply is not an
-    /// object holding that one member; otherwise the reply itself. Never throws on a reply.
+    /// member's plain value, no quotes or escapes, and <c>null</c> for any other value, which is no text; #1508,
+    /// 2026-11-25, item 13), or <c>null</c> when the reply is not an object holding that one member; otherwise the reply
+    /// itself. Never throws on a reply.
     /// </summary>
     public string? Unwrap(string reply, bool text = false)
     {
@@ -57,9 +58,9 @@ public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, I
             var members = envelope.ToList(); // a repeated member surfaces here
             if (members is not [{ Key: Member, Value: var value }])
                 return null;
-            return text && value is JsonValue plain && plain.GetValueKind() == JsonValueKind.String
-                ? plain.GetValue<string>()
-                : value?.ToJsonString() ?? "null";
+            if (!text)
+                return value?.ToJsonString() ?? "null";
+            return value is JsonValue plain && plain.GetValueKind() == JsonValueKind.String ? plain.GetValue<string>() : null;
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or ArgumentException)
         {

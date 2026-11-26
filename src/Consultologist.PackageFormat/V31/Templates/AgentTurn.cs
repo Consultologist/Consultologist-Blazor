@@ -90,7 +90,8 @@ public static class AgentTurn
 
     /// <summary>
     /// <paramref name="reply"/> to the attempt <paramref name="prepared"/> sent, finished: unwrapped from its envelope (D8;
-    /// a reply that is not the envelope is given as it is, and its format then refuses it); for a text format, checked and
+    /// a reply that is not the envelope is given as it is, and its format then refuses it; for a text format, which reads any
+    /// string, it is <see cref="AgentOutcome.NotOfFormat"/>, as is an envelope holding no string); for a text format, checked and
     /// replaced by <see cref="MacroReply.Process"/>. <see cref="AgentOutcomeKind.Completed"/> with the substituted text and
     /// the detail (each macro placed said), or, when the markers are wrong, with the reply as it came and
     /// <see cref="AgentOutcome.Invalid"/> set. A prompt that was not prepared is <see cref="AgentOutcomeKind.Failed"/> with
@@ -103,9 +104,14 @@ public static class AgentTurn
         if (prepared.Text == null)
             return new AgentOutcome(AgentOutcomeKind.Failed, null, 0, prepared.ErrorKind ?? "plan");
 
-        var value = prepared.Format?.Unwrap(reply, prepared.TextReply) ?? reply;
+        var unwrapped = prepared.Format?.Unwrap(reply, prepared.TextReply);
         var detail = prepared.Detail.DeepClone().AsObject();
         var produced = prepared.Produced?.DeepClone().AsObject();
+        // #1508 (2026-11-25, item 13): a text format reads any string as itself, so a wrapped text whose reply is not the
+        // envelope holding a string is no text: the reply as it came, not of its format
+        if (prepared.TextReply && prepared.Format is { Wrapped: true } && unwrapped is null)
+            return new AgentOutcome(AgentOutcomeKind.Completed, reply, 0, null, detail, Produced: produced, NotOfFormat: true);
+        var value = unwrapped ?? reply;
         if (!prepared.TextReply)
             return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail, Produced: produced);
 

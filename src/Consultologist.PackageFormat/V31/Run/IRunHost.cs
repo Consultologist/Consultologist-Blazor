@@ -49,10 +49,13 @@ public sealed record AgentCall(
 /// #1506 (area 09; D2, D10): <paramref name="Produced"/> is the text the attempt produced, which never rides in
 /// <paramref name="Detail"/>: <c>{ sent, neutral, renders: { "&lt;sub-row id&gt;[#&lt;pass&gt;]": { input, output } },
 /// macros: { "&lt;macro id&gt;": body } }</c> (<see cref="AgentTurn.Produced"/>); null when nothing was composed.
+/// #1508 (2026-11-25, item 13): <paramref name="NotOfFormat"/> is a reply that is not of its format whatever it reads as
+/// (<see cref="AgentTurn.Finish"/>: a text sent in an envelope whose reply is not that envelope holding a string), which
+/// the runner refuses as it refuses any reply that does not fit, never reading <paramref name="Reply"/>.
 /// </summary>
 public sealed record AgentOutcome(
     AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind, JsonObject? Detail = null, IReadOnlyList<ReplyFault>? Invalid = null,
-    JsonObject? Produced = null);
+    JsonObject? Produced = null, bool NotOfFormat = false);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): one render of a rendered node or a deliverable, with its step budget. #1504 (area 07;

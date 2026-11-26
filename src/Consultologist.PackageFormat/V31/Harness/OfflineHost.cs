@@ -103,7 +103,7 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
 
         if (outcome.Invalid is { Count: > 0 })
             return new StubFault(call.Key, name, "/ marker");
-        var (value, parsed) = plan.Formats.Read(outcome.Reply ?? "", format);
+        var (value, parsed) = outcome.NotOfFormat ? (null, false) : plan.Formats.Read(outcome.Reply ?? "", format);
         var fits = parsed ? plan.Formats.Validate(value, format) : new FormatValueResult(false, [new FormatValueFault("", "type")]);
         if (fits.Valid)
             return null;
