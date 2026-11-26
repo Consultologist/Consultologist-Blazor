@@ -72,9 +72,15 @@
             </div>
         }
 
-        @* § 6.4's order: Tasks 17 to 20 fill each section *@
-        <section class="history31-section" id="history31-inputs"><h3 class="history31-section__title">Inputs</h3></section>
-        <section class="history31-section" id="history31-run-facts"><h3 class="history31-section__title">Run facts</h3></section>
+        @* § 6.4's order: Tasks 17 to 20 fill each section (17: Inputs and Run facts) *@
+        <section class="history31-section" id="history31-inputs">
+            <h3 class="history31-section__title">Inputs</h3>
+            <Inputs31 Inputs="Detail.Inputs" />
+        </section>
+        <section class="history31-section" id="history31-run-facts">
+            <h3 class="history31-section__title">Run facts</h3>
+            <RunFacts31 Detail="Detail" Record="Record" Texts="Texts" />
+        </section>
         <section class="history31-section" id="history31-nodes"><h3 class="history31-section__title">Nodes</h3></section>
         <section class="history31-section" id="history31-checks"><h3 class="history31-section__title">Checks</h3></section>
         <section class="history31-section" id="history31-deliverables"><h3 class="history31-section__title">Deliverables</h3></section>

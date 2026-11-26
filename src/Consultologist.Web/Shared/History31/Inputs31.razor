@@ -1,0 +1,99 @@
+@using System.Text.Json.Nodes
+@*
+    #1509 (Task 17; part 09 § 6.4, part 08 §§ 3, 3.1; R7, D7): the job's inputs as the header's `inputs` array writes them:
+    each input's id, its origin word as stored (typed, document, previous-run, transcript), its hash and never its value.
+    A document shows its kind (image and ambient-note too, although the origin is `document`) and the extraction that read it:
+    extractor, converter, parser and OCR service and model, a step that was not used left out. An input of several elements
+    lists them, numbered from 1 as a person counts. An element an earlier run's deliverable filled links to that job and says
+    it came from a model.
+*@
+@if (Items.Count == 0)
+{
+    <p class="history31-inputs__none">No inputs were recorded.</p>
+}
+else
+{
+    <ul class="history31-inputs">
+        @foreach (var input in Items)
+        {
+            <li class="history31-input">
+                <code class="history31-input__id">@Str(input, "id")</code>
+                <span class="history31-input__origin">@Str(input, "origin")</span>
+                @if (Str(input, "hash") is { Length: > 0 } hash)
+                {
+                    <code class="hash-text history31-input__hash">@hash</code>
+                }
+                @Describe(input)
+                @if (input["elements"] is JsonArray { Count: > 0 } elements)
+                {
+                    <ol class="history31-input__elements">
+                        @for (var position = 0; position < elements.Count; position++)
+                        {
+                            if (elements[position] is not JsonObject element)
+                            {
+                                continue;
+                            }
+
+                            <li class="history31-input__element" value="@(position + 1)">
+                                <span class="history31-input__number">@(position + 1).</span>
+                                <span class="history31-input__origin">@Str(element, "origin")</span>
+                                @Describe(element)
+                            </li>
+                        }
+                    </ol>
+                }
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    /// <summary>The header's <c>inputs</c>; null when the response holds none.</summary>
+    [Parameter]
+    public JsonArray? Inputs { get; set; }
+
+    private IReadOnlyList<JsonObject> Items => Inputs?.OfType<JsonObject>().ToList() ?? [];
+
+    /// <summary>What follows an origin: a document's kind and extraction, or a previous run's link.</summary>
+    private RenderFragment Describe(JsonObject node) => @<text>
+        @if (Str(node, "kind") is { Length: > 0 } kind)
+        {
+            <span class="history31-input__kind">@kind</span>
+        }
+        @if (Str(node, "extractor") is { Length: > 0 } extractor)
+        {
+            <span class="history31-input__extractor">extractor <code>@extractor</code></span>
+        }
+        @if (Step(node, "converter", "name", "version") is { } converter)
+        {
+            <span class="history31-input__converter">converter <code>@converter</code></span>
+        }
+        @if (Step(node, "parser", "name", "version") is { } parser)
+        {
+            <span class="history31-input__parser">parser <code>@parser</code></span>
+        }
+        @if (Step(node, "ocr", "service", "model") is { } ocr)
+        {
+            <span class="history31-input__ocr">OCR <code>@ocr</code></span>
+        }
+        @if (Str(node, "jobId") is { Length: > 0 } jobId)
+        {
+            <span class="history31-input__lineage">
+                from <a href="/history/@jobId">an earlier run</a>@(Str(node, "resultId") is { Length: > 0 } resultId ? " · " : "")<code>@Str(node, "resultId")</code>
+                @if (node["modelDerived"] is JsonValue { } flag && flag.TryGetValue<bool>(out var derived) && derived)
+                {
+                    <span class="history31-input__model">model-derived</span>
+                }
+            </span>
+        }
+    </text>;
+
+    private static string? Str(JsonObject node, string name) =>
+        node[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+
+    /// <summary>A step as "name version" (or "service model"); null when the step was not used or is not an object.</summary>
+    private static string? Step(JsonObject node, string name, string first, string second) =>
+        node[name] is JsonObject step
+            ? string.Join(' ', new[] { Str(step, first), Str(step, second) }.Where(part => part is { Length: > 0 }))
+            : null;
+}
