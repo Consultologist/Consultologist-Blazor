@@ -156,7 +156,7 @@ Every `var` is a dependency edge, as every template read is, except reads of ear
 | `until` on a `for` | the item's body nodes by bare id, `item`, anything that runs before the loop; `pass`, `param`, `run` | as above |
 | `until` on a `while` | as the `while` | as above |
 | check `if` | as part 06 says; in a check loop, `item` is the `.items` element (`item.state`) | as above |
-| deliverable `if` | `input`, a node's **`.value`** (data), `run` | `.content` (text), `check.*` (a possible cycle), `profile`, deliverables ([corrected](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6924497456)) |
+| deliverable `if` | `input`, a node's **`.value`** (data) and `.state`, `run` | `.content` (text), `check.*` (a possible cycle), `profile`, deliverables ([corrected](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6924497456)) |
 | part `if` | what the node's prompt reads, data roots only | as above |
 | macro `if`, macro folder `if` | evaluated **where the macro is placed**: what the placing node's prompt reads, data roots only | `param.*` (a shared macro must not depend on one function's parameter, [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)) |
 | production leaf `if` (§ 3) | what a template at its place reads, data roots only | as above |

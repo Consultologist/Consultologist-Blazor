@@ -837,7 +837,7 @@ are the enum of its answer format, which 31 sends after its prompt."*
   \<unread sources, joined by ", "\> ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it\<,
   joining \<term\> for the others\>."* (the bracketed clause only when other sources have a term).
 
-- [ ] **Step 1: Failing tests** (`MigrateDeliverablesTests`).
+- [x] **Step 1: Failing tests** (`MigrateDeliverablesTests`).
   - `RanTerm_PrefersState_ThenTheValue_ThenNothing`: with `readable` true for all → the `.state` term; refusing `.state` →
     `{"!==":[{"var":"node.x.value"},null]}`; refusing both → null.
   - `TheStateTerm_TypesAtADeliverableIf_AndACheckReadDoesNot`: `ConditionTyping.ReadsAtDeliverableIf` over
@@ -849,15 +849,15 @@ are the enum of its answer format, which 31 sends after its prompt."*
     near miss: the same with a source that always runs keeps today's behaviour (no `if`, no hand edit).
   - The existing `ADeliverableWhoseSourcesMayNotRun_GetsAnIf` and `ARefusedConditionWhoseSourcesMayNotRun_…` stay green
     unchanged (the `.state` term is what is written today).
-- [ ] **Step 2: Run, fail.**
-- [ ] **Step 3: Implement.** In `WhenASourceRan`: for each source, a known source that always runs (today's test) or is a
+- [x] **Step 2: Run, fail.**
+- [x] **Step 3: Implement.** In `WhenASourceRan`: for each source, a known source that always runs (today's test) or is a
   `while` returns `rule` as now; otherwise its term is `RanTerm(read.Path, t => ConditionTyping.ReadsAtDeliverableIf(t,
   m.Scope((string?)null)))`; a source not in `NodeReads`, or with a null term, is listed as unread. After the loop: with any
   unread source, `m.HandEdit(file, "if", MigrationSentences.SourceRunNotRead(unread, termOfTheOthers))` and return `rule`;
   else join the terms as today (one, or `or`). Correct the summary (l.52–66): the read is the one the deliverable's `if` scope
   has, by asking its typing.
-- [ ] **Step 4: Run** the V31 run.
-- [ ] **Step 5: Docs.** Part 10 § 1.2's R15 row gains: *"the term is `.state === "completed"` where the deliverable's `if`
+- [x] **Step 4: Run** the V31 run.
+- [x] **Step 5: Docs.** Part 10 § 1.2's R15 row gains: *"the term is `.state === "completed"` where the deliverable's `if`
   can read the source's state, else `.value !== null`; a source whose run it cannot read at all is a hand edit (A10-086)
   ([ruled](…#issuecomment-7199237966), item 8)"*; part 03 § 4.2 l.159: *"`input`, a node's **`.value`** (data) and `.state`,
   `run`"* (F-D12), twin § 3.4.2; README A10-086. **Commit** `PackageFormat (#1509): a deliverable whose source's run cannot be read is a hand edit, and R15 falls back to the value`,
@@ -1009,3 +1009,4 @@ is registered at l.211, so DI needs no change).
 - Task F7: `AnswersSent` reads 30's text before its answer line with its end trimmed (`old[..^line.Length].TrimEnd()`, not the brief's untrimmed slice), as 31's `WorkflowCustomPrompt.Compose` trims the rendered prompt's end before the trailer; without it the prompt's own last line ending (`…}}\n`) stays a remainder. The goldens turned red by F7: `MigratedPackagesTests.TheMigratedSource_IsTheGolden`, `ByteEquivalenceTests.TheReport_IsTheGolden`, `HandEditsTests.TheReport_IsTheGolden`.
 - Task F2: `ByteEquivalenceTests.ADifferenceNoRuleExplains_IsUnexpected` used the encounter date as its unexpected difference, which is now equal; it builds its difference from a captured prompt with an added line instead. `MigrateNodesTests.TheRenderedFormat_IsARenderedNode_OfATextFormat_ItsTemplateKept` expects the date in 30's form. No golden turned red that F7 had not (the same three are red).
 - Task F6: A10-085 is said when a `trim` was written on the comparison (`TrimInputReads` wrapped a read), not on "`reads` hold an input read": an input read that is not text (a number inside `cat`) gets no trim and differs from 30 in nothing. A read the author already trimmed (`| string.strip`, a `trim` as written) gets no second `trim` and is no A10-085 case (30 trimmed it at both ends too). A10-085's `<comparison>` is the printed comparison, as A10-074's. Part 10 § 2.3 and the twin § 10.10 gain a refusal bullet for A10-085, and `package-format-library.md`'s converter note and A10 range say it. No vector case differed (`TheUnruledDifferences_AreTheseOnes` green), so no `trim-both-ends` reason. No hand-maintained fixture moved. Goldens turned red by F6: `ConditionConverterTests.TheGolden_IsWhatTheConverterGives`, `MigrationVectorsTests.ThePinnedVectors_AreWhatMigrateGives` (five of six red; `ConditionEquivalenceTests.TheGolden_IsWhatTheRunGives` stays green).
+- Task F8: 30 refuses a deliverable source that names no node or names a check (`NoPackage30Accepts_HasASourceTheMigrationDoesNotRead`), and every other source is a node whose `.state` the deliverable's `if` reads, so no package reaches A10-086 or the `.value` fallback; `ASourceTheMigrationDoesNotRead_IsAHandEdit` reaches them through a seam (the pass run by hand with entries taken out of `Migrated.NodeReads`), not the brief's reshaped manifest with a check source. When a source is unread and 30's condition was refused by the converter, the `if` gets A10-086 alone (its `joining <term>` clause names the others' term), not A10-084 as well. `ConditionTyping.ReadsAtDeliverableIf` checks the boolean type itself, though the checker already refuses a non-boolean at an `if` site. `package-format-library.md`'s A10 range says A10-086. No migrated output moved: the same 18 cases of the five red goldens fail before and after F8, and no golden turned red by F8 (`ConditionEquivalenceTests.TheGolden_IsWhatTheRunGives` stays green).
