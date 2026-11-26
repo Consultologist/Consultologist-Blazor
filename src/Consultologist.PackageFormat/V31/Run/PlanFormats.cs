@@ -91,7 +91,8 @@ public sealed class PlanFormats
     /// <c>$defs</c> (under its bundle key, or its <c>$id</c> when the root's own definitions hold that key) with its
     /// <c>$id</c>, and every reference to an entry is written <c>{ "$ref": "&lt;its $id&gt;" }</c>, as the bundle writes
     /// them (R2). A reference to a definition of the entry's own file stays as written, resolved within that entry.
-    /// <c>$schema</c> is dropped; titles and annotations are kept. A format that reaches no entry has no <c>$defs</c>. What
+    /// <c>$schema</c> is dropped, and (#1508, R10) every <c>propertyOrder</c>, so the document is a schema in the dialect
+    /// (the description's <c>Fields</c> carry the order); titles and annotations are kept. A format that reaches no entry has no <c>$defs</c>. What
     /// <see cref="Expand"/> gives <c>false</c> for (a reference to itself, which publish refuses as S02-032; an unknown
     /// one; an expansion too deep or too large) is <c>false</c> here too, as the run holds it.
     /// </summary>
@@ -177,7 +178,7 @@ public sealed class PlanFormats
                     var copy = new JsonObject();
                     foreach (var (name, value) in obj)
                     {
-                        if (name == "$schema")
+                        if (name == "$schema" || IsPropertyOrder(obj, name, value))
                             continue;
                         copy[name] = name == "$ref" ? Reference(value, local) : Copy(value, local);
                     }
@@ -191,6 +192,15 @@ public sealed class PlanFormats
                     return node?.DeepClone();
             }
         }
+
+        /// <summary>
+        /// #1508 (R10, the controller's ruling in Task 37's review): whether <paramref name="name"/> of <paramref name="obj"/>
+        /// is <c>resolve.json</c>'s <c>propertyOrder</c>, a list beside a schema's <c>properties</c>, which the copy leaves
+        /// out so that it is a schema in the dialect. A property named <c>propertyOrder</c> is a schema (an object) in a
+        /// <c>properties</c> map, never a list, and is kept.
+        /// </summary>
+        private static bool IsPropertyOrder(JsonObject obj, string name, JsonNode? value) =>
+            name == CompiledFormats.PropertyOrder && value is JsonArray && obj["properties"] is JsonObject;
 
         /// <summary>A reference: one to the entry's own definitions as written; one to a bundle entry by that entry's <c>$id</c>.</summary>
         private JsonNode? Reference(JsonNode? value, JsonObject? local)

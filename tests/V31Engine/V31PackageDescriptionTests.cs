@@ -226,7 +226,6 @@ public class V31PackageDescriptionTests
              "$defs":{"section_request":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:section_request",
                "additionalProperties":false,
                "properties":{"kind":{"enum":["narrative","table","omit"],"title":"Kind","type":"string"},"title":{"title":"Title","type":"string"}},
-               "propertyOrder":["title","kind"],
                "required":["title","kind"],"type":"object"}}}
             """,
             FormatOf(sections));
@@ -365,6 +364,70 @@ public class V31PackageDescriptionTests
         Assert.Equal(written, arranged.Fields!.Select(f => f.Id));
         Assert.Equal(written, arranged.Fields!.Single(f => f.Id == "mid").Fields!.Select(f => f.Id));
         Assert.Equal(written, arranged.Fields!.Single(f => f.Id == "alpha").Items!.Fields!.Select(f => f.Id));
+    }
+
+    [Fact]
+    public void Format_CarriesNoPropertyOrder_AndAPropertyOfThatNameIsKept()
+    {
+        // #1508 (R10, the controller's ruling): Format is a schema in the dialect, so resolve.json's propertyOrder is left
+        // out at every depth (the root, a nested object, a list's items, a format under $defs); Fields carry the order.
+        var plan = RunFixture.Plan(PropertyOrderTests.Files(), limits: CompiledGoldenTests.EngineLimits);
+        Assert.NotNull(((JsonObject)plan.Document["formats"]!["$defs"]!["ordered"]!)["propertyOrder"]);
+        var inputs = V31PackageDescription.Describe(plan).Inputs!.ToDictionary(i => i.Id, StringComparer.Ordinal);
+
+        foreach (var id in new[] { "details", "arranged" })
+        {
+            var format = FormatOf(inputs[id])!;
+            Assert.Empty(PropertyOrders(format));
+            AssertResolvesWithin(format);
+        }
+
+        // arranged names the bundled format ordered: its root, its nested mid and its alpha's items had propertyOrder.
+        var arranged = FormatOf(inputs["arranged"])!;
+        Assert.True(arranged["properties"]!["mid"]!["properties"] is JsonObject);
+        Assert.True(arranged["properties"]!["alpha"]!["items"]!["properties"] is JsonObject);
+
+        // details' nested mid; and Fields still in written order.
+        Assert.True(FormatOf(inputs["details"])!["properties"]!["mid"]!["properties"] is JsonObject);
+        Assert.Equal(["zeta", "alpha", "mid"], inputs["arranged"].Fields!.Select(f => f.Id));
+        Assert.Equal(["zeta", "alpha", "mid"], inputs["details"].Fields!.Select(f => f.Id));
+
+        // A format under $defs; and a property named propertyOrder (no source can write one: a property name is an id,
+        // lowercase) is a schema in a properties map, kept, and a field in written order.
+        var listing = Input(OneInput(
+            """{"items":{"$ref":"#/$defs/listing"},"type":"array"}""",
+            """
+            {"listing":{"$id":"urn:consultologist:package:example-conditional-sections@v2026.12.1:format:listing","additionalProperties":false,
+              "properties":{"name":{"title":"Name","type":"string"},"propertyOrder":{"title":"Order of service","type":"string"}},
+              "propertyOrder":["propertyOrder","name"],"required":["propertyOrder","name"],"type":"object"}}
+            """));
+        var kept = FormatOf(listing)!;
+        Assert.Equal("Order of service", (string?)kept["$defs"]!["listing"]!["properties"]!["propertyOrder"]!["title"]);
+        Assert.Empty(PropertyOrders(kept));
+        AssertResolvesWithin(kept);
+        Assert.Equal(["propertyOrder", "name"], listing.Items!.Fields!.Select(f => f.Id));
+        Assert.True(Validates(kept, """[{"propertyOrder":"First","name":"Dr A. Sample"}]"""));
+    }
+
+    /// <summary>Every <c>propertyOrder</c> list beside a <c>properties</c> map in <paramref name="node"/>, at any depth.</summary>
+    private static List<JsonNode> PropertyOrders(JsonNode? node)
+    {
+        var found = new List<JsonNode>();
+        switch (node)
+        {
+            case JsonObject obj:
+                if (obj["properties"] is JsonObject && obj["propertyOrder"] is JsonArray order)
+                    found.Add(order);
+                foreach (var (_, value) in obj)
+                    found.AddRange(PropertyOrders(value));
+                break;
+            case JsonArray array:
+                foreach (var item in array)
+                    found.AddRange(PropertyOrders(item));
+                break;
+        }
+
+        return found;
     }
 
     [Fact]
