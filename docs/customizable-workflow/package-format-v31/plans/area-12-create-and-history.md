@@ -139,7 +139,7 @@ A task that needs another sentence adds the next id and records it.
 
 - [ ] **Step 1: Failing tests.** `TheRecord_IsWrittenToTheRecordsContainer_NotTheOutputsContainer`; `TextBlobs_StayInTheOutputsContainer`; `ARecordWrittenBeforeTheMove_IsStillRead` (a blob only at the old place is read, and written to the new place when it hashes to `recordHash`, by the restore path that already exists); `AccountClosure_DeletesTheAccountsPrefix_InTheRecordsContainer`; `WithoutTheSetting_TheRecordStaysInTheTextAccount_InItsOwnContainer`.
 - [ ] **Step 2: Run, fail.** **Step 3: Implement.** The container is created if absent on first write, as the row table is.
-- [ ] **Step 4: Docs.** STORAGE.md: the container, that no lifecycle rule applies to it, and **for the user**: set `ConsultGenerationRecordStorage__BlobServiceUri` on each Function App and grant its identity Storage Blob Data Contributor on `consultjobrecscaeast`. Part 08 § 1.1 and part 09 § 3.7 corrected ("in the records account's `job-records` container"). Put the user's step in *Recorded in the build* for the PR.
+- [ ] **Step 4: Docs.** STORAGE.md: the container, that no lifecycle rule applies to it, and **for the user**: set `ConsultGenerationRecordStorage__BlobServiceUri` on each Function App and grant its identity Storage Blob Data Contributor on the records account (named in `docs/STORAGE.md`). Part 08 § 1.1 and part 09 § 3.7 corrected ("in the records account's `job-records` container"). Put the user's step in *Recorded in the build* for the PR.
 - [ ] **Step 5: Run; commit** `Api (#1509): record.json lives in the records account, and closure deletes it there`; push.
 
 ### Task 6: `ProvenanceRecordCheck` at storage 12 (R7)
