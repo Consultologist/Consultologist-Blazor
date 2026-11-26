@@ -703,7 +703,7 @@ public class MigrateNodesTests
     /// <summary>
     /// #1508 (comment 5, item 2): in a migration, a size of a list that can be null is written with its null test, so it
     /// answers as 30 did, and A10-027 is still said; text compared with a literal becomes <c>in</c> on the input trimmed
-    /// (#1508, 2026-11-26, item 6), said with A10-074, as an item's text compared becomes <c>in</c> untrimmed
+    /// (#1508, 2026-11-26, item 6), said with A10-074, as is an item's text of an input's list
     /// (<c>composer-macros</c>' <c>section_close</c>).
     /// </summary>
     [Fact]
@@ -726,9 +726,59 @@ public class MigrateNodesTests
         V31Contract.AssertSentence(new SourceRefusal("A10-027", size, ""));
         V31Contract.AssertSentence(new SourceRefusal("A10-074", literal, ""));
 
-        const string item = "macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (item.value.title in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
-        Assert.Contains(item, Migrated("composer-macros", _ => { }).Notices);
+        // section_loop iterates input.sections, whose element's text 30 trimmed (per element, per field) as it trimmed
+        // every input's.
+        var macros = Migrated("composer-macros", _ => { });
+        Assert.Equal("""{"!":[{"in":[{"trim":[{"var":"item.value.title"}]},["Plan"]]}]}""", CanonicalJson.Write(Md(macros, "macros/section_close.md").Header["if"]));
+        const string item = "macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (trim(item.value.title) in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
+        Assert.Contains(item, macros.Notices);
         V31Contract.AssertSentence(new SourceRefusal("A10-074", item, ""));
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 6: an item of a node's list (model output, which 30 compared as it was) gets no trim (a
+    /// fixture node's field is a string at 31, so it stays <c>!==</c>; the converter test pins a text field's case); an
+    /// item of a list field of an outer loop's input item is an input's text, trimmed, as 30 trimmed it.
+    /// </summary>
+    [Fact]
+    public void AnItemsText_IsTrimmedOnlyWhereTheListIsAnInputs()
+    {
+        // composer-sources' point_loop iterates node.outline.value.points, inside section_loop over node.plan.value.sections.
+        var sources = Migrated("composer-sources", root =>
+        {
+            Node(root, "point_loop")["nodes"] = new JsonArray("point_gate");
+            Node(root, "point_loop")["ret"] = "node.point_gate";
+            root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_gate","label":"Points not on the plan","if":"item.value.heading != \"Plan\"","then":{"nodes":["draft_point"],"ret":"node.draft_point"}}"""));
+        });
+        // A node's list field of free text is a string at 31, compared by !== as written: no in, no trim, nothing said.
+        Assert.Equal("""{"!==":[{"var":"item.value.heading"},"Plan"]}""", CanonicalJson.Write(Json(sources, "nodes/section_loop/point_loop/point_gate/index.json")["if"]));
+        Assert.DoesNotContain(sources.Notices, n => n.Contains("item.value.heading", StringComparison.Ordinal) && n.Contains(" by in at 31", StringComparison.Ordinal));
+
+        // composer-macros with a list of points on each section, and a loop over it inside a loop over the sections.
+        var nested = Migrated(
+            "composer-macros",
+            root =>
+            {
+                var sections = root["inputs"]!.AsArray().OfType<JsonObject>().Single(i => (string?)i["id"] == "sections");
+                sections["fields"]!.AsArray().Add(JsonNode.Parse("""{"id":"points","label":"Points","required":true,"type":"array","items":"text"}"""));
+                root["deliverables"]![0]!["sources"]!.AsArray().Add("node.outline_loop");
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"outline_loop","label":"Outlines","for":"item in input.sections","nodes":["point_loop"],"ret":"node.point_loop"}"""));
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_loop","label":"Points","for":"item in item.value.points","nodes":["point_gate"],"ret":"node.point_gate"}"""));
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_gate","label":"Points not on the plan","if":"item.value != \"Plan\"","then":{"nodes":["point_note"],"ret":"node.point_note"}}"""));
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_note","label":"A point","format":"prose"}"""));
+            },
+            files => files["prompts/point_note.md"] = "Write the point {{ item.value }}.");
+        var said = Assert.Single(nested.Notices, n => n.Contains("'item.value ≠ \"Plan\"' became", StringComparison.Ordinal));
+        Assert.Equal("""{"!":[{"in":[{"trim":[{"var":"item.value"}]},["Plan"]]}]}""", CanonicalJson.Write(IfOf(nested, said)));
+        Assert.EndsWith("became not (trim(item.value) in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.", said, StringComparison.Ordinal);
+        V31Contract.AssertSentence(new SourceRefusal("A10-074", said, ""));
+
+        // The if of the file the notice names (its text up to ", if: ").
+        static JsonNode? IfOf(Migration31Result result, string notice)
+        {
+            var file = notice[..notice.IndexOf(", if: ", StringComparison.Ordinal)];
+            return file.EndsWith(".json", StringComparison.Ordinal) ? Json(result, file)["if"] : Md(result, file).Header["if"];
+        }
     }
 
     /// <summary>

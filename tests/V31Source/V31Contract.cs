@@ -250,7 +250,7 @@ internal static class V31Contract
     /// R11, area 11 Task 33; A10-082: an options.json id or choice that is empty, which the flags refuse, carried from Task 29's
     /// review, and A10-083: the defaults the bulk publish says it used for a package with no options.json, area 11 Task 36;
     /// A10-084: a deliverable whose sources may all not run and whose condition is a hand edit, the term A10-079 would have
-    /// joined, a hand edit's reason, the final review of Part F; A10-074's words corrected and A10-085: an input's text
+    /// joined, a hand edit's reason, the final review of Part F; A10-074's words corrected (its trim clause said only where a trim is written, fix round 1) and A10-085: an input's text
     /// compared with a literal that starts with white space, a hand edit's reason, #1508 2026-11-26 item 6, area 12 Task F6;
     /// A10-086: a deliverable whose sources may all not run and one of whose runs the migration cannot read, a hand edit's
     /// reason, #1508 2026-11-26 item 8, area 12 Task F8).
@@ -328,7 +328,7 @@ internal static class V31Contract
         ["A10-071"] = "options.json must give <renames | whenEmpty | folderFormats> as an object whose values are text; write {} for none.",
         ["A10-072"] = "options.json gives deliverable '<id>' a whenEmpty that is not release, hold or fail.",
         ["A10-073"] = "The condition '<expression>' uses string.contains on <list>, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.",
-        ["A10-074"] = "<file>, <member>: '<comparison>' became <rule>; text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.",
+        ["A10-074"] = "<file>, <member>: '<comparison>' became <rule>; text is compared with a literal by in at 31<, and an input's text is trimmed at both ends first, where 30 trimmed its end>.",
         ["A10-075"] = "<file>, <member>: '<comparison>' became <rule>; 31 reads an input not given or blank as null, where 30 read \"\".",
         ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
         ["A10-077"] = "node '<id>' decides whether macro '<macro id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
@@ -542,6 +542,15 @@ internal static class V31Contract
             // The row must still start with the word the slice below replaces.
             Assert.StartsWith("Loop '", row);
             pattern = "^(?:Loop|While|If|Case)" + pattern["^Loop".Length..];
+        }
+
+        // A10-074's last clause (", and an input's text is trimmed at both ends first, where 30 trimmed its end") is said
+        // only where the migration wrote a trim (#1508, 2026-11-26, item 6, F6 fix round 1).
+        if (refusal.Id == "A10-074")
+        {
+            const string optional = " 31.+?\\.$";
+            Assert.EndsWith(optional, pattern, StringComparison.Ordinal);
+            pattern = pattern[..^optional.Length] + " 31(?:, and an input's text is trimmed at both ends first, where 30 trimmed its end)?\\.$";
         }
 
         // A10-086's last clause (", joining <term> for the others") is said only when another source has a term.

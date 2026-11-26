@@ -249,33 +249,38 @@ internal static partial class Migrate
         var loop = chain.FirstOrDefault(a => tree.ById[a].For is not null);
         if (loop is null)
             return new SitePlace(null, false, inWhile);
-        var (element, folder) = ElementOf(m, tree, loop, formats, 0);
-        return new SitePlace(element, folder, inWhile);
+        var (element, folder, input) = ElementOf(m, tree, loop, formats, 0);
+        return new SitePlace(element, folder, inWhile, input);
     }
 
     /// <summary>
     /// The element of the list <paramref name="loop"/> iterates (part 04 § 2.6's <c>item.value</c>): a snippet folder's
     /// item is a value of the folder's format (and a folder item); an array input's, a node list's or an outer item's
-    /// list field's element is the list's <c>items</c>. Null when the list does not type.
+    /// list field's element is the list's <c>items</c>. Null when the list does not type. <c>Input</c> says whether the
+    /// element is an input's (an array input's, or a list field of an outer loop's input element), whose text 30
+    /// trimmed at its end (#1508, 2026-11-26, item 6).
     /// </summary>
-    private static (JsonNode? Element, bool Folder) ElementOf(Migrated m, NodeTree tree, string loop, FormatSet formats, int depth)
+    private static (JsonNode? Element, bool Folder, bool Input) ElementOf(Migrated m, NodeTree tree, string loop, FormatSet formats, int depth)
     {
         if (depth > SourceBounds.JsonDepth || CollectionOf(tree.ById[loop]) is not { } collection)
-            return (null, false);
+            return (null, false, false);
         var segments = collection.Split('.');
         switch (segments)
         {
             case ["snippet", var folder]:
-                return (m.Sources.GetValueOrDefault($"snippets/{folder}/{WorkflowDataResolver.IndexFileName}")?.Json["format"]?.DeepClone(), true);
+                return (m.Sources.GetValueOrDefault($"snippets/{folder}/{WorkflowDataResolver.IndexFileName}")?.Json["format"]?.DeepClone(), true, false);
             case ["input", var input]:
-                return (ExpressionChecker.ItemsOf(m.Manifest["inputs"]?[input]?["format"], formats)?.DeepClone(), false);
+                return (ExpressionChecker.ItemsOf(m.Manifest["inputs"]?[input]?["format"], formats)?.DeepClone(), false, true);
             case ["node", var node, "value", ..] when m.NodeReads.TryGetValue(node, out var read):
-                return (ListItems(read.Format, segments[2..]), false);
+                return (ListItems(read.Format, segments[2..]), false, false);
             case ["item", "value", ..]:
                 var outer = tree.Ancestors(loop).FirstOrDefault(a => tree.ById[a].For is not null);
-                return outer is null ? (null, false) : (ListItems(ElementOf(m, tree, outer, formats, depth + 1).Element, segments[1..]), false);
+                if (outer is null)
+                    return (null, false, false);
+                var (element, _, fromInput) = ElementOf(m, tree, outer, formats, depth + 1);
+                return (ListItems(element, segments[1..]), false, fromInput);
             default:
-                return (null, false);
+                return (null, false, false);
         }
 
         JsonNode? ListItems(JsonNode? format, IReadOnlyList<string> steps) =>

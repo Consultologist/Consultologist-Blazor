@@ -20,9 +20,10 @@ internal sealed class MigratedFile(JsonObject json, string? body)
 
 /// <summary>
 /// #1507 (specVersion 31, area 10): where 31 reads a condition site from (Task 7 fills it as it writes the nodes): the
-/// loop element's format, whether that element is a snippet folder's item, and whether <c>pass.number</c> is readable.
+/// loop element's format, whether that element is a snippet folder's item, and whether <c>pass.number</c> is readable;
+/// #1508 (2026-11-26, item 6): whether the element is an input's (<see cref="ConversionScope.ItemIsInputElement"/>).
 /// </summary>
-internal sealed record SitePlace(JsonNode? Item, bool ItemIsFolderItem, bool InWhile);
+internal sealed record SitePlace(JsonNode? Item, bool ItemIsFolderItem, bool InWhile, bool ItemIsInputElement = false);
 
 /// <summary>
 /// #1507 (specVersion 31, area 10; R6, part 10 § 1.2's hoist row): the condition of a body <c>if</c> hoisted off a macro
@@ -374,7 +375,11 @@ internal sealed class Migrated
             place?.Item?.DeepClone(),
             place?.ItemIsFolderItem ?? false,
             place?.InWhile ?? false,
-            FormatSet.ForPackage(Options.Registry, PackageFormats())) { RequiredInputs = required };
+            FormatSet.ForPackage(Options.Registry, PackageFormats()))
+        {
+            RequiredInputs = required,
+            ItemIsInputElement = place?.ItemIsInputElement ?? false,
+        };
     }
 
     /// <summary>The 31 files serialised (without <c>manifest.json</c>): each of <see cref="Texts"/> as it is, each plain file by <see cref="Json"/>, each other by <see cref="Md"/>.</summary>

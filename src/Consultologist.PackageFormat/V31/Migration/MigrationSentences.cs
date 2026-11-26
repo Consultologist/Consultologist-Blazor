@@ -49,14 +49,16 @@ internal static class MigrationSentences
     /// A10-074 (#1508, comment 5, item 2; #1508, 2026-11-26, item 6; part 10 § 2.2): in <paramref name="file"/>'s
     /// <paramref name="member"/>, a text compared with a literal (<see cref="BlankConversion.Written"/>, as the printer
     /// shows it), which 31 refuses (S03-002), became membership in a list of that literal
-    /// (<see cref="BlankConversion.Printed"/>), with <c>trim</c> written on each text read of an input: 30 trimmed an
-    /// input's text at its end before it compared, and 31's <c>trim</c> trims both ends, so an input's text that starts
-    /// with white space now matches where 30's did not.
+    /// (<see cref="BlankConversion.Printed"/>), with <c>trim</c> written on each text read of an input (an item of an
+    /// input's list too): 30 trimmed an input's text at its end before it compared, and 31's <c>trim</c> trims both ends,
+    /// so an input's text that starts with white space now matches where 30's did not. The last clause, on the trim, is
+    /// said only where a trim was written (<see cref="BlankConversion.Trimmed"/>): a node's text is compared as it is.
     /// </summary>
     public static string TextLiteralBecameIn(string file, string member, BlankConversion literal)
     {
         ArgumentNullException.ThrowIfNull(literal);
-        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
+        var trimmed = literal.Trimmed ? ", and an input's text is trimmed at both ends first, where 30 trimmed its end" : "";
+        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31{trimmed}.";
     }
 
     /// <summary>

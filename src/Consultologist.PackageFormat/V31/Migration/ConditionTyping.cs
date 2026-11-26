@@ -14,11 +14,12 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// (S03-009).</item>
 /// <item>#1508 (comment 5, item 2; 2026-11-26, item 6): text compared with a literal by <c>===</c> or <c>!==</c> (S03-002
 /// as written) is membership in a list of that literal, <c>{ "in": [x, ["lit"]] }</c> or its negation, with each text read
-/// of an input in <c>x</c> written <c>{ "trim": [read] }</c> (30 trimmed an input's text at its end; <c>trim</c> trims both),
+/// of an input in <c>x</c> (an item of an input's list too) written <c>{ "trim": [read] }</c> (30 trimmed an input's text
+/// at its end; <c>trim</c> trims both),
 /// and is listed; a literal that starts with white space compared with an input's text is refused (A10-085); with blank text
 /// (<c>""</c> or white space), where 30 read an input's text not given or blank as <c>""</c> and 31 reads it as null or
 /// as given, a text input read whole compared with <c>""</c> is <c>x === null or x in [""]</c> (listed), and any other comparison with
-/// blank text that reads an input is refused (A10-076, a hand edit's reason); a comparison of the <c>size</c> of a list that can be null is written with the null test that
+/// blank text that reads an input (an item of an input's list too) is refused (A10-076, a hand edit's reason); a comparison of the <c>size</c> of a list that can be null is written with the null test that
 /// counts a null list 0, as 30 did.</item>
 /// <item>A condition is checked at a site of kind <see cref="ExpressionSiteKind.NodeIf"/>, so it yields a boolean
 /// (S03-025); a value (a <c>let</c>, a <c>case</c> subject) at an <see cref="ExpressionSiteKind.Expression"/> site,
@@ -298,17 +299,20 @@ internal static class ConditionTyping
     /// written <c>{ "trim": [read] }</c> (<see cref="TrimInputReads"/>): 30 compared an input's text with its end trimmed
     /// (<c>CanonicalText.Normalize</c>), and part 03 § 5.2's <c>trim</c>, the one trimming operation 31's JSON Logic has,
     /// trims both ends, so an input's text that starts with white space now matches where 30's did not (said in A10-074).
-    /// A node's or an item's text, which 30 compared as it was, is not trimmed. Membership is otherwise exact, as 30's
+    /// An item of an input's list (<see cref="ConversionScope.ItemIsInputElement"/>) is an input's text, which 30 trimmed
+    /// per element and per field, so its text reads are trimmed too; a node's text, or an item of a node's list or of a
+    /// snippet folder, which 30 compared as it was, is not trimmed. Membership is otherwise exact, as 30's
     /// comparison was, and a null <c>x</c> is in no list of text (<c>trim</c> of null is null), as 30's null equalled no
     /// text. A literal that starts with white space, compared with a trimmed read, could match at 30 and never matches at
-    /// 31, so no trim fits: it is refused (A10-085, a hand edit's reason). Blank text is the exception (Task 30 fix round 1),
+    /// 31, so no trim fits: it is refused (A10-085, a hand edit's reason). The listing says whether a trim was written
+    /// (<see cref="BlankConversion.Trimmed"/>), and A10-074 says the trim only then. Blank text is the exception (Task 30 fix round 1),
     /// written as before, with no trim: 30 read an
     /// input's text not given or blank (white space alone, a field's too) as <c>""</c>, where 31's start leaves out a text
     /// input absent or blank, so it reads null, and keeps a field as given. A text input read whole compared with
     /// <c>""</c> is <c>x === null or x in [""]</c> (<c>x !== null and not (x in [""])</c> for <c>!==</c>), the null test
     /// written as for a nullable list's size (<see cref="NullSafeSize"/>), which answers as 30 did (listed, A10-075); any
     /// other comparison with blank text that reads an input (<c>lower(input.x) == ""</c>, <c>input.x == " "</c>,
-    /// <c>input.x.y == ""</c>) is refused (A10-076): the migration asks for a hand edit rather than a different answer.
+    /// <c>input.x.y == ""</c>, an item of an input's list's <c>item.value.y == ""</c>) is refused (A10-076): the migration asks for a hand edit rather than a different answer.
     /// </summary>
     private static JsonNode? TextLiteral(string name, JsonNode? operands, ExpressionSite operand, Scope scope, FormatSet formats, Found found)
     {
@@ -346,7 +350,7 @@ internal static class ConditionTyping
                 return empty;
             }
 
-            if (reads.Any(IsInputRead))
+            if (reads.Any(r => IsInputText(r, scope)))
             {
                 found.Refusals.Add((BlankTextId, MigrationSentences.ComparedWithBlankText(found.Text, JsonLogicPrinter.Print(x))));
                 return null;
@@ -364,7 +368,7 @@ internal static class ConditionTyping
 
         var member = new JsonObject { ["in"] = new JsonArray(trimmed, new JsonArray(literal.DeepClone())) };
         JsonNode result = name == "===" ? member : new JsonObject { ["!"] = new JsonArray(member) };
-        found.Literals.Add(new BlankConversion(written, JsonLogicPrinter.Print(result), reads));
+        found.Literals.Add(new BlankConversion(written, JsonLogicPrinter.Print(result), reads) { Trimmed = trims });
         return result;
     }
 
@@ -374,9 +378,11 @@ internal static class ConditionTyping
 
     /// <summary>
     /// #1508, 2026-11-26, item 6 (F-D10): <paramref name="node"/> (a copy, rewritten in place) with each read of an input
-    /// (<see cref="IsInputRead"/>) whose type is of a text format written <c>{ "trim": [read] }</c>, the trim around the
-    /// read itself where an operation stands over it (<c>lower(trim(input.x))</c>); <paramref name="trimmed"/> says whether
-    /// any was. A node's or an item's text, which 30 did not trim, is left as read, and so is what the author already
+    /// (<see cref="IsInputRead"/>), or of an item of an input's list (<c>item.value</c> and its fields, where
+    /// <see cref="ConversionScope.ItemIsInputElement"/>), whose type is of a text format written <c>{ "trim": [read] }</c>,
+    /// the trim around the read itself where an operation stands over it (<c>lower(trim(input.x))</c>);
+    /// <paramref name="trimmed"/> says whether any was. A node's text, or an item of a node's list or a snippet folder,
+    /// which 30 did not trim, is left as read, and so is what the author already
     /// trimmed (<c>input.x | string.strip</c>, a <c>trim</c> as written), which answers as 30's did.
     /// </summary>
     private static JsonNode? TrimInputReads(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, int depth, out bool trimmed)
@@ -392,7 +398,7 @@ internal static class ConditionTyping
             case JsonObject { Count: 1 } written when written.ContainsKey("trim"):
                 return written;
             case JsonObject { Count: 1 } read when read["var"] is JsonValue path && path.TryGetValue<string>(out var p):
-                if (IsInputRead(p)
+                if (IsInputText(p, scope)
                     && ExpressionChecker.Check(read, operand, scope, formats) is { Refusals.Count: 0, Type.Format: { } format }
                     && FormatTypes.Shape(format, formats) == FormatShape.Text)
                 {
@@ -434,6 +440,14 @@ internal static class ConditionTyping
 
     /// <summary>Whether <paramref name="path"/> reads an input (<c>input.&lt;id&gt;.content</c>, <c>.value</c> or a field of it), whose blank text 30 read as <c>""</c> and whose text 30 trimmed at its end.</summary>
     private static bool IsInputRead(string path) => path.Split('.') is ["input", { Length: > 0 }, "content" or "value", ..];
+
+    /// <summary>
+    /// Whether <paramref name="path"/> reads an input's text as 30 normalised it (#1508, 2026-11-26, item 6): an input
+    /// (<see cref="IsInputRead"/>), or the item of a loop over an input's list (<c>item.value</c> and its fields, where
+    /// <see cref="ConversionScope.ItemIsInputElement"/>), which 30 trimmed per element and per field and read blank as <c>""</c>.
+    /// </summary>
+    private static bool IsInputText(string path, Scope scope) =>
+        IsInputRead(path) || (scope.ItemIsInputElement && path.Split('.') is ["item", "value", ..]);
 
     /// <summary>The comparisons a <c>size</c> may be an operand of, each as it holds for two numbers.</summary>
     private static readonly Dictionary<string, Func<double, double, bool>> Comparisons = new(StringComparer.Ordinal)
@@ -520,6 +534,9 @@ internal static class ConditionTyping
     private sealed class Scope(ConversionScope conversion) : IExpressionScope
     {
         private static readonly ScopeHead Unknown = new(ScopeHeadKind.Unknown, 0, null, false, null);
+
+        /// <summary>Whether the loop's item is an element of an input's list (<see cref="ConversionScope.ItemIsInputElement"/>).</summary>
+        public bool ItemIsInputElement => conversion.ItemIsInputElement && conversion.Item is not null;
 
         public ScopeHead Head(IReadOnlyList<string> segments)
         {
