@@ -543,6 +543,14 @@ was written with the alert awaited, would fail its replay on the order of its ta
 covers it: no 31 orchestration is in flight at the deploy. The activity's history event is the same name as before; the
 event that is new in a history is the one the order of calls gives, which only a drained deploy avoids.
 
+**Deploying: what a replay reads has changed** (#1508, 2026-11-25, item 8: "D16–D21 ship behind a drain"). Area 10's
+D16 to D21 ([#1532](https://github.com/Consultologist/Consultologist-Blazor/pull/1532)) and these four fixes change
+what the orchestrator computes from an activity's answer it already holds: an item's name cut at 120 characters is
+trimmed before the `…` (item 4); a `markdown_inline` reply loses one trailing line ending before it is validated (item
+8); a `plaintext` item's name and text are escaped where a loop joins them into `.content` (item 8, D23); a text sent
+through a wrapped `via: "custom"` binding is read as its plain value (item 13). An orchestration in flight across the
+build could take another branch on its replay, so the drain before the deploy (above) covers them too.
+
 ## Alerts and the weekly summary
 
 *Part 09 § 3.9, D14.* The operator is told through the `alert-operator-v31` activity, so a replay reads that an alert

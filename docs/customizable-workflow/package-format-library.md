@@ -661,7 +661,8 @@ resolution: callers use it to tell a rule's read from a reference string.
 - A `for`'s `.stopped` is `string {until, bound, end}`; a `while`'s is `string {check, until, bound}`.
 - A `for`'s `.content` is `markdown_block` whatever its items' format (part 04 § 2.5, part 05 § 5.3; #1507's
   D23): the standard rendering keeps 30's bytes, so a Markdown deliverable writes it unescaped and a plain-text
-  one refuses it (S06-021). A flow's `.content` is its `ret`'s, so the type follows the `ret` chain
+  one refuses it (S06-021). When the loop's `ret` is `plaintext`, the runner escapes each item's name and text where
+  it joins them (#1508, 2026-11-25, item 8), so plain text reaches the Markdown as a direct read of it would. A flow's `.content` is its `ret`'s, so the type follows the `ret` chain
   (`ScopeTree.RenderedContent`): a `while`, an `if` or a `case` whose `ret`s reach a `for` is `markdown_block`, as
   is an item's `.content` in `.items` when the loop's `ret` is a `for`, and an inner `for`'s
   `nodes.<id>.content` (nullable). Branches that differ (a `for` in one, a plain-text leaf in another) give the
@@ -1237,8 +1238,10 @@ fits.
 
 `Validate(value, format)` is `Expand` followed by `CorvusFormatValueValidator.ValidateExpanded`.
 `IsText(format)` is true for `plaintext`, `markdown_block` and `markdown_inline`, by their bundle `$id`.
-`Read(reply, format)` gives a text reply as a string. Any other reply is parsed as JSON, to 512 levels, with a
-repeated member refused; `Parsed` is false when it does not parse.
+`Read(reply, format)` gives a text reply as a string; a `markdown_inline` reply first loses one trailing line ending
+(`\r\n`, `\n` or `\r`; #1508, 2026-11-25, item 8), so `x\n` reads as `x` and `x\n\n` still breaks a line. Any other
+reply is parsed as JSON, to 512 levels, with a repeated member refused; `Parsed` is false when it does not parse. The
+runner and the offline host's stub check both read a reply here.
 
 ### The runner
 
@@ -1348,10 +1351,12 @@ because an orchestration does not complete while a durable timer is outstanding.
 - **`max` and `until`.** Items past `max` are `NotRun` with S04-002, and `.stopped` is `"bound"`. `until` is
   decided after each item of a sequential loop (`until.<n>`, 1-based). When it holds, the rest are `NotRun` with
   S04-001, named by position.
-- **Items.** An item's state is its `ret`'s. Its name is the `itemLabel` field, trimmed and cut to 120 characters
-  ending `…`, or else `<loop label> <n>`. Every row inside an item carries `itemName` and `positionName`.
+- **Items.** An item's state is its `ret`'s. Its name is the `itemLabel` field as 30 names an item from a field
+  (`WorkflowItemNames.FromField`; #1508, 2026-11-25, item 4): trimmed, and when longer than 120 characters cut,
+  trimmed again and ended `…`, a surrogate pair never split. An empty field gives `<loop label> <n>`. Every row inside an item carries `itemName` and `positionName`.
 - **What a loop reads:** `.value` (the completed items' values), `.items` (part 04 § 2.6's element), `.content`
-  (D11), `.state` and `.stopped`.
+  (D11; with a `plaintext` `ret`, each name and text escaped with `MarkdownEscape` where they are joined, D23 as
+  #1508 ruled; `.items` keeps each text as it is), `.state` and `.stopped`.
 
 **`while`, `if`, `case`** (`PlanRunner.Flow.cs`).
 
@@ -1849,8 +1854,10 @@ folder's and its placing units' decisions all hold.
 **The envelope** (D8, part 02 § 3.5). `EnvelopedFormat.Of(format, formats, strictRejects)` is `SentFormat.Prepare`'s
 copy, with the attested agent's `strictRejects` removed (`NotSent`, as pointers). A copy whose root is not an object
 is wrapped as `{ "type": "object", "required": ["value"], "additionalProperties": false, "properties": { "value":
-<copy> } }`. `Hash` (`sentFormatHash`) is the hash of the format before it is wrapped (#1508). `Unwrap(reply)`
-gives the `value` member's JSON text, or null when the reply is not exactly that object. A reply that is not the
+<copy> } }`. `Hash` (`sentFormatHash`) is the hash of the format before it is wrapped (#1508). `Unwrap(reply, text)`
+gives the `value` member's JSON text, or null when the reply is not exactly that object; with `text` (a text format,
+as `AgentTurn.Finish` passes `TextReply`), a string member is given as the text itself, with no JSON quotes or escapes
+(#1508, 2026-11-25, item 13). A list or an object is its JSON text either way. A reply that is not the
 envelope is passed on, and its format refuses it.
 
 **The reply** (part 05 § 8.6). `AgentTurn.Finish(prepared, reply)` unwraps the reply. For a text format it then calls
@@ -2103,6 +2110,7 @@ character past spaces, tabs and the tags that write nothing (`if`, `else`, `end`
 refused; an output at the line's start is no marker. Where a `markdown_inline` output sits is not judged, but its
 value holds no line ending (D21): `CorvusFormatValueValidator.ValidateExpanded` holds every `markdown_inline` text of
 a value to no `\n` or `\r` (`FormatValueResult.BreaksALine`; the rule is typed `string`, so a nullable one takes `null`), so a reply fails with A10-052
+once `PlanFormats.Read` has taken one trailing line ending off a `markdown_inline` reply (#1508)
 (`RunSentences.ReplyBreaksALine`) and an input refuses the start with it (`InputBreaksALine`).
 
 ### The escape (D7, R9)
