@@ -12,7 +12,8 @@ namespace Consultologist.PackageFormat.V31.Publish;
 /// <paramref name="Templates"/> is the seam for what each body reads (the dialect's when null); <paramref name="Diagram"/> turns
 /// <c>resolve.json</c>'s canonical text into <c>dag.mmd</c>'s (D1: none is written when null); <paramref name="MigrationReport"/>
 /// is <c>migration-report.json</c>'s text and <paramref name="MigratedFrom"/> the stamp's old version (D5);
-/// <paramref name="MatchTimeLimit"/> bounds <c>matches</c> and <c>has_word</c> in the tests' plan.
+/// <paramref name="MatchTimeLimit"/> bounds <c>matches</c> and <c>has_word</c> in the tests' plan;
+/// <paramref name="RunLimits"/> (#1508, F9) are the limits the tests run at (null: the spec's starting values).
 /// </summary>
 public sealed record PublishOptions(
     TypeRegistry Registry,
@@ -24,7 +25,8 @@ public sealed record PublishOptions(
     Func<string, string>? Diagram = null,
     string? MigrationReport = null,
     string? MigratedFrom = null,
-    TimeSpan? MatchTimeLimit = null);
+    TimeSpan? MatchTimeLimit = null,
+    RunLimits? RunLimits = null);
 
 /// <summary>#1508 (area 11): one file to write into the version's folder: its path there and its bytes.</summary>
 public sealed record PublishFile(string Path, byte[] Bytes);
@@ -128,7 +130,7 @@ public static class PackagePublish
             if (plan == null)
                 return Refused([PackagePublishSentences.EngineFailed(planRefusal?.Id)]);
 
-            var run = await PackageTests.RunAsync(plan, parse.Package!.Tests.Items, parse.Files, options.Clock).ConfigureAwait(false);
+            var run = await PackageTests.RunAsync(plan, parse.Package!.Tests.Items, parse.Files, options.Clock, options.RunLimits).ConfigureAwait(false);
             tests = run.Results;
             warnings = [.. compiled.Warnings, .. run.Warnings];
             if (run.Refusals.Count > 0)
