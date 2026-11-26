@@ -105,11 +105,11 @@ A task that needs another sentence adds the next id and records it.
 - Api: `public sealed record WorkflowPackageStartChecksResponse(IReadOnlyList<string> Refusals, IReadOnlyList<string> NeedsProfile);` `[Function("WorkflowPackageStartChecks")]` `GET`/`OPTIONS` `WorkflowPackages/Current/StartChecks?ref=<package ref>&signatureBlockId=<id>`, authorised and CORS'd exactly as `WorkflowPackages/Current` is.
 - Web: `Task<WorkflowPackageStartChecksResponse> GetStartChecksAsync(string? packageRef = null, string? signatureBlockId = null)` on `IWorkflowEndpointService`; `ApiRoutes.WorkflowPackageStartChecks = "WorkflowPackages/Current/StartChecks"`. A 400 throws the exception type `GetCurrentPackageAsync` throws, carrying `error`.
 
-- [ ] **Step 1: Failing tests** (fakes: `FakeRegistry`, the settings store substitute `V31JobStartTests` uses): `AnAccountWithEverythingSet_HasNoRefusals`; `NoTimeZone_SaysS06008` (exact text); `AMissingSignature_SaysS06031_BeforeTheZone`; `AMissingCredentialsLine_SaysS06032_WithItsLabel`; `ASignaturePickNotInTheProfile_SaysA08004`; `ASignaturePick_SatisfiesAPackageThatReadsTheSignature_WhenNoBlockIsChosen`; `NeedsProfile_IsThePlans`; `APackageBelow31_AnswersEmptyLists`; `A31RefWithThePreviewOff_IsA400_WithS09001`; `ALoadRefusal_IsTheSame400AsCurrent`; `AnotherAccountsPackage_IsRefusedAsCurrentRefusesIt`; `TheRoute_AnswersOptionsWithCors`.
-- [ ] **Step 2: Run, fail.**
-- [ ] **Step 3: Implement.** Resolve the ref and load as `Current` does (`CompiledPackageStore.TryLoadAsync`); read the account as the starter does; call `V31StartChecks.Signature(blocks, signatureBlockId)` only when `needs.profile` lists `signature`, put its block's text in the profile map under `signature`, then `V31StartChecks.Account(plan, profile, timeZone)`. No value from the profile is in the answer.
-- [ ] **Step 4: Run** the V31 filter and the solution suite; pass. Add the route to `engine-v31.md` ("Starting a job": "Asking before a start").
-- [ ] **Step 5: Commit** `Api (#1509): the start's account checks can be asked before a start`, then `Web (#1509): the client asks the start checks`; push.
+- [x] **Step 1: Failing tests** (fakes: `FakeRegistry`, the settings store substitute `V31JobStartTests` uses): `AnAccountWithEverythingSet_HasNoRefusals`; `NoTimeZone_SaysS06008` (exact text); `AMissingSignature_SaysS06031_BeforeTheZone`; `AMissingCredentialsLine_SaysS06032_WithItsLabel`; `ASignaturePickNotInTheProfile_SaysA08004`; `ASignaturePick_SatisfiesAPackageThatReadsTheSignature_WhenNoBlockIsChosen`; `NeedsProfile_IsThePlans`; `APackageBelow31_AnswersEmptyLists`; `A31RefWithThePreviewOff_IsA400_WithS09001`; `ALoadRefusal_IsTheSame400AsCurrent`; `AnotherAccountsPackage_IsRefusedAsCurrentRefusesIt`; `TheRoute_AnswersOptionsWithCors`.
+- [x] **Step 2: Run, fail.**
+- [x] **Step 3: Implement.** Resolve the ref and load as `Current` does (`CompiledPackageStore.TryLoadAsync`); read the account as the starter does; call `V31StartChecks.Signature(blocks, signatureBlockId)` only when `needs.profile` lists `signature`, put its block's text in the profile map under `signature`, then `V31StartChecks.Account(plan, profile, timeZone)`. No value from the profile is in the answer.
+- [x] **Step 4: Run** the V31 filter and the solution suite; pass. Add the route to `engine-v31.md` ("Starting a job": "Asking before a start").
+- [x] **Step 5: Commit** `Api (#1509): the start's account checks can be asked before a start`, then `Web (#1509): the client asks the start checks`; push.
 
 ### Task 3: Inputs sent by reference are read at a 31 start (R2, D7)
 
@@ -448,3 +448,5 @@ Rules: top-level rows in the order of their first `startedAtUtc`, never-started 
 ## Recorded in the build
 
 *(Each task adds a line here for a choice this plan does not state.)*
+
+- Task 2: the starter's account reading is shared as three `internal static` members of `V31JobStarter` (`ProfileAsync(settings, accounts, plan, appUserId, requested, ct)`, `TimeZoneAsync`, `AccountRefusals`) rather than the brief's one `AccountAsync`, because the display name comes from `IAccountStore` and A08-004's substitution for S06-031 must be shared too. The route takes `ref` as `Current/Content` does (`ParseRequestedPackage`, ownership check), `Current` itself taking none. `NeedsProfile` is in the plan's order (sorted), not the package's written order. The Web throws `HttpRequestException` whose message is the 400's `error`.

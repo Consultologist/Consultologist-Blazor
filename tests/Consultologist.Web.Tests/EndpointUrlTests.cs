@@ -142,6 +142,42 @@ public class EndpointUrlTests
         Assert.Null(await service.GetFormatsAsync());
     }
 
+    [Fact]
+    public async Task TheWorkflowService_AsksTheStartChecks_WithTheRefAndThePick()
+    {
+        var handler = new RecordingHandler("""{"Refusals":["Set your time zone in your account settings before running a workflow."],"NeedsProfile":["signature"]}""");
+        var service = new WorkflowEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        var checks = await service.GetStartChecksAsync("example-note@v2026.11.1", "sig-2");
+
+        Assert.Equal(
+            "https://west.ca.api.consultologist.ai/api/WorkflowPackages/Current/StartChecks?ref=example-note%40v2026.11.1&signatureBlockId=sig-2",
+            handler.Requested?.ToString());
+        Assert.Equal(["Set your time zone in your account settings before running a workflow."], checks.Refusals);
+        Assert.Equal(["signature"], checks.NeedsProfile);
+
+        await service.GetStartChecksAsync();
+        Assert.Equal("https://west.ca.api.consultologist.ai/api/WorkflowPackages/Current/StartChecks", handler.Requested?.ToString());
+    }
+
+    [Fact]
+    public async Task TheWorkflowService_StartChecks400_ThrowsCarryingTheError()
+    {
+        var handler = new StatusHandler(HttpStatusCode.BadRequest, """{"error":"This version isn't published."}""");
+        var service = new WorkflowEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        var thrown = await Assert.ThrowsAsync<HttpRequestException>(() => service.GetStartChecksAsync("example-note@v2026.11.1"));
+
+        Assert.Equal("This version isn't published.", thrown.Message);
+        Assert.Equal(HttpStatusCode.BadRequest, thrown.StatusCode);
+    }
+
+    private sealed class StatusHandler(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+    }
+
     private sealed class FailingHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

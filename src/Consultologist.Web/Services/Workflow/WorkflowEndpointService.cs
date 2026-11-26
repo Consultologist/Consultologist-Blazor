@@ -13,6 +13,10 @@ public interface IWorkflowEndpointService
     Task<WorkflowPackageResponse> GetCurrentPackageAsync();
     /// <summary>The pinned package, or a named one since #411 split editing from pinning.</summary>
     Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null);
+    /// <summary>#1509 (D1): the account checks a start would refuse with, asked before a start (the signature pick, when one is made,
+    /// is the one the start will send). A 400 (a package that could not be loaded) throws <see cref="HttpRequestException"/> carrying its
+    /// <c>error</c>.</summary>
+    Task<WorkflowPackageStartChecksResponse> GetStartChecksAsync(string? packageRef = null, string? signatureBlockId = null);
     Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request);
     /// <summary>#858: server-side import — POST the uploaded .zip, get back normalized content and
     /// full catalog-backed findings. Null when the endpoint is unavailable (the editor falls back to
@@ -375,6 +379,9 @@ public record WorkflowPackageResponse(
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageMacroResponse (v12 § 3).</summary>
 public record WorkflowPackageMacroResponse(string Id, string Label, bool Default);
 
+/// <summary>#1509 (D1): mirrors the Api's WorkflowPackageStartChecksResponse: the sentences a start would be refused with, and <c>needs.profile</c>.</summary>
+public record WorkflowPackageStartChecksResponse(IReadOnlyList<string> Refusals, IReadOnlyList<string> NeedsProfile);
+
 /// <summary>
 /// The editor's load half. The manifest rides as an opaque JsonElement: the
 /// texts-only editor never modifies it, and round-tripping it verbatim to the
@@ -515,6 +522,56 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
         return await response.Content.ReadFromJsonAsync<WorkflowPackageContentResponse>()
             ?? throw new InvalidOperationException("Failed to deserialize workflow package content response.");
+    }
+
+    public async Task<WorkflowPackageStartChecksResponse> GetStartChecksAsync(string? packageRef = null, string? signatureBlockId = null)
+    {
+        var url = WithPackageRef(_locations.Url(ApiRoutes.WorkflowPackageStartChecks), packageRef);
+        if (!string.IsNullOrWhiteSpace(signatureBlockId))
+        {
+            url += (url.Contains('?', StringComparison.Ordinal) ? '&' : '?') + $"signatureBlockId={Uri.EscapeDataString(signatureBlockId)}";
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError(
+                "Workflow package start checks endpoint failed with status {StatusCode}: {Error}",
+                response.StatusCode,
+                errorContent);
+
+            var error = response.StatusCode == HttpStatusCode.BadRequest ? ErrorOf(errorContent) : null;
+            throw new HttpRequestException(
+                error ?? $"Workflow package start checks endpoint failed: {response.StatusCode}",
+                null,
+                response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<WorkflowPackageStartChecksResponse>()
+            ?? throw new InvalidOperationException("Failed to deserialize workflow package start checks response.");
+    }
+
+    /// <summary>The <c>error</c> of a <c>{ error }</c> body, or null when it is not one.</summary>
+    private static string? ErrorOf(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.String
+                ? error.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     public async Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request)
