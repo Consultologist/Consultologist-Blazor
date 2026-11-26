@@ -165,6 +165,25 @@ public class NullableReadTests
     }
 
     [Theory]
+    // A union whose every member is an object (or null) is an object that can be null: testing it is the guard.
+    [InlineData("{ \"type\": \"object\", \"required\": [\"ward\"], \"additionalProperties\": false, \"properties\": { \"ward\": { \"type\": \"string\", \"title\": \"Ward\" } } }", true)]
+    // A union with a member that is no object is a data value: testing it stays S05-007.
+    [InlineData("{ \"type\": \"string\" }", false)]
+    public void APresenceTest_OnAUnion_IsTheGuardOnlyWhenEveryMemberIsAnObject(string other, bool presence)
+    {
+        var where = "{ \"type\": \"object\", \"required\": [\"where\"], \"additionalProperties\": false, \"properties\": { \"where\": { \"title\": \"Where\", \"anyOf\": ["
+            + "{ \"type\": \"object\", \"required\": [\"clinic\"], \"additionalProperties\": false, \"properties\": { \"clinic\": { \"type\": \"string\", \"title\": \"Clinic\" } } }, "
+            + other + ", { \"type\": \"null\" }] } } }";
+        var (files, _, _, _) = NullableFixture.At("prompt", "{{ if input.stay.value.where }}Known.{{ end }}");
+        files.WithJson("manifest.json", m => m["inputs"]!["stay"] = JsonNode.Parse(
+            $"{{ \"label\": \"Stay\", \"description\": null, \"format\": {where}, \"required\": true, \"channel\": null }}"));
+
+        var said = Publish(files);
+
+        Assert.Equal(presence ? [] : ["S05-007"], said.Select(r => r.Id));
+    }
+
+    [Theory]
     [InlineData("{ \"!==\": [{ \"var\": \"input.patient.value.name\" }, null] }", true)]
     [InlineData("{ \"===\": [{ \"var\": \"input.patient.value.name\" }, \"Margaret Okafor\"] }", true)]
     [InlineData("{ \"and\": [{ \"var\": \"input.include_billing.value\" }, { \"!==\": [{ \"var\": \"input.patient.value\" }, null] }] }", true)]
@@ -190,6 +209,219 @@ public class NullableReadTests
         Assert.Equal(
             "Part 'about' of node 'draft' reads input.patient.value.name at line 1 through input.patient.value, which can be null. Put the read inside {{ if input.patient.value }}.",
             refusal.Sentence);
+    }
+
+    [Fact]
+    public void AGuardOnAForVariable_GuardsItsOwnBinding()
+    {
+        var (files, _, _, _) = NullableFixture.At("prompt",
+            "{{ for e in input.visits.value }}{{ if e.patient }}{{ for s in input.stays.value }}{{ e.patient.name }}\n{{ end }}{{ end }}{{ end }}");
+
+        Assert.Empty(Publish(files));
+    }
+
+    [Theory]
+    // A guard inside the loop on the loop's own variable.
+    [InlineData("{{ for e in input.visits.value }}{{ if e.patient }}{{ e.patient.name }}{{ end }}\n{{ end }}")]
+    // An inner loop that binds the name again, with its own guard on its own variable.
+    [InlineData("{{ for e in input.visits.value }}{{ if e.patient }}{{ for e in input.stays.value }}{{ if e.patient }}{{ e.patient.name }}{{ end }}\n{{ end }}{{ end }}{{ end }}")]
+    // A loop variable named like a root, guarded on the loop's own item.
+    [InlineData("{{ for input in input.visits.value }}{{ if input.patient }}{{ input.patient.name }}{{ end }}\n{{ end }}")]
+    public void AGuardInsideTheLoop_OnTheLoopsOwnVariable_IsAccepted(string body)
+    {
+        var (files, _, _, _) = NullableFixture.At("prompt", body);
+
+        Assert.True(Publish(files).Count == 0, Said(Publish(files)));
+    }
+
+    [Theory]
+    // An outer guard on e, and an inner loop that binds e again.
+    [InlineData("{{ for e in input.visits.value }}{{ if e.patient }}{{ for e in input.stays.value }}{{ e.patient.name }}\n{{ end }}{{ end }}{{ end }}", "e.patient")]
+    // A body guard on the input patient, and a loop variable named input whose item has a patient too.
+    [InlineData("{{ if input.patient.value }}{{ for input in input.charts.value }}{{ input.patient.value.name }}\n{{ end }}{{ end }}", "input.patient.value")]
+    public void AnOuterGuard_UnderALoopThatBindsItsRootAgain_IsNoGuard(string body, string through)
+    {
+        var (files, _, _, _) = NullableFixture.At("prompt", body);
+
+        var refusal = Assert.Single(Publish(files));
+        Assert.Equal("A11-009", refusal.Id);
+        Assert.Contains($" through {through}, which can be null.", refusal.Sentence, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AHeaderGuard_GuardsNothingUnderAForThatBindsItsRoot()
+    {
+        // The header rule reads the input patient; under `for input in …` the read's input is the loop's item.
+        var (files, _, _, _) = NullableFixture.At("prompt",
+            "{{ for input in input.visits.value }}{{ input.patient.value.name }}\n{{ end }}");
+        files.WithJson("nodes/draft.md", h => h["if"] = JsonNode.Parse("{ \"!==\": [{ \"var\": \"input.patient.value.name\" }, null] }"));
+        files.With("deliverables/note.md", Md(Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"), "{{ node.plan.content }}\n"));
+
+        var refusal = Assert.Single(Publish(files));
+        Assert.Equal(
+            "Node 'draft' reads input.patient.value.name at line 2 through input.patient, which can be null. Put the read inside {{ if input.patient }}.",
+            refusal.Sentence);
+    }
+
+    [Fact]
+    public void ASnippetsMacrosAndDeliverablesOwnIf_GuardTheirText()
+    {
+        const string rule = "{ \"!==\": [{ \"var\": \"input.patient.value\" }, null] }";
+        var snippet = NullableFixture.At("prompt", "{{ snippet.who.content }}").Files
+            .WithSnippet("who", "Patient: {{ input.patient.value.name }}\n")
+            .WithJson("snippets/who.md", h => h["if"] = JsonNode.Parse(rule));
+        var macro = NullableFixture.At("prompt", "{{~ macro.who }}").Files
+            .WithMacro("who", "Patient: {{ input.patient.value.name }}\n")
+            .WithJson("macros/who.md", h => h["if"] = JsonNode.Parse(rule));
+        var deliverable = NullableFixture.At("deliverable", "{{ input.patient.value.name }}").Files
+            .WithJson("deliverables/note.md", h => h["if"] = JsonNode.Parse(rule));
+
+        foreach (var (name, files) in new[] { ("snippet", snippet), ("macro", macro), ("deliverable", deliverable) })
+        {
+            Assert.True(Publish(files).Count == 0, name + ": " + Said(Publish(files)));
+            var header = name == "deliverable" ? "deliverables/note.md" : $"{name}s/who.md";
+            var other = new Dictionary<string, byte[]>(files)
+                .WithJson(header, h => h["if"] = JsonNode.Parse("{ \"!==\": [{ \"var\": \"input.referrer.value.contact\" }, null] }"));
+            Assert.Equal(["A11-009"], Publish(other).Select(r => r.Id));
+            var unguarded = files.WithJson(header, h => h["if"] = null);
+            Assert.Equal(["A11-009"], Publish(unguarded).Select(r => r.Id));
+        }
+    }
+
+    // ---- pass.previous (form 3) -------------------------------------------------------------------
+
+    /// <summary>
+    /// <see cref="ResolveFixture.NestedNote"/> with <c>draft_summary</c>'s part <c>revision</c> of <paramref name="rule"/>
+    /// whose text reads <c>pass.previous.node.judge.value.verdict</c>; <c>judge</c> given <paramref name="judgeIf"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Revision(string rule, string judgeIf = "null") =>
+        ResolveFixture.NestedNote()
+            .With("nodes/refine/draft_summary.md", Agent("Drafting the summary", Plain,
+                "Summarise the note in two sentences for Dr A. Sample.\n{{ part.revision }}\n"))
+            .WithJson("nodes/refine/draft_summary.md", h => h["parts"] = JsonNode.Parse(
+                $"{{ \"revision\": {{ \"if\": {rule}, \"text\": [\"The reviewer said: {{{{ pass.previous.node.judge.value.verdict }}}}\"] }} }}"))
+            .WithJson("nodes/refine/judge.md", h => h["if"] = JsonNode.Parse(judgeIf));
+
+    private const string Through = " through pass.previous.node.judge.value, which can be null.";
+
+    [Theory]
+    [InlineData("{ \">\": [{ \"var\": \"pass.number\" }, 1] }")]
+    [InlineData("{ \">=\": [{ \"var\": \"pass.number\" }, 2] }")]
+    [InlineData("{ \"and\": [{ \">\": [{ \"var\": \"pass.number\" }, 2] }, { \">\": [{ \"var\": \"node.section_count.value\" }, 0] }] }")]
+    public void APassPastItsFirst_GuardsThePreviousPassOfANodeThatAlwaysRuns(string rule)
+    {
+        var files = Revision(rule);
+
+        Assert.True(Publish(files).Count == 0, Said(Publish(files)));
+    }
+
+    [Theory]
+    [InlineData("{ \">=\": [{ \"var\": \"pass.number\" }, 1] }")]
+    [InlineData("{ \">\": [{ \"var\": \"pass.number\" }, 0] }")]
+    [InlineData("{ \"or\": [{ \">\": [{ \"var\": \"pass.number\" }, 1] }, { \">\": [{ \"var\": \"node.section_count.value\" }, 0] }] }")]
+    // Other comparisons are no guard, even where they exclude the first pass: only `>` and `>=` with the count on the left.
+    [InlineData("{ \"<\": [1, { \"var\": \"pass.number\" }] }")]
+    [InlineData("{ \"===\": [{ \"var\": \"pass.number\" }, 2] }")]
+    [InlineData("{ \"!==\": [{ \"var\": \"pass.number\" }, 1] }")]
+    [InlineData("{ \">\": [{ \"var\": \"pass.number\" }, 0.5] }")]
+    public void APassThatMayBeTheFirst_GuardsNothing(string rule)
+    {
+        var refusal = Assert.Single(Publish(Revision(rule)));
+
+        Assert.Equal("A11-009", refusal.Id);
+        Assert.Contains(Through, refusal.Sentence, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void APassPastItsFirst_DoesNotGuardANodeWithItsOwnIf()
+    {
+        // judge may be skipped in any pass, so its previous value can be null on the second pass too.
+        var files = Revision("{ \">\": [{ \"var\": \"pass.number\" }, 1] }",
+            "{ \"!\": [{ \"blank\": [{ \"var\": \"node.draft_summary.content\" }] }] }");
+
+        var said = Publish(files);
+        var refusal = Assert.Single(said, r => r.Id == "A11-009");
+        Assert.Contains(Through, refusal.Sentence, StringComparison.Ordinal);
+    }
+
+    /// <summary><see cref="ResolveFixture.NestedNote"/> with <paramref name="prompt"/> as <c>draft_summary</c>'s prompt.</summary>
+    private static Dictionary<string, byte[]> Drafting(string prompt) =>
+        ResolveFixture.NestedNote().With("nodes/refine/draft_summary.md", Agent("Drafting the summary", Plain,
+            "Summarise the note in two sentences for Dr A. Sample.\n" + prompt + "\n"));
+
+    [Fact]
+    public void APreviousPassRead_InABodyIf_IsGuardedInItsBranchOnly()
+    {
+        var guarded = Drafting("{{ if pass.previous.node.judge.value }}{{ pass.previous.node.judge.value.verdict }}{{ end }}");
+        var otherwise = Drafting("{{ if pass.previous.node.judge.value }}Again.{{ else }}{{ pass.previous.node.judge.value.verdict }}{{ end }}");
+
+        Assert.True(Publish(guarded).Count == 0, Said(Publish(guarded)));
+        var refusal = Assert.Single(Publish(otherwise));
+        Assert.Equal("A11-009", refusal.Id);
+        Assert.Contains(Through, refusal.Sentence, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void APassCountInABodyIf_IsNoGuard()
+    {
+        // A body if may not test a run fact (S05-007), and the count guards only as a header rule.
+        var said = Publish(Drafting("{{ if pass.number > 1 }}{{ pass.previous.node.judge.value.verdict }}{{ end }}"));
+
+        Assert.Contains(said, r => r.Id == "S05-007");
+        var refusal = Assert.Single(said, r => r.Id == "A11-009");
+        Assert.Contains(Through, refusal.Sentence, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The while <c>rounds</c> (two passes) around <c>verdict_round</c> (a <c>verdict</c>) and <see cref="ResolveFixture.NestedNote"/>'s
+    /// <c>refine</c>, whose <c>draft_summary</c> has the part <c>revision</c> of <paramref name="rule"/> reading <paramref name="read"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Rounds(string rule, string read)
+    {
+        var nested = ResolveFixture.NestedNote();
+        var files = nested.Where(f => !f.Key.StartsWith("nodes/refine/", StringComparison.Ordinal))
+            .ToDictionary(f => f.Key, f => f.Value);
+        foreach (var (path, bytes) in nested.Where(f => f.Key.StartsWith("nodes/refine/", StringComparison.Ordinal)))
+            files["nodes/rounds/" + path["nodes/".Length..]] = bytes;
+        return files
+            .WithJson("nodes/index.json", i => i["items"] = JsonNode.Parse("[\"plan\", \"section_count\", \"sections\", \"rounds\"]"))
+            .With("nodes/rounds/index.json", Json(SourceFixture.Node("while", "Rounds", Plain, false, true,
+                "\"while\": { \"<\": [{ \"var\": \"pass.number\" }, 2] }, \"max\": 2, \"until\": null, \"checkFirst\": false, "
+                + "\"nodes\": [\"verdict_round\", \"refine\"], \"ret\": \"node.rounds.refine\"")))
+            .WithJson("nodes/rounds/refine/index.json", h => h["ret"] = "node.rounds.refine.draft_summary")
+            .With("nodes/rounds/refine/judge.md", Agent("Judging the summary", "\"verdict\"",
+                "Say whether the summary is good or needs another pass.\n\n{{ node.draft_summary.content }}\n{{ node.verdict_round.content }}\n"))
+            .With("nodes/rounds/verdict_round.md", Agent("Judging the round", "\"verdict\"", "Judge the round for Dr A. Sample.\n"))
+            .With("nodes/rounds/refine/draft_summary.md", Agent("Drafting the summary", Plain,
+                "Summarise the note in two sentences for Dr A. Sample.\n{{ part.revision }}\n"))
+            .WithJson("nodes/rounds/refine/draft_summary.md", h => h["parts"] = JsonNode.Parse(
+                $"{{ \"revision\": {{ \"if\": {rule}, \"text\": [\"Said before: {{{{ {read} }}}}\"] }} }}"))
+            .With("deliverables/note.md", Md(Deliverable("Nested consultation note", "\"markdown_block\"", "null", "hold"),
+                "## Summary\n\n{{ node.rounds.content }}\n"));
+    }
+
+    private const string Inner = "pass.previous.node.judge.value.verdict";
+
+    private const string Outer = "pass.parent.previous.node.verdict_round.value.verdict";
+
+    [Theory]
+    [InlineData("pass.number", Inner, true)]
+    [InlineData("pass.parent.number", Outer, true)]
+    [InlineData("pass.parent.number", Inner, false)]
+    [InlineData("pass.number", Outer, false)]
+    public void APassPastItsFirst_GuardsOnlyItsOwnWhilesPreviousPass(string counted, string read, bool guards)
+    {
+        var said = Publish(Rounds($"{{ \">\": [{{ \"var\": \"{counted}\" }}, 1] }}", read));
+
+        if (guards)
+        {
+            Assert.True(said.Count == 0, Said(said));
+            return;
+        }
+
+        var refusal = Assert.Single(said);
+        Assert.Equal("A11-009", refusal.Id);
+        Assert.StartsWith($"Part 'revision' of node 'draft_summary' reads {read} at line 1 through ", refusal.Sentence, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -224,6 +456,21 @@ internal static class NullableFixture
         + "\"properties\": { \"name\": { \"type\": \"string\", \"title\": \"Name\" }, "
         + "\"nickname\": { \"type\": [\"string\", \"null\"], \"title\": \"Nickname\" }, " + Contact + extra + " } }";
 
+    /// <summary>A list of visits, each with a nullable object <c>patient</c> (its <c>name</c>, and a <c>value</c> holding a <c>name</c>).</summary>
+    public const string Visits =
+        "{ \"type\": \"array\", \"items\": { \"type\": \"object\", \"required\": [\"patient\"], \"additionalProperties\": false, \"properties\": { "
+        + "\"patient\": { \"title\": \"Patient\", \"anyOf\": [{ \"type\": \"object\", \"required\": [\"name\", \"value\"], \"additionalProperties\": false, "
+        + "\"properties\": { \"name\": { \"type\": \"string\", \"title\": \"Name\" }, \"value\": { \"type\": \"object\", \"title\": \"Value\", "
+        + "\"required\": [\"name\"], \"additionalProperties\": false, \"properties\": { \"name\": { \"type\": \"string\", \"title\": \"Name\" } } } } }, "
+        + "{ \"type\": \"null\" }] } } } }";
+
+    /// <summary>A list of charts, each with an object <c>patient</c> whose <c>value</c> is a nullable object (its <c>name</c>): read as <c>input</c> in a loop, the same written path as the input patient's.</summary>
+    public const string Charts =
+        "{ \"type\": \"array\", \"items\": { \"type\": \"object\", \"required\": [\"patient\"], \"additionalProperties\": false, \"properties\": { "
+        + "\"patient\": { \"type\": \"object\", \"title\": \"Patient\", \"required\": [\"value\"], \"additionalProperties\": false, \"properties\": { "
+        + "\"value\": { \"title\": \"Value\", \"anyOf\": [{ \"type\": \"object\", \"required\": [\"name\"], \"additionalProperties\": false, "
+        + "\"properties\": { \"name\": { \"type\": \"string\", \"title\": \"Name\" } } }, { \"type\": \"null\" }] } } } } } }";
+
     private const string Allergies = ", \"allergies\": { \"type\": \"array\", \"title\": \"Allergies\", \"items\": { \"type\": \"string\" } }";
 
     /// <summary>The package with <paramref name="prompt"/> as <c>draft</c>'s prompt and <paramref name="deliverable"/> as <c>note</c>'s body.</summary>
@@ -235,6 +482,9 @@ internal static class NullableFixture
                 inputs["patient"] = Input("Patient", Person(Allergies), required: false);
                 inputs["referrer"] = Input("Referrer", Person(""), required: true);
                 inputs["include_billing"] = Input("Include billing", "\"boolean\"", required: false);
+                inputs["visits"] = Input("Visits", Visits, required: false);
+                inputs["stays"] = Input("Stays", Visits, required: false);
+                inputs["charts"] = Input("Charts", Charts, required: false);
             })
             .Listed("nodes/index.json", "verdict_check")
             .With("nodes/verdict_check.md", Md(SourceFixture.Node("agent", "Judging the draft", "\"verdict\"", false, true,

@@ -4,6 +4,7 @@ using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Run;
+using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
 namespace Consultologist.Api.Tests.V31Run;
 
@@ -74,6 +75,49 @@ public class NullableObjectRunTests
     }
 
     [Fact]
+    public async Task AGuardOnAForVariable_DoesNotHoldUnderAForThatBindsTheNameAgain()
+    {
+        // Fix round 1: the outer e's patient is there and the inner e's is null; a guard on the outer e.patient would be no
+        // guard for the inner e.patient.name, which fails. Publish refuses it now, so the inner guard is blanked here.
+        const string read = "e.patient.name";
+        var (files, _, subject, _) = NullableFixture.At("prompt",
+            $"{{{{ for e in input.visits.value }}}}{{{{ if e.patient }}}}{{{{ for e in input.stays.value }}}}{Guarded(read)}\n{{{{ end }}}}{{{{ end }}}}{{{{ end }}}}");
+        var given = Inputs("patient given");
+        given["visits"] = JsonNode.Parse("[{ \"patient\": { \"name\": \"Margaret Okafor\", \"value\": { \"name\": \"Margaret Okafor\" } } }]");
+        given["stays"] = JsonNode.Parse("[{ \"patient\": null }]");
+
+        var guarded = await Run(RunFixture.Plan(files), given);
+        var result = await Run(Unguarded(files, read), given);
+
+        Assert.True(guarded.State == RunState.Completed, guarded.Sentence);
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal($"{subject} couldn't be rendered.", result.Sentence);
+    }
+
+    [Fact]
+    public async Task AHeaderGuard_DoesNotHoldUnderAForThatBindsItsRoot()
+    {
+        // Fix round 1: draft runs only when the input patient is there, but under `for input in …` the read's input is the
+        // loop's item (a visit the agent visit_list lists), whose patient is null here. Publish refuses the read without its
+        // own guard, so that guard is blanked. The loop's source is a node, so the body reads no input of its own.
+        const string read = "input.patient.value.name";
+        var (files, _, subject, _) = NullableFixture.At("prompt",
+            "{{ for input in node.visit_list.value }}{{ if input.patient }}{{ input.patient.value.name }}{{ end }}\n{{ end }}");
+        files.WithJson("nodes/draft.md", h => h["if"] = JsonNode.Parse("{ \"!==\": [{ \"var\": \"input.patient.value.name\" }, null] }"))
+            .Listed("formats/index.json", "visit_list")
+            .With("formats/visit_list.json", Json("{ \"$schema\": \"urn:consultologist:spec:31:dialect\", " + NullableFixture.Visits[1..]))
+            .WithAgent("visit_list", "List the visits in the draft for Dr A. Sample.\n\n{{ input.consult_draft.content }}\n", "\"visit_list\"");
+        var outputs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.visit_list"] = JsonNode.Parse("[{ \"patient\": null }]") };
+
+        var guarded = await Run(RunFixture.Plan(files), Inputs("patient given"), outputs);
+        var result = await Run(Unguarded(files, read, "input.patient"), Inputs("patient given"), outputs);
+
+        Assert.True(guarded.State == RunState.Completed, guarded.Sentence);
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal($"{subject} couldn't be rendered.", result.Sentence);
+    }
+
+    [Fact]
     public async Task AConjunction_StopsAtTheFirstNullObject()
     {
         // Scriban's && does not read its right side when its left is false, so the second test never reads through null.
@@ -102,7 +146,7 @@ public class NullableObjectRunTests
     /// <summary>The object <paramref name="read"/> steps through last: the read without its last step.</summary>
     private static string Through(string read) => read[..read.LastIndexOf('.')];
 
-    private static string Guard(string read) => $"{{{{ if {Through(read)} }}}}";
+    private static string Guard(string read, string? through = null) => $"{{{{ if {through ?? Through(read)} }}}}";
 
     private const string End = "{{ end }}";
 
@@ -110,15 +154,16 @@ public class NullableObjectRunTests
     private static string Guarded(string read) => $"[{Guard(read)}{{{{ {read} }}}}{End}]";
 
     /// <summary>
-    /// The plan of <paramref name="files"/> (which publish), with the guard around <paramref name="read"/> blanked in the
-    /// compiled document: its two tags written as spaces, so every other tag keeps its place.
+    /// The plan of <paramref name="files"/> (which publish), with the guard around <paramref name="read"/> (on
+    /// <paramref name="through"/>, else the read without its last step) blanked in the compiled document: its two tags
+    /// written as spaces, so every other tag keeps its place.
     /// </summary>
-    private static RunPlan Unguarded(Dictionary<string, byte[]> files, string read)
+    private static RunPlan Unguarded(Dictionary<string, byte[]> files, string read, string? through = null)
     {
         var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed);
         Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => r.Sentence)));
-        var guarded = $"{Guard(read)}{{{{ {read} }}}}{End}";
-        var blanked = new string(' ', Guard(read).Length) + $"{{{{ {read} }}}}" + new string(' ', End.Length);
+        var guarded = $"{Guard(read, through)}{{{{ {read} }}}}{End}";
+        var blanked = new string(' ', Guard(read, through).Length) + $"{{{{ {read} }}}}" + new string(' ', End.Length);
         Assert.Contains(guarded, compiled!.Resolve, StringComparison.Ordinal);
         var (plan, refusal) = RunPlan.Build(compiled.Resolve.Replace(guarded, blanked, StringComparison.Ordinal), compiled.ResolveHash, compiled.LockHash, null);
         Assert.Null(refusal);
@@ -142,10 +187,10 @@ public class NullableObjectRunTests
         return given;
     }
 
-    private static Task<OfflineResult> Run(RunPlan plan, Dictionary<string, JsonNode?> inputs) =>
+    private static Task<OfflineResult> Run(RunPlan plan, Dictionary<string, JsonNode?> inputs, Dictionary<string, JsonNode?>? outputs = null) =>
         OfflineRun.RunAsync(plan, new OfflineRequest(
             inputs, new Dictionary<string, string?>(StringComparer.Ordinal), new JsonObject(),
-            new Dictionary<string, JsonNode?>(StringComparer.Ordinal), new DateTime(2026, 11, 26, 9, 0, 0, DateTimeKind.Utc)));
+            outputs ?? new Dictionary<string, JsonNode?>(StringComparer.Ordinal), new DateTime(2026, 11, 26, 9, 0, 0, DateTimeKind.Utc)));
 
     /// <summary>The text the body under test gave: <c>draft</c>'s prompt, or the deliverable <c>note</c>.</summary>
     private static string Text(OfflineResult result, string site) => site == "prompt"
