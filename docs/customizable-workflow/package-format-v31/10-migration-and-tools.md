@@ -144,7 +144,7 @@ validation fails with sentences until each is made, as the 25 migration did. The
   be null, where no {{ if <object path> }} can enclose the read; move the read where that guard can stand."*); until it is moved,
   publish refuses the read (A11-009);
 - **a package whose worst case passes the instances one job may open** at the engine's default (`RunLimits.JobInstances`,
-  10,000), which publish refuses (A11-001): the migration counts the package it wrote as publish does, and the hand edit is on the
+  10,000), or in the bulk publish (§ 1.5) at the engine's configured limit, which publish refuses (A11-001): the migration counts the package it wrote as publish does, and the hand edit is on the
   outermost loop's `max` on the heaviest path, with A11-001's count and limit (A10-081: *"up to <n> steps could run in one job
   through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no
   max: lower a loop's max or split the workflow."*). **No `max` is written** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), B2, and
@@ -179,10 +179,13 @@ its record (A10-083: *"No options.json was given, so the migration's defaults we
 its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take
 <folder>_item."*).
 
-The script exits **0** when the package migrated cleanly, **1** with *"written; hand edits remain"*
-(as #1447 decided), and **2** when it refused, writing no package (unreadable input, or a version
-below 5)
+The script exits **0** when the package migrated cleanly, **1** when hand edits remain, its summary
+ending *"written; hand edits remain"* (as #1447 decided), and **2** when it refused, writing no package
+(unreadable input, or a version below 5)
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6985122999)).
+A dry run (no `--write`) that finds hand edits also exits **1**, though it writes nothing, and its
+summary ends *"(dry run; pass --write to apply)"* in place of *"written; hand edits remain"*
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), 8, D30).
 
 Each notice reads:
 > *"Hand edit needed in <file>, <member>: <reason>."*

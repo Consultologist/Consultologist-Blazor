@@ -919,7 +919,9 @@ upload's order or line ends.
     `propertyOrder`, their names as the source writes them (#1508, R10; `CompiledFormats.PropertyOrder`), since
     `resolve.json` is canonical JSON and sorts them.
   - `formatHashes` and `typeHashes` are the type services' hashes of each format in its own scope, taken from the
-    source, so `propertyOrder` moves neither.
+    source, so `propertyOrder` moves neither. It is written only into the compiled copy: the source dialect does not
+    admit it, so a compiled format is its source format in the dialect plus `propertyOrder` (part 07 § 2.2), and
+    `resolve.schema.json` judges an inline format as the dialect's keywords plus `propertyOrder`, closed.
   - `bindings` is format key, then `generated`, then `{ agentName, agentVersion, via }`.
 - **Entries.** Every entry is its header as written, cloned, with:
   - every `format` rewritten in the scope that owns it;
@@ -2384,8 +2386,10 @@ This area carries a specVersion 30 package to 31. It is four pure pieces of the 
    `ExpectedDifferences`, `MigrationReport`).
 
 The script `scripts/migrate-workflow-package.cs --to 31` runs the rewrite on a folder. The operator's run over a folder
-of account packages is a test (D10). Nothing here publishes a migrated version, moves a pin or tells an owner: area
-11's publish path ("publish" below) stores a migrated version, and the rest is the user's deploy (part 10 § 1.5).
+of account packages is a test (D10). Nothing in this area publishes a migrated version, moves a pin or tells an owner:
+area 11's publish path ("publish" below) stores a migrated version, and its bulk publish (`Admin/MigratePackage`,
+driven by `BulkPublishScript`; "The bulk publish" below) migrates and publishes each account's package, moves its pin and
+writes the owners' list. Running it against production and telling the owners are the user's (part 10 § 1.5).
 
 ### The converter (part 10 § 2)
 
@@ -2459,21 +2463,27 @@ path, and a `Migration31Options`:
 | `WhenEmpty` | a deliverable id to its `whenEmpty` (§ 1.10, D7); `release` when unsaid |
 | `FolderFormats` | a snippet folder's id to the format its items' headers are values of; `<folder>_item` when unsaid |
 | `WriteSnapshot` | whether `Migrate` ends by writing the snapshot test (default `true`) |
+| `Limits` | the `PublishLimits` the migration counts its package against (A10-081) and its snapshot publishes at; `null` is the engine's starting values (`WorkflowPackageMigration30To31.EngineLimits`), and the bulk publish gives the engine's configured ones (#1508, Task 36) |
 
 #1508 (area 11, R18, the owner's ruling of 2026-11-25, 6): the three choices, `Renames`, `WhenEmpty` and `FolderFormats`,
 live in a file, a package's `options.json` (`MigrationOptionsFile.FileName`) beside its hand edits:
 `{ "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} }`, every member required, each an object of text, `{}` for
-none, and no other member. `Migration31Options.FromJson(json, registry, toolchain, formats30)` reads it into options
-(no contract resolver, the snapshot written), or gives `null` and the first sentence it cannot read: A10-070 (a member
-that is no option), A10-071 (a choice missing or not an object of text), A10-072 (a `whenEmpty` that is not `release`,
-`hold` or `fail`); it never throws on the file's content. `ToJson()` writes the three back (keys in ordinal order, `{}`
-for none), which the migration report records. The tests read every fixture package's
-`tests/Fixtures/ByteEquivalence/hand-edits/<package>/options.json` (`ExampleChoices`, through `MigrationFixture.Options`;
-a package with none fails), and the operator's bulk publish reads the same file (Task 36).
+none, and no other member. `MigrationOptionsFile.Parse(text)` reads the file's text as the script and the bulk publish
+read it: a leading byte-order mark dropped, then strict JSON (A10-019's sentence for text that is not, a member written
+twice among it), and an object (`MigrationOptionsFile.NotAnObject` otherwise).
+`Migration31Options.FromJson(json, registry, toolchain, formats30)` reads the object into options (no contract
+resolver, the snapshot written), or gives `null` and the first sentence it cannot read: A10-070 (a member that is no
+option), A10-071 (a choice missing or not an object of text), A10-082 (an empty id or choice, which the flags refuse
+too), A10-072 (a `whenEmpty` that is not `release`, `hold` or `fail`); it never throws on the file's content.
+`ToJson()` writes the three back (keys in ordinal order, `{}` for none), which the migration report records. The tests
+read every fixture package's `tests/Fixtures/ByteEquivalence/hand-edits/<package>/options.json` (`ExampleChoices`,
+through `MigrationFixture.Options`; a package with none fails), and the operator's bulk publish reads the same file,
+saying A10-083 in its record for a package that has none.
 
 It returns a `Migration31Result` in the earlier rungs' shape (D1): `ManifestJson`, `Files` (without `manifest.json`),
-`Notices` and `Refusals`, with `Succeeded`, and five more members: `HandEdits` (the S10-002 notices, a subset of
-`Notices`), `Report` (`MigrationNotes`: the renames, the `_macro` inputs, the `blank` conversions, the suggested text
+`Notices` and `Refusals`, with `Succeeded`, and six more members: `HandEdits` (the S10-002 notices, a subset of
+`Notices`), `HandEditFiles` (the file each of them names, in the same order, which the bulk publish holds the operator's
+edits to), `Report` (`MigrationNotes`: the renames, the `_macro` inputs, the `blank` conversions, the suggested text
 formats and the `reproducible` claims that differed), `Keys` (each 30 node id to its 31 rooted key, and each
 deliverable's `deliverable.<id>` to its 31 key), `MacroBodies` (the 31 files that hold a 30 macro's body, for R5's
 rule) and `MacroIds30` (each renamed macro's 31 id to its 30 id, a folder's item keyed `<30 folder>/<31 item>`, so the
@@ -2504,7 +2514,7 @@ line endings, a JSON Logic value in canonical order.
 | deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, `{{ profile.signature }}` for 30's `signature: true`, one blank line apart. An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim; #1508 (R15): a deliverable every source of which may not run (`AlwaysValued` false; a `while` counts as running, as 30 composed one with no pass) gets the `if` `<source>.state === "completed"` (`or` over the sources, after 30's by `and`), A10-079 |
 | derived flags | `Migrate.Derived.cs` | last: every node and check header's `reproducible`, `modelDerived`, `runDependent` and `profileCarrying` from `SourceDerived.Values`, the derivation without the header checks (D15). A 30 `reproducible` claim that differs is A10-010; a header made of a body the dialect refused is A10-049 |
 
-After the passes, #1508 (R11): the package as written is checked and counted as publish counts it (`PublishNotes.PastInstances`, A11-001's facts) at the engine's default limits (`WorkflowPackageMigration30To31.EngineLimits`, `RunLimits`' starting values); past `JobInstances` it is a hand edit on the outermost loop's `max` on the heaviest path (A10-081), and no `max` is written. Then, with `WriteSnapshot`, the snapshot test (below), published at those limits. Other notices: A10-021 (a format's free-text field), A10-026 (a
+After the passes, #1508 (R11): the package as written is checked and counted as publish counts it (`PublishNotes.PastInstances`, A11-001's facts) at the options' `Limits` (by default the engine's starting values, `WorkflowPackageMigration30To31.EngineLimits`; the engine's configured limits in the bulk publish); past their `JobInstances` it is a hand edit on the outermost loop's `max` on the heaviest path (A10-081), and no `max` is written. Then, with `WriteSnapshot`, the snapshot test (below), published at those limits. Other notices: A10-021 (a format's free-text field), A10-026 (a
 lone carriage return became a line end), A10-027 (`size` over a list that can be null), A10-030 (a member 31 has no
 form for, dropped), A10-013 (`onInvalid: flag`, written `retry`: one more attempt with the validation error, then the
 node fails; #1508, comment 5, item 3), A10-074 (text compared with a literal written `in`), A10-075 (a text input
@@ -2514,7 +2524,8 @@ migration says, one method each.
 **Hand edits and the invariant (§ 1.4).** What the rewrite cannot decide is written where the 31 checker refuses it
 (D3: an unconvertible condition stays a JSON string in its member, a body construct stays in the body, a conditional
 deliverable macro is `{{ macro.<id>.fixed_text }}`), with exactly one notice, S10-002: `Hand edit needed in <file>,
-<member>: <reason>.` So a hand edit is never silently dropped, and the invariant holds over the sixteen packages
+<member>: <reason>.` So a hand edit is never silently dropped, and the invariant holds over the twenty-three packages (area 01's
+sixteen and the seven edge-case packages, #1508)
 (`MigratedPackagesTests.NoHandEdit_MeansPublishRefusesNothing`, `AHandEdit_MeansPublishRefuses`): **no hand-edit
 notice ⇔ `CompiledPackage.Publish` refuses nothing.** The same tests hold that the migration writes no unknown member
 (`NothingUnknownIsWritten`) and gives the same bytes twice (`MigratingTwice_GivesTheSameBytes`).
@@ -2586,7 +2597,7 @@ pinned reply where its instruction asks: alone on the first line (`{{~ marker }}
 (`\n{{~ marker }}` after it).
 
 `ByteEquivalence.Compare(package, scenario, capture30, run31, migrated, plan, request31)` lists every compared text as a
-`ComparedText(Site, OldHash, NewHash, Equal, Expected, Explanation)`: `#status` first (the status word, D24), then the
+`ComparedText(Site, OldHash, NewHash, Equal, Expected, Explanation, Rules, Unexplained)`: `#status` first (the status word, D24), then the
 prompts, the rendered texts and the deliverables, each in the capture's order and then those only 31 has. A site is
 `<package>/<scenario>#prompts/<31 key>` (or `#renders/`, `#deliverables/`); a 30 text whose key cannot be mapped keeps
 its 30 key under `#prompts@30/` (D11). A side that lacks a text has the empty text's hash (`ByteEquivalence.EmptyHash`).
@@ -2595,8 +2606,13 @@ A 31 deliverable its check blocked is never delivered, so it has no text (R4 ite
 **When in doubt, a difference is unexpected.** A difference is `expected` only when a rule of
 `ExpectedDifferences.Rules` explains it exactly. Each `Rule(Id, Basis, Explanation)` names its ruling or section, and
 the report says `<id>: <explanation> (<basis>)`. A case rule explains a whole text by where it is and how the runs
-ended; a bytes rule undoes one declared difference. `Explain` takes the first case rule that holds, else applies the
-bytes rules in order, each at most once, and the text is expected only when they leave the two texts equal.
+ended; a bytes rule undoes one declared difference. **Each difference is credited on its own** (#1508, comment 5,
+item 5; R19): `ExpectedDifferences.Credit` takes the first case rule that holds; else it applies the bytes rules in
+order to what the earlier ones left, again until none changes anything (each at most once), and keeps a rule's change
+only where it brings the two texts nearer (fewer tokens differ, `Distance`), so a rule is never credited for a change of
+its own making. It gives `Credited(Rules, Unexplained)`: the rules kept, in the table's order, and whether a remainder
+is left. A text is `Expected` only when a rule is credited and nothing remains; `Explain` gives its explanation, the
+credited rules' `Said` joined by `; `. A ruled difference beside an unexplained one is still credited, in `Rules`.
 
 | Rule | Basis | Kind |
 |---|---|---|
@@ -2604,13 +2620,18 @@ bytes rules in order, each at most once, and the text is expected only when they
 | `skipped-deliverable-reads-null` | R4 item 1 (when the 31 run completed: the status, and a deliverable only 31 has) | case |
 | `required-blank-refused` | R4 item 6 | case |
 | `all-refused-completes` | R4 item 7 | case |
-| `refused-deliverable-withheld` | R4 item 3 (only in a row whose plan reads the blocked deliverable, which part 06 § 6.7 leaves to checks: on a published package it explains nothing, D34) | bytes |
-| `escaped-plain-text` | part 06 § 6.4, D8 | bytes |
+| `failed-job-dispatch-order` | #1508 comment 5 item 7, #9 (both jobs failed at the same reply, refused by its node's `failIfEmpty` or format; a text only one side sent is the dispatch order's) | case |
+| `flag-becomes-retry` | #1508 comment 5 item 3 (a node 30 ran as `onInvalid: flag` asks once more at 31 and then fails: its prompt's retry text, the status, and what 30 ran on the kept reply) | case and bytes |
+| `reply-never-a-template` | #1508 comment 5 item 7, #5 (a reply 30 rendered as a template is kept as written at 31) | case and bytes |
+| `escaped-plain-text` | part 06 § 6.4, D8; #1508 comment 5 items 7 (#13, a computed text value) and 8 (D23, plain-text items joined into a Markdown loop's `.content`, also where a prompt reads it) | bytes |
 | `item-ids-from-one` | #1506 ruling 2, D26 | bytes |
-| `position-names-from-the-loop` | part 04 § 2.7, D27 | bytes |
-| `sent-format` | part 10 § 1.8, D26; R12 and #1508 comment 5 item 7 #3 (a classifier's answer format sent after 30's own line listing the same values, and nothing else) | bytes |
+| `position-names-from-the-loop` | part 04 § 2.7, D27; #1508 comment 5 item 4 (an empty `itemLabel` field falls back to the position name) | bytes |
+| `sent-format` | part 10 § 1.8, D26; R12 and #1508 comment 5 item 7 #3 (a format's descriptions sent; a classifier's answer format sent after 30's own line listing the same values, and nothing else) | bytes |
 | `explicit-null-for-optional` | part 10 § 1.8 | bytes |
 | `macro-trailing-whitespace` | R5 (a macro the row's text can hold, from the plan's reads and placements) | bytes |
+| `input-trailing-whitespace` | #1508 comment 5 item 7, #6 (an input's text keeps its trailing white space) | bytes |
+| `before-after-macro-marker` | #1508 comment 5 item 7, #10 (a macro 30's engine placed before or after the reply is a marker: only the white space between its body and the reply differs) | bytes |
+| `while-no-pass-separator` | the controller's ruling on #1508 for comment 7's Q3 (a `while` that ran no pass keeps the blank line beside another source, which 30 dropped) | bytes |
 | `macro-choice-classifier` | R13, R14 (#1508 comment 6 items 1 and 2: a classifier's prompt only 31 sends; the placing prompt's macro instruction, 30's or it with one "otherwise" clause removed where the classifier answered yes, absent where it answered no; the classifiers are read from the files, `ChoiceClassifiers.Of`: a `judgement` agent the macro's `if` reads, standing with the placing agent's other classifiers just before it, whose prompt places the macro itself or through the snippets it reads; `ByteEquivalence.RequestFor` answers each from the capture, `ChoiceAnswers`, yes when 30's reply held the marker under the macro's 30 id, `Migration31Result.MacroIds30`) | case and bytes |
 | `blank-conversion` | R1 (a gate of the text's own instance) | case |
 
@@ -2623,7 +2644,9 @@ must not (`ExpectedDifferencesTests`).
 `MigrationReport.Of(oldVersion, migrated, options, texts, worstCase)` builds `migration-report.json`: `oldVersion`,
 `newVersion`, `handEdits` (the S10-002 notices), `notices` (every other notice, then A10-063 for a package with more than
 one deliverable, R8, then the worst-case note), `options` (#1508, R18: the package's `options.json` as given, a
-`JsonObject`, required by the schema) and `texts`. `ToJson()` writes it canonical (RFC 8785).
+`JsonObject`, required by the schema), `counts` (R19: of the texts that differ, `explained` whole, `partlyExplained`, a
+rule credited and a remainder left, and `unexplained`, no rule credited) and `texts`, each with its `rules` and whether it
+is `unexplained`. `ToJson()` writes it canonical (RFC 8785).
 `MigrationReport.WorstCaseNote` is A10-014, said only when the worst case's agent calls (S04-080's count)
 divided by `RunLimits.MaxAgentCalls`, rounded up, pass `RunLimits.JobMinutes` (D14); #1508 (D16): the arithmetic is
 publish's S09-016 (`PublishNotes.MinutesNote`), the same words. The report is
@@ -2645,8 +2668,8 @@ The script reads 31's registry with `PublishedTypeRegistry.Read` from `external/
 the options; a pair given twice, a `whenEmpty` that is not `release`, `hold` or `fail`, and `--snapshot` with any of the
 three are usage errors. `--options <file>` (#1508, R18; `Migration31Arguments.Options`) gives all three from a package's
 `options.json` instead, read by `Run` with `Migration31Options.FromJson`; given twice, with any of the three flags or
-with `--snapshot` it is a usage error, and a file that cannot be read, is not a JSON object or is refused (A10-070 to
-A10-072) is exit 2, nothing read or written.
+with `--snapshot` it is a usage error, and a file that cannot be read, is not strict JSON (A10-019), is not a JSON
+object or is refused (A10-070 to A10-072, A10-082) is exit 2, nothing read or written.
 
 `Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line that 31's `dag.mmd` is not this
 script's (`Migration31Script.NoDiagram`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
@@ -2657,7 +2680,7 @@ with `manifest.json` last, then the deletes, so a write that fails part-way dele
 | Exit | When |
 |---|---|
 | 0 (`Clean`) | migrated with no hand edit, or the snapshot test written |
-| 1 (`HandEditsLeft`) | migrated with hand edits left: the summary ends `written; hand edits remain` (S10-001). A dry run that finds hand edits also exits 1, though it writes nothing, and its summary ends `(dry run; pass --write to apply)` (D30, for the owner) |
+| 1 (`HandEditsLeft`) | migrated with hand edits left: the summary ends `written; hand edits remain` (S10-001). A dry run that finds hand edits also exits 1, though it writes nothing, and its summary ends `(dry run; pass --write to apply)` (D30, signed off on #1508, comment 5, item 8; part 10 § 1.4) |
 | 2 (`Refused`) | any refusal (nothing written), a result path that would leave the folder, a write that fails part-way, a usage error, or a registry or toolchain that cannot be read |
 
 Run on copies of `vendored/example-nested-note` (`--rename parts=sections --when-empty note=fail --write`, exit 0),
@@ -2730,9 +2753,12 @@ CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.
 
 The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10-004 and S10-006, each that row of
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
-version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`), for the script and the operator's tools; no publish
-path says it in this build. Every other notice, refusal and reason is an area sentence, A10-001 to
-A10-072 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-072 are #1508's, an `options.json` that does not read), listed in the plan's table and in `V31Contract.MigrationAreaSentences`. Area 10's rulings also
+version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`): the bulk publish writes it into `owners.json` as the
+notice of each package it could not migrate; no publish says it. Every other notice, refusal and reason is an area
+sentence, A10-001 to A10-083 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-083 are #1508's:
+an `options.json` that does not read or was not given, the conversions kept as 30 meant, the macro-choice classifiers,
+the migration's `if`s and guards, and the instances limit), listed in the plans' tables and in
+`V31Contract.MigrationAreaSentences`. Area 10's rulings also
 added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
 `markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
 summary). No sentence, notice or report entry carries a value from an input, a model or a profile.
@@ -2753,16 +2779,18 @@ summary). No sentence, notice or report entry carries a value from an input, a m
 
 - **Area 11: now built** ("publish" below): the publish path that stores a migrated version and writes
   `migration-report.json` beside its publish report, the stamp's `migratedFrom` (served as `MigratedFrom`, from which area 12
-  is to compose *"migrated by the operator from …"*), running in-package tests at publish on `OfflineRun`, and `OperatorAlertKinds.PublishFailed`.
-  S10-005 has its sentence (`PackagePublishSentences.StaysAt30`) and no caller yet; moving pins in bulk is the
-  user's.
+  is to compose *"migrated by the operator from …"*), running in-package tests at publish on `OfflineRun`, and `OperatorAlertKinds.PublishFailed`;
+  and the bulk publish, which migrates and publishes every account's package and writes S10-005 for each it cannot.
+  Running it against production, sending the owners' notices and moving production pins are the user's.
 - **Area 12:** the Create page, whose per-run choice sets the optional boolean input a migrated macro's `if` reads
   (area 07's three-state boolean); this area adds nothing to it.
 - **Area 13:** the 31 diagram (`dag.mmd`), which the script does not write.
 - **Milestone 41:** the Editor's upgrade and the converter's page, on the same `FromScriban` and `Migrate`. Author
   documentation (part 10 § 6, #1473) and the satellites (§ 7) are not this build's.
-- **For the owner:** the unexpected differences, the unruled condition cases and the two packages whose edits are not
-  made (`example-macros`, `example-macros-warnings`), all in the plan's *Results*.
+- **For the owner:** the unexpected differences no ruling covers, and the three packages whose edits are not made
+  (`HandEditsTests.NotEdited`): `example-macros` and `example-macros-warnings` (where `silent_reminder`'s marker goes
+  and what `wrap_up` is told; their classifiers' questions are written in their `README.md`s, not made), and
+  `example-nested-note` (no `max` is guessed, #1508 B2), in the area 10 plan's *Results* and the area 11 plan's Part F.
 
 ### Not wired in
 
@@ -2778,7 +2806,7 @@ moves into the library (the stage to 24, the 31 start's input building) are behi
 [types and inputs](package-format-v31/02-types-and-inputs.md) § 12 and
 [migration and tools](package-format-v31/10-migration-and-tools.md) §§ 1.5 and 5, with
 [the plan](package-format-v31/plans/area-11-registry-and-publish.md) for the decisions (the owner's rulings R1 to R9 on
-#1508 and the decisions D1 to D16). How the engine publishes, serves `Current` and `Content`, and imports is in
+#1508, the decisions D1 to D16, and Part F's R10 to R21 for the rulings of 2026-11-25 and 2026-11-26). How the engine publishes, serves `Current` and `Content`, and imports is in
 [the engine at specVersion 31](engine-v31.md), "Publish, `Current`, `Content` and import"; dev's registry, the two
 scripts and the conditions before 31 leaves preview are in [registry operations](registry-operations.md),
 "specVersion 31".*
@@ -2808,7 +2836,10 @@ tests' plan.
 1. **Steps 0 to 2** are `CompiledPackage.Publish(upload, registry, toolchain, limits, templates, out check)`: intake
    (line endings normalised, `resolve.json`, `lock.json`, `publish-report.json` and `publish.json` dropped unread into
    `Dropped`), the reader, every rule, and the pair, with the rulings' refusals: R1's worst case past the limits'
-   `Instances` (A11-001), R4's format that names and defines one name (A11-002) and R5's node budget (A11-003).
+   `Instances` (A11-001), R4's format that names and defines one name (A11-002) and R5's node budget (A11-003), and
+   the template checker's A11-009 (a read through an object that can be null, unguarded), A11-012 (a part or a macro
+   in an expression) and A11-013 (a judgement node that asks nothing), the reader's A11-014 (an `onInvalid` other than
+   `retry` or `fail`), and the warnings A11-010 and A11-011 ("Publish: deliverables" above).
 2. **The name and version** are read from `manifest.json` as normalised. When the manifest is a JSON object whose `name`
    or `version` is not text, A11-004 comes first among the refusals (D2).
 3. **The pair must be complete.** A pair the compiler could not finish (`Complete` false) is A11-007.
@@ -2887,8 +2918,10 @@ from the CI script. `publish-report.schema.json` admits the four bare values or 
 ### The sentences
 
 `PackagePublishSentences` holds every sentence publish says that no earlier area says: S07-007 to S07-016 and S10-005,
-each the row of `sentences.json` with its `<…>` filled, and this area's A11-004 to A11-007. A11-001 to A11-003 are the
-compiler's (`ResolveSentences`), and A11-008 is the run's (`RunSentences.EngineFailedRendering`). Each is in
+each the row of `sentences.json` with its `<…>` filled, and this area's A11-004 to A11-007, A11-015 and A11-016 (the
+bulk publish's). A11-001 to A11-003 and the warnings A11-010 and A11-011 are the compiler's (`ResolveSentences`),
+A11-008 is the run's (`RunSentences.EngineFailedRendering`), A11-009, A11-012 and A11-013 the template checker's
+(`DialectSentences`), and A11-014 the reader's (`SourceSentences`). Each is in
 [refusal-sentences.md](package-format-v31/refusal-sentences.md) § 11, in `V31Contract.PublishAreaSentences`, and in
 the conformance README's "Publish (area 11)" table. No sentence carries a value from an input, a model, a profile or a
 test's text: a mismatch on text gives hashes, and S07-009's error a path and a keyword.
@@ -2922,6 +2955,22 @@ something unknown or passes the node budget gives `false`, as the run's expansio
 (part 09 § 4.3): `resolve.json` is canonical JSON and sorts the properties, so each object that has them carries
 `propertyOrder` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), R10), and `Fields` follow it, any property it does not list after, as held.
 
+### The bulk publish (part 10 § 1.5; #1508, comments 5 to 8, R11, R21)
+
+The operator's migration of every account's package is the engine's operator route `Admin/MigratePackage`
+(`MigratePackage.RunAsync` in the Api; [the engine at specVersion 31](engine-v31.md), "The bulk publish"), one account
+package a call, and `BulkPublishScript.RunAsync` in the library, which `scripts/bulk-publish-v31.cs` calls
+([registry operations](registry-operations.md), "The bulk publish"). The route migrates the package the account's pin
+names with its `options.json` (or the defaults, A10-083), lays the operator's edits over it, and publishes it through
+`V31PackagePublisher` with the migration report, at the engine's configured limits. A hand edit is left unless the file
+its notice names (`Migration31Result.HandEditFiles`) is among the edits. A package it cannot publish (a hand edit left,
+a migration refusal, a publish refusal, A11-001 among them) is `not migrated: <first sentence>`, and nothing is written:
+its 30 version and its pin stay as they were. The script asks for the list, checks every folder before it sends
+anything, sends each package, and writes `bulk-publish-record.json` and `owners.json` (per owner, the packages published
+with the notices the owner must see, and those not migrated with their reason, S10-005 and A11-015). A rerun carries
+forward the earlier record's `published` rows. Without `--publish` it is a dry run: the publish runs in memory and
+nothing is written.
+
 ### What it leaves to areas 12 and 13
 
 - **Area 12:** the Create page (it reads `Format` by `$id`), History, the Editor's bar and "Download package" (the
@@ -2932,18 +2981,21 @@ something unknown or passes the node budget gives `false`, as the run's expansio
   `text/plain`.
 - **Milestone 41:** the Editor's "Run tests", on the same `PackageTests`.
 - **Not this build's:** the public repository's tag CI (it is to call `scripts/check-workflow-package-v31.cs`), Release
-  assets, the bulk migration and its pins, and the Azure settings (the user's).
+  assets, running the bulk publish against production with its notices and production pins, and the Azure settings
+  (the user's).
 
 ### The tests and the conformance cases
 
 `tests/V31Publish/` holds the library's tests (`PackagePublishTests`, `PackageTestsTests`, `PackageTestFileTests`,
-`TestExpectationsTests`, `StrictStubsTests`, `PublishReportTests`, `ScriptsTests`); `tests/V31Engine/` the engine's
-(`V31PackagePublisherTests`, `V31RegistryWriterTests`, `V31PackageDescriptionTests`, `V31PackageContentTests`). Each
+`TestExpectationsTests`, `StrictStubsTests`, `PublishReportTests`, `ScriptsTests`, the bulk publish's script among
+them); `tests/V31Engine/` the engine's (`V31PackagePublisherTests`, `V31RegistryWriterTests`,
+`V31PackageDescriptionTests`, `V31PackageContentTests`, `MigratePackageTests`). Each
 `compiled-documents` case is published by `PackagePublish.RunAsync` against stated limits (the engine's defaults;
 `nested-note` at 100,000 instances, since 10,000 refuses it with A11-001) with `publishedBy` `ci` and a stopped clock,
 so each case folder holds `publish-report.json` (every `durationMs` 0) and `publish.json`; `nested-note` and `macros`
-carry a test each. The refusal packages gain S07-007 to S07-012 and A11-001 to A11-003 and A11-005 (A11-004 always comes with the
-source check's own sentence, so no package shows it alone); the content repository's
+carry a test each. The refusal packages gain S07-007 to S07-012, A11-001 to A11-003, A11-005, A11-009 and A11-012 to
+A11-014 (A11-004 always comes with the source check's own sentence, so no package shows it alone; the warnings A11-010
+and A11-011 are not shipped as packages, as S07-014 is not); the content repository's
 `check-v31.py` holds the report and the stamp to their schemas and to the pair.
 
 ### Not wired in

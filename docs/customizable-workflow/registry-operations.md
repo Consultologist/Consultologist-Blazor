@@ -603,7 +603,7 @@ From [the fourth comment](https://github.com/Consultologist/Consultologist-Blazo
 > - a dev-deployment run of a 31 job, including a forced replay: the Azure table and blob adapters (insert-if-absent, `row1…` splitting, the 1 MiB check) have only run over in-memory seams;
 > - the owner sets `Operators__AlertAddress` and `OperatorWeeklySummarySchedule`, and drains 31 orchestrations before deploying (their history gains `job-slow`, `evaluate-rule-v31` and the delivery step).
 
-From [the sixth comment](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295)
+From [the further rulings of 2026-11-25](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295)
 (item 3):
 
 > **Before 31 leaves preview,** these same packages also run **live on the dev deployment** with fictional inputs. This joins the release conditions above (the dev run with a forced replay). The full live-model test suite stays Milestone 40 (#1449).
