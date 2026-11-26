@@ -428,11 +428,11 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 **Interfaces:** Produces A11-009 (author): *"\<Subject\> reads \<path\> at line \<n\> through \<object path\>, which can be null. Put the read inside {{ if \<object path\> }}."*
 
-- [ ] **Step 1: Establish what fails at run time.** Write a run test per kind of nullable object (an unset optional object input; a nullable property that is an object; a node that may be skipped, read as `.value.<member>`): render a member read through it when it is null, in a prompt and in a deliverable. The rule refuses exactly the reads whose render fails or faults; a read that renders empty by the dialect's own rule is not refused. Record what you found in *Recorded in the build*.
-- [ ] **Step 2: Failing tests.** `AMemberReadThroughANullableObject_IsRefused` (A11-009, word for word); `…InsideAnIfOnThatObject_IsAccepted` (`{{ if input.intake.value }}`, and the `!= null` form; an `else` branch is not guarded; a guard on a different path is no guard; a nested object needs its own guard or the conjunction); `ARequiredObject_NeedsNoGuard`; the last step being nullable is not this rule.
-- [ ] **Step 3: Implement** with `TypedRead.Nullable` per step and the enclosing `TemplateIf`s.
-- [ ] **Step 4: Run** the non-E2E suite. Every fixture, golden source and conformance package the rule now refuses gets its guard (never a weaker rule); list each file changed. Regenerate what moves.
-- [ ] **Step 5:** refusal packages (valid and invalid), README row, `refusal-sentences.md`, part 05 (the read rules) and part 07 § 10 with the content repo's twin; content check; pin. **Commit** `PackageFormat (#1508): a member read through a nullable object is refused at publish`; tick; push.
+- [x] **Step 1: Establish what fails at run time.** Write a run test per kind of nullable object (an unset optional object input; a nullable property that is an object; a node that may be skipped, read as `.value.<member>`): render a member read through it when it is null, in a prompt and in a deliverable. The rule refuses exactly the reads whose render fails or faults; a read that renders empty by the dialect's own rule is not refused. Record what you found in *Recorded in the build*.
+- [x] **Step 2: Failing tests.** `AMemberReadThroughANullableObject_IsRefused` (A11-009, word for word); `…InsideAnIfOnThatObject_IsAccepted` (`{{ if input.intake.value }}`, and the `!= null` form; an `else` branch is not guarded; a guard on a different path is no guard; a nested object needs its own guard or the conjunction); `ARequiredObject_NeedsNoGuard`; the last step being nullable is not this rule.
+- [x] **Step 3: Implement** with `TypedRead.Nullable` per step and the enclosing `TemplateIf`s.
+- [x] **Step 4: Run** the non-E2E suite. Every fixture, golden source and conformance package the rule now refuses gets its guard (never a weaker rule); list each file changed. Regenerate what moves.
+- [x] **Step 5:** refusal packages (valid and invalid), README row, `refusal-sentences.md`, part 05 (the read rules) and part 07 § 10 with the content repo's twin; content check; pin. **Commit** `PackageFormat (#1508): a member read through a nullable object is refused at publish`; tick; push.
 
 ### Task 27: Tests and stubs as ruled; one registry loader
 
