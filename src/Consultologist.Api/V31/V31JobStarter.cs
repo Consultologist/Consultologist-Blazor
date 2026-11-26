@@ -20,7 +20,8 @@ namespace Consultologist.Api.V31;
 /// package ref, and only this deployment runs 31 (<see cref="SpecVersionAdmission.Runs31"/>) asks the compiled store: a
 /// version with no 31 stamp is today's path's (null, after one <c>publish.json</c> read). A load refusal is a start failure
 /// recorded on the job (<c>RecordStartFailure</c>, the clinician's sentence; the operator's in the log). Otherwise the
-/// request's typed inputs and its documents (read as today's start reads them), with its <c>MacroChoices</c> read as
+/// request's typed inputs, its documents and its references (#1509: <c>InputRefs</c>, <c>InputFormRefs</c> and
+/// <c>InputFormFiles</c>; read as today's start reads them), with its <c>MacroChoices</c> read as
 /// boolean inputs (#1504; by the macro's <c>if</c>, ruled by the owner on #1507; <see cref="V31StartChecks.Choices"/>), are checked with the account
 /// (<see cref="V31StartChecks"/>): any refusal is one recorded start failure holding every sentence. Then the inputs are
 /// held (<see cref="IRunInputsStore"/>, where the job's held inputs live), the entity initialised at specVersion 31 with
@@ -39,6 +40,12 @@ public sealed class V31JobStarter(
     // #1503 (D9): the drain before a deploy; null (a test) reads as never draining.
     IEngineDrain? drain = null)
 {
+    /// <summary>
+    /// #1509 (D7): the held inputs document's member naming, in ordinal order, the inputs that hold an element of an earlier
+    /// run's deliverable (<see cref="RunInputs.ModelDerivedInputs"/>); absent when none does.
+    /// </summary>
+    internal const string ModelDerivedMember = "modelDerived";
+
     /// <summary>What a profile field of <c>needs.profile</c> is read from: the account settings that hold it (D6).</summary>
     private static readonly Dictionary<string, string> ProfileSettings = new(StringComparer.Ordinal)
     {
@@ -94,7 +101,10 @@ public sealed class V31JobStarter(
                 ConsultGenerationJobStartError.PackageContentRejected, senderSafe: refusal);
         }
 
-        // Documents become text as today's start makes them: a document sent to a text input arrives as its text.
+        // Documents become text as today's start makes them: a document sent to a text input arrives as its text. #1509 (R2):
+        // so do its references, read as today's start reads them: an earlier run's deliverable, a held form response, a
+        // questionnaire file, each into the input it names (an earlier run's element at its position among typed rows and
+        // documents); a refusal is today's.
         var extraction = await extract(request, ManifestOf(plan));
         if (extraction.Error != null)
         {
@@ -114,7 +124,12 @@ public sealed class V31JobStarter(
         if (plan.RunFacts.Contains("run.package", StringComparer.Ordinal))
             startFacts["package"] = $"{plan.Package}@{plan.Version}";
 
-        var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, startFacts, profile);
+        // #1509 (D7; part 08 § 3.1): an input holding an element of an earlier run's deliverable starts out model-derived.
+        var modelDerived = (extraction.Origins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
+            .Where(pair => pair.Value.Any(o => o.Kind == ConsultInputOriginKinds.PreviousRun))
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, startFacts, profile, modelDerived);
         var accountRefusals = AccountRefusals(plan, profile, timeZone, signature.Refusal);
 
         var refusals = accountRefusals.Concat(choiceRefusals).Concat(inputRefusals).ToList();
@@ -171,6 +186,9 @@ public sealed class V31JobStarter(
             ["profile"] = new JsonObject(plan.NeedsProfile.Distinct(StringComparer.Ordinal)
                 .Select(field => KeyValuePair.Create(field, (JsonNode?)profile.GetValueOrDefault(field)))),
         };
+        // #1509 (D7): the inputs holding an earlier run's text, for the run's decisions; written only when there are any.
+        if (runInputs.ModelDerivedInputs.Count > 0)
+            document[ModelDerivedMember] = new JsonArray(runInputs.ModelDerivedInputs.Order(StringComparer.Ordinal).Select(id => (JsonNode?)id).ToArray());
         var pointer = await inputs.WriteAsync(accountKind, appUserId, jobId, document, cancellationToken);
 
         var recorded = limits.Limits.ToJson();

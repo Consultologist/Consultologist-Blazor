@@ -2701,10 +2701,12 @@ public sealed class ConsultGenerationJobState
     private static string RoundTrip(DateTimeOffset at) => at.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// #1506 (part 08 § 3.1; D15): each input, by id in ordinal order: its <c>origin</c> (<c>typed</c>, <c>document</c> or
-    /// <c>transcript</c>; <c>previous-run</c> waits for area 12), its <c>hash</c>, and for an input one document filled the
-    /// document's members (<c>kind</c>, <c>extractor</c>, <c>pageCount</c>, <c>fileSha256</c>, <c>textSha256</c>, <c>converter</c>,
-    /// <c>parser</c>, <c>ocr</c>); an input of several elements lists them, positionally, as <c>elements</c>.
+    /// #1506 (part 08 § 3.1; D15): each input, by id in ordinal order: its <c>origin</c> (<c>typed</c>, <c>document</c>,
+    /// <c>transcript</c> or <c>previous-run</c>), its <c>hash</c>, and for an input one document filled the document's members
+    /// (<c>kind</c>, <c>extractor</c>, <c>pageCount</c>, <c>fileSha256</c>, <c>textSha256</c>, <c>converter</c>, <c>parser</c>,
+    /// <c>ocr</c>); for one an earlier run's deliverable filled (#1509, D7), <c>jobId</c> and <c>resultId</c>, the run and the
+    /// deliverable it came from, and <c>modelDerived</c>, <c>true</c>; an input of several elements lists them, positionally,
+    /// as <c>elements</c>, each its <c>origin</c> and those members.
     /// </summary>
     private System.Text.Json.Nodes.JsonArray RecordInputs()
     {
@@ -2759,11 +2761,22 @@ public sealed class ConsultGenerationJobState
         return kinds.Count == 1 ? kinds[0] : ConsultInputOriginKinds.Document;
     }
 
-    /// <summary>A document origin's members, as the record names them; none for a typed element.</summary>
+    /// <summary>
+    /// A document origin's members, as the record names them; none for a typed element; for an element of an earlier run's
+    /// deliverable (#1509, D7), the run and deliverable it came from, and that it starts out model-derived.
+    /// </summary>
     private static IEnumerable<(string Name, System.Text.Json.Nodes.JsonNode? Value)> DocumentMembers(ConsultInputOrigin origin)
     {
         if (string.Equals(origin.Kind, ConsultInputOriginKinds.Typed, StringComparison.Ordinal))
             yield break;
+        if (string.Equals(origin.Kind, ConsultInputOriginKinds.PreviousRun, StringComparison.Ordinal))
+        {
+            yield return ("jobId", origin.SourceJobId);
+            yield return ("resultId", origin.SourceResultId);
+            yield return ("modelDerived", true);
+            yield break;
+        }
+
         yield return ("kind", origin.Kind);
         // #1506 (final review F4): part 08 § 3.1's extractor, kept for older records' readers
         yield return ("extractor", origin.Extractor);

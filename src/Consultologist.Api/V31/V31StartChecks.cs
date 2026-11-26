@@ -99,11 +99,13 @@ public static class V31StartChecks
     /// package does not declare is refused as today's start refuses it (A06-013, every such id at once). An input's read
     /// form is <c>{ value, content, title }</c> (part 02 § 8): <c>content</c> the text of a text format, <c>title</c> the label
     /// of the labelled choice chosen, each else <c>null</c>. #1507 (area 10, Task 13): built in the library by
-    /// <see cref="RunInputsBuilder.Build"/>, so the offline run builds them alike.
+    /// <see cref="RunInputsBuilder.Build"/>, so the offline run builds them alike. #1509 (area 12, D7): <paramref name="modelDerived"/>
+    /// names the inputs holding an earlier run's text (<see cref="RunInputs.ModelDerivedInputs"/>).
     /// </summary>
     public static (RunInputs? Inputs, IReadOnlyList<SourceRefusal> Refusals) Inputs(
-        RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, JsonObject runFacts, IReadOnlyDictionary<string, string?> profile) =>
-        RunInputsBuilder.Build(plan, supplied, runFacts, profile);
+        RunPlan plan, IReadOnlyDictionary<string, JsonNode?> supplied, JsonObject runFacts, IReadOnlyDictionary<string, string?> profile,
+        IReadOnlySet<string>? modelDerived = null) =>
+        RunInputsBuilder.Build(plan, supplied, runFacts, profile, modelDerived);
 
     /// <summary>A10-043 (#1507; part 10 § 1.3, R7): a <c>MacroChoices</c> entry names no macro of the package.</summary>
     public static string ChoiceNamesNoMacro(string id) => RunInputsBuilder.ChoiceNamesNoMacro(id);
