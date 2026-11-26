@@ -143,6 +143,27 @@ public class MigrateDeliverablesTests
     }
 
     [Fact]
+    public void AGatedSource_AddsNoStateTerm()
+    {
+        // #1508 (item 1, F-D4): opening is gated by the deliverables that need it, single among them, so it runs whenever
+        // single applies; R15 judges it by 30's always-valued, and single keeps 30's if with no .state term (no A10-079).
+        var result = MigrateNodesTests.Migrated("composer-sources", root =>
+        {
+            MigrateNodesTests.DeliverableIf(root, "single", "input.tone == \"formal\"");
+            MigrateNodesTests.DeliverableIf(root, "pair", "input.tone == \"plain\"");
+            MigrateNodesTests.DeliverableIf(root, "summary_then_opening", "input.include_plan == true");
+            MigrateNodesTests.DeliverableIf(root, "topics_then_opening", "input.redraft == true");
+        });
+
+        var opening = MigrateNodesTests.Md(result, "nodes/opening.md").Header["if"]!;
+        var single = MigrateNodesTests.Md(result, "deliverables/single.md").Header["if"]!;
+        Assert.Equal(opening["or"]![0]!.ToJsonString(), single.ToJsonString());
+        Assert.DoesNotContain(".state", single.ToJsonString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("deliverables/single.md, if: written to skip", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.HandEdits, e => e.Contains("deliverables/single.md", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ADeliverableWhoseSourcesMayNotRun_GetsAnIf()
     {
         // #1508 (ruled by the owner, Q3 of 2026-11-26; R15): 30 skipped a deliverable none of whose sources ran; at 31 it

@@ -253,7 +253,8 @@ internal static class V31Contract
     /// joined, a hand edit's reason, the final review of Part F; A10-074's words corrected (its trim clause said only where a trim is written, fix round 1) and A10-085: an input's text
     /// compared with a literal that starts with white space, a hand edit's reason, #1508 2026-11-26 item 6, area 12 Task F6;
     /// A10-086: a deliverable whose sources may all not run and one of whose runs the migration cannot read, a hand edit's
-    /// reason, #1508 2026-11-26 item 8, area 12 Task F8).
+    /// reason, #1508 2026-11-26 item 8, area 12 Task F8; A10-087: a node only deliverables with a condition need, given
+    /// their if, #1508 2026-11-26 item 1, area 12 Task F1).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -341,6 +342,7 @@ internal static class V31Contract
         ["A10-084"] = "every source may not run, and 30 skipped the deliverable when none ran; join <term> to 30's condition by and.",
         ["A10-085"] = "'<comparison>' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.",
         ["A10-086"] = "every source may not run, and the migration cannot read whether <sources> ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it<, joining <term> for the others>.",
+        ["A10-087"] = "<file>, if: written so that the node runs only when deliverable <ids> applies, as 30 ran only what an applicable deliverable needed.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

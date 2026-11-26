@@ -465,6 +465,14 @@ internal static class MigrationSentences
         $"{file}, if: written to skip the deliverable unless {string.Join(" or ", reads)} ran, as 30 skipped a deliverable none of whose sources ran.";
 
     /// <summary>
+    /// A10-087 (#1508, 2026-11-26, item 1; F-D6; part 10 § 1.2): the leaf <paramref name="file"/> was given the <c>if</c> of
+    /// <paramref name="deliverables"/> (in 30's order), the deliverables with a condition that need it: 30 ran only what an
+    /// applicable deliverable needed, where 31 runs every node.
+    /// </summary>
+    public static string RunsOnlyWhen(string file, IReadOnlyList<string> deliverables) =>
+        $"{file}, if: written so that the node runs only when deliverable {string.Join(" or ", deliverables)} applies, as 30 ran only what an applicable deliverable needed.";
+
+    /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
     /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
     /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is

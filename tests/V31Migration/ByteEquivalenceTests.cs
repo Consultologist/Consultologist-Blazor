@@ -66,6 +66,33 @@ public class ByteEquivalenceTests
         Assert.Equal(["sent-format"], triage.Rules);
     }
 
+    /// <summary>
+    /// #1508 (item 1; PR #1532's unexpected difference 1): 30 ran only what an applicable deliverable needed; the
+    /// migration gates the rest, so 31 sends no prompt 30 did not.
+    /// </summary>
+    [Theory]
+    [InlineData("example-classifier-scope")]
+    [InlineData("example-conditional-documents")]
+    [InlineData("example-structured-intake")]
+    public async Task TheGatedPackages_SendOnlyThePrompts30Sent(string package)
+    {
+        // A scenario 30 refused before any model call (example-structured-intake's all-optional-inputs-unset, the empty-fan
+        // refusal) sent no prompt at all: its 31 run is another difference (empty-input-list-runs), not a gate's.
+        var compared = 0;
+        foreach (var scenario in EquivalenceFixture.Scenarios(package))
+        {
+            var (capture, _, texts) = await EquivalenceFixture.Compared(package, scenario);
+            if ((string?)capture["status"] != "Completed")
+                continue;
+            compared++;
+            var alone = texts.Where(t => t.Site.Contains("#prompts/", StringComparison.Ordinal)
+                && t.OldHash == PackageFormat.V31.Harness.ByteEquivalence.EmptyHash && t.NewHash != PackageFormat.V31.Harness.ByteEquivalence.EmptyHash).Select(t => t.Site).ToList();
+            Assert.True(alone.Count == 0, "31 alone sent:\n" + string.Join("\n", alone));
+        }
+
+        Assert.True(compared > 0);
+    }
+
     [Fact]
     public async Task AMigratedDate_RendersAs30Did()
     {
@@ -129,10 +156,10 @@ public class ByteEquivalenceTests
     [Fact]
     public async Task ATextOneSideLacks_HasTheEmptyTextsHash()
     {
-        // D11: a prompt only 31 sent (30 ran only the nodes an applicable deliverable needed), and the deliverable only 31
-        // composed in R2's capture.
-        var (_, _, texts) = await EquivalenceFixture.Compared("example-classifier-scope", "in-scope");
-        var only31 = texts.Single(t => t.Site.EndsWith("#prompts/node.letter_decline_letter.decline_letter:letter", StringComparison.Ordinal));
+        // D11: a prompt only 31 sent (30 refused the job before any model call: the empty fan, empty-input-list-runs; a node
+        // only an unreleased deliverable needs is gated since #1508 item 1), and the deliverable only 31 composed in R2's capture.
+        var (_, _, texts) = await EquivalenceFixture.Compared("example-structured-intake", "all-optional-inputs-unset");
+        var only31 = texts.Single(t => t.Site.EndsWith("#prompts/node.sections_note_section.note_section:assessment", StringComparison.Ordinal));
         Assert.Equal((Equivalence.EmptyHash, false), (only31.OldHash, only31.Equal));
 
         var (_, _, ran) = await EquivalenceFixture.Compared("example-prior-letters", "no-prior-letters");

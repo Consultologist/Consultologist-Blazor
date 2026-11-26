@@ -52,8 +52,9 @@ internal static partial class Migrate
     /// <summary>
     /// #1508 (ruled by the owner, Q3 of 2026-11-26; R15): the deliverable's <c>if</c>. 30 skipped a deliverable none of
     /// whose sources ran; at 31 it would be composed empty and released (A11-010 warns of it in a new package). So when
-    /// every source may not run (<see cref="ConversionRead.AlwaysValued"/> false for each: an <c>if</c> with no
-    /// <c>else</c>, a <c>case</c> with an empty branch), the <c>if</c> says that one ran: for each source the term
+    /// every source may not run (30's always-valued false for each, <see cref="Migrated.AlwaysValued30"/>: an <c>if</c> with no
+    /// <c>else</c>, a <c>case</c> with an empty branch; a leaf gated by deliverables' conditions runs whenever this one
+    /// applies, F-D4), the <c>if</c> says that one ran: for each source the term
     /// <see cref="RanTerm"/> gives, the first the deliverable's <c>if</c> can read, by asking its typing
     /// (<see cref="ConditionTyping.ReadsAtDeliverableIf"/> over the top-level scope):
     /// <c>{ "===": [ { "var": "&lt;source&gt;.state" }, "completed" ] }</c>, else R15's fallback
@@ -85,7 +86,7 @@ internal static partial class Migrate
         {
             var id = source.StartsWith("node.", StringComparison.Ordinal) ? source["node.".Length..] : source;
             var known = m.NodeReads.TryGetValue(id, out var read);
-            if ((known && read!.AlwaysValued) || m.Manifest30.Nodes?.FirstOrDefault(n => n.Id == id)?.While is not null)
+            if (m.AlwaysValued30.Contains(id) || m.Manifest30.Nodes?.FirstOrDefault(n => n.Id == id)?.While is not null)
                 return rule;
             if (known && RanTerm(read!.Path, t => ConditionTyping.ReadsAtDeliverableIf(t, scope)) is { } one)
             {

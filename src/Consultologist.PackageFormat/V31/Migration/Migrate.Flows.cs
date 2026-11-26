@@ -115,7 +115,7 @@ internal static partial class Migrate
             var path = IsCheck(m, node) ? "check." + id : "node." + id;
             m.NodeReads[id] = new ConversionRead(path, formats[id].DeepClone())
             {
-                AlwaysValued = AlwaysValued(tree, id, cases, 0),
+                AlwaysValued = AlwaysValued(tree, id, cases, 0, NoGates),
                 Classifier = m.AnswerFormats.ContainsKey(id),
             };
         }
@@ -218,13 +218,14 @@ internal static partial class Migrate
     /// Part 04 § 7.6's "always valued", as area 05's <c>ScopeTree.AlwaysValued</c> has it: a leaf (none has an <c>if</c>
     /// at 30, whose node <c>when</c> is retired since 26) and a <c>for</c>, always; a <c>while</c> that checks after its
     /// first pass; an <c>if</c> with an <c>else</c>, a <c>case</c> with no empty branch, when every <c>ret</c> is. A
-    /// <c>case</c> not yet in <paramref name="cases"/> is not.
+    /// <c>case</c> not yet in <paramref name="cases"/> is not. #1508 (item 1; F-D4): a leaf in <paramref name="gated"/> (it
+    /// carries a deliverable's <c>if</c>, <see cref="Migrated.DeliverableGates"/>) is not.
     /// </summary>
-    private static bool AlwaysValued(NodeTree tree, string id, Dictionary<string, CaseShape> cases, int depth)
+    private static bool AlwaysValued(NodeTree tree, string id, Dictionary<string, CaseShape> cases, int depth, IReadOnlySet<string> gated)
     {
         if (depth > SourceBounds.JsonDepth || !tree.ById.TryGetValue(id, out var node))
             return false;
-        bool Ret(string? ret) => RetId(ret) is { } child && AlwaysValued(tree, child, cases, depth + 1);
+        bool Ret(string? ret) => RetId(ret) is { } child && AlwaysValued(tree, child, cases, depth + 1, gated);
 
         return node switch
         {
@@ -233,9 +234,12 @@ internal static partial class Migrate
             { If: not null } => node.Else is not null && Ret(node.Then?.Ret) && Ret(node.Else.Ret),
             { Case: not null } => cases.TryGetValue(id, out var shape) && shape.Missing.Count == 0
                 && (node.Branches ?? []).All(b => Ret(b.Ret)) && (node.Else is null || Ret(node.Else.Ret)),
-            _ => true,
+            _ => !gated.Contains(id),
         };
     }
+
+    /// <summary>No leaf gated: what is always valued before the gates are known (<see cref="AlwaysValued"/>).</summary>
+    private static readonly IReadOnlySet<string> NoGates = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
     /// Where a condition owned by <paramref name="id"/> is judged (<see cref="SitePlace"/>): with <paramref name="inner"/>

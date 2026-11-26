@@ -16,7 +16,8 @@ internal static partial class Migrate
     /// <summary>
     /// The nodes pass: the tree and the nodes a deliverable composes (<see cref="ComposedNodes"/>, R9), then every
     /// node's key, read and place (<see cref="PlaceNodes"/>), the cases' branches (<see cref="CaseBranches"/>, after
-    /// which what is always valued is known), then each top-level node in 30's order
+    /// which what is always valued is known), the leaves only deliverables with a condition need and their gates
+    /// (<see cref="DeliverableGates"/>, #1508 item 1, after which a gated leaf is not always valued), then each top-level node in 30's order
     /// (listed in <c>nodes/index.json</c>), each flow's children inside it; then each single snippet's <c>if</c>.
     /// </summary>
     public static void Nodes(Migrated m)
@@ -31,7 +32,16 @@ internal static partial class Migrate
         foreach (var (id, shape) in CaseBranches(m, tree))
             cases[id] = shape;
         foreach (var id in tree.ById.Keys)
-            m.NodeReads[id] = m.NodeReads[id] with { AlwaysValued = AlwaysValued(tree, id, cases, 0) };
+            m.NodeReads[id] = m.NodeReads[id] with { AlwaysValued = AlwaysValued(tree, id, cases, 0, NoGates) };
+
+        // #1508 (item 1; F-D4): R15 judges a source by 30's always-valued; the checker and the rewriter see a gated leaf
+        // as nullable.
+        foreach (var id in tree.ById.Keys.Where(id => m.NodeReads[id].AlwaysValued))
+            m.AlwaysValued30.Add(id);
+        DeliverableGates(m, tree);
+        var gated = m.DeliverableGates.Keys.ToHashSet(StringComparer.Ordinal);
+        foreach (var id in tree.ById.Keys)
+            m.NodeReads[id] = m.NodeReads[id] with { AlwaysValued = AlwaysValued(tree, id, cases, 0, gated) };
 
         foreach (var id in tree.Top)
         {
@@ -68,8 +78,10 @@ internal static partial class Migrate
             ["modelDerived"] = false,
             ["runDependent"] = false,
             ["profileCarrying"] = false,
-            ["if"] = null,
+            ["if"] = m.DeliverableGates.GetValueOrDefault(id)?.DeepClone(),
         };
+        if (m.GatingDeliverables.TryGetValue(id, out var gating))
+            m.Notice(MigrationSentences.RunsOnlyWhen(file, gating));
 
         switch (kind)
         {

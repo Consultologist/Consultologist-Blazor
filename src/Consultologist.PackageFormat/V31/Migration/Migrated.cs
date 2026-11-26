@@ -156,6 +156,22 @@ internal sealed class Migrated
     /// <summary>Where 31 reads each 30 node, by 30 id (Task 7), for <see cref="Scope"/>.</summary>
     public Dictionary<string, ConversionRead> NodeReads { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// #1508 (2026-11-26, item 1; F-D1, F-D2): each 30 leaf only deliverables with a condition need, by id, to its gate
+    /// (those deliverables' converted conditions, one or joined by <c>or</c>, canonical JSON Logic), which the nodes pass
+    /// writes as its <c>if</c>; filled before any node is written.
+    /// </summary>
+    public Dictionary<string, JsonNode> DeliverableGates { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Each leaf of <see cref="DeliverableGates"/>, by id, to the deliverables whose conditions gate it, in 30's order (A10-087).</summary>
+    public Dictionary<string, IReadOnlyList<string>> GatingDeliverables { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1508 (item 1; F-D4): the 30 node ids always valued at 30, ignoring the gates (<see cref="ConversionRead.AlwaysValued"/>
+    /// counts a gated leaf as not), by which R15 judges a deliverable's source.
+    /// </summary>
+    public HashSet<string> AlwaysValued30 { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Each condition site's place, by the site's 30 owner id (Task 7), for <see cref="Scope"/>; none is the package's top level.</summary>
     public Dictionary<string, SitePlace> Places { get; } = new(StringComparer.Ordinal);
 

@@ -861,6 +861,168 @@ public class MigrateNodesTests
         Assert.Empty(refusals);
     }
 
+    /// <summary>The header <c>if</c> of <paramref name="path"/> in <paramref name="result"/>, compact (<c>null</c> written as null).</summary>
+    private static string? IfOf(Migration31Result result, string path) => Md(result, path).Header["if"]?.ToJsonString();
+
+    /// <summary>The A10-087 notice for <paramref name="file"/> gated by <paramref name="deliverables"/> (F-D6's words).</summary>
+    private static string GateNotice(string file, params string[] deliverables) =>
+        $"{file}, if: written so that the node runs only when deliverable {string.Join(" or ", deliverables)} applies, as 30 ran only what an applicable deliverable needed.";
+
+    /// <summary>
+    /// #1508 (2026-11-26, item 1; F-D1, F-D2, F-D6): 30 ran only what an applicable deliverable needed (its fire set), so a
+    /// node only a deliverable with a condition needs ran only when that deliverable applied. 31 runs every node, so the
+    /// migration writes the deliverable's <c>if</c> on each leaf of such a node: a <c>for</c> has no <c>if</c> member, so
+    /// its body's leaves take it, and the loop's <c>index.json</c> is as before. Each gated file is said once (A10-087).
+    /// </summary>
+    [Fact]
+    public void ANodeOnlyAConditionalDeliverableNeeds_GetsItsIf()
+    {
+        var result = Migrated("example-structured-intake");
+
+        Assert.Equal(Compact("""{">=":[{"var":"input.patient.value.age"},65]}"""), IfOf(result, "deliverables/senior_review.md"));
+        foreach (var (file, deliverable) in new[]
+        {
+            ("nodes/sections_senior_review_section/senior_review_section.md", "senior_review"),
+            ("nodes/sections_long_stay_section/long_stay_section.md", "long_stay_summary"),
+            ("nodes/prior_notes_index_note/index_note.md", "notes_index"),
+        })
+        {
+            Assert.NotNull(IfOf(result, $"deliverables/{deliverable}.md"));
+            Assert.Equal(IfOf(result, $"deliverables/{deliverable}.md"), IfOf(result, file));
+            var notice = GateNotice(file, deliverable);
+            Assert.Single(result.Notices, n => n == notice);
+            Assert.Single(result.Notices, n => n.StartsWith(file + ", if: written so that", StringComparison.Ordinal));
+            V31Contract.AssertSentence(new SourceRefusal("A10-087", notice, ""));
+        }
+
+        foreach (var loop in new[] { "sections_senior_review_section", "sections_long_stay_section", "prior_notes_index_note" })
+        {
+            var index = Json(result, $"nodes/{loop}/index.json");
+            Assert.Equal(SourceShapes.FlowFor.Members.Select(s => s.Name), index.Select(member => member.Key));
+            Assert.False(index.ContainsKey("if"));
+        }
+    }
+
+    [Fact]
+    public void ALoopsBodyLeaves_EachTakeTheGate()
+    {
+        var scope = Migrated("example-classifier-scope");
+        foreach (var (file, deliverable) in new[]
+        {
+            ("nodes/plan_sections/plan_section.md", "plan"),
+            ("nodes/letter_decline_letter/decline_letter.md", "decline_letter"),
+            ("nodes/letter_information_request/information_request.md", "information_request"),
+        })
+        {
+            Assert.Contains("node.scope.value.value", IfOf(scope, file), StringComparison.Ordinal);
+            Assert.Equal(IfOf(scope, $"deliverables/{deliverable}.md"), IfOf(scope, file));
+            Assert.Contains(GateNotice(file, deliverable), scope.Notices);
+        }
+
+        var documents = Migrated("example-conditional-documents");
+        foreach (var (file, deliverable) in new[]
+        {
+            ("nodes/sections_consult_note_section/consult_note_section.md", "consult_note"),
+            ("nodes/sections_progress_note_section/progress_note_section.md", "progress_note"),
+        })
+        {
+            Assert.NotNull(IfOf(documents, file));
+            Assert.Equal(IfOf(documents, $"deliverables/{deliverable}.md"), IfOf(documents, file));
+        }
+    }
+
+    [Fact]
+    public void AClassifierAndWhatADeliverablesConditionReads_AreNeverGated()
+    {
+        // F-D2: 30 always ran a classifier and what a condition reads, whatever the deliverables.
+        Assert.Null(IfOf(Migrated("example-classifier-scope"), "nodes/scope.md"));
+
+        // A node no classifier, read by a deliverable's condition: closing, which only pair (a condition) composes, is
+        // gated; once tally's condition reads it, 30 ran it whatever the deliverables, and it is not.
+        var gated = Migrated("composer-sources", root => DeliverableIf(root, "pair", "input.tone == \"formal\""));
+        Assert.NotNull(IfOf(gated, "nodes/closing.md"));
+        var read = Migrated("composer-sources", root =>
+        {
+            DeliverableIf(root, "pair", "input.tone == \"formal\"");
+            DeliverableIf(root, "tally", "node.closing.content != \"\"");
+        });
+        Assert.Contains("node.closing", IfOf(read, "deliverables/tally.md"), StringComparison.Ordinal);
+        Assert.Null(IfOf(read, "nodes/closing.md"));
+    }
+
+    [Fact]
+    public void ANodeAnUnconditionalDeliverableNeeds_IsNotGated()
+    {
+        var result = Migrated("example-structured-intake");
+
+        Assert.Null(IfOf(result, "nodes/sections_note_section/note_section.md"));
+        Assert.Null(IfOf(result, "nodes/prior_notes_summarise_note/summarise_note.md"));
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("nodes/sections_note_section/", StringComparison.Ordinal) && n.Contains("runs only when", StringComparison.Ordinal));
+    }
+
+    /// <summary>Sets deliverable <paramref name="id"/>'s 30 <c>if</c> in <paramref name="root"/>.</summary>
+    internal static void DeliverableIf(JsonObject root, string id, string condition) =>
+        root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == id)["if"] = condition;
+
+    /// <summary>Removes deliverables <paramref name="ids"/> from <paramref name="root"/>.</summary>
+    internal static void WithoutDeliverables(JsonObject root, params string[] ids)
+    {
+        var list = root["deliverables"]!.AsArray();
+        foreach (var d in list.OfType<JsonObject>().Where(d => ids.Contains((string?)d["id"])).ToList())
+            list.Remove(d);
+    }
+
+    [Fact]
+    public void TwoConditionalDeliverables_GateTheirSharedNode_ByOr()
+    {
+        // opening is also a source of single and summary_then_opening, which have no condition; without them, pair and
+        // topics_then_opening are the deliverables that need it, each with a condition on an input.
+        var result = Migrated("composer-sources", root =>
+        {
+            WithoutDeliverables(root, "single", "summary_then_opening");
+            DeliverableIf(root, "pair", "input.tone == \"formal\"");
+            DeliverableIf(root, "topics_then_opening", "input.include_plan == true");
+        });
+
+        var pair = Md(result, "deliverables/pair.md").Header["if"]!;
+        var topics = Md(result, "deliverables/topics_then_opening.md").Header["if"]!;
+        Assert.Equal(new JsonObject { ["or"] = new JsonArray(pair.DeepClone(), topics.DeepClone()) }.ToJsonString(), IfOf(result, "nodes/opening.md"));
+        Assert.Equal(pair.ToJsonString(), IfOf(result, "nodes/closing.md"));
+        var notice = GateNotice("nodes/opening.md", "pair", "topics_then_opening");
+        Assert.Single(result.Notices, n => n == notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-087", notice, ""));
+
+        // topics (no condition) needs topic_loop: its body is not gated.
+        Assert.Null(IfOf(result, "nodes/topic_loop/topic_gate/draft_topic.md"));
+    }
+
+    [Fact]
+    public void AHandEditedDeliverableCondition_GatesNothing()
+    {
+        // Converted, plan's condition gates plan_gate's leaf; refused by the converter (a hand edit), it gates nothing,
+        // since nothing is joined to a condition not yet written (F-D2).
+        var converted = Migrated("composer-sources", root => DeliverableIf(root, "plan", "input.tone == \"formal\""));
+        Assert.NotNull(IfOf(converted, "nodes/plan_gate/draft_plan.md"));
+
+        var refused = Migrated("composer-sources", root => DeliverableIf(root, "plan", "(input.consult_draft | string.upcase) == \"\""));
+        Assert.Null(IfOf(refused, "nodes/plan_gate/draft_plan.md"));
+        Assert.DoesNotContain(refused.Notices, n => n.Contains("runs only when", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AWhile_IsNeverGated()
+    {
+        // F-D3: a gated body would leave the while's condition reading skipped nodes.
+        var result = Migrated("composer-sources", root =>
+        {
+            DeliverableIf(root, "summary", "input.tone == \"formal\"");
+            DeliverableIf(root, "summary_then_opening", "input.tone == \"plain\"");
+        });
+
+        Assert.Null(IfOf(result, "nodes/refine/draft_summary.md"));
+        Assert.Null(IfOf(result, "nodes/refine/judge.md"));
+    }
+
     [Theory]
     [MemberData(nameof(MigrateLayoutTests.Packages), MemberType = typeof(MigrateLayoutTests))]
     public void EveryNodeOf30_IsWrittenOnce_OrIsACheck(string package)

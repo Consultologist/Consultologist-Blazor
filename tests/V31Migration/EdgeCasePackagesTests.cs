@@ -334,8 +334,9 @@ public class EdgeCasePackagesTests
     public async Task AnAnswerOutsideTheSet_IsRefusedAtBoth()
     {
         // R12 (comment 5 item 1): triage's format is the package format triage_answer, an enum of its 30 values. 30 refused the
-        // reply soon (onInvalid: fail) and failed the job; 31 refuses it alike, and the problem prompts it sent beside it are
-        // the dispatch order's (failed-job-dispatch-order, #9). The pinned stub is refused at publish (S07-009), naming the
+        // reply soon (onInvalid: fail) and failed the job; 31 refuses it alike, and sends no problem prompt beside it: only
+        // note, whose condition reads triage, needs problem_draft, so the migration gives it note's if (#1508 item 1), where
+        // before the problem prompts were the dispatch order's (failed-job-dispatch-order, #9). The pinned stub is refused at publish (S07-009), naming the
         // format, the path and the keyword, never the value; a new package's enum refuses it the same way.
         var capture = EquivalenceFixture.Capture("edge-answer-outside-set", "answer-outside-set");
         Assert.Equal("Failed", (string?)capture["status"]);
@@ -345,7 +346,7 @@ public class EdgeCasePackagesTests
         Assert.Equal(RunState.Failed, run.State);
         var triage = run.Rows.Single(r => r.Key == "node.triage");
         Assert.Equal((RowState.Failed, "fail"), (triage.State, (string?)triage.Detail["invalid"]!["action"]));
-        Assert.Equal(["failed-job-dispatch-order"], texts.Where(t => !t.Equal && t.Site.Contains("problem_draft", StringComparison.Ordinal)).SelectMany(t => t.Rules).Distinct());
+        Assert.DoesNotContain(texts, t => !t.Equal && t.Site.Contains("problem_draft", StringComparison.Ordinal));
         Assert.True(texts.Single(t => t.Site.EndsWith("#status", StringComparison.Ordinal)).Equal);
 
         var refused = Assert.Single((await PackagePublish.CheckAsync(Upload(Edged("edge-answer-outside-set")), Options())).Report.Refusals);
