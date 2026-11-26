@@ -947,7 +947,7 @@ public class V31JobStartTests
     }
 
     [Fact]
-    public async Task AFormRef_OnAnInputThatIsNotAFormObject_IsRefusedAs30RefusesIt()
+    public async Task AFormFile_OnAnInputThatIsNotAFormObject_IsRefusedAs30RefusesIt()
     {
         // a questionnaire file sent to a text input: the 30 start's outcome and words
         var file = new Dictionary<string, InputFilePayload> { ["consult_draft"] = new("application/json", Encoding.UTF8.GetBytes(IntakeJson)) };
@@ -960,17 +960,26 @@ public class V31JobStartTests
         Assert.Equal(ConsultGenerationJobStartError.InputFormFileInvalid, outcome31.Error);
         Assert.Equal("Input 'consult_draft' does not take a questionnaire file; only an object input declared expectedContent 'form' does.", outcome31.ErrorDetail);
         Assert.Equal((outcome30.JobId, outcome30.Error, outcome30.ErrorDetail), (outcome31.JobId, outcome31.Error, outcome31.ErrorDetail));
+    }
 
-        // a held response referred to for a text input: refused in the 30 start's words for an answer no form fills
+    [Fact]
+    public async Task AFormRef_OnAnInputThatIsNotAFormObject_IsRefusedAt31_BeforeAnyStoreRead()
+    {
+        // part 02 § 8.3 allows channel form only on an object, and a 31 start fills only such an input from a held response
+        // (30 would coerce a text answer into a text input; 31 has no declaration to coerce by). The refusal comes first:
+        // neither the response's row nor its values are read.
         var byRef = new Start(preview: "31");
         byRef.WithHeldResponse("consult_draft", JsonSerializer.Serialize(Draft));
         var refused = await byRef.RunAsync(new ConsultGenerationRequest(
             null, RefText(byRef.Put("nested-note")), Inputs: Text(Draft),
             InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["consult_draft"] = new("triage-intake", "17") }));
+
         Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, refused.Error);
         Assert.Equal("The response's answer for input 'consult_draft' cannot be filled from a form answer.", refused.ErrorDetail);
         Assert.Null(refused.JobId);
         Assert.Empty(byRef.Scheduled);
+        _ = byRef.FormResponses.DidNotReceiveWithAnyArgs().TryGetAsync(default!, default!, default!, default);
+        _ = byRef.FormResponseBlobs.DidNotReceiveWithAnyArgs().ReadAsync(default!, default);
     }
 
     [Fact]

@@ -110,7 +110,7 @@ public sealed class V31JobStarter(
         var extraction = await extract(request, ManifestOf(plan));
         if (extraction.Error != null)
         {
-            logger.LogWarning("Rejected 31 job start: attached documents were refused. Kind={Kind}, Outcome={Outcome}", extraction.ErrorKind, extraction.Outcome);
+            // The reader logged the refusal once, naming what was refused (a reference, a form, a questionnaire file or a document).
             return new ConsultGenerationJobStartOutcome(null, extraction.ErrorKind, extraction.Error, SenderSafeDetail: extraction.SenderSafeError);
         }
 
