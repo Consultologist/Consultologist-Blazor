@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Auth;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.V31;
 using Consultologist.Api.Workflow;
@@ -207,11 +208,12 @@ public class V31PackageDescriptionTests
         Assert.Equal("object", sections.Items!.Type);
         Assert.Null(sections.Items.Items);
         Assert.Null(sections.Items.Values);
-        // Fields in resolve.json's order of properties (canonical JSON, so ordinal), each required (not nullable, D13).
+        // Fields in written order (#1508, R10: the format's propertyOrder, though canonical JSON sorts the properties), each
+        // required (not nullable, D13).
         Assert.Equal(
             [
-                new WorkflowPackageFieldResponse("kind", "Kind", true, "enum", ["narrative", "table", "omit"]),
                 new WorkflowPackageFieldResponse("title", "Title", true, "text"),
+                new WorkflowPackageFieldResponse("kind", "Kind", true, "enum", ["narrative", "table", "omit"]),
             ],
             sections.Items.Fields!,
             FieldComparer.Instance);
@@ -324,7 +326,7 @@ public class V31PackageDescriptionTests
         Assert.Equal("object", element.Type);
         Assert.Equal(
             [
-                // In resolve.json's order (canonical JSON: ordinal). D13: a field is required when its type is not
+                // With no propertyOrder (#1508, R10), in resolve.json's order (canonical JSON: ordinal). D13: a field is required when its type is not
                 // nullable; its label is the property name when it has no title.
                 new WorkflowPackageFieldResponse("dose_mg", "dose_mg", false, "number"),
                 new WorkflowPackageFieldResponse("name", "Drug", true, "text"),
@@ -344,6 +346,25 @@ public class V31PackageDescriptionTests
 
         Assert.Null(input.Items);
         Assert.Equal([new WorkflowPackageFieldResponse("seen", "Date seen", true, "date")], input.Fields!, FieldComparer.Instance);
+    }
+
+    [Fact]
+    public void Fields_ComeInWrittenOrder()
+    {
+        // #1508 (R10): resolve.json sorts the properties (canonical JSON); each object's propertyOrder gives them back as
+        // written, zeta, alpha, mid, at every depth: an inline format, its nested object, a bundled format, its list's items.
+        var plan = RunFixture.Plan(PropertyOrderTests.Files(), limits: CompiledGoldenTests.EngineLimits);
+        var inputs = V31PackageDescription.Describe(plan).Inputs!.ToDictionary(i => i.Id, StringComparer.Ordinal);
+        string[] written = ["zeta", "alpha", "mid"];
+
+        var details = inputs["details"];
+        Assert.Equal(written, details.Fields!.Select(f => f.Id));
+        Assert.Equal(written, details.Fields!.Single(f => f.Id == "mid").Fields!.Select(f => f.Id));
+
+        var arranged = inputs["arranged"];
+        Assert.Equal(written, arranged.Fields!.Select(f => f.Id));
+        Assert.Equal(written, arranged.Fields!.Single(f => f.Id == "mid").Fields!.Select(f => f.Id));
+        Assert.Equal(written, arranged.Fields!.Single(f => f.Id == "alpha").Items!.Fields!.Select(f => f.Id));
     }
 
     [Fact]

@@ -15,7 +15,8 @@ namespace Consultologist.Api.V31;
 /// adds <c>Format</c> (one compound document, <see cref="PlanFormats.SelfContained"/>) and <c>Channel</c>;
 /// <c>ExpectedContent</c> is the channel too, and <c>Types</c> null. A format's <c>Type</c>, <c>Values</c>, <c>Items</c>
 /// and <c>Fields</c> are read from its expansion as the run holds it (<see cref="PlanFormats.Expand"/>) by publish's own
-/// reading of a format's shape (<see cref="FormatTypes.ExpandedShape"/>), at every depth. Never throws on the plan.
+/// reading of a format's shape (<see cref="FormatTypes.ExpandedShape"/>), at every depth, the fields in written order
+/// (#1508, R10: <c>propertyOrder</c>). Never throws on the plan.
 /// </summary>
 public static class V31PackageDescription
 {
@@ -91,14 +92,19 @@ public static class V31PackageDescription
     }
 
     /// <summary>
-    /// An object's fields, one per property in the order <c>resolve.json</c> holds them (D13): <c>Label</c> its
-    /// <c>title</c>, the property name when it has none; <c>Required</c> when its type is not nullable.
+    /// An object's fields, one per property in written order (D13; #1508, R10: its <c>propertyOrder</c>, then any property
+    /// it does not list in the order <c>resolve.json</c> holds them): <c>Label</c> its <c>title</c>, the property name when
+    /// it has none; <c>Required</c> when its type is not nullable.
     /// </summary>
     private static IReadOnlyList<WorkflowPackageFieldResponse>? Fields(JsonNode? format)
     {
-        if (FormatTypes.ExpandedShape(format) != FormatShape.Object || Schema(format)?["properties"] is not JsonObject properties)
+        if (FormatTypes.ExpandedShape(format) != FormatShape.Object || Schema(format) is not { } schema
+            || schema["properties"] is not JsonObject properties)
+        {
             return null;
-        return properties
+        }
+
+        return Written(schema, properties)
             .Select(property => new WorkflowPackageFieldResponse(
                 property.Key,
                 Title(property.Value) ?? property.Key,
@@ -108,6 +114,18 @@ public static class V31PackageDescription
                 Items(property.Value),
                 Fields(property.Value)))
             .ToList();
+    }
+
+    /// <summary>
+    /// <paramref name="properties"/>, <paramref name="schema"/>'s, in written order: each name its <c>propertyOrder</c> lists
+    /// (once, and only a property it has), then the rest as held.
+    /// </summary>
+    private static IEnumerable<KeyValuePair<string, JsonNode?>> Written(JsonObject schema, JsonObject properties)
+    {
+        var listed = (schema[CompiledFormats.PropertyOrder] as JsonArray ?? [])
+            .Select(FormatTypes.Text).OfType<string>().Where(properties.ContainsKey).Distinct(StringComparer.Ordinal).ToList();
+        return listed.Select(name => KeyValuePair.Create(name, properties[name]))
+            .Concat(properties.Where(property => !listed.Contains(property.Key, StringComparer.Ordinal)));
     }
 
     /// <summary>A property's <c>title</c>: its own, or the format's it inlines.</summary>
