@@ -343,6 +343,14 @@ A template reads each loop item's `state` and `reason` through `.items`
   sentences, because it can land in the deliverable.
 - A branch on `state` handles every state or ends with an `else`; an unknown state is refused
   ([Part 05](05-templates-and-macros.md#25-a-body-if-tests-recorded-facts-only)).
+- **A loop over `.items` writes its fixed text for every item,** the ones that did not run too.
+  Publish warns ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), Q4) when a
+  deliverable's `for` over a loop's `.items` writes literal text beyond white space, or reads anything
+  but its item (or a `for` over that item), outside every `if` that tests the item's `state`:
+  *"Deliverable '<id>' writes fixed text for every item of <loop key> at line <n>, also for items that
+  did not run. Loop over .value, or guard on state."* A loop over `.value` sees the completed items
+  only; a body inside `{{ if s.state == "completed" }} … {{ else }}{{ end }}` (any branch of a chain
+  testing the item's `state`) is the author's choice per state.
 
 ### 6.3 What a deliverable reads
 
@@ -500,6 +508,13 @@ sections puts the heading inside a loop or a recorded-fact `if`.
 | `release` | an empty document is released and recorded |
 | `hold` | not released, recorded as *held: empty*; the other deliverables go on |
 | `fail` | the job fails, naming the deliverable |
+
+**A deliverable that could be released empty is warned at publish** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), Q3):
+a text deliverable with no `if` and `whenEmpty: release` that reads at least one node, where every node
+and check it reads may not run (it is not always valued, [part 04 § 7.6](04-loops-and-functions.md#76-one-ret-always-valued-one-format)),
+gets *"Deliverable '<id>' could be released with nothing in it: everything it reads may not run. Give it
+an if, or whenEmpty: hold."* Its other reads (an input, a snippet's text, the profile) are not judged. The
+package publishes; the migration writes the `if` itself ([Part 10](10-migration-and-tools.md)).
 
 **An object-format deliverable is never empty** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): its canonical JSON is never
 blank, so `whenEmpty` has no effect there, but is still written (#1394).

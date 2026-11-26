@@ -846,6 +846,14 @@ and Q5: a member read through a nullable object is told at publish, never at run
 
 **Warnings** (never blocking):
 - *"Test '<test id>' stubs <row key>, which doesn't run."*
+- *"Deliverable '<id>' could be released with nothing in it: everything it reads may not run. Give it an if, or
+  whenEmpty: hold."* This implementation's A11-010 ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508),
+  Q3: new packages are told at publish): a text deliverable with no `if` and `whenEmpty: release` reads at least one node,
+  and every node and check it reads may not run ([part 06 § 6.6](06-checks-deliverables-profile.md#66-when-a-deliverable-comes-out-empty)).
+- *"Deliverable '<id>' writes fixed text for every item of <loop key> at line <n>, also for items that did not run. Loop
+  over .value, or guard on state."* This implementation's A11-011 (Q4): a deliverable's `for` (at line `<n>`) over a
+  loop's `.items` writes literal text beyond white space, or reads anything but its item, outside every `if` that tests
+  the item's `state` ([part 06 § 6.2](06-checks-deliverables-profile.md#62-item-states)).
 - CI, in the examples repository: *"<path> is evidence written only by publish; it is ignored and shouldn't be committed."*
 - The Editor, on import: *"This package's resolve.json and lock.json were ignored; publishing writes new ones."*
 

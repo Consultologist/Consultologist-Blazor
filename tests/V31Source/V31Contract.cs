@@ -130,7 +130,9 @@ internal static class V31Contract
     /// task that first says it (A11-008, Task 3: a run-time engine fault while rendering, in place of A06-008, R8 item 4;
     /// A11-001 to A11-003, Task 8: the publish refusals the owner ruled, R1, R4 and R5; A11-004 to A11-007, Task 10: the manifest's name and version, a test's grammar, a version already published, an engine fault at publish, D2;
     /// A11-012, Task 25's fix round 1: a part or a macro read in an expression rather than placed, ruling 12;
-    /// A11-009, Task 26: a member read through a nullable object with no guard on it, Q5 of 2026-11-26, R17).
+    /// A11-009, Task 26: a member read through a nullable object with no guard on it, Q5 of 2026-11-26, R17;
+    /// A11-010 and A11-011, Task 28: the publish warnings of a deliverable that could be released empty and of a loop's fixed
+    /// text for items that did not run, Q3 and Q4 of 2026-11-26, R15 and R16).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
@@ -143,6 +145,8 @@ internal static class V31Contract
         ["A11-007"] = "The workflow couldn't be published because the engine failed. Tell the operator.",
         ["A11-008"] = "<Subject> couldn't be rendered because the engine failed. Tell the operator.",
         ["A11-009"] = "<Subject> reads <path> at line <n> through <object path>, which can be null. Put the read inside {{ if <object path> }}.",
+        ["A11-010"] = "Deliverable '<id>' could be released with nothing in it: everything it reads may not run. Give it an if, or whenEmpty: hold.",
+        ["A11-011"] = "Deliverable '<id>' writes fixed text for every item of <loop key> at line <n>, also for items that did not run. Loop over .value, or guard on state.",
         ["A11-012"] = "<Subject> uses <part or macro> at line <n> in an expression; a part or a macro is placed on its own, as {{ <part or macro> }}, never piped or used in an expression.",
     };
 

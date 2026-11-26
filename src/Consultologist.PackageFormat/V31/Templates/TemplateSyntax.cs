@@ -39,8 +39,13 @@ public sealed record TemplateOutput(
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 2.1): a <c>for</c>: its variable, what it iterates as written, its tag, and the
 /// number of <c>if</c> and <c>for</c> around it. #1508 (Q5, R17): <paramref name="Guards"/> as <see cref="TemplateOutput.Guards"/>.
+/// #1508 (ruled by the owner, Q4 of 2026-11-26; R16): <paramref name="FixedText"/> whether its body writes something that is
+/// not the item's own, outside every <c>if</c> chain that tests <c>&lt;variable&gt;.state</c> (in any of its branches):
+/// literal text beyond white space, or an output that reads nothing or reads a path rooted elsewhere than at its variable or
+/// at a <c>for</c> variable over a path rooted there.
 /// </summary>
-public sealed record TemplateFor(string Variable, string Source, TemplateTag Tag, int Depth, IReadOnlyList<string>? Guards = null);
+public sealed record TemplateFor(
+    string Variable, string Source, TemplateTag Tag, int Depth, IReadOnlyList<string>? Guards = null, bool FixedText = false);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 2.5; R2): one comparison or bare truth test of an <c>if</c> chain,
@@ -190,6 +195,7 @@ public sealed record TemplateSyntax(
         private readonly List<string> _enclosing = [];
         private readonly List<string> _loops = [];
         private readonly List<string> _guards = [];
+        private readonly List<ItemFrame> _items = [];
         private int _deepest;
         private int _deepestLine;
 
@@ -238,9 +244,21 @@ public sealed record TemplateSyntax(
                 _outputs.Add(new TemplateOutput(
                     TagOf(node), Chain(head), steps.Select(Pipe).ToList(), paths, _enclosing.Count, [.. _enclosing], Slice(head), TypeOf(head),
                     _loops.Count == 0 ? null : _loops[^1], [.. _guards]));
+                Writes(frame => paths.Count == 0 || paths.Any(p => !frame.Names.Contains(p.Split('.')[0])));
             }
 
             Walk(node.Expression);
+        }
+
+        /// <summary>#1508 (Q4, R16): literal text beyond white space is fixed text in every <c>for</c> around it.</summary>
+        public override void Visit(ScriptRawStatement node)
+        {
+            if (!string.IsNullOrWhiteSpace(Slice(node)))
+            {
+                Writes(_ => true);
+            }
+
+            base.Visit(node);
         }
 
         public override void Visit(ScriptTableRowStatement node)
@@ -252,6 +270,7 @@ public sealed record TemplateSyntax(
         public override void Visit(ScriptForStatement node)
         {
             var variable = node.Variable is ScriptVariable named ? named.Name : Slice(node.Variable);
+            var index = _fors.Count;
             _fors.Add(new TemplateFor(variable, Slice(node.Iterator), TagOf(node), _enclosing.Count, [.. _guards]));
 
             if (node.Iterator is { } iterator && DialectRules.IsNoList(iterator))
@@ -272,6 +291,23 @@ public sealed record TemplateSyntax(
             }
 
             _loops.Add($"{variable} in {Slice(node.Iterator)}");
+            // #1508 (Q4, R16): the names that read this for's item in its body, and in each for around it whose item it iterates.
+            var root = Slice(node.Iterator).Trim().Split('.')[0];
+            var names = _items.Select(f => f.Names.ToList()).ToList();
+            foreach (var frame in _items)
+            {
+                if (frame.Names.Contains(root))
+                {
+                    frame.Names.Add(variable);
+                }
+                else
+                {
+                    frame.Names.Remove(variable);
+                }
+            }
+
+            var own = new ItemFrame(variable);
+            _items.Add(own);
             // #1508 (Q5, R17; Task 26's fix round 1): the for binds its variable anew, so a guard rooted at that name asserts
             // nothing in its body (it named another value); the dialect has no other statement that binds a name.
             var outer = new List<string>(_guards);
@@ -289,6 +325,48 @@ public sealed record TemplateSyntax(
             _guards.Clear();
             _guards.AddRange(outer);
             _loops.RemoveAt(_loops.Count - 1);
+            _items.RemoveAt(_items.Count - 1);
+            for (var i = 0; i < _items.Count; i++)
+            {
+                _items[i].Names.Clear();
+                _items[i].Names.UnionWith(names[i]);
+            }
+
+            if (own.Fixed)
+            {
+                _fors[index] = _fors[index] with { FixedText = true };
+            }
+        }
+
+        /// <summary>
+        /// #1508 (Q4, R16): marks as writing fixed text each <c>for</c> around the statement that is not guarded on its item's
+        /// state and for which <paramref name="isFixed"/> holds.
+        /// </summary>
+        private void Writes(Func<ItemFrame, bool> isFixed)
+        {
+            foreach (var frame in _items)
+            {
+                if (frame.StateGuards == 0 && !frame.Fixed && isFixed(frame))
+                {
+                    frame.Fixed = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// #1508 (Q4, R16): one <c>for</c> being read: the names that read its item (its variable, and the variable of each
+        /// <c>for</c> inside it over a path rooted at one), how many <c>if</c> chains testing its variable's <c>state</c> are
+        /// around the statement read, and whether its body writes fixed text.
+        /// </summary>
+        private sealed class ItemFrame(string variable)
+        {
+            public string Variable { get; } = variable;
+
+            public HashSet<string> Names { get; } = new(StringComparer.Ordinal) { variable };
+
+            public int StateGuards { get; set; }
+
+            public bool Fixed { get; set; }
         }
 
         public override void Visit(ScriptIfStatement node)
@@ -328,6 +406,10 @@ public sealed record TemplateSyntax(
             }
 
             _ifs.Add(new TemplateIf(TagOf(node), tests, hasElse, _enclosing.Count));
+            // #1508 (Q4, R16): a chain that tests a for variable's state guards, in every branch, the innermost for of that name.
+            var stated = tests.Select(t => t.Path?.Split('.') is [var name, "state"] ? _items.LastOrDefault(f => f.Variable == name) : null)
+                .OfType<ItemFrame>().Distinct().ToList();
+            stated.ForEach(f => f.StateGuards++);
             Nest("if", node, () =>
             {
                 foreach (var (body, asserted) in bodies)
@@ -338,6 +420,7 @@ public sealed record TemplateSyntax(
                     _guards.RemoveRange(outer, _guards.Count - outer);
                 }
             });
+            stated.ForEach(f => f.StateGuards--);
         }
 
         // ----- expressions -----------------------------------------------------------

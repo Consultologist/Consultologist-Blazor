@@ -2127,6 +2127,15 @@ other template:
   it and at most a final line end after it (S06-023, D8). An untyped read passes the form only when the body was
   already refused.
 
+#1508 (ruled by the owner, Q3 and Q4 of 2026-11-26; R15, R16): two publish warnings, in `TemplateCheck.Warnings` and so
+in `resolve.json`'s `warnings` and the report. **A11-010**: a text deliverable with no `if` and `whenEmpty: release` that
+reads at least one `node.<id>` (in its body or a unit it places), where every node and check it reads is not
+`ScopeTree.AlwaysValued`; its other reads are not judged. **A11-011**: each `for` of the deliverable's own text whose
+source is typed as a node's or a check's `.items` and whose `TemplateFor.FixedText` holds, at the `for`'s line.
+`TemplateSyntax` sets `FixedText` when the body writes, outside every `if` chain that tests `<variable>.state` (any of its
+branches), literal text beyond white space (a raw block included), an output reading no path, or a path rooted elsewhere
+than at the variable or at a `for` variable over a path rooted there.
+
 A union is escaped as data in a Markdown deliverable and never S06-021; an enum or a date is escaped as a string;
 an output of several paths or an unknown snippet is neither judged nor escaped; `null` is never escaped. #1507 (R10,
 formats fail closed): `SourceTemplates.Escaped` escapes every output whose format is not known to be Markdown

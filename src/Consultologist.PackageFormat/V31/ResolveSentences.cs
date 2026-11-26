@@ -253,6 +253,21 @@ internal static class ResolveSentences
         new("A11-003", $"Format '{id}' expands to more than {Grouped(limit)} parts, more than this engine can run. Make it smaller.", path);
 
     /// <summary>
+    /// A11-010 (#1508, ruled by the owner, Q3 of 2026-11-26; R15), a publish warning: the deliverable <paramref name="id"/> has
+    /// no <c>if</c> and <c>whenEmpty: release</c>, and every node or check it reads may not run.
+    /// </summary>
+    public static SourceRefusal MayBeReleasedEmpty(string id, string path) =>
+        new("A11-010", $"Deliverable '{id}' could be released with nothing in it: everything it reads may not run. Give it an if, or whenEmpty: hold.", path);
+
+    /// <summary>
+    /// A11-011 (#1508, ruled by the owner, Q4 of 2026-11-26; R16), a publish warning: the deliverable <paramref name="id"/>'s
+    /// <c>for</c> at <paramref name="line"/> over <c>&lt;loop key&gt;.items</c> (<paramref name="loop"/>) writes fixed text outside
+    /// every <c>if</c> on its item's <c>state</c>.
+    /// </summary>
+    public static SourceRefusal FixedTextForEveryItem(string id, string loop, int line, string path) =>
+        new("A11-011", $"Deliverable '{id}' writes fixed text for every item of {loop} at line {Number(line)}, also for items that did not run. Loop over .value, or guard on state.", path);
+
+    /// <summary>
     /// S07-003 (at job start, part 07 § 10): the package needs <paramref name="component"/> (<c>Scriban</c>, <c>the
     /// evaluator</c> or an operation's name) in <paramref name="range"/>, and the engine runs
     /// <paramref name="engineVersion"/>; also said of a package locked before one of the engine's break points (§ 4.4).

@@ -74,10 +74,12 @@ public class RefusalPackagesTests
     /// at job start, of <c>needs.profile</c> against the account's profile (<c>RequiresCheck.Profile</c>); S07-006 and
     /// S07-017 at load, of the stored pair against its stamp (<c>CompiledPackage.Verify</c>); S07-016 at import, of the
     /// compiled copies intake drops; S07-015 by CI, of a compiled copy committed to the examples repository.
+    /// #1508 (Task 28; R15, R16): A11-010 and A11-011, warnings as S07-014 is (a deliverable that could be released empty, a
+    /// loop's fixed text for items that did not run); a package that gets them is accepted.
     /// </summary>
     private static readonly string[] ResolveNotShipped =
     [
-        "S04-072", "S04-073", "S04-074", "S04-079", "S04-080", "S09-016",
+        "S04-072", "S04-073", "S04-074", "S04-079", "S04-080", "S09-016", "A11-010", "A11-011",
         "S06-031", "S06-032", "S07-003", "S07-004", "S07-005", "S07-006", "S07-015", "S07-016", "S07-017",
     ];
 
