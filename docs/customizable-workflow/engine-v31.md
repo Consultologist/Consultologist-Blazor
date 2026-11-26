@@ -654,7 +654,9 @@ resolver, as the pin health report reads it). Each distinct package is read once
 and a package below 31 is migrated in memory by `WorkflowPackageMigration30To31.Migrate` against the bundled 31 type
 registry (`PublishedTypeRegistry`, read on first use from `package-format/v31/` and `agents/v31/` in the app's
 output by the library's one loader, `PackageFormat.V31.PublishedTypeRegistry.Read`, #1508 R20; the ingestor takes the
-same singleton), nothing written. The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
+same singleton), nothing written, each package counted against the engine's configured limits
+(`EngineLimitSettings.PublishLimits`: a package past the default 10,000 `JobInstances` but within the configured number carries no
+A10-081 hand edit). The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
 migrate`: `<n>` the hand-edit notices summed, `<p>` the packages with at least one, `<q>` the packages the migration
 refused or failed on. A package at 31 is not counted. A pin or a package that cannot be read fails alone (a stale
 pin is a normal state): the rest are counted on that line, and A10-059 follows it, `Outstanding migration hand edits:
@@ -708,7 +710,8 @@ and every file, `manifest.json` included, as text in `Files` (written as UTF-8 w
 5. **The pipeline** (`PackagePublish.RunAsync`) runs with the engine's own inputs: the bundled 31 type registry
    (`PublishedTypeRegistry`), the toolchain the engine attests (`EngineToolchain.Current()`), the limits
    (`EngineLimitSettings.PublishLimits`: `MaxAgentCallsPerJob`, `LoopItems`, `JobAgentCalls`, `JobInstances` and
-   `JobMinutes`), the clock, `RegexMilliseconds` for the tests' `matches`, and no diagram. `publishedBy` is
+   `JobMinutes`), the clock, `RegexMilliseconds` for the tests' `matches`, `EngineLimitSettings.Limits` as the limits the package's
+   tests run at (`PublishOptions.RunLimits`), and no diagram. `publishedBy` is
    `operator-migration` with a migration report, else `editor` with a `Source`, else `api`. A migration report whose
    `newVersion` is not the version being tried gets that version (a member replacement, written canonical), so the
    stored `migration-report.json` names the version it is stored in; one that names it already is stored as sent.
@@ -976,7 +979,8 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
    file its notice names (`Migration31Result.HandEditFiles`, one per notice) is among `handEdits`' paths, edited or null:
    any left is its first S10-002 notice, every left one in `handEditsLeft`. An operator who answers a notice in another
    file still sends the named file, unchanged if need be, as the acknowledgement. The migration counts its package
-   against the engine's configured limits (`EngineLimitSettings.PublishLimits`), so A10-081 is said only past them.
+   against the engine's configured limits (`EngineLimitSettings.PublishLimits`), so A10-081 is said only past them; its snapshot's run and the
+   report's worst-case note (A10-014) count at the configured `Limits` too (`Migration31Options.RunLimits`).
 4. **The operator's edits** laid over it, and then, when any were given, its snapshot test written anew
    (`WorkflowPackageMigration30To31.Snapshot`, which publishes the edited package in memory at the engine's configured
    limits, `Migration31Options.Limits`: a package past them, A11-001, or an edit left undone that the checker refuses,

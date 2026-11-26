@@ -2463,7 +2463,8 @@ path, and a `Migration31Options`:
 | `WhenEmpty` | a deliverable id to its `whenEmpty` (§ 1.10, D7); `release` when unsaid |
 | `FolderFormats` | a snippet folder's id to the format its items' headers are values of; `<folder>_item` when unsaid |
 | `WriteSnapshot` | whether `Migrate` ends by writing the snapshot test (default `true`) |
-| `Limits` | the `PublishLimits` the migration counts its package against (A10-081) and its snapshot publishes at; `null` is the engine's starting values (`WorkflowPackageMigration30To31.EngineLimits`), and the bulk publish gives the engine's configured ones (#1508, Task 36) |
+| `Limits` | the `PublishLimits` the migration counts its package against (A10-081) and its snapshot publishes at; `null` is the engine's starting values (`WorkflowPackageMigration30To31.EngineLimits`), and the bulk publish and the weekly summary give the engine's configured ones (#1508, Task 36; F9) |
+| `RunLimits` | the `RunLimits` the snapshot's offline run counts against; `null` is the spec's starting values, and the bulk publish gives the engine's configured ones (#1508, F9) |
 
 #1508 (area 11, R18, the owner's ruling of 2026-11-25, 6): the three choices, `Renames`, `WhenEmpty` and `FolderFormats`,
 live in a file, a package's `options.json` (`MigrationOptionsFile.FileName`) beside its hand edits:
@@ -2514,7 +2515,7 @@ line endings, a JSON Logic value in canonical order.
 | deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, `{{ profile.signature }}` for 30's `signature: true`, one blank line apart. An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim; #1508 (R15): a deliverable every source of which may not run (`AlwaysValued` false; a `while` counts as running, as 30 composed one with no pass) gets the `if` `<source>.state === "completed"` (`or` over the sources, after 30's by `and`), A10-079; when 30's `if` is a hand edit, a second hand edit on it names that term to join by `and`, A10-084 |
 | derived flags | `Migrate.Derived.cs` | last: every node and check header's `reproducible`, `modelDerived`, `runDependent` and `profileCarrying` from `SourceDerived.Values`, the derivation without the header checks (D15). A 30 `reproducible` claim that differs is A10-010; a header made of a body the dialect refused is A10-049 |
 
-After the passes, #1508 (R11): the package as written is checked and counted as publish counts it (`PublishNotes.PastInstances`, A11-001's facts) at the options' `Limits` (by default the engine's starting values, `WorkflowPackageMigration30To31.EngineLimits`; the engine's configured limits in the bulk publish); past their `JobInstances` it is a hand edit on the outermost loop's `max` on the heaviest path (A10-081), and no `max` is written. Then, with `WriteSnapshot`, the snapshot test (below), published at those limits. Other notices: A10-021 (a format's free-text field), A10-026 (a
+After the passes, #1508 (R11): the package as written is checked and counted as publish counts it (`PublishNotes.PastInstances`, A11-001's facts) at the options' `Limits` (by default the engine's starting values, `WorkflowPackageMigration30To31.EngineLimits`; the engine's configured limits in the bulk publish and the weekly summary); past their `JobInstances` it is a hand edit on the outermost loop's `max` on the heaviest path (A10-081), and no `max` is written. Then, with `WriteSnapshot`, the snapshot test (below), published at those limits and run at the options' `RunLimits`. Other notices: A10-021 (a format's free-text field), A10-026 (a
 lone carriage return became a line end), A10-027 (`size` over a list that can be null), A10-030 (a member 31 has no
 form for, dropped), A10-013 (`onInvalid: flag`, written `retry`: one more attempt with the validation error, then the
 node fails; #1508, comment 5, item 3), A10-074 (text compared with a literal written `in`), A10-075 (a text input
@@ -2825,11 +2826,11 @@ public static Task<PublishOutcome> CheckAsync(IReadOnlyDictionary<string, byte[]
 ```
 
 `PublishOptions(Registry, Toolchain, Limits, PublishedBy, Clock, Templates = null, Diagram = null, MigrationReport =
-null, MigratedFrom = null, MatchTimeLimit = null)` holds what the caller decides: the published types, the toolchain
+null, MigratedFrom = null, MatchTimeLimit = null, RunLimits = null)` holds what the caller decides: the published types, the toolchain
 `lock.json` records, the `PublishLimits`, the report's `publishedBy` (D4), the clock (the report's time and the tests'
 limit), the `dag.mmd` builder (D1: none is written while it is null, which it is until area 13), the operator's
 `migration-report.json` text and the stamp's old version (D5), and the time limit of `matches` and `has_word` in the
-tests' plan.
+tests' plan and the `RunLimits` the tests run at (null: the spec's starting values; the engine gives its configured ones).
 
 `RunAsync` does this, in order:
 

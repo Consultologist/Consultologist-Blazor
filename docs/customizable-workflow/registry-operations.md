@@ -512,7 +512,9 @@ The operator migrates every account's package to 31 and publishes it as a new ve
 (part 10 § 1.5 of [the 31 design](package-format-v31/10-migration-and-tools.md#15-account-packages-by-the-operator)).
 The engine does one package a call (`Admin/MigratePackage`, [the engine at specVersion 31](engine-v31.md), "The bulk
 publish"); `scripts/bulk-publish-v31.cs` drives it over every account. Running it against production, sending the
-owners' notices and moving production pins stay the user's (R21).
+owners' notices and moving production pins stay the user's (R21). The route counts and runs the migration's snapshot at the
+deployment's configured limits (`ConsultGeneration__*`); the two CI scripts and `scripts/migrate-workflow-package.cs` keep the
+spec's starting values, as they run with no deployment.
 
 ```
 ACCESS_TOKEN=<an operator account's bearer token> \

@@ -143,8 +143,8 @@ validation fails with sentences until each is made, as the 25 migration did. The
   `if`, a path the part's own `if` does not assert (A10-080: *"the template reads <path> at line <n> through <object path>, which can
   be null, where no {{ if <object path> }} can enclose the read; move the read where that guard can stand."*); until it is moved,
   publish refuses the read (A11-009);
-- **a package whose worst case passes the instances one job may open** at the engine's default (`RunLimits.JobInstances`,
-  10,000), or in the bulk publish (§ 1.5) at the engine's configured limit, which publish refuses (A11-001): the migration counts the package it wrote as publish does, and the hand edit is on the
+- **a package whose worst case passes the instances one job may open** at the deployment's configured `RunLimits.JobInstances`
+  (10,000 unless set) in the bulk publish (§ 1.5) and the weekly summary, the starting value in the script, which publish refuses (A11-001): the migration counts the package it wrote as publish does, and the hand edit is on the
   outermost loop's `max` on the heaviest path, with A11-001's count and limit (A10-081: *"up to <n> steps could run in one job
   through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no
   max: lower a loop's max or split the workflow."*). **No `max` is written** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), B2, and

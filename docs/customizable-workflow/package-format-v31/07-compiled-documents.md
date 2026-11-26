@@ -741,7 +741,7 @@ the first failing expectation in the order of the table above, then by key.
 ### 8.4 Limits and the migration's snapshot test
 
 - Test files count against `SourceBounds` like any source file. **At publish, all tests together
-  have 60 seconds;** past it, publish stops with a sentence.
+  have 60 seconds;** past it, publish stops with a sentence. A publish runs the tests at the engine's configured limits.
 - **The migration writes one snapshot test per package,** `tests/migration_snapshot.json`, from
   its migrated run: fictional inputs, stubs generated from the formats, and the resulting prompts
   and deliverables as expectations **by hash**, so every migrated package starts with one test
