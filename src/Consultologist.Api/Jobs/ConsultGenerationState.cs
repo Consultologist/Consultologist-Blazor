@@ -1374,7 +1374,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             // hashes are final, and stamped once — the record's own claim.
             // Only a Completed rerun is judged: a failed replay proves
             // nothing about reproducibility.
-            if (state.RerunBaseline != null && state.RerunVerdict == null)
+            // #1509 (D8): not at 31, whose rerun keeps only the link to its source.
+            if (state.RerunBaseline != null && state.RerunVerdict == null && state.SchemaVersion < V31.RecordSealer.SealedFrom)
             {
                 var (verdict, divergence, counted) = RerunVerdictOf(
                     state.RerunBaseline, state.Nodes, state.NodeOutputs,

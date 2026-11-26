@@ -385,6 +385,8 @@ public sealed class V31JobStarter(
             Array.Empty<IReadOnlyDictionary<string, string>>(),
             workflowPackage,
             Source: origin.Source,
+            // #1509 (D8): a rerun's link to its source (the response's RerunOf); no baseline hashes, so no verdict.
+            RerunBaseline: origin.RerunBaseline,
             ScheduledAtUtc: request.ScheduledAtUtc,
             PackageSpecVersion: PublishedStamp.SpecVersion,
             // #1506 (hash-definitions.md § 7.2): the definition a 31 job's inputs are hashed by.

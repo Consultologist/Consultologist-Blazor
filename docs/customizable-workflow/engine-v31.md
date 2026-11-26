@@ -211,7 +211,25 @@ it. The header records an element from an earlier run with origin `previous-run`
 an element in ordinal order (absent when none does). The orchestration reads it into the run's
 `RunInputs.ModelDerivedInputs`, so a decision that reads such an input, directly or through a loop's `item` or a call's
 `param`, is `modelDerived: true` (part 08 § 5.1). A node row's flags stay those `resolve.json` writes (part 08 § 4). A 5–30
-start resolves its references exactly as before. Reruns are area 12's (D8).
+start resolves its references exactly as before.
+
+A start writes the lineage links a 5–30 start writes (#546), once the inputs are held: one row on the source job for each
+element taken from an earlier run, and one for a rerun, which History's "Used by" list on the source job reads. A start
+with no such input and no rerun writes none. A write that fails is logged and never refuses the start.
+
+### Rerun (#1509, D8)
+
+`Rerun` of a storage-12 job rebuilds the request from the job's held inputs document, where a 5–30 job's comes from its
+`Supplied` half: each `inputs.<id>.value` is sent as a typed value, under the record's own package ref, and the profile
+half is never read into a request (the account's profile is read afresh, as at every start). A source whose inputs were
+dropped, or never held, is refused in the same words as a 5–30 job's; a pointer whose document is gone is an error, as it is
+there. When the source recorded `signatureChosen: "job"`, the request names the recorded `signatureBlockId`; a default pick
+is made afresh. The new job is a 31 job, and its response names the source as `RerunOf`. Its `RerunVerdict` and
+`RerunDivergence` are `null`: storage 11's comparison of node hashes is not made at 31, and History shows the link between
+the two jobs only. The job response lists a 31 job's held inputs, while they are held, as a 5–30 response lists its own:
+each input's text, a structured value as its JSON. A rerun sends the values the source held, so an input that took an
+element of an earlier run, or a form answer, is sent as a typed value on the rerun: its `previous-run` origin and
+`modelDerived` flag are not carried to the rerun, which records those inputs as `typed`.
 
 ### Asking before a start (#1509, D1)
 

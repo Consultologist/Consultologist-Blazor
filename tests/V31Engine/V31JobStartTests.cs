@@ -46,7 +46,7 @@ public class V31JobStartTests
     private static readonly Lazy<EngineCapabilities> ThisEngine =
         new(() => V31Job.Factory().Current());
 
-    private const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
+    internal const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
 
     private const string Zone = "America/Toronto";
 
@@ -1296,7 +1296,7 @@ public class V31JobStartTests
         Assert.Equal("""{"input":130,"output":35,"total":165}""", StateOf(entity).ToRecordHeader()["tokens"]!.ToJsonString());
     }
 
-    private static ConsultGenerationJobState StateOf(ConsultGenerationJobEntity entity) => (ConsultGenerationJobState)StateProperty.GetValue(entity)!;
+    internal static ConsultGenerationJobState StateOf(ConsultGenerationJobEntity entity) => (ConsultGenerationJobState)StateProperty.GetValue(entity)!;
 
     private const string Billed = "{ \"===\": [{ \"var\": \"input.include_billing.value\" }, true] }";
 
@@ -1305,7 +1305,7 @@ public class V31JobStartTests
     private const string WardBlock = "Dr A. Sample\nWard 4, Sample Oncology Clinic";
 
     /// <summary>The account's signature blocks as the Web stores them: <c>sig-1</c> (the clinic), <c>sig-2</c> (the ward), <c>sig-3</c> (blank), <paramref name="chosen"/> chosen.</summary>
-    private static string Blocks(string? chosen = "sig-1") => JsonSerializer.Serialize(new SignatureBlocks.SignatureBlockSet(
+    internal static string Blocks(string? chosen = "sig-1") => JsonSerializer.Serialize(new SignatureBlocks.SignatureBlockSet(
         [
             new("sig-1", "Clinic", ClinicBlock, DateTimeOffset.UnixEpoch),
             new("sig-2", "Ward", WardBlock, DateTimeOffset.UnixEpoch),
@@ -1313,7 +1313,7 @@ public class V31JobStartTests
         ],
         chosen));
 
-    private static ConsultGenerationRequest Signed(WorkflowPackageRef packageRef, string? block) =>
+    internal static ConsultGenerationRequest Signed(WorkflowPackageRef packageRef, string? block) =>
         new(null, RefText(packageRef), Inputs: Text(Draft), SignatureBlockId: block);
 
     /// <summary>
@@ -1337,10 +1337,10 @@ public class V31JobStartTests
         new(null, RefText(packageRef), Inputs: inputs,
             MacroChoices: choices.ToDictionary(c => c.Id, c => c.Choice, StringComparer.Ordinal));
 
-    private static Dictionary<string, ConsultInputValue> Text(string draft) =>
+    internal static Dictionary<string, ConsultInputValue> Text(string draft) =>
         new(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText(draft) };
 
-    private static string RefText(WorkflowPackageRef packageRef) => $"{packageRef.Name}@{packageRef.Version}";
+    internal static string RefText(WorkflowPackageRef packageRef) => $"{packageRef.Name}@{packageRef.Version}";
 
     private static WorkflowPackageRef PackageRefOf(WorkflowPackage package) =>
         WorkflowPackageRef.TryParse(package.Ref, out var parsed) ? parsed! : throw new InvalidOperationException(package.Ref);
@@ -1362,12 +1362,12 @@ public class V31JobStartTests
             .Replace(jobId, "<job>", StringComparison.Ordinal)
             .Replace(jobId[..8], "<job8>", StringComparison.Ordinal);
 
-    private static ConsultGenerationJobEntity Entity() => new(
+    internal static ConsultGenerationJobEntity Entity() => new(
         Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
         Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
 
     /// <summary>The real starter over substituted stores, a <see cref="FakeRegistry"/> and the real 31 store (counted).</summary>
-    private sealed class Start
+    internal sealed class Start
     {
         private readonly ConsultGenerationJobStarter _starter;
 
@@ -1559,7 +1559,7 @@ public class V31JobStartTests
     }
 
     /// <summary>The 31 store, its calls counted.</summary>
-    private sealed class CountingStore(ICompiledPackageStore inner) : ICompiledPackageStore
+    internal sealed class CountingStore(ICompiledPackageStore inner) : ICompiledPackageStore
     {
         private int _calls;
 
