@@ -908,11 +908,15 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
 2. **The choices:** `options` read with `Migration31Options.FromJson` (A10-070 to A10-072, A10-082), or the defaults,
    said in the answer's `defaults` (A10-083).
 3. **The migration** (`WorkflowPackageMigration30To31.Migrate`, with the 24 → 25 rung's contract resolver): a refusal is
-   its first sentence, A10-015 for a package at 31 already (a rerun after a publish). A migration that leaves hand edits
-   when the body gives none: its first S10-002 notice, every one in `handEditsLeft`.
+   its first sentence, A10-015 for a package at 31 already (a rerun after a publish). **A hand edit is left** unless the
+   file its notice names (`Migration31Result.HandEditFiles`, one per notice) is among `handEdits`' paths, edited or null:
+   any left is its first S10-002 notice, every left one in `handEditsLeft`. An operator who answers a notice in another
+   file still sends the named file, unchanged if need be, as the acknowledgement. The migration counts its package
+   against the engine's configured limits (`EngineLimitSettings.PublishLimits`), so A10-081 is said only past them.
 4. **The operator's edits** laid over it, and then, when any were given, its snapshot test written anew
-   (`WorkflowPackageMigration30To31.Snapshot`, which publishes the edited package in memory at the engine's default limits:
-   a package past them, A11-001, or an edit left undone, the checker's sentence, is refused here). A10-011 is then not
+   (`WorkflowPackageMigration30To31.Snapshot`, which publishes the edited package in memory at the engine's configured
+   limits, `Migration31Options.Limits`: a package past them, A11-001, or an edit left undone that the checker refuses,
+   its sentence, is refused here). A10-011 is then not
    said.
 5. **The publish** through `V31PackagePublisher` as the account's next version, with the migration report
    (`MigrationReport.Of`, no compared text: the engine cannot run 30 offline; `newVersion` the version assigned), so the
@@ -922,6 +926,8 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
    runs once in memory (`V31PackagePublisher.CheckAsync`): no write, no pointer, no pin, no alert.
 
 A package that is not migrated has nothing written: its 30 version and its pin are as they were (comment 8 on #1508).
+A fault of the account store or the registry's storage is not answered as `not migrated`: it reaches the route as a 500.
+Before the stamp nothing is published; after it the version is stamped and the pointer or the pin may not have moved.
 
 **The answer** (200): `{ "owner", "name", "oldVersion", "newVersion", "outcome", "handEditsLeft", "notices", "report",
 "options", "defaults" }`. `outcome` is `published`, `would publish` or `not migrated: <sentence>`; `newVersion` is the

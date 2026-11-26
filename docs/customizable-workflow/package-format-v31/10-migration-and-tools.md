@@ -209,7 +209,9 @@ Each notice reads:
   publish"). It migrates the package the account's pin names (A11-016 when it does not: *"<package> is not the
   account's active account package; the bulk publish migrates only the account package an account's pin
   names."*), lays the operator's hand edits over it, and publishes it as that account's next version, or with
-  no `--publish` runs that publish in memory and writes nothing.
+  no `--publish` runs that publish in memory and writes nothing. A hand edit counts as made only when the file its
+  notice names is among the operator's edits; the migration and the snapshot count the package against the engine's
+  configured limits; and a rerun carries the earlier record's published rows forward, so no owner to be told drops out.
 - **Recorded as a migration:** the version's publish record says *"migrated by the operator from
   <old version>"*, with the byte-equivalence report and the list of hand edits attached. The
   Editor and History show it ([part 09](09-engine-and-pages.md#62-the-job-header)).

@@ -531,7 +531,13 @@ dotnet run -v q --file scripts/bulk-publish-v31.cs -- <operator folder> --engine
 ```
 
 `<owner>` is the account's app user id and `<name>` its package (`acct-<root>-<slug>` or `acct-<root>/<path>`, nested
-as it is nested). A package with no folder is migrated with the defaults and no edits. The script asks the engine for
+as it is nested). A package with no folder is migrated with the defaults and no edits.
+
+**A hand edit is made only when the file its notice names is among the edits.** Each S10-002 notice names a file
+(*"Hand edit needed in <file>, <member>: …"*); unless `hand-edits/` holds that file (edited, or `<file>.deleted`), the
+hand edit is left, and the package is `not migrated` with every left notice in `handEditsLeft`. An operator who answers a
+notice by editing another file still puts the named file in `hand-edits/`, unchanged if need be, as the
+acknowledgement that it is answered. The script asks the engine for
 the list (`GET`), reads every package's folder before it sends anything (an `options.json` that does not read, A10-019's
 sentence, stops the run with exit 2 and nothing sent), then sends each package in the engine's order, one at a time. It
 talks only to the engine URL it is given, with the token in `ACCESS_TOKEN`.
@@ -544,16 +550,24 @@ again until every package would publish or is to stay at 30; then run it with `-
 **The record.** `bulk-publish-record.json` is `{ "engine", "publish", "notRead", "rows" }`: one row per package, the
 engine's answer (`owner`, `name`, `oldVersion`, `newVersion`, `outcome`, `handEditsLeft`, `notices`, `report`, the
 `options` used and `defaults`, A10-083 when the package had no `options.json`) and the `time` it was answered (UTC).
-`notRead` counts the accounts' active packages the engine could not read; they are not in the record. `owners.json`
+`notRead` counts the accounts' active packages the engine could not read; they are not in the record. **A run carries
+forward** every row of the existing record whose outcome is `published` and whose package it did not answer (a package
+published by an earlier run is at 31, so the engine no longer lists it), and builds both files from the merged rows: the
+earlier rows first, then this run's. So a rerun after a fault, or a dry run after a real run, never drops a published
+package or its owner from the notification. An existing record the script cannot read stops it with exit 2 before
+anything is sent, and neither file is written. `owners.json`
 is the list for the before-and-after notification (#1447): per owner, the packages `published` (in a dry run, those that
 would be; each with its versions and the notices the owner must see, `flag` becoming `retry` among them) and the
 packages `notMigrated` (each with its version, the `reason`, S10-005 as the owner's `notice`, and the `deadline`,
-A11-015: *"This package stops working when specVersion 30 is retired."*). Both files are written again by each run.
+A11-015: *"This package stops working when specVersion 30 is retired."*).
 
 **Exit codes:** 0, every package published (or would); 1, a package is not migrated, or an account's active package
-could not be read; 2, usage, a folder that does not read, or an engine that does not answer as the route does. The run
-stops at the first engine fault, and the two files then hold what was done before it. A rerun is safe: a package
-published by an earlier run is at 31, and is `not migrated: The package is already at specVersion 31.`
+could not be read; 2, usage, a folder or an earlier record that does not read, or an engine that does not answer as the
+route does. The run stops at the first engine fault, and the two files then hold what was done before it, with the
+earlier record's published rows. Rerun it until it exits 0 or 1: what was published is carried forward, and a package
+the engine still lists is tried again. (A package at 31 that the engine is asked for anyway answers `not migrated: The
+package is already at specVersion 31.`, and its earlier published row is replaced by that answer; keep the earlier
+record when that happens.)
 
 **A package it cannot publish.** The owner's clarification of B2 on #1508
 ([2026-11-25](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179842619)), word for word:
