@@ -418,9 +418,9 @@ Produces: `V31PackagePublisher.PublishAsync(appUserId, accountKind, request, tar
 
 **Files:** Modify `PF/Templates/SiteReads.cs` (`PathTyping.Type`, l.137–182: `"part" or "macro" => (null, null)`), `PF/Templates/SourceTemplates.cs` (`Unit`, l.603–621), `SourceTemplates.Macros.cs`; Tests `tests/V31Source/` template tests; `tests/V31Source/RefusalPackages.Templates.cs`.
 
-- [ ] **Step 1: Failing tests.** `AReadPastAMacrosMembers_IsRefused` (`macro.<folder>.<id>.anything`, `macro.<id>.content.x`, `macro.<folder>.<id>.content.x`, `part.<id>.x`: each S05-011, naming the path and line). A table test `EveryHead_IsCheckedAtEveryStep`: for each head (`node`, `input`, `check`, `item`, `pass`, `param`, `run`, `profile`, `deliverable`, `snippet`, `macro`, `part`) a read whose **last** step does not exist and one whose **middle** step does not exist, in a prompt, a deliverable, a snippet, a macro body and an instruction where that head is legal there: each refused, none passing as untyped. The same table over JSON Logic `var` paths (S03-014).
-- [ ] **Step 2 to 4: Run, implement, run** V31 tests. A head that is still untyped after this task is a finding: fix it or record why it cannot be typed.
-- [ ] **Step 5:** an invalid refusal package for the folder-item case (S05-011), exported; content check; pin. **Commit** `PackageFormat (#1508): every member read is checked at every step`; tick; push.
+- [x] **Step 1: Failing tests.** `AReadPastAMacrosMembers_IsRefused` (`macro.<folder>.<id>.anything`, `macro.<id>.content.x`, `macro.<folder>.<id>.content.x`, `part.<id>.x`: each S05-011, naming the path and line). A table test `EveryHead_IsCheckedAtEveryStep`: for each head (`node`, `input`, `check`, `item`, `pass`, `param`, `run`, `profile`, `deliverable`, `snippet`, `macro`, `part`) a read whose **last** step does not exist and one whose **middle** step does not exist, in a prompt, a deliverable, a snippet, a macro body and an instruction where that head is legal there: each refused, none passing as untyped. The same table over JSON Logic `var` paths (S03-014).
+- [x] **Step 2 to 4: Run, implement, run** V31 tests. A head that is still untyped after this task is a finding: fix it or record why it cannot be typed.
+- [x] **Step 5:** an invalid refusal package for the folder-item case (S05-011), exported; content check; pin. **Commit** `PackageFormat (#1508): every member read is checked at every step`; tick; push.
 
 ### Task 26: A member read through a nullable object is refused (A11-009)
 
