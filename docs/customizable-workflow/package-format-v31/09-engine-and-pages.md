@@ -300,7 +300,7 @@ The record moves out of the Durable entity ([decided](https://github.com/Consult
 - **A job that finishes producing and has deliveries to make is `delivering`** (§ 3.8); its
   delivery attempts are rows too (part 08 § 10).
 - **The record is sealed when delivery ends.** On every terminal state (completed, failed, cancelled or timed out; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)) the engine assembles
-  the canonical record document from the rows into a blob, noting the end state, and writes its hash, `recordHash`, on the header. History's download and the export serve that blob.
+  the canonical record document from the rows into a blob in the records account's `job-records` container, noting the end state, and writes its hash, `recordHash`, on the header. History's download and the export serve that blob.
 
 ### 3.8 Delivery at the end
 

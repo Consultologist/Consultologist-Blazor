@@ -158,10 +158,11 @@ public class RecordRetentionTests
     }
 
     [Fact]
-    public async Task TheRecordsBlobs_SitUnderTheAccountsPrefix_InTheOutputsContainer()
+    public async Task TheRecordsBlobs_SitUnderTheAccountsPrefix_TheTextInTheOutputsContainerAndTheDocumentInTheRecordsOne()
     {
         // account closure removes every blob under {appUserId}/ in both outputs containers (JobOutputsBlobStore.DeleteAccountAsync);
-        // the record's text and record.json are named under it, in the container the job's account kind names
+        // the record's text is named under it, in the container the job's account kind names; record.json (R5) is under the same
+        // prefix in the records account's job-records container, which the closure sweeps through IRecordBlobStore
         var job = V31Job.Of("nested-note");
         await V31Job.RunAsync(job.Context());
         var names = job.Blobs.Blobs.Names();
@@ -170,10 +171,14 @@ public class RecordRetentionTests
         Assert.All(names, n =>
         {
             Assert.StartsWith($"{User}/", n.Name, StringComparison.Ordinal);
-            Assert.Equal(JobOutputsBlobStore.ContainerFor(V31Job.AccountKind), n.Container);
+            Assert.Equal(
+                n.Name.EndsWith("/record.json", StringComparison.Ordinal) ? BlobRecordStore.RecordContainer : JobOutputsBlobStore.ContainerFor(V31Job.AccountKind),
+                n.Container);
         });
 
         await job.Blobs.Blobs.DeleteByPrefixAsync(JobOutputsBlobStore.ContainerFor(V31Job.AccountKind), $"{User}/", CancellationToken.None);
+        Assert.Single(job.Blobs.Blobs.Names());
+        await job.Blobs.DeleteAccountRecordsAsync(User, CancellationToken.None);
 
         Assert.Empty(job.Blobs.Blobs.Names());
     }

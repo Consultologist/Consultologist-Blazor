@@ -33,6 +33,7 @@ public sealed class AccountClosure
     private readonly IConsultGenerationJobEventStore _events;
     private readonly ILegacyJobEventDelete _legacyEvents;
     private readonly V31.IRecordRowStore _recordRows;
+    private readonly V31.IRecordBlobStore _recordBlobs;
     private readonly IConsultGenerationLinkStore _links;
     private readonly IFormResponseStore _formResponses;
     private readonly IJobOutputsBlobStore _outputsBlobs;
@@ -50,6 +51,7 @@ public sealed class AccountClosure
         IConsultGenerationJobEventStore events,
         ILegacyJobEventDelete legacyEvents,
         V31.IRecordRowStore recordRows,
+        V31.IRecordBlobStore recordBlobs,
         IConsultGenerationLinkStore links,
         IFormResponseStore formResponses,
         IJobOutputsBlobStore outputsBlobs,
@@ -66,6 +68,7 @@ public sealed class AccountClosure
         _events = events;
         _legacyEvents = legacyEvents;
         _recordRows = recordRows;
+        _recordBlobs = recordBlobs;
         _links = links;
         _formResponses = formResponses;
         _outputsBlobs = outputsBlobs;
@@ -144,6 +147,13 @@ public sealed class AccountClosure
         var blobs = await _outputsBlobs.DeleteAccountAsync(appUserId, cancellationToken)
             + await _inputsBlobs.DeleteAccountAsync(appUserId, cancellationToken)
             + await _formResponseBlobs.DeleteAccountAsync(appUserId, cancellationToken);
+
+        // R5 (#1509): record.json is in the records account's job-records container, under {appUserId}/. As with the rows
+        // (F5), only an account with a storage-12 job reaches it; a host with 31 off never touches that account.
+        if (jobs.Any(job => job.RecordStorage >= V31.RecordSealer.SealedFrom))
+        {
+            await _recordBlobs.DeleteAccountRecordsAsync(appUserId, cancellationToken);
+        }
 
         // 2. Packages: the ownership rows are the authoritative fork set
         // (#462 — a bare acct-<12hex> prefix can collide across accounts, so

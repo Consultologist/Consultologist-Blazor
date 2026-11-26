@@ -63,8 +63,8 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
   - **Retained text** is in the blobs `{appUserId}/{jobId}/text/{sha256 hex of the key}.{part}.json`
     in the account's outputs container, `part` being `produced` (written by the activity that made
     the text) or `settled` (written with the row).
-  - **The canonical record document** is the blob `{appUserId}/{jobId}/record.json` in the same
-    container, which the sweep never deletes. It is a materialisation of the rows under the header: it may be
+  - **The canonical record document** is the blob `{appUserId}/{jobId}/record.json` in the records
+    account's `job-records` container (no lifecycle rule applies to it; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1509)), which the sweep never deletes. It is a materialisation of the rows under the header: it may be
     assembled again from them (when the blob is gone), and is kept only if it hashes to `recordHash` (decided in the
     build, #1506).
 - **A row write is insert-if-absent,** keyed by job and rooted key ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical second

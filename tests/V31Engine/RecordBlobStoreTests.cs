@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Consultologist.Api.V31;
+using Microsoft.Extensions.Configuration;
+using NSubstitute;
 
 namespace Consultologist.Api.Tests.V31Engine;
 
@@ -94,7 +96,7 @@ public sealed class BlobRecordStoreTests : RecordBlobStoreContract
     private protected override IRecordBlobStore Create() => new BlobRecordStore(new InMemoryRecordBlobs());
 
     [Fact]
-    public async Task TheNames_AreD10sAndTheContainerIsTheKinds()
+    public async Task TheNames_AreD10s_TheTextsContainerIsTheKinds_AndTheRecordsIsJobRecords()
     {
         var blobs = new InMemoryRecordBlobs();
         var store = new BlobRecordStore(blobs);
@@ -106,7 +108,7 @@ public sealed class BlobRecordStoreTests : RecordBlobStoreContract
         await store.WriteRecordAsync("organisation", "u", "j", "{}", CancellationToken.None);
 
         Assert.Equal(
-            [("org-job-outputs", $"u/j/record.json"), ("org-job-outputs", $"u/j/text/{hex}.produced.json"), ("personal-job-outputs", $"u/j/text/{hex}.settled.json")],
+            [("job-records", "u/j/record.json"), ("org-job-outputs", $"u/j/text/{hex}.produced.json"), ("personal-job-outputs", $"u/j/text/{hex}.settled.json")],
             blobs.Names());
     }
 
@@ -116,8 +118,74 @@ public sealed class BlobRecordStoreTests : RecordBlobStoreContract
         var blobs = new InMemoryRecordBlobs();
         await new BlobRecordStore(blobs).WriteRecordAsync(null, "u", "j", "{}", CancellationToken.None);
 
-        Assert.Equal("{}"u8.ToArray(), blobs.BytesOf("personal-job-outputs", "u/j/record.json"));
+        Assert.Equal("{}"u8.ToArray(), blobs.BytesOf("job-records", "u/j/record.json"));
     }
+
+    [Fact]
+    public async Task TheRecord_IsWrittenToTheRecordsContainer_NotTheOutputsContainer()
+    {
+        var blobs = new InMemoryRecordBlobs();
+        var store = new BlobRecordStore(blobs);
+
+        await store.WriteRecordAsync("organisation", "u", "j", "{}", CancellationToken.None);
+        await store.WriteRecordAsync(null, "u", "k", "{}", CancellationToken.None);
+
+        Assert.Equal("job-records", BlobRecordStore.RecordContainer);
+        Assert.Equal([("job-records", "u/j/record.json"), ("job-records", "u/k/record.json")], blobs.Names());
+    }
+
+    [Fact]
+    public async Task TextBlobs_StayInTheOutputsContainer()
+    {
+        var blobs = new InMemoryRecordBlobs();
+        var store = new BlobRecordStore(blobs);
+
+        await store.WriteTextAsync("organisation", "u", "j", "k", "settled", new JsonObject(), CancellationToken.None);
+        await store.WriteTextAsync(null, "u", "j", "k", "settled", new JsonObject(), CancellationToken.None);
+
+        Assert.Equal(["org-job-outputs", "personal-job-outputs"], blobs.Names().Select(n => n.Container));
+    }
+
+    [Fact]
+    public async Task DeletingTheAccountsRecords_TakesItsPrefixInTheRecordsContainerOnly()
+    {
+        var blobs = new InMemoryRecordBlobs();
+        var store = new BlobRecordStore(blobs);
+        await store.WriteRecordAsync(null, "u", "j1", "{}", CancellationToken.None);
+        await store.WriteRecordAsync("organisation", "u", "j2", "{}", CancellationToken.None);
+        await store.WriteRecordAsync(null, "u2", "j1", "{}", CancellationToken.None);
+        await store.WriteTextAsync(null, "u", "j1", "k", "settled", new JsonObject(), CancellationToken.None);
+
+        await store.DeleteAccountRecordsAsync("u", CancellationToken.None);
+
+        Assert.Equal(
+            [("job-records", "u2/j1/record.json"), ("personal-job-outputs", $"u/j1/text/{Convert.ToHexString(SHA256.HashData("k"u8.ToArray())).ToLowerInvariant()}.settled.json")],
+            blobs.Names());
+    }
+
+    [Fact]
+    public void WithoutTheSetting_TheRecordStaysInTheTextAccount_InItsOwnContainer_AndSaysSoOnce()
+    {
+        // built over the local connection string, never called: nothing is created
+        var without = new CapturingLogger<BlobRecordStore>();
+        _ = new BlobRecordStore(Configuration(null), Substitute.For<Azure.Core.TokenCredential>(), without);
+        var warning = Assert.Single(without.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning && e.Message.Contains("ConsultGenerationRecordStorage:BlobServiceUri", StringComparison.Ordinal));
+        Assert.Contains("text account", warning.Message, StringComparison.Ordinal);
+        Assert.Equal("job-records", BlobRecordStore.RecordContainer); // its own container, not a kind's outputs container
+
+        var with = new CapturingLogger<BlobRecordStore>();
+        _ = new BlobRecordStore(Configuration("https://records.example.test"), Substitute.For<Azure.Core.TokenCredential>(), with);
+        Assert.DoesNotContain(with.Entries, e => e.Message.Contains("ConsultGenerationRecordStorage:BlobServiceUri", StringComparison.Ordinal) && e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+    }
+
+    private static IConfiguration Configuration(string? recordsUri) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AzureWebJobsStorage"] = "UseDevelopmentStorage=true",
+                ["ConsultGenerationRecordStorage:BlobServiceUri"] = recordsUri,
+            })
+            .Build();
 
     [Fact]
     public async Task NothingIsTouched_UntilTheStoreIsUsed()

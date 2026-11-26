@@ -96,6 +96,19 @@ internal sealed class TextBlobClientFactory
         logger.LogWarning("{Store} using connection-string auth (local-dev fallback). Prefer TextStorage__BlobServiceUri with managed identity.", storeName);
     }
 
+    /// <summary>R5 (#1509): a client over one explicit blob service, Entra ID only (no connection-string fallback).</summary>
+    public TextBlobClientFactory(string serviceUri, TokenCredential credential, ILogger logger, string storeName, string settingName)
+    {
+        var service = new BlobServiceClient(new Uri(serviceUri), credential);
+        _containerFor = service.GetBlobContainerClient;
+        _createContainers = false;
+        logger.LogInformation("{Store} using Entra ID auth ({Setting}). BlobServiceUri={BlobServiceUri}", storeName, settingName, serviceUri);
+    }
+
+    /// <summary>R5 (#1509): the container, made if absent (Storage Blob Data Contributor may create one).</summary>
+    public Task EnsureContainerAsync(string container, CancellationToken cancellationToken) =>
+        _containerFor(container).CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
     public async Task WriteJsonAsync<T>(string container, string name, T payload, CancellationToken cancellationToken)
     {
         var client = _containerFor(container);

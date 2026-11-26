@@ -26,6 +26,7 @@ public class AccountClosureTests
     private readonly IConsultGenerationJobEventStore _events = Substitute.For<IConsultGenerationJobEventStore>();
     private readonly ILegacyJobEventDelete _legacyEvents = Substitute.For<ILegacyJobEventDelete>();
     private readonly Consultologist.Api.V31.IRecordRowStore _recordRows = Substitute.For<Consultologist.Api.V31.IRecordRowStore>();
+    private readonly Consultologist.Api.V31.IRecordBlobStore _recordBlobs = Substitute.For<Consultologist.Api.V31.IRecordBlobStore>();
     private readonly IConsultGenerationLinkStore _links = Substitute.For<IConsultGenerationLinkStore>();
     private readonly IFormResponseStore _formResponses = Substitute.For<IFormResponseStore>();
     private readonly IJobOutputsBlobStore _outputsBlobs = Substitute.For<IJobOutputsBlobStore>();
@@ -41,7 +42,7 @@ public class AccountClosureTests
     {
         _client.Entities.Returns(_entities);
         return new AccountClosure(
-            _accounts, _settings, _index, _events, _legacyEvents, _recordRows, _links, _formResponses,
+            _accounts, _settings, _index, _events, _legacyEvents, _recordRows, _recordBlobs, _links, _formResponses,
             _outputsBlobs, _inputsBlobs, _formResponseBlobs, _ownership, _packageRegistry,
             _closed, NullLogger<AccountClosure>.Instance);
     }
@@ -144,6 +145,34 @@ public class AccountClosureTests
     }
 
     [Fact]
+    public async Task AccountClosure_DeletesTheAccountsPrefix_InTheRecordsContainer()
+    {
+        // R5 (#1509): record.json is in the records account; the closure deletes the account's prefix there, after the text blobs
+        WithDisabledAccount(Job("job-12", "Completed", 12), Job("job-11", "Completed"));
+
+        await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
+
+        await _recordBlobs.Received(1).DeleteAccountRecordsAsync(User, Arg.Any<CancellationToken>());
+        Received.InOrder(() =>
+        {
+            _outputsBlobs.DeleteAccountAsync(User, Arg.Any<CancellationToken>());
+            _recordBlobs.DeleteAccountRecordsAsync(User, Arg.Any<CancellationToken>());
+            _ownership.DeleteAllAsync(User, Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task AFailureDeletingTheRecordsBlobs_StopsTheClosure()
+    {
+        WithDisabledAccount(Job("job-12", "Completed", 12));
+        _recordBlobs.DeleteAccountRecordsAsync(User, Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("boom")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None));
+
+        await _accounts.DidNotReceiveWithAnyArgs().DeleteAccountAsync(default!, default);
+    }
+
+    [Fact]
     public async Task ClosingAnAccountOf30Jobs_MakesTheCallsItMadeBefore31()
     {
         // #1506 (final review F5): with no storage-12 job, the closure reads no entity and calls no record store
@@ -153,6 +182,7 @@ public class AccountClosureTests
         await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
 
         Assert.Empty(_recordRows.ReceivedCalls());
+        Assert.Empty(_recordBlobs.ReceivedCalls());
         Assert.Equal(
             ["SignalEntityAsync", "SignalEntityAsync", "SignalEntityAsync", "CleanEntityStorageAsync"],
             _entities.ReceivedCalls().Select(call => call.GetMethodInfo().Name));

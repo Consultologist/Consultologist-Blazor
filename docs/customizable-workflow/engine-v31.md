@@ -542,7 +542,9 @@ reached four ways:
   is tried again at the next pass (`RecordNotSealedException`, logged with the job id and the exception's type);
 - the first read of a terminal job that has no `recordHash`: `GET ConsultGenerationJobs/{jobId}/Record`.
 
-**Restoring.** `record.json` sits in the text account, whose 30-day lifecycle policy deletes it. The document is a
+**Restoring.** `record.json` sits in the container `job-records` of the records account, to which no lifecycle rule
+applies (R5, #1509; before that it sat in the text account, whose 30-day policy deleted it, and a record written there is
+read as missing and restored). The document is a
 materialisation of the rows under the header (decided in the build, #1506), so `RecordSealer.ReadSealedAsync`, which
 the `Record` route reads through, seals the job if need be, reads the blob and, when a stamped job's blob is gone,
 assembles the document again and writes it back only if it hashes to the stamped `recordHash`. It logs
@@ -576,9 +578,10 @@ job that is not the caller's or is below storage 12):
   Try again."* with CORS, and logs `V31 rows not available. JobId, ExceptionType`.
 
 **Retention and closure.** The 7-day sweep calls `IRecordTextDrop` first: it seals the job if need be, deletes the
-job's `text/` blobs, and only then signals `DropText`. The sweep never deletes `record.json` (the lifecycle policy
-does, at 30 days, and the next read restores it, above), and `recordHash` still holds afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
-closure, which a rerun resumes. The blobs go with the account's prefix. Both know a storage-12 job from its index row
+job's `text/` blobs, and only then signals `DropText`. The sweep never deletes `record.json` or a row, and `recordHash` still holds afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
+closure, which a rerun resumes. The text blobs go with the account's prefix in the text account, and `record.json` with
+the account's `{appUserId}/` prefix of `job-records` in the records account (`IRecordBlobStore.DeleteAccountRecordsAsync`,
+called only for an account with a storage-12 job; a failure stops the closure). Both know a storage-12 job from its index row
 (`ConsultGenerationJobIndex`'s `RecordStorage`, written only for a job at storage 12 or later), so for a 5–30 job they
 make the calls they made before 31: no entity read and no record store. A 5–30 row is written through the entity type
 it always was, so its stored properties are unchanged. A 31 job indexed before this column existed has none and is
@@ -825,7 +828,8 @@ re-read for that job.
 | `ConsultGeneration__JobAgentCalls` | 500 | The agent calls one job may make; a retry or repair is part of its call (S09-015 past it) |
 | `ConsultGeneration__RenderSteps` | 100000 | The steps one render may take (S05-062 past it) |
 | `ConsultGeneration__JobInstances` | 10000 | The instances one job may open: a node, check or deliverable instance, a loop item, a pass or a call (A09-001 past it; recorded in `limits` as `jobInstances`). Publish refuses a package whose worst case opens more (A11-001, #1508) |
-| `ConsultGenerationRecordStorage__TableServiceUri` (or `…__ConnectionStringName`) | unset | Where the table `ConsultGenerationRecordRows` lives. Unset, the table is on the account `AccountStorage` names, as the other job tables are; the text and record blobs are in the job outputs container, never here |
+| `ConsultGenerationRecordStorage__TableServiceUri` (or `…__ConnectionStringName`) | unset | Where the table `ConsultGenerationRecordRows` lives. Unset, the table is on the account `AccountStorage` names, as the other job tables are; the text blobs are in the job outputs container, never here |
+| `ConsultGenerationRecordStorage__BlobServiceUri` | unset | The records account's blob service, where `record.json` is written, in the container `job-records` (created on the first write; the identity needs Storage Blob Data Contributor there). Unset, the document is written to a `job-records` container of the text account (`TextStorage`'s), where its 30-day rule deletes it and the next read restores it from the rows, and the host logs a warning naming this setting once at startup |
 | `ConsultGeneration__RegexMilliseconds` | 2000 | R2: the time one evaluation of `matches` or `has_word` may take (A06-001 past it). It is at most 2147483646, and it is not in the record (D8) |
 | `AzureAI__MaxRetries` | 0 | Keep 0 on any app that runs 31 jobs (above) |
 | `Operators__AppUserIds` | nobody | Who may call the drain's endpoints, as for `Operator/*` |
