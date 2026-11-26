@@ -95,12 +95,13 @@ public static class ByteEquivalence
     /// that cannot be mapped is left out, and the comparison reports the prompt it served under <c>#prompts@30/</c>), with
     /// what 30's engine added to the reply after it came (a <c>concept_list</c>'s <c>source</c>, #1504 ruling 3), and every
     /// member its 31 format lists (<see cref="Fit"/>). A reply the capture lacks is generated, seeded with 30's key
-    /// (<see cref="KeyMap.To30"/>). #1508 (comment 6 item 2; R14): a captured reply is replayed exactly as 30's model
-    /// wrote it, no 31 marker added (<see cref="OfflineStubs.Reply"/>), so one that holds no marker for a macro 31 offers
-    /// fails its node as it would live. Each macro-choice classifier (<see cref="ChoiceClassifiers"/>, R14) is answered from
-    /// the capture (<see cref="ChoiceAnswers"/>). #1508 (comment 5, item 7, #10): each macro 30's engine placed before or after
-    /// a node's reply (<see cref="EnginePlaced"/>) has its marker written into a captured reply that lacks it, where the
-    /// macro's instruction asks for it (<see cref="OfflineRequest.EnginePlaced"/>).</item>
+    /// (<see cref="KeyMap.To30"/>). Markers in a captured reply: for a macro 30's model chose (#1508, comment 6 item 2;
+    /// R14), the reply is replayed exactly as 30's model wrote it, no marker added (<see cref="OfflineStubs.Reply"/>), so one
+    /// that left the marker out fails its node as it would live; each macro-choice classifier
+    /// (<see cref="ChoiceClassifiers"/>) is answered from the capture (<see cref="ChoiceAnswers"/>). For a macro 30's engine
+    /// placed before or after the reply (comment 5, item 7, #10; <see cref="EnginePlaced"/>), 30's reply never held a
+    /// marker, so the comparison writes the marker in where the macro's instruction asks
+    /// (<see cref="OfflineRequest.EnginePlaced"/>): alone on the reply's first line, or its last.</item>
     /// </list>
     /// </summary>
     public static OfflineRequest RequestFor(JsonObject scenario30, JsonObject capture30, Migration31Result migrated, RunPlan plan)
@@ -173,30 +174,25 @@ public static class ByteEquivalence
 
     /// <summary>
     /// #1508 (comment 5, item 7, #10): each macro 30's engine placed on one side of a node's reply, by its 31 site
-    /// (<c>macro.&lt;id&gt;</c>), <c>true</c> before and <c>false</c> after, read from <paramref name="migrated"/>'s hand edits
-    /// (A10-003, <see cref="Migration.MigrationSentences.PlacedByTheEngine"/>: the edit writes the instruction that says
-    /// where the model writes its marker). A macro placed on both sides is left out: where its marker goes is the edit's own.
+    /// (<c>macro.&lt;id&gt;</c>), <c>true</c> before and <c>false</c> after: each macro of <paramref name="migrated"/>'s files
+    /// for which a hand edit holds A10-003's reason (<see cref="Migration.MigrationSentences.PlacedByTheEngine"/>, composed
+    /// with the macro's 30 id, <see cref="Name30"/>, and the side; the edit writes the instruction that says where the model
+    /// writes its marker). A macro placed on both sides is left out: where its marker goes is the edit's own.
     /// </summary>
     public static IReadOnlyDictionary<string, bool> EnginePlaced(Migration31Result migrated)
     {
         ArgumentNullException.ThrowIfNull(migrated);
-        const string Head = "macro '";
-        const string Placed = "' was placed ";
-        const string Tail = " the reply by the engine; ";
-        var ids31 = migrated.MacroIds30.Where(m => !m.Key.Contains('/', StringComparison.Ordinal))
-            .ToDictionary(m => m.Value, m => m.Key, StringComparer.Ordinal);
         var placed = new Dictionary<string, bool>(StringComparer.Ordinal);
-        foreach (var edit in migrated.HandEdits)
+        if (migrated.HandEdits.Count == 0)
+            return placed;
+        foreach (var path in migrated.Files.Keys.Where(p => p.StartsWith("macros/", StringComparison.Ordinal) && p.EndsWith(".md", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
         {
-            var at = edit.IndexOf(Head, StringComparison.Ordinal);
-            var end = at < 0 ? -1 : edit.IndexOf(Placed, at + Head.Length, StringComparison.Ordinal);
-            var tail = end < 0 ? -1 : edit.IndexOf(Tail, end + Placed.Length, StringComparison.Ordinal);
-            if (tail < 0)
-                continue;
-            var id = edit[(at + Head.Length)..end];
-            var side = edit[(end + Placed.Length)..tail];
-            if (side is "before" or "after")
-                placed["macro." + ids31.GetValueOrDefault(id, id).Replace('/', '.')] = side == "before";
+            var macro = path["macros/".Length..^".md".Length].Replace('/', '.');
+            var id30 = Name30(migrated, macro).Replace('.', '/');
+            bool Says(string where) => migrated.HandEdits.Any(e => e.Contains(Migration.MigrationSentences.PlacedByTheEngine(id30, where), StringComparison.Ordinal));
+            var (before, after) = (Says(WorkflowNodeMacroSpec.Before), Says(WorkflowNodeMacroSpec.After));
+            if (before != after)
+                placed["macro." + macro] = before;
         }
 
         return placed;
