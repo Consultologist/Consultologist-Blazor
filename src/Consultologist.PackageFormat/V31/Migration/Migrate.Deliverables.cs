@@ -12,7 +12,7 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <c>check.&lt;id&gt;</c> or <c>null</c>, and <c>whenEmpty</c> from <see cref="Migration31Options.WhenEmpty"/>
 /// (§ 1.10, D7; <c>"release"</c> when unsaid). Its body is the composition template D8 names: the prepended macros, the
 /// sources, the appended macros and the signature, in that order, one blank line between each. A source is read as its
-/// <c>.content</c> (a loop's is 30's blocks, part 05 § 5.3); a macro with no condition is a snippet read
+/// <c>.content | string.strip</c> (a loop's is 30's blocks, part 05 § 5.3; #1508 item 3); a macro with no condition is a snippet read
 /// (<c>{{ snippet.&lt;id&gt;.content }}</c>, D4: the snippet the macros pass wrote, or one written here from the macro's
 /// body when a prompt also places the macro); a macro with a condition (its own <c>if</c>, the placement's, or an
 /// optional one) is a hand edit (D3, A10-002), written <c>{{ macro.&lt;id&gt;.fixed_text }}</c>, which 31 refuses; 30's
@@ -156,7 +156,8 @@ internal static partial class Migrate
 
     /// <summary>
     /// D8: the template, its pieces one blank line apart: each prepended macro (placement order), each source's
-    /// <c>.content</c> (<c>sources</c> order), each appended macro, then <c>{{ profile.signature }}</c> when 30 signed it.
+    /// <c>.content | string.strip</c> (<c>sources</c> order; #1508 item 3, F-D8: 30's composer trimmed each part, never the
+    /// whole, and never a macro's snippet, R5), each appended macro, then <c>{{ profile.signature }}</c> when 30 signed it.
     /// </summary>
     private static string Composition(Migrated m, WorkflowDeliverableSpec deliverable, string file, Dictionary<string, string> copies)
     {
@@ -166,7 +167,7 @@ internal static partial class Migrate
         foreach (var placement in macros.Where(x => x?.At == WorkflowDeliverableMacroSpec.Prepend))
             pieces.Add(DeliverableMacro(m, placement, file, said, copies));
         foreach (var source in deliverable.Sources ?? [])
-            pieces.Add($"{{{{ {SourceRead(m, source)}.content }}}}");
+            pieces.Add($"{{{{ {SourceRead(m, source)}.content | string.strip }}}}");
         foreach (var placement in macros.Where(x => x is not null && x.At != WorkflowDeliverableMacroSpec.Prepend))
             pieces.Add(DeliverableMacro(m, placement, file, said, copies));
         if (deliverable.Signature == true)

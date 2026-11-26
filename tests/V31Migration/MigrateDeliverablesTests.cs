@@ -116,22 +116,30 @@ public class MigrateDeliverablesTests
     }
 
     [Theory]
-    [InlineData("single", "{{ node.opening.content }}")]                                     // one scalar source
-    [InlineData("pair", "{{ node.opening.content }}\n\n{{ node.closing.content }}")]          // two, one blank line between
-    [InlineData("topics", "{{ node.topic_loop.content }}")]                                   // a for: its .content, 30's blocks
-    [InlineData("sections", "{{ node.section_loop.content }}")]                               // a for with a for inside
-    [InlineData("summary", "{{ node.refine.content }}")]                                      // a while
-    [InlineData("plan", "{{ node.plan_gate.content }}")]                                      // an if
-    [InlineData("tone_line", "{{ node.tone_case.content }}")]                                 // a case
-    [InlineData("tally", "{{ node.topic_tally.content }}")]                                   // a let of type text
-    [InlineData("summary_then_opening", "{{ node.refine.content }}\n\n{{ node.opening.content }}")]
-    [InlineData("topics_then_opening", "{{ node.topic_loop.content }}\n\n{{ node.opening.content }}")]
+    [InlineData("single", "{{ node.opening.content | string.strip }}")]                                     // one scalar source
+    [InlineData("pair", "{{ node.opening.content | string.strip }}\n\n{{ node.closing.content | string.strip }}")]          // two, one blank line between
+    [InlineData("topics", "{{ node.topic_loop.content | string.strip }}")]                                   // a for: its .content, 30's blocks
+    [InlineData("sections", "{{ node.section_loop.content | string.strip }}")]                               // a for with a for inside
+    [InlineData("summary", "{{ node.refine.content | string.strip }}")]                                      // a while
+    [InlineData("plan", "{{ node.plan_gate.content | string.strip }}")]                                      // an if
+    [InlineData("tone_line", "{{ node.tone_case.content | string.strip }}")]                                 // a case
+    [InlineData("tally", "{{ node.topic_tally.content | string.strip }}")]                                   // a let of type text
+    [InlineData("summary_then_opening", "{{ node.refine.content | string.strip }}\n\n{{ node.opening.content | string.strip }}")]
+    [InlineData("topics_then_opening", "{{ node.topic_loop.content | string.strip }}\n\n{{ node.opening.content | string.strip }}")]
     public void EachSource_IsReadAsItsContent_InSourcesOrder(string deliverable, string template)
     {
         var result = MigrateNodesTests.Migrated("composer-sources");
 
         Assert.Equal(template, Template(result, deliverable));
         Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(result, $"deliverables/{deliverable}.md").Header["format"]);
+    }
+
+    [Fact]
+    public void ASnippetPiece_IsNotStripped()
+    {
+        // #1508 (item 3, F-D8): a macro placed bare stays R5's snippet read; only the source is stripped.
+        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content | string.strip }}",
+            Template(MigrateNodesTests.Migrated("composer-macros"), "prepended"));
     }
 
     [Fact]
@@ -360,9 +368,9 @@ public class MigrateDeliverablesTests
     {
         var result = MigrateNodesTests.Migrated("composer-macros");
 
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ profile.signature }}", Template(result, "signed_only"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ profile.signature }}", Template(result, "signed_only"));
         // After an appended macro: the signature is last.
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ snippet.cc_line.content }}\n\n{{ profile.signature }}", Template(result, "signed_letter"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ snippet.cc_line.content }}\n\n{{ profile.signature }}", Template(result, "signed_letter"));
         Assert.DoesNotContain(result.HandEdits, e => e.Contains("deliverables/signed", StringComparison.Ordinal));
     }
 
@@ -372,15 +380,15 @@ public class MigrateDeliverablesTests
         var result = MigrateNodesTests.Migrated("composer-macros");
 
         // D4: a prepend before the sources, an append after them, each where 30 placed it.
-        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content }}", Template(result, "prepended"));
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ snippet.closing_line.content }}", Template(result, "appended"));
+        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content | string.strip }}", Template(result, "prepended"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ snippet.closing_line.content }}", Template(result, "appended"));
         Assert.Equal(
-            "{{ snippet.letterhead.content }}\n\n{{ snippet.reference_line.content }}\n\n{{ node.letter_body.content }}\n\n"
+            "{{ snippet.letterhead.content }}\n\n{{ snippet.reference_line.content }}\n\n{{ node.letter_body.content | string.strip }}\n\n"
             + "{{ snippet.closing_line.content }}\n\n{{ snippet.second_closing.content }}",
             Template(result, "both"));
         // A deliverable's own if does not make its macros conditional (review_summary's letterhead).
-        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content }}", Template(result, "review_summary"));
-        Assert.Equal("{{ node.section_loop.content }}", Template(result, "sections_note"));
+        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content | string.strip }}", Template(result, "review_summary"));
+        Assert.Equal("{{ node.section_loop.content | string.strip }}", Template(result, "sections_note"));
         // Task 15 fix round 1 (R5, D4): a snippet only deliverables read keeps 30's bytes, its trailing white space trimmed
         // as 30's composer trimmed a placed macro (ConsultMacroExpander's TrimEnd()), where 31 reads a snippet whole.
         Assert.Equal("Riverside Clinic (fictional)", MigrateNodesTests.Md(result, "snippets/letterhead.md").Body);
@@ -406,14 +414,14 @@ public class MigrateDeliverablesTests
 
         // A macro if (new_visit_note), a placement if (review_note); review_leaflet and closing_line have none.
         Assert.Equal(
-            "{{ node.letter_body.content }}\n\n{{ macro.new_visit_note.fixed_text }}\n\n{{ macro.review_note.fixed_text }}\n\n"
+            "{{ node.letter_body.content | string.strip }}\n\n{{ macro.new_visit_note.fixed_text }}\n\n{{ macro.review_note.fixed_text }}\n\n"
             + "{{ snippet.review_leaflet.content }}\n\n{{ snippet.closing_line.content }}",
             Template(result, "gated"));
         AssertHandEdit(result, "deliverables/gated.md", "body", "A10-002", Conditioned("new_visit_note"));
         AssertHandEdit(result, "deliverables/gated.md", "body", "A10-002", Conditioned("review_note"));
 
         // Optional macros, default on and default off.
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ macro.followup_offer.fixed_text }}\n\n{{ macro.leaflet_offer.fixed_text }}", Template(result, "optional"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ macro.followup_offer.fixed_text }}\n\n{{ macro.leaflet_offer.fixed_text }}", Template(result, "optional"));
         AssertHandEdit(result, "deliverables/optional.md", "body", "A10-002", Conditioned("followup_offer"));
         AssertHandEdit(result, "deliverables/optional.md", "body", "A10-002", Conditioned("leaflet_offer"));
 
@@ -425,7 +433,7 @@ public class MigrateDeliverablesTests
         // macro if (brief_plan), an optional macro (follow_up_reminder); closing is fixed text.
         var macros = MigrateNodesTests.Migrated("example-macros");
         var consult = Template(macros, "consult_note");
-        Assert.StartsWith("{{ macro.header_line.fixed_text }}\n\n{{ node.requested_sections.content }}\n\n", consult, StringComparison.Ordinal);
+        Assert.StartsWith("{{ macro.header_line.fixed_text }}\n\n{{ node.requested_sections.content | string.strip }}\n\n", consult, StringComparison.Ordinal);
         Assert.EndsWith("{{ macro.followup_only.fixed_text }}\n\n{{ macro.brief_plan.fixed_text }}\n\n{{ macro.follow_up_reminder.fixed_text }}", consult, StringComparison.Ordinal);
         foreach (var macro in new[] { "header_line", "followup_only", "brief_plan", "follow_up_reminder" })
             AssertHandEdit(macros, "deliverables/consult_note.md", "body", "A10-002", Conditioned(macro));
@@ -445,7 +453,7 @@ public class MigrateDeliverablesTests
         var result = MigrateNodesTests.Migrated("test/general");
 
         // D6: the macro test, fixed text appended, is the snippet test_snippet, read last.
-        Assert.Equal("{{ node.standards.content }}\n\n{{ snippet.test_snippet.content }}", Template(result, "consult"));
+        Assert.Equal("{{ node.standards.content | string.strip }}\n\n{{ snippet.test_snippet.content }}", Template(result, "consult"));
         Assert.True(result.Files.ContainsKey("snippets/test_snippet.md"));
         Assert.False(result.Files.ContainsKey("macros/test.md"));
         Assert.Equal(
@@ -740,7 +748,7 @@ public class MigrateDeliverablesTests
             var check = SourceCheck.Run(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes());
             Assert.True(check.Refusals.Count == 0, string.Join("\n", check.Refusals.Select(r => $"{r.Id} {r.Path}: {r.Sentence}")));
             Assert.Empty(MigratedPackagesTests.Publish(result));
-            Assert.StartsWith("{{ node.topic_loop.content }}", Template(result, "topics"), StringComparison.Ordinal);
+            Assert.StartsWith("{{ node.topic_loop.content | string.strip }}", Template(result, "topics"), StringComparison.Ordinal);
             Assert.Empty(check.Templates!.Escapes("deliverable.topics"));
             return;
         }
@@ -829,7 +837,7 @@ public class MigrateDeliverablesTests
 
         foreach (var (id, loop) in new[] { ("topics", "topic_loop"), ("sections", "section_loop"), ("topics_then_opening", "topic_loop") })
         {
-            Assert.StartsWith($"{{{{ node.{loop}.content }}}}", Template(result, id), StringComparison.Ordinal);
+            Assert.StartsWith($"{{{{ node.{loop}.content | string.strip }}}}", Template(result, id), StringComparison.Ordinal);
             Assert.Empty(check.Templates!.Escapes($"deliverable.{id}"));
         }
     }

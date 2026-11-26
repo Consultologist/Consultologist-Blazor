@@ -262,7 +262,7 @@ public class EdgeCasePackagesTests
         Assert.Contains("Blood pressure", lines30, StringComparison.Ordinal);
 
         var files = Upload(Edged("edge-items-not-run"));
-        Edit(files, "deliverables/note.md", "{{ node.problem_loop.content }}", "{{ for e in node.problem_loop.items }}## {{ e.label }}\n\n{{ e.content }}\n\n{{ end }}");
+        Edit(files, "deliverables/note.md", "{{ node.problem_loop.content | string.strip }}", "{{ for e in node.problem_loop.items }}## {{ e.label }}\n\n{{ e.content }}\n\n{{ end }}");
         var outcome = await PackagePublish.CheckAsync(files, Options());
 
         var warning = Assert.Single(outcome.Report.Warnings, w => w.Id == "A11-011");

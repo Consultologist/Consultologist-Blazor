@@ -397,6 +397,28 @@ public class ByteEquivalenceTests
     }
 
     [Fact]
+    public async Task EachComposedSource_IsTrimmedAs30Did()
+    {
+        // #1508 (item 3): 30's composer trimmed each source; the migration writes string.strip on each.
+        var (_, _, macros) = await EquivalenceFixture.Compared("composer-macros", "new-visit-defaults");
+        var prepended = macros.Single(t => t.Site == "composer-macros/new-visit-defaults#deliverables/deliverable.prepended");
+        Assert.True(prepended.Equal || prepended.Expected && prepended.Rules.All(r => r == "escaped-plain-text"), string.Join(",", prepended.Rules));
+        // Every deliverable over letter_body but the three whose macros are hand edits (gated, optional, echoes: their text is
+        // the edit's to give).
+        string[] edited = ["gated", "optional", "echoes"];
+        Assert.All(macros.Where(t => t.Site.Contains("#deliverables/deliverable.", StringComparison.Ordinal) && !edited.Any(e => t.Site.EndsWith("deliverable." + e, StringComparison.Ordinal))),
+            t => Assert.False(t.Unexplained));
+
+        var (_, _, sources) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
+        Assert.True(sources.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.pair").Equal);
+
+        // The escaped-plain-text credit still finds the value a stripped read holds (tally; example-v12-constructs' consult).
+        Assert.Contains("escaped-plain-text", sources.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally").Rules);
+        var (_, _, v12) = await EquivalenceFixture.Compared("example-v12-constructs", "tone-friendly");
+        Assert.Contains("escaped-plain-text", v12.Single(t => t.Site == "example-v12-constructs/tone-friendly#deliverables/deliverable.consult").Rules);
+    }
+
+    [Fact]
     public async Task TheReport_CountsTheTextsExplained_PartlyExplained_AndUnexplained()
     {
         // R19: explained (no remainder), partly explained (a rule credited, a remainder left) and unexplained (no rule),

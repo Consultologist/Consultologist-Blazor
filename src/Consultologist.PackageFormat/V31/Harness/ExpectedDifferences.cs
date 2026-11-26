@@ -1496,7 +1496,7 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// The controller's ruling on #1508 (Task 33's review): a deliverable whose template reads a <c>while</c> that ran no pass
-    /// (its row's <c>passes</c> 0) as <c>{{ node.&lt;while&gt;.content }}</c>, with white space alone between that tag and the
+    /// (its row's <c>passes</c> 0) as <c>{{ node.&lt;while&gt;.content }}</c> (stripped or not), with white space alone between that tag and the
     /// next or the one before (the separator): the while composes as the empty text at both, and 30's composer dropped its
     /// part with its separator, where 31's template keeps it. 31's text with that separator taken out where the tag stood (at
     /// the start, at the end, or one of two separators side by side between) is 30's, where that brings the texts nearer.
@@ -1514,7 +1514,8 @@ public static class ExpectedDifferences
         foreach (var loop in c.Run31.Rows.Where(r => r.Kind == PlanKind.While && r.Key == r.EntryKey
                      && r.Detail["passes"] is JsonValue passes && passes.TryGetValue<int>(out var count) && count == 0))
         {
-            var tag = $"{{{{ {loop.Key}.content }}}}";
+            // The tag as the migration writes a source (#1508 item 3: stripped) or as a hand-written template reads it.
+            foreach (var tag in new[] { $"{{{{ {loop.Key}.content | string.strip }}}}", $"{{{{ {loop.Key}.content }}}}" })
             for (var at = body.IndexOf(tag, StringComparison.Ordinal); at >= 0; at = body.IndexOf(tag, at + tag.Length, StringComparison.Ordinal))
             {
                 var open = body.LastIndexOf("}}", at, StringComparison.Ordinal);
