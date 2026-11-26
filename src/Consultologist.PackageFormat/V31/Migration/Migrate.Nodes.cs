@@ -128,15 +128,16 @@ internal static partial class Migrate
 
     /// <summary>
     /// Part 05 § 1.2: <c>fail</c> and <c>retry</c> are kept; none is <c>fail</c>, 30's default as the engine applies it
-    /// (<c>ConsultNodeDispatch</c>); <c>flag</c>, which kept a reply that did not fit, has no 31 form: <c>fail</c>, with
-    /// A10-013 (D16).
+    /// (<c>ConsultNodeDispatch</c>); <c>flag</c>, which kept a reply that did not fit, has no 31 form: <c>retry</c> (one
+    /// more attempt with the validation error, then the node fails), with A10-013 (#1508, comment 5, item 3, where D16
+    /// wrote <c>fail</c>).
     /// </summary>
     private static string OnInvalid(Migrated m, WorkflowNodeSpec node)
     {
         if (node.OnInvalid == WorkflowOnInvalid.Flag)
         {
-            m.Notice(MigrationSentences.FlagBecomesFail(node.Id));
-            return WorkflowOnInvalid.Fail;
+            m.Notice(MigrationSentences.FlagBecomesRetry(node.Id));
+            return WorkflowOnInvalid.Retry;
         }
 
         return node.OnInvalid == WorkflowOnInvalid.Retry ? WorkflowOnInvalid.Retry : WorkflowOnInvalid.Fail;

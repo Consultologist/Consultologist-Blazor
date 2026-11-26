@@ -217,7 +217,7 @@ internal static class V31Contract
         ["A10-010"] = "Node '<id>' declared reproducible <true | false> at 30; <true | false> is written, as its reads give it.",
         ["A10-011"] = "No snapshot test was written: hand edits remain.",
         ["A10-012"] = "The package is at specVersion <n>; migration starts at 5.",
-        ["A10-013"] = "Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.",
+        ["A10-013"] = "Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails.",
         ["A10-014"] = "<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes.",
         ["A10-015"] = "The package is already at specVersion <n>.",
         ["A10-016"] = "The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.",

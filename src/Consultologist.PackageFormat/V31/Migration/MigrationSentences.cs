@@ -138,11 +138,12 @@ internal static class MigrationSentences
         "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.";
 
     /// <summary>
-    /// A10-013 (part 05 § 1.2, D16): node <paramref name="id"/> declared <c>onInvalid: flag</c>, which kept a reply that did
-    /// not fit its format; 31 has <c>fail</c> and <c>retry</c> only, and <c>fail</c> is written.
+    /// A10-013 (part 05 § 1.2, D16; #1508, comment 5, item 3): node <paramref name="id"/> declared <c>onInvalid: flag</c>,
+    /// which kept a reply that did not fit its format; 31 has <c>fail</c> and <c>retry</c> only, and <c>retry</c> is
+    /// written. Kept as a notice: #1447's before-and-after notification lists it.
     /// </summary>
-    public static string FlagBecomesFail(string id) =>
-        $"Node '{id}' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.";
+    public static string FlagBecomesRetry(string id) =>
+        $"Node '{id}' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails.";
 
     /// <summary>
     /// A10-027 (part 10 § 2.2, Review Focus 1, the Task 4 ruling): in <paramref name="file"/>'s <paramref name="member"/>,

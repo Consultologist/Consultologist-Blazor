@@ -265,8 +265,12 @@ public class MigrateNodesTests
         Assert.Null(none["failIfEmpty"]);
     }
 
+    /// <summary>
+    /// #1508 (comment 5, item 3): <c>flag</c>, which kept a reply that did not fit, is <c>retry</c> at 31: one more attempt
+    /// with the validation error, then the node fails. A10-013 is still said (#1447's notification lists it).
+    /// </summary>
     [Fact]
-    public void OnInvalid_IsKept_DefaultsToFail_AndFlagBecomesFailWithANotice()
+    public void OnInvalidFlag_BecomesRetry()
     {
         var result = Migrated("example-nested-note", root =>
         {
@@ -277,9 +281,9 @@ public class MigrateNodesTests
         Assert.Equal("fail", (string?)Md(result, "nodes/plan.md").Header["onInvalid"]);                      // kept
         Assert.Equal("fail", (string?)Md(result, "nodes/sections/paragraphs/draft_paragraph.md").Header["onInvalid"]); // none: 30's default
         Assert.Equal("retry", (string?)Md(result, "nodes/sections/outline.md").Header["onInvalid"]);             // kept
-        Assert.Equal("fail", (string?)Md(result, "nodes/refine/judge.md").Header["onInvalid"]);               // flag
+        Assert.Equal("retry", (string?)Md(result, "nodes/refine/judge.md").Header["onInvalid"]);              // flag
 
-        const string notice = "Node 'judge' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.";
+        const string notice = "Node 'judge' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails.";
         Assert.Equal([notice], result.Notices.Where(n => n.StartsWith("Node 'judge'", StringComparison.Ordinal)));
         Assert.Empty(result.HandEdits);
         V31Contract.AssertSentence(new SourceRefusal("A10-013", notice, ""));
