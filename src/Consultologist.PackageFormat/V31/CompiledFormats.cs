@@ -213,6 +213,10 @@ public sealed record CompiledFormats(
 
     private static void Walk(JsonObject schema, FormatSet scope, Func<NamedFormat, string> target, int depth)
     {
+        // Past WalkDepth a schema would get no propertyOrder (R10) and its resolve.json would not fit the schema; publish
+        // never gets here: the reader refuses any source JSON nesting past SourceBounds.JsonDepth (32) levels (S01-041,
+        // SourceLayout's strict parse; FormatDialect says it again of a format file), and each schema level is at least
+        // one JSON level, while the published built-in and catalogue formats nest a few levels.
         if (depth > WalkDepth)
             return;
 

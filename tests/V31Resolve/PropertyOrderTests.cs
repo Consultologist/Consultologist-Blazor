@@ -203,13 +203,19 @@ public class PropertyOrderTests
         {
             var changed = resolve.DeepClone().AsObject();
             change(changed);
-            Assert.False(schema.Validate(changed.ToJsonString(), null), $"{what}: a schema with properties and no propertyOrder still fits.");
+            Assert.False(schema.Validate(changed.ToJsonString(), null), $"{what} still fits.");
         }
 
-        Refused(d => d["formats"]!["$defs"]!["ordered"]!.AsObject().Remove("propertyOrder"), "a bundled format");
-        Refused(d => d["formats"]!["$defs"]!["ordered"]!["properties"]!["alpha"]!["items"]!.AsObject().Remove("propertyOrder"), "a bundled format's list's items");
-        Refused(d => d["formats"]!["$defs"]!["concept_list"]!.AsObject().Remove("propertyOrder"), "a catalogue format");
-        Refused(d => d["inputs"]!["details"]!["format"]!.AsObject().Remove("propertyOrder"), "an input's inline format");
-        Refused(d => d["inputs"]!["details"]!["format"]!["properties"]!["mid"]!.AsObject().Remove("propertyOrder"), "an inline format's nested object");
+        Refused(d => d["formats"]!["$defs"]!["ordered"]!.AsObject().Remove("propertyOrder"), "a bundled format without propertyOrder");
+        Refused(d => d["formats"]!["$defs"]!["ordered"]!["properties"]!["alpha"]!["items"]!.AsObject().Remove("propertyOrder"), "a bundled format's list's items without propertyOrder");
+        Refused(d => d["formats"]!["$defs"]!["concept_list"]!.AsObject().Remove("propertyOrder"), "a catalogue format without propertyOrder");
+        Refused(d => d["inputs"]!["details"]!["format"]!.AsObject().Remove("propertyOrder"), "an input's inline format without propertyOrder");
+        Refused(d => d["inputs"]!["details"]!["format"]!["properties"]!["mid"]!.AsObject().Remove("propertyOrder"), "an inline format's nested object without propertyOrder");
+
+        // An inline format is the dialect's plus propertyOrder, closed to anything else, at every depth.
+        Refused(d => d["inputs"]!["details"]!["format"]!["properties"]!["mid"]!["x-foo"] = 1, "an unknown keyword in an inline format's nested object");
+        Refused(d => d["inputs"]!["details"]!["format"]!["additionalProperties"] = true, "an inline object format with additionalProperties true");
+        Refused(d => d["inputs"]!["details"]!["format"]!["$schema"] = "urn:consultologist:spec:31:dialect", "an inline format with $schema");
+        Refused(d => d["inputs"]!["details"]!["format"]!["properties"]!["zeta"]!["propertyOrder"] = new JsonArray(), "propertyOrder with no properties");
     }
 }
