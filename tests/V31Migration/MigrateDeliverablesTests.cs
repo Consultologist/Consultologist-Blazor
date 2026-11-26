@@ -148,7 +148,7 @@ public class MigrateDeliverablesTests
 
         // A source that always runs: no if. Nor a while that checks first (refine): 30 composed one that ran no pass as
         // empty text and released the deliverable, as 31 does. Beside another source (summary_then_opening) its separator
-        // stays, which AWhileWithNoPass_KeepsItsSeparator pins.
+        // stays, an expected difference (while-no-pass-separator) that AWhileWithNoPass_KeepsItsSeparator pins.
         foreach (var always in new[] { "single", "pair", "topics", "sections", "summary", "tally", "summary_then_opening", "topics_then_opening" })
             Assert.Null(MigrateNodesTests.Md(result, $"deliverables/{always}.md").Header["if"]);
 
@@ -191,13 +191,15 @@ public class MigrateDeliverablesTests
         // #1508 (R15; part 10 § 3.2's unexpected difference 8): with every branch not taken, 30 skipped plan and tone_line and
         // 31 now skips them too (their if), so neither is compared. A while that ran no pass is empty text on both sides
         // (summary is equal), but beside opening 31 keeps the blank line between the two (summary_then_opening): no if
-        // can drop a separator and keep the text, so the difference is pinned here as unexpected, with this reason.
+        // can drop a separator and keep the text, so the controller ruled it an expected difference, while-no-pass-separator.
         var (_, _, texts) = await EquivalenceFixture.Compared("composer-sources", "branches-not-taken");
         string Site(string id) => $"composer-sources/branches-not-taken#deliverables/deliverable.{id}";
 
         Assert.DoesNotContain(texts, t => t.Site == Site("plan") || t.Site == Site("tone_line"));
         Assert.True(texts.Single(t => t.Site == Site("summary")).Equal);
-        Assert.Equal((false, false), texts.Single(t => t.Site == Site("summary_then_opening")) is var kept ? (kept.Equal, kept.Expected) : default);
+        var kept = texts.Single(t => t.Site == Site("summary_then_opening"));
+        Assert.Equal((false, true, false), (kept.Equal, kept.Expected, kept.Unexplained));
+        Assert.Equal(["while-no-pass-separator"], kept.Rules);
     }
 
     [Fact]
