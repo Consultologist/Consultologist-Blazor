@@ -102,7 +102,8 @@ public sealed class V31PackagePublisher(
 
     /// <summary>
     /// D5: null when the request may go on. A migration report from a caller who is not the operator is today's forbidden
-    /// answer; one without <c>oldVersion</c> and <c>newVersion</c> as text is refused. Reads nothing.
+    /// answer; one without <c>oldVersion</c> and <c>newVersion</c> as text is refused, and so is one that writes a member
+    /// twice in any object (the final review of Part F: its <c>newVersion</c> could not be rewritten). Reads nothing.
     /// </summary>
     public WorkflowPackagePublishResult? Admit(string appUserId, WorkflowPackagePublishRequest request)
     {
@@ -113,9 +114,32 @@ public sealed class V31PackagePublisher(
         if (!_operators.Contains(appUserId))
             return new WorkflowPackagePublishResult(null, ["A migration report is accepted only from the operator."], Forbidden: true);
 
-        return MigratedFrom(migration) == null
-            ? new WorkflowPackagePublishResult(null, ["MigrationReport must give oldVersion and newVersion as text."])
+        if (MigratedFrom(migration) == null)
+            return new WorkflowPackagePublishResult(null, ["MigrationReport must give oldVersion and newVersion as text."]);
+        return WritesAMemberTwice(migration)
+            ? new WorkflowPackagePublishResult(null, ["MigrationReport must be a JSON object with each member written once."])
             : null;
+    }
+
+    /// <summary>Whether an object in <paramref name="value"/>, at any depth, writes a member name twice (ordinal).</summary>
+    private static bool WritesAMemberTwice(JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var property in value.EnumerateObject())
+                {
+                    if (!names.Add(property.Name) || WritesAMemberTwice(property.Value))
+                        return true;
+                }
+
+                return false;
+            case JsonValueKind.Array:
+                return value.EnumerateArray().Any(WritesAMemberTwice);
+            default:
+                return false;
+        }
     }
 
     /// <summary>
@@ -208,19 +232,27 @@ public sealed class V31PackagePublisher(
     /// <summary>
     /// #1508 (Task 36): <paramref name="options"/> for a publish at <paramref name="version"/>: a migration report whose
     /// <c>newVersion</c> is not that version gets it (a member replacement, written canonical, RFC 8785), so the stored report
-    /// names the version it is stored in; one that names it already is stored as sent.
+    /// names the version it is stored in; one that names it already is stored as sent, and so is one that does not read as
+    /// an object of distinct members (<see cref="Admit"/> refuses it first; never an exception here).
     /// </summary>
     private static PublishOptions OnVersion(PublishOptions options, string version)
     {
-        if (options.MigrationReport is not { } text
-            || JsonNode.Parse(text) is not JsonObject report
-            || report["newVersion"] is JsonValue newVersion && newVersion.TryGetValue<string>(out var named) && named == version)
+        try
+        {
+            if (options.MigrationReport is not { } text
+                || JsonNode.Parse(text) is not JsonObject report
+                || report["newVersion"] is JsonValue newVersion && newVersion.TryGetValue<string>(out var named) && named == version)
+            {
+                return options;
+            }
+
+            report["newVersion"] = version;
+            return options with { MigrationReport = CanonicalJson.Write(report) };
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or ArgumentException or FormatException)
         {
             return options;
         }
-
-        report["newVersion"] = version;
-        return options with { MigrationReport = CanonicalJson.Write(report) };
     }
 
     /// <summary>The report as the response and the 400's body carry it.</summary>
