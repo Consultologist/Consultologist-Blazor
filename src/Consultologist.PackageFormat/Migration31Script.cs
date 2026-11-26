@@ -291,8 +291,9 @@ public static class Migration31Script
 
     /// <summary>
     /// <paramref name="options"/> with the choices of the <c>options.json</c> at <paramref name="path"/> in place of its
-    /// own, or <c>null</c> once <paramref name="error"/> says why not: the file does not read as strict UTF-8 JSON, is not an
-    /// object, or <see cref="Migration31Options.FromJson"/> refuses it (its sentence).
+    /// own, or <c>null</c> once <paramref name="error"/> says why not: the file does not read as strict UTF-8 JSON (its
+    /// byte-order mark dropped; A10-019, <see cref="MigrationOptionsFile.Parse"/>), is not an object, or
+    /// <see cref="Migration31Options.FromJson"/> refuses it (its sentence).
     /// </summary>
     private static Migration31Options? ReadOptions(string path, Migration31Options options, TextWriter error)
     {
@@ -308,9 +309,10 @@ public static class Migration31Script
             return null;
         }
 
-        if (V31.StrictJson.Parse(text) is not { Fault: null, Value: JsonObject json })
+        var (json, fault) = MigrationOptionsFile.Parse(text);
+        if (json is null)
         {
-            error.WriteLine($"error: {full} is not a JSON object.");
+            error.WriteLine(fault == MigrationOptionsFile.NotAnObject ? $"error: {full} is not a JSON object." : $"error: {fault}");
             return null;
         }
 

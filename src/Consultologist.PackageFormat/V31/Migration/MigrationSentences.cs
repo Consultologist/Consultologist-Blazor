@@ -346,6 +346,20 @@ internal static class MigrationSentences
         $"options.json gives deliverable '{deliverable}' a whenEmpty that is not release, hold or fail.";
 
     /// <summary>
+    /// A10-082 (#1508, area 11 Task 36, carried from Task 29's review): <c>options.json</c>'s <paramref name="member"/> maps
+    /// an empty id, or maps an id to an empty choice, which the script's flags refuse too (<c>&lt;key&gt;=&lt;value&gt;</c>).
+    /// </summary>
+    public static string OptionEmpty(string member) =>
+        $"options.json gives {member} an empty id or an empty choice; name each id and its choice.";
+
+    /// <summary>
+    /// A10-083 (#1508, area 11 Task 36; part 10 §§ 1.9, 1.10, part 01 § 3): a package with no <c>options.json</c> is
+    /// migrated with the defaults, and the bulk publish says so in its record.
+    /// </summary>
+    public const string DefaultOptions =
+        "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.";
+
+    /// <summary>
     /// A10-034 (part 01 § 6, § 7 <c>idLength</c>; part 10 § 1.9): the <paramref name="kind"/> <paramref name="id"/>, longer
     /// than 31's 64 characters (30 had no bound), was shortened to <paramref name="newId"/>.
     /// </summary>

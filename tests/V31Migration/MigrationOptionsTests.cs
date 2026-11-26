@@ -94,7 +94,36 @@ public class MigrationOptionsTests
             "options.json gives deliverable 'note' a whenEmpty that is not release, hold or fail." },
         { """{ "renames": {}, "whenEmpty": { "note": "Hold" }, "folderFormats": {} }""", "A10-072",
             "options.json gives deliverable 'note' a whenEmpty that is not release, hold or fail." },
+        // #1508 (Task 36, carried from Task 29's review): an empty id or choice, which the flags refuse, is refused here too.
+        { """{ "renames": { "": "sections" }, "whenEmpty": {}, "folderFormats": {} }""", "A10-082",
+            "options.json gives renames an empty id or an empty choice; name each id and its choice." },
+        { """{ "renames": {}, "whenEmpty": {}, "folderFormats": { "standards": "" } }""", "A10-082",
+            "options.json gives folderFormats an empty id or an empty choice; name each id and its choice." },
     };
+
+    [Fact]
+    public void TheFileText_IsReadStrictly_ItsByteOrderMarkDropped()
+    {
+        // #1508 (Task 36): the text of an options.json, as the script and the bulk publish read it.
+        var (json, fault) = MigrationOptionsFile.Parse("﻿{ \"renames\": {}, \"whenEmpty\": {}, \"folderFormats\": {} }");
+        Assert.Null(fault);
+        Assert.Equal(["renames", "whenEmpty", "folderFormats"], json!.Select(p => p.Key));
+
+        Assert.Equal("The file 'options.json' does not read: it names the member 'renames' twice; fix it, then migrate.",
+            MigrationOptionsFile.Parse("""{ "renames": {}, "renames": {} }""").Fault);
+        Assert.Equal("The file 'options.json' does not read: it is not JSON; fix it, then migrate.", MigrationOptionsFile.Parse("{").Fault);
+        Assert.Equal(MigrationOptionsFile.NotAnObject, MigrationOptionsFile.Parse("[]").Fault);
+        Assert.Equal(MigrationOptionsFile.NotAnObject, MigrationOptionsFile.Parse("null").Fault);
+        Assert.Throws<ArgumentNullException>(() => MigrationOptionsFile.Parse(null!));
+    }
+
+    [Fact]
+    public void TheDefaults_AreSaid()
+    {
+        // #1508 (Task 36; part 10 §§ 1.9, 1.10, part 01 § 3): a package with no options.json takes the defaults, and the
+        // bulk publish says so.
+        V31Contract.AssertSentence(new SourceRefusal("A10-083", MigrationOptionsFile.Defaults, ""));
+    }
 
     [Theory]
     [MemberData(nameof(Refused))]

@@ -384,8 +384,35 @@ public class MigrateScriptTests
         { """{ "renames": {}, "whenEmpty": { "note": "maybe" }, "folderFormats": {} }""", "error: options.json gives deliverable 'note' a whenEmpty that is not release, hold or fail." },
         { """{ "renames": {}, "whenEmpty": {} }""", "error: options.json must give folderFormats as an object whose values are text; write {} for none." },
         { """[]""", "is not a JSON object" },
-        { """{ "renames": {""", "is not a JSON object" },
+        // #1508 (Task 36, carried from Task 29's review): a file that is not strict JSON says why, as A10-019 says it.
+        { """{ "renames": {""", "error: The file 'options.json' does not read: it is not JSON; fix it, then migrate." },
+        { """{ "renames": {}, "renames": {}, "whenEmpty": {}, "folderFormats": {} }""",
+            "error: The file 'options.json' does not read: it names the member 'renames' twice; fix it, then migrate." },
+        { """{ "renames": { "": "sections" }, "whenEmpty": {}, "folderFormats": {} }""",
+            "error: options.json gives renames an empty id or an empty choice; name each id and its choice." },
     };
+
+    [Fact]
+    public void AnOptionsFileWithAByteOrderMark_IsRead()
+    {
+        // #1508 (Task 36, carried from Task 29's review): a leading byte-order mark is dropped, as a package file's is.
+        var package = "example-nested-note";
+        var byFile = CopyOf(package);
+        var file = Path.Combine(Directory.CreateTempSubdirectory("migrate-options-").FullName, MigrationOptionsFile.FileName);
+        File.WriteAllBytes(file, [0xEF, 0xBB, 0xBF, .. File.ReadAllBytes(ExampleChoices.FileOf(package))]);
+        try
+        {
+            var (_, _, error) = Run(byFile, "--options", file, "--write");
+
+            Assert.Equal("", error);
+            Assert.Equal(Expected(MigratedPackagesTests.Migrated(package)), Contents(byFile));
+        }
+        finally
+        {
+            Directory.Delete(byFile, recursive: true);
+            Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
+    }
 
     [Theory]
     [MemberData(nameof(RefusedOptions))]

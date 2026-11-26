@@ -42,8 +42,8 @@ public sealed record Migration31Options(
     /// <paramref name="json"/> is <c>{ "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} }</c>, every member required
     /// and an object of text (<c>{}</c> for none), and no other member. Or <c>null</c> and the first thing it cannot read,
     /// in written order: a member that is no option (A10-070), then by member a missing one or one that is not an object of
-    /// text (A10-071), then a <c>whenEmpty</c> that is not <c>release</c>, <c>hold</c> or <c>fail</c> (A10-072). Never throws
-    /// on the file's content.
+    /// text (A10-071) or one with an empty id or choice (A10-082, as the flags refuse it), then a <c>whenEmpty</c> that is not
+    /// <c>release</c>, <c>hold</c> or <c>fail</c> (A10-072). Never throws on the file's content.
     /// </summary>
     public static (Migration31Options? Options, string? Refusal) FromJson(
         JsonObject json, V31.TypeRegistry registry, V31.Toolchain toolchain, WorkflowFormatCatalog formats30)
@@ -66,6 +66,8 @@ public sealed record Migration31Options(
             {
                 if (value is not JsonValue text || !text.TryGetValue<string>(out var s))
                     return (null, MigrationSentences.OptionNotAMap(member));
+                if (key.Length == 0 || s.Length == 0)
+                    return (null, MigrationSentences.OptionEmpty(member));
                 read[key] = s;
             }
 
@@ -113,6 +115,27 @@ public static class MigrationOptionsFile
 {
     /// <summary>The file's name.</summary>
     public const string FileName = "options.json";
+
+    /// <summary>What <see cref="Parse"/> says of a file that is JSON but not an object.</summary>
+    public const string NotAnObject = "options.json is not a JSON object.";
+
+    /// <summary>A10-083 (#1508, Task 36): the defaults a package with no <c>options.json</c> is migrated with, said in the bulk publish's record.</summary>
+    public const string Defaults = MigrationSentences.DefaultOptions;
+
+    /// <summary>
+    /// #1508 (Task 36, carried from Task 29's review): the text of an <c>options.json</c> as the script and the bulk publish
+    /// read it: a leading byte-order mark dropped (as a package file's is, part 01 § 2.4), then strict JSON (no member written
+    /// twice). The object, or <c>null</c> and why not: A10-019's sentence for text that is not strict JSON, or
+    /// <see cref="NotAnObject"/>. <see cref="Migration31Options.FromJson"/> reads the object.
+    /// </summary>
+    public static (JsonObject? Json, string? Fault) Parse(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var read = V31.StrictJson.Parse(Migrated.Normalise(text));
+        if (read.Fault is { } fault)
+            return (null, MigrationSentences.FileDoesNotRead(FileName, header: false, fault, read.Detail));
+        return read.Value is JsonObject json ? (json, null) : (null, NotAnObject);
+    }
 }
 
 /// <summary>
