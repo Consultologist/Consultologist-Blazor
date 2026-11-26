@@ -1,3 +1,4 @@
+using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
 using System.Text;
 using System.Text.Json;
@@ -82,12 +83,18 @@ public static class ProvenanceRecordCheck
     {
         ArgumentNullException.ThrowIfNull(header);
         ArgumentNullException.ThrowIfNull(composedTexts);
+        // a job that has not finished has no record to check; say so, and check nothing
+        if (header.RecordHash == null && !ConsultGenerationJobEntity.IsTerminal(header.Status))
+        {
+            return [new HashCheck("recordHash", null, null, null, null, "the job has not finished: it has no record yet, so nothing was checked")];
+        }
+
         var recomputed = "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(recordBytes));
         var checks = new List<HashCheck>
         {
             new("recordHash", null, header.RecordHash, recomputed,
-                header.RecordHash == null ? null : string.Equals(header.RecordHash, recomputed, StringComparison.Ordinal),
-                header.RecordHash == null ? "the record carries no recordHash" : null)
+                header.RecordHash != null && string.Equals(header.RecordHash, recomputed, StringComparison.Ordinal),
+                header.RecordHash == null ? "a finished job at storage 12 carries no recordHash" : null)
         };
 
         JsonNode? document;
@@ -114,22 +121,44 @@ public static class ProvenanceRecordCheck
                 continue;
             }
 
-            var recorded = SourceLayout.Text(row["composedHash"]);
             var composedName = $"deliverables[{key}].composedHash";
             var replayName = $"deliverables[{key}].replay";
-            if (!composedTexts.TryGetValue(key, out var text) || text == null)
+            var substitutions = row["substitutions"] as JsonArray;
+
+            // composedHash: the member is always written; null only for a deliverable that was never composed
+            var recorded = SourceLayout.Text(row["composedHash"]);
+            var state = SourceLayout.Text(row["state"]);
+            var text = composedTexts.TryGetValue(key, out var held) ? held : null;
+            if (!row.ContainsKey("composedHash") || (recorded == null && state is not ("skipped" or "failed")))
+            {
+                checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, null, null, false,
+                    row.ContainsKey("composedHash") ? $"the row has no composedHash, and a {state ?? "stateless"} deliverable is composed" : "the row has no composedHash member"));
+            }
+            else if (recorded == null)
+            {
+                checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, null, null, null, $"never composed ({state})"));
+            }
+            else if (text == null)
             {
                 checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, recorded, null, null, "text deleted; hash kept"));
-                continue;
+            }
+            else
+            {
+                var textHash = CanonicalJson.HashText(text);
+                checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, recorded, textHash,
+                    string.Equals(recorded, textHash, StringComparison.Ordinal), null));
             }
 
-            var textHash = CanonicalJson.HashText(text);
-            checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, recorded, textHash,
-                recorded == null ? null : string.Equals(recorded, textHash, StringComparison.Ordinal),
-                recorded == null ? "the row carries no composedHash" : null));
-
-            var replays = RecordReplay.Verify(text, row["substitutions"] as JsonArray ?? [], out var fault);
-            checks.Add(new HashCheck(replayName, null, null, null, replays, replays ? null : fault));
+            // replay: the substitutions member is never absent (part 08 § 10)
+            if (substitutions == null)
+            {
+                checks.Add(new HashCheck(replayName, null, null, null, false, "the row has no substitutions array"));
+            }
+            else if (text != null)
+            {
+                var replays = RecordReplay.Verify(text, substitutions, out var fault);
+                checks.Add(new HashCheck(replayName, null, null, null, replays, replays ? null : fault));
+            }
         }
 
         return checks;

@@ -100,6 +100,12 @@ if (draftPath != null && !File.Exists(draftPath)) { Console.Error.WriteLine($"er
 Console.Out.WriteLine($"{record.JobId}: {record.WorkflowPackage ?? "(no package)"}, status {record.Status}, storage version {record.SchemaVersion?.ToString() ?? "—"}");
 
 var checks = ProvenanceRecordCheck.Check(record, inputs, draft);
+var fetchFailures = new List<HashCheck>();
+if (record.SchemaVersion is not >= 12 && (Option("--host") ?? Option("--record")) is not null)
+{
+    Console.Out.WriteLine("  note: --host and --record apply to storage 12 jobs only; this job's hashes are checked from the job record");
+}
+
 if (record.SchemaVersion >= 12 && (Option("--host") ?? Option("--record")) is not null)
 {
     byte[] recordBytes;
@@ -121,9 +127,19 @@ if (record.SchemaVersion >= 12 && (Option("--host") ?? Option("--record")) is no
             var document = System.Text.Json.Nodes.JsonNode.Parse(recordBytes);
             foreach (var key in (document?["deliverables"]?.AsArray() ?? []).Select(d => (string?)d?["key"]).OfType<string>())
             {
-                var row = System.Text.Json.Nodes.JsonNode.Parse(
-                    await http.GetStringAsync($"{host}/ConsultGenerationJobs/{record.JobId}/Rows?key={Uri.EscapeDataString(key)}"));
-                texts[key] = row?["text"] is System.Text.Json.Nodes.JsonObject text ? (string?)text["content"] : null;
+                try
+                {
+                    // a dropped text answers 200 with text: null and textDeleted: true
+                    var row = System.Text.Json.Nodes.JsonNode.Parse(
+                        await http.GetStringAsync($"{host}/ConsultGenerationJobs/{record.JobId}/Rows?key={Uri.EscapeDataString(key)}"));
+                    texts[key] = row?["text"] is System.Text.Json.Nodes.JsonObject text ? (string?)text["content"] : null;
+                }
+                catch (Exception ex) when (ex is HttpRequestException or JsonException)
+                {
+                    // not a dropped text: the row could not be read, which is a failure of this deliverable's check
+                    fetchFailures.Add(new HashCheck($"deliverables[{key}].composedHash", null, null, null, false, $"the row's text could not be fetched: {ex.Message}"));
+                    texts[key] = null;
+                }
             }
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException)
@@ -135,6 +151,8 @@ if (record.SchemaVersion >= 12 && (Option("--host") ?? Option("--record")) is no
 
     // the header's own line ("fetch /Record") is replaced by the record's checks; the input hash line stays
     checks = ProvenanceRecordCheck.CheckRecord(record, recordBytes, texts)
+        .Where(c => !fetchFailures.Any(f => f.Name == c.Name))
+        .Concat(fetchFailures)
         .Concat(checks.Where(c => c.Name != "recordHash"))
         .ToList();
 }
@@ -159,4 +177,5 @@ foreach (var check in checks)
 
 var checkedCount = checks.Count(c => c.Matches != null);
 Console.Out.WriteLine($"{checkedCount} hash(es) recomputed, {mismatches} mismatch(es), {checks.Count - checkedCount} skipped");
-return mismatches == 0 ? 0 : 1;
+// a storage 12 job where nothing was recomputed has not been verified
+return mismatches == 0 && !(record.SchemaVersion >= 12 && checkedCount == 0) ? 0 : 1;

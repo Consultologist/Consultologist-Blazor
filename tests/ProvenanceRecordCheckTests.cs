@@ -328,4 +328,108 @@ public class ProvenanceRecordCheckTests
         Assert.Null(line.Matches);
         Assert.Equal("storage 12 is checked through the record: fetch /Record", line.Note);
     }
+
+    // ---- fix round 1: the checker never reports success without having checked ----
+
+    [Fact]
+    public async Task NotJson_FailsWithALine_NeverThrows()
+    {
+        var sealedRecord = await SealedRecord();
+        var garbage = "not json {";
+
+        var checks = CheckIt(garbage, Header12(garbage), sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Matches == false);
+    }
+
+    [Fact]
+    public async Task NoDeliverablesMember_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+        var document = Changed(sealedRecord.Document, d => d.Remove("deliverables"));
+
+        var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Matches == false && c.Name == "deliverables");
+    }
+
+    [Fact]
+    public async Task ADeliverableWithoutSubstitutions_FailsTheReplay()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var document = Changed(sealedRecord.Document, d => FirstDeliverable(d).Remove("substitutions"));
+
+        var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+
+        var failed = Assert.Single(checks, c => c.Matches == false);
+        Assert.Equal($"deliverables[{key}].replay", failed.Name);
+        Assert.Equal("the row has no substitutions array", failed.Note);
+    }
+
+    [Fact]
+    public async Task ARowWithoutAKey_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+        var document = Changed(sealedRecord.Document, d => FirstDeliverable(d).Remove("key"));
+
+        var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Matches == false);
+    }
+
+    [Fact]
+    public async Task ADeliverableWithoutComposedHash_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var missing = Changed(sealedRecord.Document, d => FirstDeliverable(d).Remove("composedHash"));
+        var releasedNull = Changed(sealedRecord.Document, d => { FirstDeliverable(d)["state"] = "released"; FirstDeliverable(d)["composedHash"] = null; });
+
+        foreach (var document in new[] { missing, releasedNull })
+        {
+            var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+            Assert.Contains(checks, c => c.Matches == false && c.Name == $"deliverables[{key}].composedHash");
+            // and with the text dropped the hash is still owed
+            var dropped = sealedRecord.Texts.ToDictionary(p => p.Key, _ => (string?)null);
+            Assert.Contains(CheckIt(document, Header12(document), dropped), c => c.Matches == false && c.Name == $"deliverables[{key}].composedHash");
+        }
+    }
+
+    [Fact]
+    public async Task ASkippedDeliverablesNullComposedHash_IsNotAFailure()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var document = Changed(sealedRecord.Document, d => { FirstDeliverable(d)["state"] = "skipped"; FirstDeliverable(d)["composedHash"] = null; });
+        var texts = new Dictionary<string, string?>(sealedRecord.Texts) { [key] = null };
+
+        var checks = CheckIt(document, Header12(document), texts);
+
+        Assert.DoesNotContain(checks, c => c.Matches == false);
+        Assert.Contains(checks, c => c.Name == $"deliverables[{key}].composedHash" && c.Matches == null);
+    }
+
+    [Fact]
+    public async Task ANullRecordHash_OnATerminalJob_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document) with { RecordHash = null }, sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Name == "recordHash" && c.Matches == false);
+    }
+
+    [Fact]
+    public async Task ANullRecordHash_OnAJobThatIsNotTerminal_IsNotCheckedAndSaysSo()
+    {
+        var sealedRecord = await SealedRecord();
+        var header = Header12(sealedRecord.Document) with { RecordHash = null, Status = "Running" };
+
+        var checks = CheckIt(sealedRecord.Document, header, sealedRecord.Texts);
+
+        var line = Assert.Single(checks);
+        Assert.Null(line.Matches);
+        Assert.Contains("has not finished", line.Note);
+    }
 }
