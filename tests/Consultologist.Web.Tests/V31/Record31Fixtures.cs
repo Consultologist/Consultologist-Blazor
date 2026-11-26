@@ -90,27 +90,27 @@ internal static class Record31Fixtures
                 """),
 
             // a for with two items, one NotRun, and a decision of its until
-            Row("node.sections", PlanKind.For, RowState.Completed, detail: """{ "count": 2, "stopped": "bound", "parallel": false, "maxParallel": null, "itemLabel": "title" }"""),
+            Row("node.sections", PlanKind.For, RowState.Completed, detail: """{ "label": "Sections", "count": 2, "stopped": "bound", "parallel": false, "maxParallel": null, "itemLabel": "title" }"""),
             Decision("node.sections", "until.1", "node.sections.items.1.state = \"completed\"", false),
-            Row("node.sections:1", PlanKind.For, RowState.Completed),
-            Row("node.sections:2", PlanKind.For, RowState.NotRun, "not run: beyond max 1"),
+            Row("node.sections:1", PlanKind.For, RowState.Completed, detail: """{ "label": "Sections" }"""),
+            Row("node.sections:2", PlanKind.For, RowState.NotRun, "not run: beyond max 1", detail: """{ "label": "Sections" }"""),
             Row("node.sections.draft:1", PlanKind.Agent, RowState.Completed),
             Row("node.sections.draft:2", PlanKind.Agent, RowState.NotRun, "not run: beyond max 1"),
             Row("node.sections.draft:10", PlanKind.Agent, RowState.NotRun, "not run: beyond max 1"),
             // a loop nested in item 1: its own row, its item row, and the node inside
-            Row("node.sections.paragraphs:1", PlanKind.For, RowState.Completed, detail: """{ "count": 1 }"""),
-            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1", PlanKind.For, RowState.Completed, detail: """{ "label": "Paragraphs", "count": 1 }"""),
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed, detail: """{ "label": "Paragraphs" }"""),
             Row("node.sections.paragraphs.draft_paragraph:1/1", PlanKind.Agent, RowState.Completed),
 
             // a while with two passes, the pass rows, the nodes in them, and a for inside pass 2
-            Row("node.refine", PlanKind.While, RowState.Completed, detail: """{ "passes": 2, "stopped": "check", "max": 3, "checkFirst": false }"""),
-            Row("node.refine#1", PlanKind.While, RowState.Completed, detail: """{ "pass": 1 }"""),
-            Row("node.refine#2", PlanKind.While, RowState.Completed, detail: """{ "pass": 2 }"""),
+            Row("node.refine", PlanKind.While, RowState.Completed, detail: """{ "label": "Refine", "passes": 2, "stopped": "check", "max": 3, "checkFirst": false }"""),
+            Row("node.refine#1", PlanKind.While, RowState.Completed, detail: """{ "label": "Refine", "pass": 1 }"""),
+            Row("node.refine#2", PlanKind.While, RowState.Completed, detail: """{ "label": "Refine", "pass": 2 }"""),
             Row("node.refine.judge#1", PlanKind.Agent, RowState.Completed),
             Row("node.refine.judge#2", PlanKind.Agent, RowState.Completed),
             Row("node.refine.judge#10", PlanKind.Agent, RowState.NotRun),
-            Row("node.refine.sections#2", PlanKind.For, RowState.Completed, detail: """{ "count": 3 }"""),
-            Row("node.refine.sections#2:3", PlanKind.For, RowState.Completed),
+            Row("node.refine.sections#2", PlanKind.For, RowState.Completed, detail: """{ "label": "Sections", "count": 3 }"""),
+            Row("node.refine.sections#2:3", PlanKind.For, RowState.Completed, detail: """{ "label": "Sections" }"""),
             Decision("node.refine", "pass.1", "node.refine.judge.value.ok = false", true),
             Decision("node.refine", "pass.2", "node.refine.judge.value.ok = false", false),
 

@@ -144,7 +144,7 @@ public sealed class Record31
 
         foreach (var decision in decisions)
         {
-            Group(record._decisions, decision.Text("owner") ?? OwnerOf(decision.Key), decision);
+            Group(record._decisions, OwnerOf(decision), decision);
         }
 
         // each node and check row's parent, resolved once; rows are in key order, so a parent's children are too
@@ -217,11 +217,16 @@ public sealed class Record31
 
     private static bool IsLoop(Row31? row) => row?.Text("kind") is "for" or "while";
 
-    /// <summary>A decision's owner from its id (<c>&lt;owner&gt;/if:&lt;site&gt;</c>), for a row with no <c>owner</c> member.</summary>
-    private static string OwnerOf(string id)
+    /// <summary>A decision's owner key: its <c>owner</c> member, else the owner in its id (<c>&lt;owner&gt;/if:&lt;site&gt;</c>); <c>""</c> for none.</summary>
+    public static string OwnerOf(Row31 decision)
     {
-        var at = id.IndexOf("/if:", StringComparison.Ordinal);
-        return at < 0 ? "" : id[..at];
+        if (decision.Text("owner") is { } owner)
+        {
+            return owner;
+        }
+
+        var at = decision.Key.IndexOf("/if:", StringComparison.Ordinal);
+        return at < 0 ? "" : decision.Key[..at];
     }
 
     private static int ByKey(Row31 a, Row31 b) => RowKeyOrder31.Instance.Compare(a.Key, b.Key);

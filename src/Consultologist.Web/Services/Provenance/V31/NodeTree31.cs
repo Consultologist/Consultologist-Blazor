@@ -5,11 +5,13 @@ namespace Consultologist.Web.Services.Provenance.V31;
 /// <summary>
 /// #1509 (Task 15; part 09 § 6.4 "Nodes" and "Checks"): one node of the tree History shows. <see cref="Row"/> is null for a
 /// node a decision names that never got a row (its <see cref="Status"/> is then <c>NotRun</c>). An item or a pass of a loop is
-/// a node of its own (its row), and holds the rows that ran in it.
+/// a node of its own (its row), and holds the rows that ran in it. <see cref="IsItem"/> marks an item row of a loop; a page
+/// that fetches the retained name retitles it with <c>NodeTree31.ItemTitle(Row, retainedName, LoopLabel)</c>.
 /// </summary>
 public sealed record TreeNode31(
     string Key, string Title, string Kind, string Status, Row31? Row,
-    IReadOnlyList<Row31> Decisions, IReadOnlyList<TreeNode31> Children);
+    IReadOnlyList<Row31> Decisions, IReadOnlyList<TreeNode31> Children,
+    bool IsItem = false, string? LoopLabel = null);
 
 /// <summary>
 /// #1509 (Task 15): a job's node (or check) rows as a tree: loops expand per item, a <c>while</c> per pass, a <c>call</c> into
@@ -30,7 +32,8 @@ public static class NodeTree31
     /// </summary>
     public static string ItemTitle(Row31 row, string? retainedName) => ItemTitle(row, retainedName, null);
 
-    private static string ItemTitle(Row31 row, string? retainedName, Row31? loop)
+    /// <summary>As above, with the enclosing loop row's <c>label</c> (<see cref="TreeNode31.LoopLabel"/>) for the position form.</summary>
+    public static string ItemTitle(Row31 row, string? retainedName, string? loopLabel)
     {
         if (!string.IsNullOrWhiteSpace(row.Text("itemName")))
         {
@@ -44,7 +47,7 @@ public static class NodeTree31
 
         var steps = RowKey31.Parse(row.Key).Steps;
         var last = steps.Count > 0 ? steps[^1] : null;
-        var label = loop?.Text("label") is { Length: > 0 } loopLabel ? loopLabel
+        var label = loopLabel is { Length: > 0 } ? loopLabel
             : row.Text("label") is { Length: > 0 } text ? text : last?.Scope ?? row.Key;
         var item = last is { Items.Count: > 0 } ? last.Items[^1] : null;
         return item is null ? label : $"{label} {item}";
@@ -97,15 +100,16 @@ public static class NodeTree31
         var children = childrenOf.TryGetValue(key, out var list)
             ? list.OrderBy(entry => entry.Key, RowKeyOrder31.Instance).Select(entry => Make(record, childrenOf, entry.Key, entry.Row)).ToList()
             : [];
-        return new TreeNode31(key, TitleOf(record, key, row), row?.Text("kind") ?? "", row?.Text("status") ?? "NotRun",
-            row, record.DecisionsOwnedBy(key), children);
+        var (title, isItem, loopLabel) = TitleOf(record, key, row);
+        return new TreeNode31(key, title, row?.Text("kind") ?? "", row is null ? "NotRun" : row.Text("status") ?? "",
+            row, record.DecisionsOwnedBy(key), children, isItem, loopLabel);
     }
 
-    private static string TitleOf(Record31 record, string key, Row31? row)
+    private static (string Title, bool IsItem, string? LoopLabel) TitleOf(Record31 record, string key, Row31? row)
     {
         if (row is null)
         {
-            return LastScope(key);
+            return (LastScope(key), false, null);
         }
 
         var parent = record.ParentOf(key);
@@ -114,17 +118,18 @@ public static class NodeTree31
         {
             if (kind == "for")
             {
-                return ItemTitle(row, null, parent);
+                var loopLabel = parent.Text("label");
+                return (ItemTitle(row, null, loopLabel), true, loopLabel);
             }
 
             if (kind == "while")
             {
                 var pass = row.Int("pass") ?? RowKey31.Parse(key).Steps[^1].Pass;
-                return pass is null ? LastScope(key) : $"Pass {pass}";
+                return (pass is null ? LastScope(key) : $"Pass {pass}", false, null);
             }
         }
 
-        return row.Text("label") is { Length: > 0 } label ? label : LastScope(key);
+        return (row.Text("label") is { Length: > 0 } label ? label : LastScope(key), false, null);
     }
 
     private static bool SameEntry(string a, string b) =>
@@ -142,19 +147,13 @@ public static class NodeTree31
             ? at
             : null;
 
-    private static string OwnerOf(string id)
-    {
-        var at = id.IndexOf("/if:", StringComparison.Ordinal);
-        return at < 0 ? "" : id[..at];
-    }
-
     /// <summary>Owners of this section's decisions that have no row, once each, in key order.</summary>
     private static List<string> GhostOwners(Record31 record, string section, IReadOnlyList<Row31> rows)
     {
         var have = rows.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
         var prefix = section + ".";
         return record.Decisions
-            .Select(decision => decision.Text("owner") ?? OwnerOf(decision.Key))
+            .Select(Record31.OwnerOf)
                         .Where(owner => owner.StartsWith(prefix, StringComparison.Ordinal) && !have.Contains(owner))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(owner => owner, RowKeyOrder31.Instance)

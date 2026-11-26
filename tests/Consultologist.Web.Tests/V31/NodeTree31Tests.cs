@@ -131,7 +131,9 @@ public class NodeTree31Tests
 
         Assert.Equal("NotRun", item.Status);
         Assert.Equal("not run: beyond max 1", item.Row!.Text("stateReason"));
-        Assert.Equal("sections 2", item.Title);
+        Assert.Equal("Sections 2", item.Title);
+        Assert.True(item.IsItem);
+        Assert.Equal("Sections", item.LoopLabel);
     }
 
     [Fact]
@@ -180,5 +182,55 @@ public class NodeTree31Tests
         Assert.Equal("node.sections:2", loop.Children[1].Children[0].Row!.Text("alignedWith"));
         Assert.DoesNotContain(checks, c => c.Key.StartsWith("node."));
         Assert.Contains(checks, c => c.Key == "check.gate");
+    }
+
+    [Fact]
+    public void ARowWithNoLabel_IsTitledByItsLastScope_AndItsItemByThatScopeAndPosition()
+    {
+        var record = Of(
+            Raw("node.loop", "node", """{ "kind": "for", "status": "Completed" }"""),
+            Raw("node.loop:4", "node", """{ "kind": "for", "status": "Completed" }"""));
+
+        var loop = Node(NodeTree31.Build(record), "node.loop");
+
+        Assert.Equal("loop", loop.Title);
+        Assert.Equal("loop 4", loop.Children[0].Title);
+    }
+
+    [Fact]
+    public void EveryRowIsInTheTreeExactlyOnce()
+    {
+        var record = Read();
+
+        static int Count(IReadOnlyList<TreeNode31> nodes) => nodes.Sum(n => 1 + Count(n.Children));
+        var nodeGhosts = record.Decisions.Select(Record31.OwnerOf).Where(o => o.StartsWith("node.") && record.Find(o) is null).Distinct().Count();
+        var checkGhosts = record.Decisions.Select(Record31.OwnerOf).Where(o => o.StartsWith("check.") && record.Find(o) is null).Distinct().Count();
+
+        Assert.Equal(record.Nodes.Count + nodeGhosts, Count(NodeTree31.Build(record)));
+        Assert.Equal(record.Checks.Count + checkGhosts, Count(NodeTree31.BuildChecks(record)));
+        Assert.True(nodeGhosts > 0);
+    }
+
+    [Fact]
+    public void ARowWithNoStatus_IsShownAsStored_NotAsNotRun()
+    {
+        var record = Of(Raw("node.a", "node", """{ "kind": "agent" }"""));
+
+        Assert.Equal("", Node(NodeTree31.Build(record), "node.a").Status);
+    }
+
+    [Fact]
+    public void AnItemCarriesWhatRetitlingNeeds()
+    {
+        var nodes = NodeTree31.Build(Read());
+        var item = Node(nodes, "node.sections.paragraphs:1/1");
+
+        Assert.True(item.IsItem);
+        Assert.Equal("Paragraphs", item.LoopLabel);
+        Assert.Equal("Paragraphs 1", item.Title);
+        Assert.Equal("Intro", NodeTree31.ItemTitle(item.Row!, "Intro", item.LoopLabel));
+        Assert.False(Node(nodes, "node.sections").IsItem);
+        Assert.False(Node(nodes, "node.refine#2").IsItem);
+        Assert.False(Node(nodes, "node.never_ran").IsItem);
     }
 }
