@@ -44,6 +44,14 @@ public class SpecVersion31MemberMirrorTests
     }
 
     [Fact]
+    public void TheContentResponse_MirrorsTheApisMembers()
+    {
+        Assert.Equal(
+            Members(typeof(ApiWorkflow.WorkflowPackageContentResponse)),
+            Members(typeof(WebWorkflow.WorkflowPackageContentResponse)));
+    }
+
+    [Fact]
     public void AStartRequest_WithNoSignaturePick_WritesNoSignatureBlockId()
     {
         var json = JsonSerializer.Serialize(new WebAI.ConsultGenerationRequest(null), Web);

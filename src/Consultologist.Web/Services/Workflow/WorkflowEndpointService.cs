@@ -399,7 +399,9 @@ public record WorkflowPackageContentResponse(
     JsonElement? Lock = null,
     JsonElement? PublishReport = null,
     string? MigratedFrom = null,
-    IReadOnlyList<string>? Notices = null)
+    IReadOnlyList<string>? Notices = null,
+    // #1509 (area 12; D10): the migrated version's stored migration-report.json; the Editor and History read it (Tasks 16, 24).
+    JsonElement? MigrationReport = null)
 {
     public string Ref => $"{Name}@{Version}";
 }

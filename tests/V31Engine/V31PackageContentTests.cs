@@ -320,13 +320,90 @@ public class V31PackageContentTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = Body(response).AsObject();
         Assert.Equal(
-            ["Name", "Version", "SpecVersion", "Manifest", "Files", "Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices"],
+            ["Name", "Version", "SpecVersion", "Manifest", "Files", "Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices", "MigrationReport"],
             body.Select(member => member.Key));
-        Assert.All(["Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices"], name => Assert.Null(body[name]));
+        Assert.All(["Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices", "MigrationReport"], name => Assert.Null(body[name]));
         var before = JsonNode.Parse(JsonSerializer.Serialize(WorkflowPackageContentResponse.For(manifest, files)))!.AsObject();
         foreach (var name in new[] { "Name", "Version", "SpecVersion", "Manifest", "Files" })
             Assert.True(JsonNode.DeepEquals(before[name], body[name]), name);
         Assert.Equal([FakeRegistry.PathOf(packageRef, PublishedStamp.FileName)], rig.Registry.Reads);
+    }
+
+    // ---- The migration report (D10) -------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AMigratedVersion_ServesItsMigrationReport_ParsedFromTheStoredBytes()
+    {
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry, migrated: true);
+
+        var content = ContentOf(await rig.ContentAsync(stored.Ref));
+
+        Assert.Equal(Canonical(stored.Text(PackagePublish.MigrationReportFile)), Canonical(content.MigrationReport!.Value));
+        Assert.Equal("v2026.11.1", content.MigrationReport.Value.GetProperty("oldVersion").GetString());
+    }
+
+    [Fact]
+    public async Task AMigrationReportThatIsNotJson_IsServedAsNull()
+    {
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry, migrated: true);
+        rig.Registry.Blobs[$"{stored.Ref.Name}/{stored.Ref.Version}/{PackagePublish.MigrationReportFile}"] = Utf8NoBom.GetBytes("{ not json SECRET-BODY");
+
+        var response = await rig.ContentAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var content = ContentOf(response);
+        Assert.Null(content.MigrationReport);
+        Assert.Equal("v2026.11.1", content.MigratedFrom);
+        var warning = Assert.Single(rig.Log.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Contains(stored.Ref.Name, warning.Message);
+        Assert.Contains(stored.Ref.Version, warning.Message);
+        Assert.DoesNotContain("SECRET-BODY", rig.Log.Everything);
+    }
+
+    [Fact]
+    public async Task AVersionThatWasNotMigrated_ServesNull()
+    {
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry);
+
+        Assert.Null(ContentOf(await rig.ContentAsync(stored.Ref)).MigrationReport);
+    }
+
+    [Fact]
+    public async Task AnImport_ServesNull()
+    {
+        var rig = new Rig();
+        var content = await rig.IngestContentAsync(Zip(ResolveFixture.NestedNote()));
+
+        Assert.Null(content!.MigrationReport);
+    }
+
+    [Fact]
+    public async Task APackageBelow31_ServesNull()
+    {
+        var rig = new Rig();
+        var packageRef = new WorkflowPackageRef("general", "v2026.08.1");
+        var manifest = V7Fixtures.Minimal();
+        var files = V6Fixtures.Files(manifest);
+        rig.Store.ResolveAsync(packageRef, Arg.Any<CancellationToken>()).Returns(new WorkflowPackage(
+            manifest, Nodes: manifest.Nodes, Data: WorkflowDataResolver.Resolve(manifest, files, new List<string>()),
+            ResultNodeId: "assemble-note", Results: [new("consult", "assemble-note", "Assemble note")], SourceFiles: files));
+
+        Assert.Null(ContentOf(await rig.ContentAsync(packageRef)).MigrationReport);
+    }
+
+    [Fact]
+    public async Task Files_StillHoldNoMigrationReport()
+    {
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry, migrated: true);
+
+        var content = ContentOf(await rig.ContentAsync(stored.Ref));
+
+        Assert.DoesNotContain(PackagePublish.MigrationReportFile, content.Files.Keys);
+        Assert.NotNull(content.MigrationReport);
     }
 
     // ---- Ingest -----------------------------------------------------------------------------------------------------------
@@ -486,8 +563,10 @@ public class V31PackageContentTests
             Functions = new WorkflowPackages(
                 Store, Substitute.For<IWorkflowPackagePinResolver>(), publisher: null!,
                 new WorkflowPackageIngestor(OutputContractCatalog.Load(), Types, admission), lineage: null!, containerFactory: null!,
-                authorizer, Ownership, NullLogger<WorkflowPackages>.Instance, Compiled, admission, Registry);
+                authorizer, Ownership, Log, Compiled, admission, Registry);
         }
+
+        public CapturingLogger<WorkflowPackages> Log { get; } = new();
 
         public FakeRegistry Registry { get; } = new();
 

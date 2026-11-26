@@ -440,7 +440,7 @@ public sealed class WorkflowPackages
                 WorkflowPackageContentResponse? content;
                 try
                 {
-                    content = await V31PackageContent.ReadAsync(_registry!, packageRef.Name, version, cancellationToken);
+                    content = await V31PackageContent.ReadAsync(_registry!, packageRef.Name, version, cancellationToken, _logger);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

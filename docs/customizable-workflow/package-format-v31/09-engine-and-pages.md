@@ -667,6 +667,11 @@ for History ([decided](https://github.com/Consultologist/Consultologist-Blazor/i
 `PublishReport`, beside the source files, and the `Manifest` member carries `manifest.json`
 **exactly as published:** the `null`s the author wrote are kept, and none is added (#1066,
 [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)).
+For a version the operator migrated from specVersion 30 it also returns the stored
+`migration-report.json` as the trailing member **`MigrationReport`**, parsed from the stored bytes, so
+History can link to the byte-equivalence report and the hand edits (§ 6.2). It is null when the version
+was not migrated, is an import or is below 31, and when the stored file is not JSON (a warning naming
+the package and version is logged).
 
 ## 9. Refusals and notes
 

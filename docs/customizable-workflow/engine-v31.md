@@ -783,10 +783,13 @@ stamped version whose pair verifies is served from its folder (`V31PackageConten
 will not run it** (a `requires` refusal is logged, not answered), so its owner can read it and publish a new version:
 
 - `Manifest` the stored `manifest.json`, member for member; `Files` every stored source file but `manifest.json`, and
-  `dag.mmd` when stored (never the evidence, `migration-report.json` or the lock blob);
+  `dag.mmd` when stored (never the evidence, `migration-report.json`, which is `MigrationReport`, or the lock blob);
 - trailing `Resolve`, `Lock` and `PublishReport`, each parsed from the stored bytes; `MigratedFrom`, the stamp's old
   version. The pages are to show it as S09-004, *"migrated by the operator from \<old version\>"* (part 09 § 6.2);
-  nothing in this build composes that sentence (area 12).
+  nothing in this build composes that sentence (area 12);
+- trailing `MigrationReport`, the stored `migration-report.json` parsed, for a version the operator migrated (null when
+  there is none, below 31 and on an import). A stored file that is not JSON is served as null and a warning naming the
+  package and version is logged; the route does not fail.
 
 An integrity refusal (A06-004, S09-009, S09-014) is a 400 with its sentence; a folder whose `manifest.json` is not a
 JSON object is A06-004; a registry failure while reading the folder is 503. All these members are null below 31.
