@@ -17,6 +17,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using PublishedTypeRegistry = Consultologist.Api.V31.PublishedTypeRegistry;
 
 namespace Consultologist.Api.Tests.V31Engine;
 
@@ -464,7 +465,7 @@ public class V31PackageContentTests
         };
         var zip = WorkflowPackageArchive.Zip(files);
 
-        var today = new WorkflowPackageIngestor(OutputContractCatalog.Load()).Ingest(zip);
+        var today = new WorkflowPackageIngestor(OutputContractCatalog.Load(), Types).Ingest(zip);
         var response = await new Rig(preview).IngestAsync(zip);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -484,7 +485,7 @@ public class V31PackageContentTests
             authorizer.AuthorizeAsync(Arg.Any<HttpRequestData>(), Arg.Any<CancellationToken>()).Returns(AdminDrainTests.Admin.Account(AppUserId));
             Functions = new WorkflowPackages(
                 Store, Substitute.For<IWorkflowPackagePinResolver>(), publisher: null!,
-                new WorkflowPackageIngestor(OutputContractCatalog.Load(), admission, Types), lineage: null!, containerFactory: null!,
+                new WorkflowPackageIngestor(OutputContractCatalog.Load(), Types, admission), lineage: null!, containerFactory: null!,
                 authorizer, Ownership, NullLogger<WorkflowPackages>.Instance, Compiled, admission, Registry);
         }
 

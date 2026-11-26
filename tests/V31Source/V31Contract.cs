@@ -270,7 +270,8 @@ internal static class V31Contract
         ["A10-069"] = "The chosen format '<format>' for snippet folder '<id>' cannot be used: '<format>' <is already taken | is not a 31 id>; choose another.",
     };
 
-    private static string RepoRoot()
+    /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>
+    internal static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir != null && !File.Exists(System.IO.Path.Combine(dir.FullName, "Consultologist.sln")))
@@ -348,15 +349,10 @@ internal static class V31Contract
     /// </summary>
     public static TypeRegistry PublishedTypes()
     {
+        // #1508 (R20): through the library's one loader, as the Api and the scripts read it.
         var contract = System.IO.Path.GetDirectoryName(Path("bounds.json"))!;
-        var agents = System.IO.Path.GetDirectoryName(AgentsFormatsIndex())!;
-        var catalogue = System.IO.Path.GetDirectoryName(agents)!;
-        return TypeRegistry.Read(
-            System.IO.Path.Combine(contract, "formats"),
-            agents,
-            System.IO.Path.Combine(contract, "renderers", "index.json"),
-            System.IO.Path.Combine(catalogue, "bindings.json"),
-            System.IO.Path.Combine(catalogue, "agents.json"));
+        var catalogue = System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(AgentsFormatsIndex())!)!;
+        return PackageFormat.V31.PublishedTypeRegistry.Read(contract, catalogue);
     }
 
     /// <summary>The folder of the pinned suite's refusal packages; fails when the submodule is not checked out.</summary>

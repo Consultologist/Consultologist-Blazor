@@ -13,6 +13,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using PublishedTypeRegistry = Consultologist.Api.V31.PublishedTypeRegistry;
 
 namespace Consultologist.Api.Tests.V31Engine;
 

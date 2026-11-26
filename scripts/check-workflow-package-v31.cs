@@ -102,12 +102,7 @@ try
     var agentsDir = Path.Combine(repo, "external", "consultologist-agents", "agents");
     var contract = Path.Combine(repo, "external", "consultologist-package-format", "v31");
     var agents = Path.Combine(agentsDir, V31AgentsCatalogue.Folder);
-    var registry = TypeRegistry.Read(
-        Path.Combine(contract, "formats"),
-        Path.Combine(agents, "formats"),
-        Path.Combine(contract, "renderers", "index.json"),
-        Path.Combine(agents, "bindings.json"),
-        Path.Combine(agents, "agents.json"));
+    var registry = Consultologist.PackageFormat.V31.PublishedTypeRegistry.Read(contract, agents);
     var specVersions = Path.Combine(repo, "external", "consultologist-package-format", "spec-versions.json");
     var release = (string?)JsonNode.Parse(File.ReadAllText(specVersions))?["version"]
         ?? throw new InvalidOperationException($"{specVersions} names no version.");

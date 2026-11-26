@@ -3,6 +3,7 @@ using Consultologist.Api.Agents;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using PublishedTypeRegistry = Consultologist.Api.V31.PublishedTypeRegistry;
 
 namespace Consultologist.Api.Workflow;
 
@@ -41,13 +42,15 @@ public sealed class WorkflowPackageIngestor
 
     public WorkflowPackageIngestor(
         OutputContractCatalog catalog,
-        // #1508 (specVersion 31, area 11; D15): the gate on a 31 import and the registry its source is checked against.
-        SpecVersionAdmission? admission = null,
-        PublishedTypeRegistry? types = null)
+        // #1508 (specVersion 31, area 11; D15): the registry a 31 source is checked against (R20: the host's one singleton,
+        // never a copy of its own) and the gate on a 31 import.
+        PublishedTypeRegistry types,
+        SpecVersionAdmission? admission = null)
     {
+        ArgumentNullException.ThrowIfNull(types);
         _catalog = catalog;
         _admission = admission ?? new SpecVersionAdmission(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        _types = types ?? new PublishedTypeRegistry();
+        _types = types;
     }
 
     public WorkflowPackageIngestResult Ingest(byte[] zipBytes)

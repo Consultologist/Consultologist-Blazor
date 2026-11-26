@@ -129,12 +129,7 @@ if (to == 31)
     Consultologist.PackageFormat.V31.Toolchain toolchain31;
     try
     {
-        registry31 = Consultologist.PackageFormat.V31.TypeRegistry.Read(
-            Path.Combine(contract31, "formats"),
-            Path.Combine(agents31, "formats"),
-            Path.Combine(contract31, "renderers", "index.json"),
-            Path.Combine(agents31, "bindings.json"),
-            Path.Combine(agents31, "agents.json"));
+        registry31 = Consultologist.PackageFormat.V31.PublishedTypeRegistry.Read(contract31, agents31);
         var specVersions = Path.Combine(repo.FullName, "external", "consultologist-package-format", "spec-versions.json");
         var release = (string?)JsonNode.Parse(File.ReadAllText(specVersions))?["version"]
             ?? throw new InvalidOperationException($"{specVersions} names no version.");

@@ -205,6 +205,7 @@ public static class ApiServices
         services.AddSingleton<Consultologist.Api.V31.IOperatorAlerts, Consultologist.Api.V31.OperatorAlerts>();
         // #1507 (area 10; R11, D22): the summary's hand-edits line migrates each account's active package as stored (the
         // store's raw read), against the bundled 31 type registry, read on first use (area 11's publish path reuses it).
+        // #1508 (R20): the one registry the host holds, read by the library's one loader; the ingestor takes this instance.
         services.AddSingleton<IWorkflowPackageSources>(sp => sp.GetRequiredService<WorkflowPackageStore>());
         services.AddSingleton(_ => new Consultologist.Api.V31.PublishedTypeRegistry());
         services.AddSingleton<Consultologist.Api.V31.OutstandingHandEdits>();

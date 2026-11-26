@@ -10,7 +10,8 @@ namespace Consultologist.Api.V31;
 /// catalogue's formats, <c>bindings.json</c> and <c>agents.json</c> (<c>agents/v31/</c>, under
 /// <see cref="OutputContractCatalog.ResolveDirectory"/>). It is read once, on first use of <see cref="Registry"/>, so a
 /// host that never migrates or publishes a 31 package never reads it; a read that fails throws at that use and is tried
-/// again at the next (a missing or malformed file is the deployment's fault: <see cref="TypeRegistry.Read"/>).
+/// again at the next (a missing or malformed file is the deployment's fault). #1508 (R20): it holds what the library's one
+/// loader reads (<see cref="Consultologist.PackageFormat.V31.PublishedTypeRegistry.Read"/>), and the ingestor takes it.
 /// The weekly summary's migration line reads it (<see cref="OutstandingHandEdits"/>); area 11's publish path reuses it.
 /// </summary>
 public sealed class PublishedTypeRegistry
@@ -38,20 +39,7 @@ public sealed class PublishedTypeRegistry
     /// <exception cref="FormatException">A file is missing, is not JSON, or is not what it should be.</exception>
     public TypeRegistry Registry => _registry.Value;
 
-    private static TypeRegistry Read(string baseDirectory, string agentsDirectory)
-    {
-        var packageFormat = Path.Combine(baseDirectory, PackageFormatFolder);
-        var agents = Path.Combine(agentsDirectory, V31AgentsCatalogue.Folder);
-        if (!Directory.Exists(packageFormat))
-            throw new FormatException($"Registry folder '{packageFormat}' is missing.");
-        if (!Directory.Exists(agents))
-            throw new FormatException($"Registry folder '{agents}' is missing.");
-
-        return TypeRegistry.Read(
-            Path.Combine(packageFormat, "formats"),
-            Path.Combine(agents, "formats"),
-            Path.Combine(packageFormat, "renderers", "index.json"),
-            Path.Combine(agents, "bindings.json"),
-            Path.Combine(agents, "agents.json"));
-    }
+    private static TypeRegistry Read(string baseDirectory, string agentsDirectory) =>
+        Consultologist.PackageFormat.V31.PublishedTypeRegistry.Read(
+            Path.Combine(baseDirectory, PackageFormatFolder), Path.Combine(agentsDirectory, V31AgentsCatalogue.Folder));
 }

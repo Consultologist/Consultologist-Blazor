@@ -16,6 +16,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
+using PublishedTypeRegistry = Consultologist.Api.V31.PublishedTypeRegistry;
 
 namespace Consultologist.Api.Tests.V31Engine;
 
