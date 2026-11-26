@@ -193,10 +193,14 @@ engine has already decided and recorded
   path is no guard. Each object the read steps through needs its guard, outermost first. A read with no
   guard is refused (A11-009). The header rule of the text the read is in guards it too: the `if`
   of the node, the deliverable, the snippet or the macro, and a part's own `if`, when it asserts the
-  object: `{ "var": x }` alone, `x !== null`, `x === v` with a literal `v` that is not `null`, or
-  `!!x`, each joined by `and`, where `x` is the object or a path under it; and `pass.number > 1`
-  (or `>= 2`) for an object that is null only on the first pass (`pass.previous.node.<id>.value`
-  of a node that runs in every pass).
+  object: `{ "var": x }` alone, `x !== null`, or `x === v` with a literal `v` that is not `null`
+  (either side), each joined by `and`, where `x` is the object or a path under it; and
+  `pass.number > n` with `n` at least 1, or `>= n` with `n` at least 2 (the count on the left;
+  `pass.parent.number` for the `while` around), for an object that is null only on that `while`'s
+  first pass (`pass.previous.node.<id>.value` of a node that runs in every pass). No other form
+  guards. A `for` whose variable has the guard's root as its name (`for e`
+  under `{{ if e.contact }}`, `for input` under a header rule on `input.…`) names another value in
+  its body, so the guard holds nothing there.
 - **Testing anything else is refused:** a data value, an input, a node's text, a run fact. The
   one exception is a renderer's body, which may test its own `value` (§ 5.1). The
   sentence points to the header forms: a part (§ 7), a snippet's `if` (§ 6) or a macro's `if`

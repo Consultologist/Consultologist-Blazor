@@ -1604,7 +1604,8 @@ The rules for one read:
   `AfterFirstPass` those null only before a second pass. Each must be guarded, else A11-009 names the outermost. The
   guards are `TemplateOutput.Guards`, `TemplateFor.Guards` and `TemplateTest.Guards` (the paths the enclosing `if`
   branches assert, `TemplateTest.Asserts`: a bare test or `!= null` on the `&&` spine of its condition, an `else`
-  asserting nothing), and the header rules of the text (`NullableGuards.Asserted`: the node's, deliverable's,
+  asserting nothing, and a `for` dropping in its body each guard rooted at its variable), and the header rules of the
+  text, but those rooted at a `for` variable's name around the read (`NullableGuards.Asserted`: the node's, deliverable's,
   snippet's or macro's `if`, and a part's own). Both are compared as written and rooted.
 - These are refused:
   - a root the site does not read: S05-020, or S05-021 for `profile.*` in a prompt, a part or a `rendered` node;
