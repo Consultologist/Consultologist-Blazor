@@ -78,6 +78,7 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | `onInvalid: flag` (a reply that did not fit was kept) | **`retry`**: one more attempt with the validation error, then the node fails; a notice (A10-013) says so, and the owner's before-and-after notification lists it ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 3) | [05](05-templates-and-macros.md) |
 | `failIfEmpty` on agent nodes | the failure sentence, or null (part 05 § 1.2); 30's true, false or absent is what the migration converts from | [05](05-templates-and-macros.md) |
 | optional macros: per-run choices with a `default` | **boolean inputs** (§ 1.3) | [02](02-types-and-inputs.md), [05](05-templates-and-macros.md) |
+| a macro the model chose: a macro a prompt places whose instruction left the choice to the model (30's mechanics sentence begins *"If so, write …"*, so every one was optional, where 31 requires an offered macro's marker exactly once, part 05 § 8.6) | **a classifier gates it** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), item 1): for each agent that places it (its prompt, or a snippet its prompt places), a `judgement` agent node `<macro id>_applies` (fitted to 64 characters, A10-034; numbered `_applies_2`, … when a node has the id, S10-006), written as that agent's sibling immediately before it (inside its loop or branch), its `if` the macro's offer condition (its own `if`, its placements', and a choice input's, § 1.3), its prompt the reads the placing prompt makes outside any `if` or `for` (an input, a node, the item, a snippet whose body places no macro; never a part or a macro), each on its own line, then an **empty question line**, a hand edit (A10-077, § 1.4) that publish refuses until it is written (A11-013). The macro's `if` gains `{ "===": [ { "var": "node.<classifier>.value.answer" }, true ] }`, joined by `and` after the rest (one per placing agent). The "otherwise nothing" clause of the instruction is not rewritten by code, which cannot find it reliably: the hand edit says to remove it. A macro with an empty instruction, one whose instruction is a template (`{{ "" }}`, another macro's text: A10-042), one placed by the engine (`before`, `after`: D3, A10-003) and one whose placements disagree (A10-036) keep their hand edits and get no classifier. A `condition` member that compiles to this node at publish is #1534 (Milestone 40) | [05](05-templates-and-macros.md) |
 | no tests | one snapshot test (§ 4) | [07](07-compiled-documents.md) |
 
 ### 1.3 Per-run macro choices become boolean inputs
@@ -127,6 +128,10 @@ validation fails with sentences until each is made, as the 25 migration did. The
 - a body `if` too complex to lift into a part;
 - macros placed on deliverables with conditions or model judgement (#1406);
 - a condition or `let` the converter can't map (§ 2.3);
+- **the question of a classifier the migration wrote** for a macro 30's model chose (§ 1.2), on the prompt's last line,
+  with the "otherwise" clause taken out of the macro's instruction (A10-077: *"node '<id>' decides whether macro '<macro
+  id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the
+  "otherwise" clause from the macro's instruction."*); until it is written, publish refuses the node (A11-013);
 - **a 30 prompt that reads `profile.*`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): at 31 a prompt never reads the profile
   (part 05), so the read is a hand edit, and the owner is told about it in the after-notice
   (§ 1.5), with what replaced it.
@@ -471,6 +476,12 @@ and the migration report lists each such conversion (A10-050).
     keeps; 31 sends the answers' format (§ 1.2) after it, as every `custom` binding is sent. The rule `sent-format`
     explains exactly that trailer: the custom trailer and a format of `value` alone, closed, an `enum` of the values 30's
     line lists in its order, with nothing else sent (no description, title or `$id`). The values are sent twice.
+  - **A macro the model chose, gated by its classifier** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), items 1
+    and 2; § 1.2): the classifier's prompt is 31's alone, and the comparison answers it from the capture, `answer: true`
+    exactly where 30's reply for the placing node held the macro's marker (`macro.<id>.content`); a captured reply is
+    replayed as written, no marker added. The rule `macro-choice-classifier` explains the classifier's prompt, and the
+    placing prompt only where it holds the macro's 31 instruction in place of its 30 one, that one or it with one
+    "otherwise" clause removed, where the classifier answered yes, and lacks that 30 instruction where it answered no.
   - **One message per deliverable, where 30 sent one per job** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968), 1): a migrated package delivers each
     deliverable by `pdf` in its own message. No compared text carries it, so the report says it in its `notices`. A job whose
     every deliverable is blocked still sends the link-only email, as 30's reply did: a 30 behaviour kept, not a difference ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369)).

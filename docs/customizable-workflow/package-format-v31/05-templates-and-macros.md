@@ -660,6 +660,10 @@ record shows which was false. The folder is a namespace: `macro.<folder>.<id>`
   `_macro` (`letrozole` → `letrozole_macro`), reported by the migration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)). A `MacroChoices` entry keyed by a macro's id sets the one boolean input that macro's `if` reads ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647); part 10 § 1.3).
 - One classifier per macro, per node, per item. A classifier answering several questions is
   #1416 (Milestone 40).
+- **A classifier asks its question** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), item 1): a `judgement` node
+  whose prompt, with its parts' text, holds nothing outside its tags but white space asks nothing, and is refused
+  (A11-013). The migration writes a classifier so, for a macro 30's model chose, and the operator writes the question
+  (part 10 §§ 1.2, 1.4).
 
 ### 8.3 Where: placing the instruction
 
@@ -776,6 +780,7 @@ naming each macro and what was wrong, since the reply may hold patient text.
   marker; no `macro.*` or `part.*` placement; snippets only under the guard (§ 6.3); no
   `profile.*`.
 - **Each template:** a macro placed at most once, counting its parts' text.
+- **Each `judgement` node:** its prompt asks a question (§ 8.2, A11-013).
 - **Each body:** it suits `format` (no Markdown in a `plaintext` macro); no markers; no
   placement of `macro.*` or `part.*`; its reads within § 3.1's macro-body column; no cycles.
 
