@@ -27,6 +27,39 @@ public class RowKeyOrder31Tests
     }
 
     [Fact]
+    public void NullEmptyNonNumericAndSubRowIds_DoNotThrow_AndOrderConsistently()
+    {
+        var comparer = RowKeyOrder31.Instance;
+        Assert.Equal(0, comparer.Compare(null, null));
+        Assert.True(comparer.Compare(null, "") < 0);
+        Assert.True(comparer.Compare("", null) > 0);
+        Assert.True(comparer.Compare("", "node.a") < 0);
+        Assert.Equal(0, comparer.Compare("", ""));
+
+        string?[] keys =
+        [
+            "node.a:x/2", "node.a:x/10", "node.a:2/1/render:1", "node.a:2/1", "node.a#x", "node.a:", "", null,
+            "node.standards.assessment:7/if:macro.letrozole_prescription_text", "node.a:2/1/render:10", "node.a:2/1/render:2",
+        ];
+
+        var sorted = keys.OrderBy(key => key, comparer).ToList();
+        Assert.Equal(sorted, keys.Reverse().OrderBy(key => key, comparer).ToList());
+        Assert.Equal([null, ""], sorted.Take(2));
+        Assert.True(comparer.Compare("node.a:x/2", "node.a:x/10") < 0);
+        Assert.True(comparer.Compare("node.a:2/1/render:2", "node.a:2/1/render:10") < 0);
+        Assert.True(comparer.Compare("node.a:2/1", "node.a:2/1/render:1") < 0);
+
+        // antisymmetric over every pair
+        foreach (var x in keys)
+        {
+            foreach (var y in keys)
+            {
+                Assert.Equal(Math.Sign(comparer.Compare(x, y)), -Math.Sign(comparer.Compare(y, x)));
+            }
+        }
+    }
+
+    [Fact]
     public void TheRootedKey_ComparesAsText_AndAKeyBeforeItsInstances()
     {
         Assert.Equal(

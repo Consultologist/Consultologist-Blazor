@@ -377,6 +377,88 @@ public class ConsultsRunView31Tests : ClientRenderTestContext
         Assert.DoesNotContain(NoteText, page.Markup);
     }
 
+    private const string JobB = "31bb0000cccc1111dddd2222eeee4444";
+    private const string OtherNote = "Dr A. Sample reviewed the second referral (fictional).";
+
+    private static object? Call(IRenderedComponent<Consults> page, string method, params object[] arguments) =>
+        typeof(Consults).GetMethod(method, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(page.Instance, arguments);
+
+    private static T Field<T>(IRenderedComponent<Consults> page, string field) =>
+        (T)typeof(Consults).GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(page.Instance)!;
+
+    [Fact]
+    public async Task AFetchLandingAfterAnotherRunStarted_IsDropped_AndTheNewRunFetchesItsOwn()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        var late = new TaskCompletionSource<RecordRowText?>();
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns(late.Task);
+        AIService.GetJobRowAsync(JobB, "deliverable.note").Returns(Released(OtherNote) with { });
+        Stream(RowFinished("deliverable.note", "deliverable", "released"));
+
+        var page = RenderRun();
+        page.WaitForAssertion(() => AIService.Received(1).GetJobRowAsync(JobId, "deliverable.note"), Settle);
+
+        // another run starts (CreateConsultAsync resets the run's state), and its own snapshot and row arrive
+        await page.InvokeAsync(() =>
+        {
+            Call(page, "ResetRun31");
+            return (Task)Call(page, "HandleConsultGenerationJobEventAsync", "snapshot", JsonSerializer.Serialize(Job31("Running") with { JobId = JobB }))!;
+        });
+
+        // job A's answer lands late: it changes nothing
+        await page.InvokeAsync(() => late.SetResult(Released(NoteText)));
+        Assert.Empty(Field<Dictionary<string, RecordRowText>>(page, "deliverableRows31"));
+        Assert.Empty(Field<Dictionary<string, string>>(page, "deliverableErrors31"));
+
+        await page.InvokeAsync(() => (Task)Call(page, "HandleConsultGenerationJobEventAsync", "row-finished",
+            JsonSerializer.Serialize(new { key = "deliverable.note", section = "deliverable", status = "released" }))!);
+
+        page.WaitForAssertion(() => Assert.Contains(OtherNote, page.Find(".run31-deliverable[data-key='deliverable.note']").TextContent), Settle);
+        Assert.DoesNotContain(NoteText, page.Markup);
+        AIService.Received(1).GetJobRowAsync(JobB, "deliverable.note");
+    }
+
+    [Fact]
+    public async Task AFetchLandingAfterThePageWent_EndsQuietly()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        var late = new TaskCompletionSource<RecordRowText?>();
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns(late.Task);
+        Stream(RowFinished("deliverable.note", "deliverable", "released"));
+
+        var page = RenderRun();
+        page.WaitForAssertion(() => AIService.Received(1).GetJobRowAsync(JobId, "deliverable.note"), Settle);
+        var fetch = Field<Dictionary<string, Task>>(page, "deliverableFetches31")["deliverable.note"];
+
+        await page.Instance.DisposeAsync();
+        late.SetException(new InvalidOperationException("the transport went with the page"));
+        await fetch.WaitAsync(Settle);
+
+        Assert.True(fetch.IsCompletedSuccessfully);
+        Assert.Empty(Field<Dictionary<string, RecordRowText>>(page, "deliverableRows31"));
+        Assert.Empty(Field<Dictionary<string, string>>(page, "deliverableErrors31"));
+    }
+
+    [Fact]
+    public void APoll_AsksAgainForATextNotYetWritten()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running") with { Rows = 1 });
+        AIService.GetJobRowsAsync(JobId).Returns([Listed("deliverable.note", "deliverable", """{"key":"deliverable.note","state":"released"}""")]);
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns(NoText(), Released(NoteText));
+        // no stream: the page falls back to polling, whose row count does not move
+        AIService.StreamConsultGenerationJobEventsAsync(JobId, Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(_ => throw new HttpRequestException("stream unavailable"));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Contains(NoteText, page.Find(".run31-deliverable[data-key='deliverable.note']").TextContent), Settle);
+        AIService.Received(1).GetJobRowsAsync(JobId);
+    }
+
     [Fact]
     public void A30Job_UsesTodaysRunView()
     {

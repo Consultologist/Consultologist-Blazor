@@ -2031,8 +2031,20 @@
   private Dictionary<string, string> deliverableErrors31 = new(StringComparer.Ordinal);
   private Dictionary<string, Task> deliverableFetches31 = new(StringComparer.Ordinal);
 
+  // Moves on each ResetRun31, so an answer started for an earlier run (a fetch still in flight when the next run starts)
+  // is recognised when it lands and dropped.
+  private int run31Token;
+
+  /// <summary>
+  /// Whether an answer awaited for <paramref name="jobId"/> under <paramref name="token"/> still belongs to the run on
+  /// screen: the page is not disposed, no run was started since, and the job shown is that job.
+  /// </summary>
+  private bool IsCurrentRun31(int token, string jobId) =>
+    !disposed31 && token == run31Token && string.Equals(jobId, lastAppliedJobId, StringComparison.Ordinal);
+
   private void ResetRun31()
   {
+    run31Token++;
     jobStatus31 = null;
     currentKey31 = null;
     rowsError31 = null;
@@ -2062,9 +2074,15 @@
   /// </summary>
   private async Task LoadRows31Async(string jobId)
   {
+    var token = run31Token;
     try
     {
       var listed = await AIService.GetJobRowsAsync(jobId);
+      if (!IsCurrentRun31(token, jobId))
+      {
+        return;
+      }
+
       foreach (var row in listed)
       {
         NoteRowFinished31(new(row.Key, row.Section, Consultologist.Web.Services.Provenance.V31.RunRail31.StatusOf(row.Section, row.Row)));
@@ -2080,6 +2098,11 @@
     }
     catch (Exception ex)
     {
+      if (!IsCurrentRun31(token, jobId))
+      {
+        return;
+      }
+
       rowsError31 = ex.Message;
     }
 
@@ -2123,11 +2146,21 @@
     await Task.WhenAll(deliverableFetches31.Values.ToList());
   }
 
+  /// <summary>
+  /// One deliverable's row, run un-awaited from the SSE handler: it never throws, and once its answer lands it writes and
+  /// re-renders only while the run it was started for is still the one on screen (<see cref="IsCurrentRun31"/>).
+  /// </summary>
   private async Task FetchDeliverable31Async(string jobId, string key)
   {
+    var token = run31Token;
     try
     {
       var fetched = await AIService.GetJobRowAsync(jobId, key);
+      if (!IsCurrentRun31(token, jobId))
+      {
+        return;
+      }
+
       if (fetched is { TextDeleted: true } || (fetched is not null && Content31(fetched) is not null))
       {
         deliverableRows31[key] = fetched;
@@ -2138,21 +2171,36 @@
         deliverableErrors31[key] = RowNotAvailable31;
       }
     }
-    catch (AccessTokenNotAvailableException exception)
+    catch (AccessTokenNotAvailableException exception) when (IsCurrentRun31(token, jobId))
     {
       exception.Redirect();
       return;
     }
-    catch (ConsultGenerationRefusedException refusal)
+    catch (ConsultGenerationRefusedException refusal) when (IsCurrentRun31(token, jobId))
     {
       deliverableErrors31[key] = refusal.Message;
     }
-    catch (Exception)
+    catch (Exception) when (IsCurrentRun31(token, jobId))
     {
       deliverableErrors31[key] = RowNotAvailable31;
     }
+    catch (Exception)
+    {
+      // an answer for a run no longer on screen, or a page that went: nothing to say
+      return;
+    }
 
-    await InvokeAsync(StateHasChanged);
+    try
+    {
+      if (IsCurrentRun31(token, jobId))
+      {
+        await InvokeAsync(StateHasChanged);
+      }
+    }
+    catch (ObjectDisposedException)
+    {
+      // the page went between the check and the render
+    }
   }
 
   private static string? Content31(RecordRowText row) =>
