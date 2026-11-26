@@ -707,9 +707,11 @@ A plan answers 200 with `V31PackageDescription.Describe(plan)`, from `resolve.js
   at the root, every format it reaches under the root's `$defs` once, each with its `$id` kept, and every reference to
   one written as `{ "$ref": "<its $id URN>" }`. A satellite resolves references by `$id`. A format that cannot be
   expanded (recursion) is `false`.
-- **`Fields`** come in ordinal property order, which is the order `resolve.json` holds them in (it is canonical JSON).
-  Part 09 § 4.3 says "in written order"; this is open with the owner on #1508. A field is `Required` when its type is
-  not nullable, and its `Label` is its `title`, else the title of the format it names, else its name.
+- **`Fields`** come in written order, as part 09 § 4.3 says: `resolve.json` is canonical JSON, which sorts the
+  properties, so each object that has them carries `propertyOrder` beside them, the names as the source writes them
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), R10), and `Fields` follow it (a property it does not list, which publish never writes, comes after,
+  in the order held). A field is `Required` when its type is not nullable, and its `Label` is its `title`, else the
+  title of the format it names, else its name.
 
 A load refusal (S09-009, S09-014, a `requires` sentence) is 400 `{ error }` with the job's sentence. A 31 version with
 no stamp is 400 A06-004 (*"isn't published"*) when 31 is admitted, and S09-001 when it is not. A registry that cannot be

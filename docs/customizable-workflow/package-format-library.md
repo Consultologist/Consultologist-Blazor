@@ -279,8 +279,8 @@ Each takes a format as written (a name or an inline schema) and a `FormatSet`, a
   rejects). A package's or function's own format is bound through `custom` (`via` `custom`); a
   built-in or catalogue format through `formats.<id>` (`via` `format`), never through `custom`.
 - **`SentFormat.Prepare(format, formats, strictRejects)`**: the copy of a format a model receives
-  (part 02 § 3.5 steps 1 to 5). It is the full form with `title`, `$id`, `$schema`, `$defs`, `x-*`
-  and `contentMediaType` removed, descriptions kept, a labelled `oneOf` as a plain `enum`, and the
+  (part 02 § 3.5 steps 1 to 5). It is the full form with `title`, `$id`, `$schema`, `$defs`, `x-*`,
+  `contentMediaType` and (#1508, R10) `resolve.json`'s `propertyOrder` removed, descriptions kept, a labelled `oneOf` as a plain `enum`, and the
   agent's rejected keywords removed. `NotSent` lists those keywords as pointers into the full form.
   `Hash` hashes the copy. `CheckLimits` gives S02-055 and S02-056.
 - **`IFormatValueValidator.Validate(value, format, formats)`**: is a value one the format describes
@@ -915,7 +915,11 @@ upload's order or line ends.
     `…:function:<function>:format:<id>`.
   - Names inside an entry are rewritten to the target's `$id`, so the bundle is a JSON Schema 2020-12 compound
     document (#1508, R2); a `format` outside the bundle names the key, `#/$defs/<key>` (`CompiledFormats.Rewrite`).
-  - `formatHashes` and `typeHashes` are the type services' hashes of each format in its own scope.
+  - Every schema object the rewrite walks that has `properties` (in the bundle and in a `format` outside it) gets
+    `propertyOrder`, their names as the source writes them (#1508, R10; `CompiledFormats.PropertyOrder`), since
+    `resolve.json` is canonical JSON and sorts them.
+  - `formatHashes` and `typeHashes` are the type services' hashes of each format in its own scope, taken from the
+    source, so `propertyOrder` moves neither.
   - `bindings` is format key, then `generated`, then `{ agentName, agentVersion, via }`.
 - **Entries.** Every entry is its header as written, cloned, with:
   - every `format` rewritten in the scope that owns it;
@@ -2905,7 +2909,7 @@ test's text: a mismatch on text gives hashes, and S07-009's error a path and a k
 | D10 | a refused report | above, "The publish report" |
 | D11 | the corpus re-render | `scripts/rerender-workflow-packages-v31.cs` ([registry operations](registry-operations.md), "specVersion 31") |
 | D12 | `Blocks`, `Results` | the top-level entries in `graph.order`, nodes and deliverables apart |
-| D13 | `Fields` | `Required` when the property's type is not nullable; `Label` its `title`, else the title of the format it names, else its name. They come in ordinal order (below) |
+| D13 | `Fields` | `Required` when the property's type is not nullable; `Label` its `title`, else the title of the format it names, else its name. They come in written order, the object's `propertyOrder` (below) |
 | D14 | `Content` | `Files` every stored source file but `manifest.json`, and `dag.mmd` when stored; `Resolve`, `Lock`, `PublishReport` parsed from the stored bytes; `MigratedFrom` from the stamp |
 | D15 | import | the source check only; the content with `Notices` holding S07-016 once when the zip held `resolve.json` or `lock.json` |
 | D16 | limits | `PublishLimits(Ceiling, ItemsPerLoop, CallsPerJob, Instances = null, JobMinutes = null)`; the engine's are `EngineLimitSettings.PublishLimits`. S09-016, the note that the estimated worst case passes `JobMinutes`, follows S04-080 |
@@ -2914,9 +2918,9 @@ test's text: a mismatch on text gives hashes, and S07-009's error a path and a k
 2020-12 compound document (the controller's ruling in the build): the input's schema at the root, each bundled format
 it reaches, transitively, once under the root's `$defs` with its `$id` kept and `$schema` dropped, and every reference
 to one written as `{ "$ref": "<its $id URN>" }`. A format file's own `$defs` stay with it. A format that recurses, names
-something unknown or passes the node budget gives `false`, as the run's expansion does. `Fields` follow the order
-`resolve.json` holds a format's properties in, which is ordinal: `resolve.json` is canonical JSON and keeps no written
-order. Part 09 § 4.3 says "in written order"; that difference is open with the owner on #1508.
+something unknown or passes the node budget gives `false`, as the run's expansion does. `Fields` come in written order
+(part 09 § 4.3): `resolve.json` is canonical JSON and sorts the properties, so each object that has them carries
+`propertyOrder` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), R10), and `Fields` follow it, any property it does not list after, as held.
 
 ### What it leaves to areas 12 and 13
 

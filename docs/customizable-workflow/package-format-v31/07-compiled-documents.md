@@ -114,17 +114,32 @@ folders' `index.json` files at 31 ([part 01](01-files-and-scopes.md),
 Members of the manifest that only steer publish are carried under the same names when they exist
 at 31; `derivedFrom` is the one there is.
 
+**Every schema object that has `properties` carries `propertyOrder` beside them**
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), R10): the property names in the order the source writes them, each once, since
+RFC 8785 sorts an object's members and the written order would otherwise be lost (as `inputOrder`
+keeps the inputs'). It is written at every depth (under `properties`, `items`, `anyOf` and `$defs`)
+of a bundled format (a package format, a built-in or a catalogue format, in the order its published
+file writes) and of an inline format at any site (an input's, a function parameter's, an entry's),
+and nowhere else. It is the compiled copy's alone: it is never written in source (the dialect
+refuses it there), `formatHashes` and `typeHashes` are taken from the source without it, a model is
+never sent it (so `sentFormatHash` does not depend on it, § 2.4), and a value is validated as
+before, a validator ignoring it as JSON Schema ignores a keyword it does not know. A `resolve.json`
+written by an earlier 31 preview, before `propertyOrder`, does not fit `resolve.schema.json`: while
+31 is in preview such a document is published again, not honoured.
+
 ### 2.3 `inputs`
 
 The manifest's inputs object, keyed by id, with each entry's five members as written
 ([part 02](02-types-and-inputs.md)): `label` (string), `description` (lines or `null`), `format`
-(a `$ref` into the bundle, `{ "$ref": "#/$defs/<id>" }`, or the inline schema), `required`
+(a `$ref` into the bundle, `{ "$ref": "#/$defs/<id>" }`, or the inline schema, each object in it
+that has `properties` with `propertyOrder` beside them, § 2.2), `required`
 (boolean) and `channel`. Bare format ids are rewritten to `#/$defs/<id>`, as everywhere in the
 document outside the bundle (inside it, a reference is the target's `$id`, § 2.4).
 
 **The order is explicit** in `inputOrder`, since RFC 8785 sorts an object's members and the written
 order is the Create page's
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466));
+an object input's fields are in its format's `propertyOrder` (§ 2.2).
 
 ### 2.4 `formats` and `bindings`
 
@@ -155,8 +170,9 @@ rewritten to the target's `$id` URN (`{ "$ref": "urn:consultologist:spec:31:form
 standard validator given the bundle resolves every reference in it as written. A `#/$defs/<name>`
 inside a format is that format file's own definition, as in source. **Outside the bundle,** an
 input's, a node's or any entry's `format` names the bundle's key: `{ "$ref": "#/$defs/<id>" }`.
-Only those references are rewritten: every other byte of a published format is kept, and neither
-hash below depends on how a reference is written.
+Only those references are rewritten, and `propertyOrder` added beside each `properties` (§ 2.2):
+every other byte of a published format is kept, and neither hash below depends on how a reference is
+written or on `propertyOrder`.
 
 **Formats are pure shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)): one `plaintext`, one `markdown_block`, one `boolean`,
 with no producer families or prefixes. **Every node entry carries its `producer`**, as written
@@ -174,7 +190,7 @@ runs; the producer says how its output can be verified.
   compare these: a written `format` against the derived one, `with` against parameters, branch
   results against each other.
 
-**What a model receives** is its format with `title`, `$id` and the keywords strict mode rejects
+**What a model receives** is its format with `title`, `$id`, `propertyOrder` and the keywords strict mode rejects
 (such as `format: "date"`) removed; the list comes from the attested agent definition, and the
 reply is still validated against the full format. `resolve.json` keeps the full format; the record
 holds the sent format's hash and the removed keywords (part 08).
