@@ -205,4 +205,37 @@ public class InputShapeTests
         Assert.Equal(InputWidget.Unsupported, Of("""{"type":"null"}""").Widget);
         Assert.Equal(InputWidget.Unsupported, Of("""{}""").Widget);
     }
+
+    // Task 9: part 02 § 3.2 makes a reference or an object nullable with anyOf it and null, and a labelled enum with a
+    // { "const": null } arm; the spec's own example (part 02 § 8.4, "notes") is such a field.
+    [Fact]
+    public void ANullableReference_IsItsTargetsWidget_Nullable_WithItsOwnTitle()
+    {
+        var shape = Of("""{"anyOf":[{"$ref":"@P@markdown_block"},{"type":"null"}],"title":"Notes for this section","$defs":{"m":@MarkdownDef@}}""");
+        Assert.Equal(InputWidget.Markdown, shape.Widget);
+        Assert.True(shape.Nullable);
+        Assert.Equal("Notes for this section", shape.Title);
+
+        var group = Of("""{"anyOf":[{"type":"object","properties":{"a":{"type":"string"}},"required":["a"]},{"type":"null"}]}""");
+        Assert.Equal(InputWidget.Group, group.Widget);
+        Assert.True(group.Nullable);
+    }
+
+    [Fact]
+    public void ANullableFieldWrittenWithAnyOf_IsNotRequired()
+    {
+        const string schema = """{"type":"object","properties":{"notes":{"anyOf":[{"$ref":"@P@plaintext"},{"type":"null"}]}},"required":["notes"],"$defs":{"p":@PlainDef@}}""";
+        var field = Of(schema, [new WorkflowPackageFieldResponse("notes", "Notes", true, "text")]).Fields.Single();
+        Assert.False(field.Required);
+        Assert.Equal(InputWidget.Area, field.Shape.Widget);
+    }
+
+    [Fact]
+    public void ANullableLabelledChoice_DropsItsNullArm()
+    {
+        var shape = Of("""{"type":["string","null"],"oneOf":[{"const":"oral","title":"By mouth"},{"const":"iv","title":"Intravenous"},{"const":null}]}""");
+        Assert.Equal(InputWidget.Select, shape.Widget);
+        Assert.True(shape.Nullable);
+        Assert.Equal(["oral", "iv"], shape.Choices.Select(c => c.Value));
+    }
 }

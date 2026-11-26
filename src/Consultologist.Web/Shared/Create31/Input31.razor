@@ -1,0 +1,221 @@
+@using Consultologist.Web.Services.Accounts
+@using Consultologist.Web.Services.Workflow.V31
+@* #1509 (Task 9): a specVersion 31 input drawn from its format (part 09 § 5.1, part 02 § 8.1): a select, a date, a
+   three-state boolean (D2), a number field, a field group to any depth, or repeating rows. Text-format inputs keep the
+   Create page's own slot (documents, earlier runs, snippets, chips); a text field inside a group or a row is drawn here.
+   No <label> elements: the page may draw this inside its own <label> slot (a form-channel group), so every control is
+   named by aria-label, and every button sits in the preventDefault wrapper AGENTS.md asks for. *@
+
+<div class="input31" data-widget="@Shape.Widget">
+    @if (ShowLabel)
+    {
+        <span class="input31__label">
+            @Label
+            @if (Required)
+            {
+                <span class="input31__required" aria-hidden="true">*</span>
+                <span class="visually-hidden">(required)</span>
+            }
+            else
+            {
+                <span class="input31__optional">(optional)</span>
+            }
+        </span>
+        @if (!string.IsNullOrEmpty(Help))
+        {
+            <span class="input-field__help">@Help</span>
+        }
+    }
+    @Control(Shape, Value, Label, Required)
+</div>
+
+@code {
+    /// <summary>The input's shape (<see cref="InputShapes.Of"/>).</summary>
+    [Parameter, EditorRequired] public InputShape Shape { get; set; } = null!;
+
+    /// <summary>Its value; edited in place.</summary>
+    [Parameter, EditorRequired] public InputValue31 Value { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+
+    /// <summary>D4: the input's description, its lines joined by line ends; none when null.</summary>
+    [Parameter] public string? Help { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Raised after every edit, so the page re-reads what Start may do.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    /// <summary>False where the page's own slot already draws the label, help and chips (a form-channel group).</summary>
+    [Parameter] public bool ShowLabel { get; set; } = true;
+
+    /// <summary>The account's snippets, offered on a text field as the page offers them (#561); none when empty.</summary>
+    [Parameter] public IReadOnlyList<Snippets.Snippet> SnippetItems { get; set; } = [];
+
+    /// <summary>
+    /// One value's control. <paramref name="due"/> is whether a blank here must be filled in now: a required input, or a
+    /// field that is not nullable of a group that is required or has been touched (part 09 § 5.1), or any row's item.
+    /// </summary>
+    private RenderFragment Control(InputShape shape, InputValue31 value, string label, bool due) => __builder =>
+    {
+        switch (shape.Widget)
+        {
+            case InputWidget.Group:
+                var touched = !value.IsBlank;
+                <div class="input31__group" role="group" aria-label="@label">
+                    @for (var i = 0; i < shape.Fields.Count; i++)
+                    {
+                        var field = shape.Fields[i];
+                        var child = value.Fields[i];
+                        <div class="input31__field" data-field-id="@field.Id" @key="field.Id">
+                            <span class="input31__field-label">
+                                @field.Label
+                                @if (!field.Required)
+                                {
+                                    <span class="input31__optional">(optional)</span>
+                                }
+                            </span>
+                            @Control(field.Shape, child, field.Label, field.Required && (due || touched))
+                        </div>
+                    }
+                </div>
+                break;
+
+            case InputWidget.Rows:
+                <div class="input31__rows" role="group" aria-label="@label">
+                    @for (var i = 0; i < value.Rows.Count; i++)
+                    {
+                        var index = i;
+                        var row = value.Rows[index];
+                        var array = value;
+                        <div class="input31__row" @key="row">
+                            <span class="input31__row-number">@(index + 1).</span>
+                            <div class="input31__row-body">
+                                @Control(shape.Items!, row, $"{label} row {index + 1}", true)
+                            </div>
+                            @* preventDefault (AGENTS.md, #1137): a Remove whose button the re-render drops must not
+                               reach an enclosing <label>'s activation. *@
+                            <span class="input31__row-buttons" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                <FluentButton Appearance="Appearance.Stealth" Title="Move up"
+                                              aria-label="@($"Move entry {index + 1} up")"
+                                              Disabled="@(index == 0)"
+                                              IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                              OnClick="@(() => EditAsync(() => array.MoveRow(index, -1)))" />
+                                <FluentButton Appearance="Appearance.Stealth" Title="Move down"
+                                              aria-label="@($"Move entry {index + 1} down")"
+                                              Disabled="@(index == array.Rows.Count - 1)"
+                                              IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                              OnClick="@(() => EditAsync(() => array.MoveRow(index, +1)))" />
+                                <FluentButton Appearance="Appearance.Stealth" Title="Remove entry"
+                                              aria-label="@($"Remove entry {index + 1}")"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              OnClick="@(() => EditAsync(() => array.RemoveRow(index)))" />
+                            </span>
+                        </div>
+                    }
+                    <span class="input31__add-wrap" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                        <FluentButton Appearance="Appearance.Stealth" Class="input31__add"
+                                      IconStart="@(new Icons.Regular.Size20.Add())"
+                                      OnClick="@(() => EditAsync(() => value.AddRow()))">Add entry</FluentButton>
+                    </span>
+                    @if (due && value.Rows.Count == 0)
+                    {
+                        <span class="input31__problem">Required.</span>
+                    }
+                </div>
+                break;
+
+            case InputWidget.Select:
+                <FluentSelect TOption="string" class="input31__control"
+                              @bind-Value="value.Text" @bind-Value:after="NotifyAsync"
+                              aria-label="@label">
+                    <FluentOption TOption="string" Value="">choose…</FluentOption>
+                    @foreach (var choice in shape.Choices)
+                    {
+                        <FluentOption TOption="string" Value="@choice.Value">@choice.Title</FluentOption>
+                    }
+                </FluentSelect>
+                @Hint(shape, value, due)
+                break;
+
+            case InputWidget.Boolean:
+                @* D2: three states, unset first; explicit Value/ValueChanged as the page's own tri-state does. *@
+                <FluentSelect TOption="string" class="input31__control"
+                              Value="@(value.Flag is { } flag ? (flag ? "true" : "false") : string.Empty)"
+                              ValueChanged="@(choice => EditAsync(() => SetFlag(value, choice)))"
+                              aria-label="@label">
+                    <FluentOption TOption="string" Value="">choose…</FluentOption>
+                    <FluentOption TOption="string" Value="true">Yes</FluentOption>
+                    <FluentOption TOption="string" Value="false">No</FluentOption>
+                </FluentSelect>
+                @Hint(shape, value, due)
+                break;
+
+            case InputWidget.Date:
+                <input type="date" class="input31__control"
+                       value="@value.Text"
+                       @onchange="@(args => EditAsync(() => value.Text = args.Value?.ToString() ?? string.Empty))"
+                       aria-label="@label" />
+                @Hint(shape, value, due)
+                break;
+
+            case InputWidget.Number:
+            case InputWidget.Integer:
+                @* A text control, as the page's number is: the spelling is what is sent. *@
+                <input type="text" class="input31__control input31__number"
+                       inputmode="@(shape.Widget == InputWidget.Integer ? "numeric" : "decimal")"
+                       value="@value.Text"
+                       @onchange="@(args => EditAsync(() => value.Text = args.Value?.ToString() ?? string.Empty))"
+                       aria-label="@label" />
+                @Hint(shape, value, due)
+                break;
+
+            case InputWidget.Line:
+                <input type="text" class="input31__control"
+                       value="@value.Text"
+                       @onchange="@(args => EditAsync(() => value.Text = args.Value?.ToString() ?? string.Empty))"
+                       aria-label="@label" />
+                @Snippet(value)
+                @Hint(shape, value, due)
+                break;
+
+            case InputWidget.Area:
+            case InputWidget.Markdown:
+                @* Task 10 (D5): a Markdown field becomes MarkdownInput here and in the page's slot; until then, the text area. *@
+                <FluentTextArea class="input31__control" Rows="3"
+                                @bind-Value="value.Text" @bind-Value:after="NotifyAsync"
+                                aria-label="@label" />
+                @Snippet(value)
+                @Hint(shape, value, due)
+                break;
+        }
+    };
+
+    private RenderFragment Hint(InputShape shape, InputValue31 value, bool due) => __builder =>
+    {
+        if (value.Problem(shape, due) is { } problem)
+        {
+            <span class="input31__problem">@problem</span>
+        }
+    };
+
+    private RenderFragment Snippet(InputValue31 value) => __builder =>
+    {
+        if (SnippetItems.Count > 0)
+        {
+            <SnippetPicker Items="@SnippetItems" OnChosen="@(chosen => EditAsync(() => value.Text = Snippets.Insert(value.Text, chosen.Text)))" />
+        }
+    };
+
+    // A method because Razor cannot parse a switch expression inside an inline lambda (as the page's SetFlag says).
+    private static void SetFlag(InputValue31 value, string? choice) =>
+        value.Flag = choice switch { "true" => true, "false" => false, _ => null };
+
+    private Task NotifyAsync() => Changed.InvokeAsync();
+
+    private Task EditAsync(Action edit)
+    {
+        edit();
+        return Changed.InvokeAsync();
+    }
+}

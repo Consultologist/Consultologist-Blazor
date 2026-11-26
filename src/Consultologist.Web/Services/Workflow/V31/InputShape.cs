@@ -88,6 +88,22 @@ public static class InputShapes
             return title is null ? resolved : resolved with { Title = title };
         }
 
+        // Part 02 § 3.2: a reference or an object is made nullable as anyOf it and { "type": "null" }; no other anyOf has
+        // a widget (§ 8.1).
+        if (schema.TryGetProperty("anyOf", out var anyOf))
+        {
+            if (anyOf.ValueKind != JsonValueKind.Array || anyOf.GetArrayLength() != 2)
+                return Unsupported(title);
+            var arms = anyOf.EnumerateArray().ToList();
+            var others = arms.Where(arm => !IsNullArm(arm)).ToList();
+            if (others.Count != 1)
+                return Unsupported(title);
+            var inner = Read(others[0], defs, fields, items, depth + 1);
+            return inner.Widget == InputWidget.Unsupported
+                ? inner
+                : inner with { Nullable = true, Title = title ?? inner.Title };
+        }
+
         if (Text(schema, "$id") is { } id && id.StartsWith(SpecFormat, StringComparison.Ordinal))
         {
             var widget = id switch
@@ -126,6 +142,9 @@ public static class InputShapes
                 return Unsupported(title);
         }
     }
+
+    private static bool IsNullArm(JsonElement arm) =>
+        arm.ValueKind == JsonValueKind.Object && Text(arm, "type") == "null" && arm.EnumerateObject().Count() == 1;
 
     private static InputShape Scalar(InputWidget widget, bool nullable, string? title) =>
         new(widget, nullable, title, NoChoices, NoFields, null);
@@ -167,6 +186,9 @@ public static class InputShapes
         {
             foreach (var arm in arms.EnumerateArray())
             {
+                // A nullable labelled enum's { "const": null } arm (part 02 § 3.2) is the blank choice, not an option.
+                if (arm.ValueKind == JsonValueKind.Object && arm.TryGetProperty("const", out var constant) && constant.ValueKind == JsonValueKind.Null)
+                    continue;
                 if (arm.ValueKind != JsonValueKind.Object || Text(arm, "const") is not { } value)
                     return Unsupported(title);
                 choices.Add(new InputChoice(value, Text(arm, "title") ?? value));

@@ -487,3 +487,11 @@ The build's area sentences for area 11, which are not rows of `sentences.json` a
 A11-013 is said of a `judgement` node whose prompt, with its parts' text, the text of the snippets it places and of the
 snippet folder items it reads as `item.content`, holds nothing outside its tags but white space: a question only an
 input or a node gives at run time is not one the package asks, so such a prompt is refused (part 05 § 8.2).
+
+## 12 Create and History
+
+The build's area sentences for area 12, which are not rows of `sentences.json` and are not counted above. Each is added by the task that first says it.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A12-006 | [5.1 Inputs](09-engine-and-pages.md#51-inputs) | *"This workflow can't be filled in here: this page has no field for '\<input label\>'. Tell the operator."* | clinician | |

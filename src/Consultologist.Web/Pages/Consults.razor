@@ -11,6 +11,8 @@
 @using ItemPath = Consultologist.PackageFormat.WorkflowItemPath
 @using Consultologist.Web.Services.Documents
 @using Consultologist.Web.Services.Forms
+@using Consultologist.Web.Services.Workflow.V31
+@using Consultologist.Web.Shared.Create31
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IAIEndpointService AIService
@@ -194,7 +196,26 @@
                         }
                         @foreach (var field in ShownInputFields)
                         {
-                            <label class="input-field" @key="field.Id">
+                            @* #1509 (Task 9): at 31 an input whose format has no widget is named and holds the run
+                               (A12-006); a data input (a select, date, boolean, number, group or rows) is Input31. A
+                               text input, and any input with a channel, keeps the slot below. *@
+                            @if (field.Unsupported31)
+                            {
+                                <div class="input-field" @key="field.Id" data-input-id="@field.Id">
+                                    <span>@field.Label</span>
+                                    <span class="input-field__error">@Create31Sentences.CannotBeFilledInHere(field.Label)</span>
+                                </div>
+                                continue;
+                            }
+                            @if (field.Value31 is { } value31 && field.ExpectedContent is null)
+                            {
+                                <div class="input-field" @key="field.Id" data-input-id="@field.Id">
+                                    <Input31 Shape="@(field.Shape31!)" Value="@value31" Label="@field.Label" Help="@Help31(field)"
+                                             Required="@field.Required" SnippetItems="@snippetSet.Items" Changed="@OnInput31Changed" />
+                                </div>
+                                continue;
+                            }
+                            <label class="input-field" @key="field.Id" data-input-id="@(field.Is31 ? field.Id : null)">
                                 <span>
                                     @field.Label
                                     @if (field.Required)
@@ -222,6 +243,11 @@
                                         <span class="input-field__channel">@union</span>
                                     }
                                 </span>
+                                @if (Help31(field) is { } help)
+                                {
+                                    @* #1509 (D4): a 31 input's description, as help text. *@
+                                    <span class="input-field__help">@help</span>
+                                }
                                 @* #236: a single-value input holds either typed
                                    text or an attached document, never both —
                                    the text is kept underneath so removing the
@@ -335,7 +361,17 @@
                                                 </span>
                                             }
                                         }
-                                        @StructureControl(field.Root)
+                                        @if (field.Value31 is { } formValue)
+                                        {
+                                            @* #1509: a form-channel group at 31 keeps this slot (chip, questionnaire
+                                               door); its fields are drawn from the format. *@
+                                            <Input31 Shape="@(field.Shape31!)" Value="@formValue" Label="@field.Label" Required="@field.Required"
+                                                     ShowLabel="false" SnippetItems="@snippetSet.Items" Changed="@OnInput31Changed" />
+                                        }
+                                        else
+                                        {
+                                            @StructureControl(field.Root)
+                                        }
                                     </div>
                                 }
                                 else if (field.Type == WorkflowInputTypes.Array)
@@ -597,11 +633,12 @@
                                         @LinkDocumentControl(field)
                                     }
                                 }
-                                @if (field.Problem is { } problem)
+                                @if (field.Value31 is null && field.Problem is { } problem)
                                 {
                                     <span class="input-field__error">@problem</span>
                                 }
-                                @if (attemptedSubmit && field.Required && !field.IsFilled)
+                                @* #1509: at 31 a blank required input holds Start (part 09 § 5.1), so it is named at once. *@
+                                @if ((attemptedSubmit || field.Is31) && field.Required && !field.IsFilled && field.Value31 is null)
                                 {
                                     @* #683: after a submit attempt, name the empty required
                                        field inline; clears itself once the field is filled. *@
@@ -1347,12 +1384,26 @@
       }
       else
       {
+        @if (input.SingleLine)
+        {
+          @* #1509: a 31 `string` is a single-line field (part 09 § 5.1). *@
+          <input type="text"
+                 class="node-field__input"
+                 value="@input.Value"
+                 @onchange="args => input.Value = args.Value?.ToString() ?? string.Empty"
+                 placeholder="@input.Placeholder"
+                 aria-label="@input.Label" />
+        }
+        else
+        {
         @* Bound to the input's own property: Blazor's expression formatter
-           cannot parse an indexer whose argument is a property access. *@
+           cannot parse an indexer whose argument is a property access.
+           #1509: a 31 Markdown input draws this text area until Task 10's MarkdownInput (D5). *@
         <FluentTextArea @ref="input.TextArea"
                         @bind-Value="input.Value"
                         Placeholder="@input.Placeholder"
                         Rows="@input.Rows" />
+        }
         @* #561: the snippet road — rendered only when the library is
            non-empty (an empty library adds nothing to every text field;
            discoverability lives on the profile card). Inserted text is
@@ -2056,9 +2107,12 @@
   // not any collection's item list.
   private async Task LoadWorkflowNodesAsync()
   {
+    inputHelp31 = new Dictionary<string, string>();
     try
     {
       var content = await WorkflowService.GetCurrentPackageContentAsync();
+      // #1509 (D4): read first, so a 31 manifest the 30 readers below cannot read still gives its help text.
+      inputHelp31 = InputHelp31.From(content.Resolve);
       workflowNodes = WorkflowManifestReader.ReadNodes(content.Manifest, content.Files);
       workflowCollections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
 
@@ -2240,13 +2294,15 @@
       // groups by. Null on v5/v6 — the fields then fall back to the frozen
       // consult_draft input.
       declaredResults = package.Results;
+      packageSpecVersion = package.SpecVersion;
       SyncInputFields(package.Inputs);
       inputsDeclared = true;
 
       // v12 § 3 (#621): the optional-macro choices, offered at 12 alone and
       // reset to the NEW package's declared defaults on every (re)load —
       // unlike inputs, nothing carries across packages: the defaults win.
-      macroChoices = package.SpecVersion >= 12 && package.Macros is { Count: > 0 }
+      // #1509 (part 09 § 5.1, R4): no macro panel at 31 — a per-run choice is a boolean input.
+      macroChoices = package.SpecVersion is >= 12 and < 31 && package.Macros is { Count: > 0 }
         ? package.Macros.Select(m => new MacroChoice(m.Id, m.Label, m.Default) { Value = m.Default }).ToList()
         : new List<MacroChoice>();
     }
@@ -3107,7 +3163,9 @@
     inputFields = declared
       .Select(input =>
       {
-        var field = new ConsultInputField(input, textRows: declared.Count == 1 ? 16 : 6);
+        // #1509 (Task 9): at 31 each input is drawn from its Format.
+        var shape31 = packageSpecVersion >= 31 && input.Format is { } format ? InputShapes.Of(format, input.Fields, input.Items) : null;
+        var field = new ConsultInputField(input, textRows: declared.Count == 1 ? 16 : 6, shape31);
         // #1063: the door's sentence names a recording when the engine transcribes one.
         field.AcceptsRecordings = acceptsRecordings;
 
@@ -3432,7 +3490,8 @@
       }
 
       field.Restore(value);
-      formFills[field.Id] = (new ConsultInputFormRef(values.FormId, values.ResponseId), value);
+      // #1509: as the questionnaire fill does, a 31 data input compares with what it holds after the fill.
+      formFills[field.Id] = (new ConsultInputFormRef(values.FormId, values.ResponseId), field.Value31 is not null ? field.Supplied ?? value : value);
       filled++;
     }
 
@@ -3518,7 +3577,9 @@
 
     // The file becomes the fields — editable, like a held response's fill.
     field.Restore(value);
-    questionnaireFills[field.Id] = (bytes, value, value.Fields?.Count ?? 0);
+    // #1509: a 31 group writes every field (a blank one as null, D3), so what it holds after the fill is the
+    // value an untouched fill compares with.
+    questionnaireFills[field.Id] = (bytes, field.Value31 is not null ? field.Supplied ?? value : value, value.Fields?.Count ?? 0);
   }
 
   private bool QuestionnaireIntact(ConsultInputField field) =>
@@ -3685,7 +3746,20 @@
 
   // #429: a value that is present and wrong — on an optional input as much as
   // a required one — must not be quietly omitted. Named, and the run waits.
-  private bool HasNoInputProblems => inputFields.All(entry => entry.Problem is null);
+  // #1509 (part 09 § 5.1, D2): at 31 a required input left blank holds Start as well.
+  private bool HasNoInputProblems => inputFields.All(entry => entry.Problem is null && !(entry.Is31 && entry.Required && !entry.IsFilled));
+
+  // #1509 (Task 9): the spec version of the package the form was drawn from; 31 draws inputs from their formats.
+  private int packageSpecVersion;
+
+  // #1509 (D4): each 31 input's help text, from the content the rail loads; empty when it cannot be read.
+  private IReadOnlyDictionary<string, string> inputHelp31 = new Dictionary<string, string>();
+
+  private string? Help31(ConsultInputField field) =>
+    field.Is31 && inputHelp31.TryGetValue(field.Id, out var help) ? help : null;
+
+  // An edit inside Input31 is an edit of what runs, as a typed one is.
+  private void OnInput31Changed() => scheduleConfirmation = null;
 
   private bool HasAnyInput => inputFields.Any(entry => entry.IsFilled);
 
@@ -3694,9 +3768,11 @@
   // loaded, so one predicate covers every fill road. Prose only (text or an
   // array of text), mirroring InputContent.IsProse: a date, enum, boolean or
   // number is short by nature and its own type constrains it — the engine does
-  // not floor it, and neither do we.
+  // not floor it, and neither do we. #1509: a 31 start applies no referral
+  // floor (V31JobStarter), so neither does a 31 form.
   private static bool IsBelowFloor(ConsultInputField entry) =>
-    entry.Required
+    !entry.Is31
+    && entry.Required
     && entry.IsFilled
     && IsProseInput(entry)
     && InputTextFloor.IsBelowFloor(entry.EffectiveText);
@@ -4275,6 +4351,9 @@
     /// </summary>
     public FluentTextArea? TextArea { get; set; }
 
+    /// <summary>#1509: a 31 `string` (InputWidget.Line) draws a single-line field in place of the text area.</summary>
+    public bool SingleLine { get; set; }
+
     public bool IsTouched => Type == WorkflowInputTypes.Boolean ? Flag.HasValue : !string.IsNullOrWhiteSpace(Value);
 
     /// <summary>What this input sends, or null when nothing was chosen — or, for a number, nothing parseable.</summary>
@@ -4470,9 +4549,13 @@
         ? string.Join("\n", Fields.Where(member => member.IsFilled).Select(member => $"{member.Label}: {member.EffectiveText}"))
         : string.Join(Element?.Type == WorkflowInputTypes.Object ? "\n\n" : "\n", Rows.Where(row => !row.IsEmpty).Select(row => row.EffectiveText));
 
+    /// <summary>#1509: the rows of a 31 array of `string` are single-line fields.</summary>
+    public bool RowsSingleLine { get; set; }
+
     public ConsultInputNode AddRow()
     {
       var row = new ConsultInputNode(Id, Label, true, Element?.Type, Element?.Values, Element?.Items, Element?.Fields, Depth + 1);
+      row.Scalar.SingleLine = RowsSingleLine;
       Rows.Add(row);
       return row;
     }
@@ -4603,7 +4686,7 @@
   /// </summary>
   private sealed class ConsultInputField
   {
-    public ConsultInputField(WorkflowPackageInputResponse input, int textRows)
+    public ConsultInputField(WorkflowPackageInputResponse input, int textRows, InputShape? shape31 = null)
     {
       Declaration = input;
       Id = input.Id;
@@ -4611,6 +4694,17 @@
       Required = input.Required;
       Type = WorkflowInputTypes.Of(input);
       Items = input.Items?.Type ?? WorkflowInputTypes.Text;
+      // #1509 (Task 9): at 31 the format decides. A text input, or an array of text, keeps this slot's controls; a
+      // data input holds an InputValue31 and is drawn by Input31.
+      Shape31 = shape31;
+      if (shape31 is not null)
+      {
+        Type = TypeOf31(shape31);
+        Items = shape31.Items is { } element ? TypeOf31(element) : WorkflowInputTypes.Text;
+        Value31 = InputValue31.IsSupported(shape31) && !IsText31(shape31) && !(Type == WorkflowInputTypes.Array && Items == WorkflowInputTypes.Text)
+          ? InputValue31.For(shape31)
+          : null;
+      }
       // #728: the declared content channel — the setup form labels the input.
       // A transcript input is a text input, so it already shows the file upload;
       // the engine stamps the transcript origin from the declaration.
@@ -4623,8 +4717,41 @@
       var placeholder = Id == "consult_draft"
         ? "Enter referral details, clinical context, and the consult question..."
         : null;
-      Root = new ConsultInputNode(Id, Label, Required, Type, input.Values, input.Items, input.Fields, depth: 0, textRows, placeholder);
+      Root = shape31 is null
+        ? new ConsultInputNode(Id, Label, Required, Type, input.Values, input.Items, input.Fields, depth: 0, textRows, placeholder)
+        : new ConsultInputNode(Id, Label, Required, Type, null,
+            Type == WorkflowInputTypes.Array ? new WorkflowPackageElementResponse(Items) : null, null, depth: 0, textRows, placeholder);
+      if (shape31 is not null)
+      {
+        Root.Scalar.SingleLine = shape31.Widget == InputWidget.Line;
+        Root.RowsSingleLine = shape31.Items?.Widget == InputWidget.Line;
+      }
     }
+
+    /// <summary>#1509: the input's shape at 31, read from its Format; null below 31.</summary>
+    public InputShape? Shape31 { get; }
+
+    /// <summary>#1509: a 31 data input's value (Input31); null for a text input and below 31.</summary>
+    public InputValue31? Value31 { get; }
+
+    public bool Is31 => Shape31 is not null;
+
+    /// <summary>#1509 (A12-006): a 31 input whose format has a part with no widget; it holds the run.</summary>
+    public bool Unsupported31 => Shape31 is { } shape && !InputValue31.IsSupported(shape);
+
+    private static bool IsText31(InputShape shape) => shape.Widget is InputWidget.Line or InputWidget.Area or InputWidget.Markdown;
+
+    /// <summary>The 30 type name a 31 widget stands for, which the slot's document and floor rules read.</summary>
+    private static string TypeOf31(InputShape shape) => shape.Widget switch
+    {
+      InputWidget.Line or InputWidget.Area or InputWidget.Markdown => WorkflowInputTypes.Text,
+      InputWidget.Select => WorkflowInputTypes.Enum,
+      InputWidget.Date => WorkflowInputTypes.Date,
+      InputWidget.Boolean => WorkflowInputTypes.Boolean,
+      InputWidget.Number or InputWidget.Integer => WorkflowInputTypes.Number,
+      InputWidget.Rows => WorkflowInputTypes.Array,
+      _ => WorkflowInputTypes.Object,
+    };
 
     /// <summary>#991: the declaration as served — what the library coerces a held or filed answer against.</summary>
     public WorkflowPackageInputResponse Declaration { get; }
@@ -4839,8 +4966,13 @@
     public bool TakesSeveralDocuments => Type == WorkflowInputTypes.Array && Items == WorkflowInputTypes.Text;
     public bool TakesOneDocument => Type == WorkflowInputTypes.Text;
 
-    /// <summary>What this input sends, or null when nothing was chosen (the tree's rules, from the root).</summary>
-    public ConsultInputValue? Supplied => Root.Supplied();
+    /// <summary>
+    /// What this input sends, or null when nothing was chosen (the tree's rules, from the root). #1509 (D3): a 31 data
+    /// input sends its value's JSON through the same wire value, a blank field inside it as JSON null.
+    /// </summary>
+    public ConsultInputValue? Supplied => Value31 is { } value31
+      ? value31.ToJson() is { } json ? ConsultInputValue.FromJson(json.ToJsonString()) : null
+      : Root.Supplied();
 
     /// <summary>
     /// What this input contributes, whichever way it was filled — the one
@@ -4858,6 +4990,17 @@
     {
       get
       {
+        // #1509: a 31 input with no widget, or a 31 data input's own problem (a blank required value is one, D2).
+        if (Unsupported31)
+        {
+          return Create31Sentences.CannotBeFilledInHere(Label);
+        }
+
+        if (Value31 is { } value31)
+        {
+          return value31.Problem(Shape31!, Required) is { } problem31 ? $"{Label}: {problem31}" : null;
+        }
+
         // #872/#874: a several (array<text>) input mixes typed rows with
         // documents and previous-run deliverables, so neither an attached file
         // nor a loaded deliverable silences a row problem underneath it — an
@@ -4919,6 +5062,11 @@
           return string.Join("\n\n", Loaded.Select(loaded => loaded.Text));
         }
 
+        if (Value31 is not null)
+        {
+          return Supplied is { } supplied ? (supplied.HasCanonical ? supplied.Canonical : supplied.AsJson()) : string.Empty;
+        }
+
         return Root.EffectiveText;
       }
     }
@@ -4936,6 +5084,7 @@
     public void Clear()
     {
       Root.Clear();
+      Value31?.Clear();
       Documents.Clear();
       Loaded.Clear();
       entries.Clear();
@@ -4952,6 +5101,18 @@
     /// </summary>
     public void AdoptFrom(ConsultInputField previous)
     {
+      // #1509: a 31 data input carries its answer into an input written with the same format.
+      if (Value31 is not null || previous.Value31 is not null)
+      {
+        if (Value31 is { } value31 && previous.Value31 is { } earlier
+            && Declaration.Format?.GetRawText() == previous.Declaration.Format?.GetRawText())
+        {
+          value31.Restore(earlier.ToJson());
+        }
+
+        return;
+      }
+
       if (previous.Root.Shape != Root.Shape)
       {
         return;
@@ -5009,6 +5170,12 @@
     public void Restore(ConsultInputValue value)
     {
       Clear();
+      if (Value31 is { } value31)
+      {
+        value31.Restore(System.Text.Json.Nodes.JsonNode.Parse(value.AsJson()));
+        return;
+      }
+
       Root.Restore(value);
     }
 

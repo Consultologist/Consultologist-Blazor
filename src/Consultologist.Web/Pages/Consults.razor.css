@@ -470,6 +470,14 @@
 	font-weight: 500;
 }
 
+/* #1509 (D4): a 31 input's description; its lines are joined by line ends. */
+.input-field__help {
+	white-space: pre-line;
+	color: var(--consultologist-text-muted, #616161);
+	font-size: 0.85rem;
+	font-weight: 400;
+}
+
 /* #683: an empty required field, called out inline after a submit attempt. */
 .input-field__required-hint {
 	color: var(--error-foreground, #a4262c);

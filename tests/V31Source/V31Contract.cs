@@ -172,6 +172,16 @@ internal static class V31Contract
         ["A11-015"] = "clinician",
         ["A11-016"] = "operator",
         ["A11-017"] = "operator",
+        ["A12-006"] = "clinician",
+    };
+
+    /// <summary>
+    /// #1509: area 12's own sentences (<c>A12-NNN</c>), as plan area-12-create-and-history lists them; each is added by the
+    /// task that first says it (A12-006, Task 9: an input whose format the Create page has no widget for, part 09 § 5.1).
+    /// </summary>
+    private static readonly Dictionary<string, string> PagesAreaSentences = new()
+    {
+        ["A12-006"] = "This workflow can't be filled in here: this page has no field for '<input label>'. Tell the operator.",
     };
 
     /// <summary>
@@ -473,6 +483,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A11-", StringComparison.Ordinal))
         {
             Assert.True(PublishAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A12-", StringComparison.Ordinal))
+        {
+            Assert.True(PagesAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else
