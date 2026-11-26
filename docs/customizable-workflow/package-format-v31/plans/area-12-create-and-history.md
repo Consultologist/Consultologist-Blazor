@@ -151,9 +151,9 @@ A task that needs another sentence adds the next id and records it.
 - `InputHash` at definition 7: with inputs supplied, compute it with the function the 31 start uses for `EffectiveInputHash` (`grep -n "EffectiveInputHash" src/Consultologist.Api/V31/V31JobStarter.cs`) and compare; without them, today's "supply them with --inputs" message, which is then true.
 - Web: `public static class RecordCheck31 { public static RecordCheckResult Check(string? recordHash, byte[] recordBytes, IReadOnlyDictionary<string, string?> composedTexts); }` with `RecordCheckResult(bool Ok, IReadOnlyList<RecordCheckLine> Lines)`, `RecordCheckLine(string What, bool? Ok, string Detail)`; it calls `RecordReplay.Verify` from the referenced library.
 
-- [ ] **Step 1: Failing tests** on a sealed record built by the engine's own code (`tests/V31Engine/V31Job.cs` gives one): `ASealedRecord_ChecksOut`; `AByteChanged_FailsRecordHash`; `ADeliverablesTextChanged_FailsComposedHash_AndNamesTheDeliverableKey`; `ASubstitutionMoved_FailsTheReplay_WithRecordReplaysFault`; `DroppedText_IsNotAFailure`; `Definition7_WithInputs_IsRecomputed`; `Definition7_WithoutInputs_AsksForThem`; `AStorage12Record_WithoutItsBytes_SaysWhereToFetchThem`; the Web twin of the first five.
-- [ ] **Step 2: Run, fail.** **Step 3: Implement;** the script fetches `/Record` and each `deliverable.*` row's text through `Rows?key=` for a storage-12 job.
-- [ ] **Step 4: Run; commit** `Api (#1509): a storage 12 record is checked by its record hash and a replay of each deliverable`, `Web (#1509): …`; push.
+- [x] **Step 1: Failing tests** on a sealed record built by the engine's own code (`tests/V31Engine/V31Job.cs` gives one): `ASealedRecord_ChecksOut`; `AByteChanged_FailsRecordHash`; `ADeliverablesTextChanged_FailsComposedHash_AndNamesTheDeliverableKey`; `ASubstitutionMoved_FailsTheReplay_WithRecordReplaysFault`; `DroppedText_IsNotAFailure`; `Definition7_WithInputs_IsRecomputed`; `Definition7_WithoutInputs_AsksForThem`; `AStorage12Record_WithoutItsBytes_SaysWhereToFetchThem`; the Web twin of the first five.
+- [x] **Step 2: Run, fail.** **Step 3: Implement;** the script fetches `/Record` and each `deliverable.*` row's text through `Rows?key=` for a storage-12 job.
+- [x] **Step 4: Run; commit** `Api (#1509): a storage 12 record is checked by its record hash and a replay of each deliverable`, `Web (#1509): …`; push.
 
 ### Task 7: The migration report on the content response (D10)
 
@@ -448,6 +448,8 @@ Rules: top-level rows in the order of their first `startedAtUtc`, never-started 
 ## Recorded in the build
 
 *(Each task adds a line here for a choice this plan does not state.)*
+
+- Task 6: `CheckRecord` names its lines `recordHash`, `deliverables[<key>].composedHash` and `deliverables[<key>].replay` (the Web twin the same in `What`); a deliverable with no retained text gives one line (the `composedHash` one, "text deleted; hash kept") and no replay line. `Check` at storage 12 returns that one `recordHash` line (plus the input-hash line when inputs are supplied). The script takes `--host <api url>` (token in `$TOKEN`) to fetch `/Record` and each deliverable's `Rows?key=` text, or `--record <file>` offline (texts then count as dropped). `ProvenanceHashes.cs` only gained a pointer comment: a storage 12 record is not checked there.
 
 - Task 5: **For the user, before the build is deployed to a Function App:** set `ConsultGenerationRecordStorage__BlobServiceUri` on each Function App (the records account's blob service URI, named in `docs/STORAGE.md`) and give its identity Storage Blob Data Contributor on the records account; the `job-records` container is created on the first write. Without the setting the document is written to a `job-records` container of the text account and the host warns once at startup. Choices: the setting is explicit only (no derivation from `Storage__Region`, as the brief says "else the text account's"); account closure deletes the records prefix only for an account with a storage-12 job (as it does for the rows, F5), so a 5-30 account's closure makes the calls it made before; a record written to the old place is not read from there (no fallback code): the restore path assembles it from the rows and writes it to `job-records`.
 
