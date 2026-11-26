@@ -7,7 +7,13 @@ namespace Consultologist.Web.Tests.V31;
 /// <summary>Task 13 (#1509; part 08 §§ 1.2, 4 to 7, 10): the rows of a storage 12 job read into its sections.</summary>
 public class Record31Tests
 {
-    private static Record31 Read() => Record31.From(Record31Fixtures.Job().Header, Record31Fixtures.Job().Rows);
+    private static readonly Lazy<Record31> Job = new(() =>
+    {
+        var job = Record31Fixtures.Job();
+        return Record31.From(job.Header, job.Rows);
+    });
+
+    private static Record31 Read() => Job.Value;
 
     private static RecordRowRef Raw(string key, string section, string json) =>
         new(key, section, JsonDocument.Parse(json).RootElement.Clone());
@@ -22,9 +28,9 @@ public class Record31Tests
         Assert.All(record.Deliverables, row => Assert.Equal("deliverable", row.Section));
         Assert.All(record.Decisions, row => Assert.Equal("decision", row.Section));
         Assert.Equal(5, record.Deliverables.Count);
-        Assert.Equal(4, record.Checks.Count);
+        Assert.Equal(8, record.Checks.Count);
         Assert.Equal(
-            ["node.addendum", "node.hpi_section", "node.hpi_section.standard_draft", "node.plan"],
+            ["node.addendum", "node.billing", "node.hpi_section", "node.hpi_section.standard_draft"],
             record.Nodes.Select(n => n.Key).Take(4));
         Assert.Equal("job-1", record.Header.JobId);
     }
@@ -51,7 +57,7 @@ public class Record31Tests
 
         var loop = Read().Find("node.sections")!;
         Assert.Equal(2, loop.Int("count"));
-        Assert.Equal("end", loop.Text("stopped"));
+        Assert.Equal("bound", loop.Text("stopped"));
 
         Assert.Equal(false, Read().Find("node.refine")!.Flag("checkFirst"));
         Assert.Equal(2, Read().Find("node.plan")!.List("renders").Count);
@@ -77,6 +83,19 @@ public class Record31Tests
 
         Assert.Equal("2", decision.Text("result"));
         Assert.Equal("case", decision.Text("site"));
+    }
+
+    [Fact]
+    public void ADecisionWithNoOwnerMember_IsOwnedByTheKeyBeforeItsIfSite()
+    {
+        var record = Record31.From(Record31Fixtures.Header(),
+        [
+            Raw("node.old/if:self", "decision", """{ "id": "node.old/if:self", "result": true }"""),
+            Raw("node.old:2/if:pass.1", "decision", """{ "id": "node.old:2/if:pass.1", "owner": null }"""),
+        ]);
+
+        Assert.Equal(["node.old/if:self"], record.DecisionsOwnedBy("node.old").Select(d => d.Key));
+        Assert.Equal(["node.old:2/if:pass.1"], record.DecisionsOwnedBy("node.old:2").Select(d => d.Key));
     }
 
     [Fact]
@@ -203,5 +222,105 @@ public class Record31Tests
         Assert.Equal("node.sections.draft:1", record.Nodes[0].Key);
         Assert.Equal("node.sections.draft:1000", record.Nodes[^1].Key);
         Assert.Equal("500", record.Find("node.sections.draft:500")!.Text("itemId"));
+    }
+
+    private static string? ParentKey(Record31 record, string key) => record.ParentOf(key)?.Key;
+
+    [Theory]
+    [InlineData("node.refine.judge#2", "node.refine#2")]
+    [InlineData("node.refine.sections#2:3", "node.refine.sections#2")]
+    [InlineData("node.refine.sections#2", "node.refine#2")]
+    [InlineData("node.refine#2", "node.refine")]
+    [InlineData("node.sections:2", "node.sections")]
+    [InlineData("node.sections.draft:2", "node.sections:2")]
+    [InlineData("node.sections.paragraphs:1", "node.sections:1")]
+    [InlineData("node.sections.paragraphs:1/1", "node.sections.paragraphs:1")]
+    [InlineData("node.sections.paragraphs.draft_paragraph:1/1", "node.sections.paragraphs:1/1")]
+    [InlineData("node.hpi_section.standard_draft", "node.hpi_section")]
+    [InlineData("check.part_coverage:2", "check.part_coverage")]
+    [InlineData("check.part_coverage.coverage:2", "check.part_coverage:2")]
+    [InlineData("node.refine", null)]
+    [InlineData("node.plan", null)]
+    [InlineData("check.gate", null)]
+    [InlineData("deliverable.emr.note", null)]
+    [InlineData("node.nope", null)]
+    [InlineData("node.plan/render:1", null)]
+    public void ParentOf_IsTheLoopPassOrCallRowTheRowRunsIn(string key, string? parent)
+    {
+        Assert.Equal(parent, ParentKey(Read(), key));
+    }
+
+    [Fact]
+    public void AnItemRowWhoseLoopRowIsMissing_FallsToTheEnclosingPass()
+    {
+        var record = Record31.From(Record31Fixtures.Header(),
+        [
+            Raw("node.refine#2", "node", """{ "kind": "while", "status": "Completed" }"""),
+            Raw("node.refine", "node", """{ "kind": "while", "status": "Completed" }"""),
+            Raw("node.refine.sections#2:3", "node", """{ "kind": "for", "status": "Completed" }"""),
+        ]);
+
+        Assert.Equal("node.refine#2", ParentKey(record, "node.refine.sections#2:3"));
+    }
+
+    [Fact]
+    public void AMissingParentRow_ResolvesToTheNearestAncestorPresent_OrNull()
+    {
+        var record = Record31.From(Record31Fixtures.Header(),
+        [
+            Raw("node.a", "node", """{ "kind": "for" }"""),
+            Raw("node.a.b.c:1", "node", """{ "kind": "agent" }"""),
+            Raw("node.x.y.z", "node", """{ "kind": "agent" }"""),
+        ]);
+
+        Assert.Equal("node.a", ParentKey(record, "node.a.b.c:1"));
+        Assert.Null(ParentKey(record, "node.x.y.z"));
+    }
+
+    [Fact]
+    public void AnAgentRowIsNeverTakenForAnItemRowOfItsOwnEntry()
+    {
+        var record = Record31.From(Record31Fixtures.Header(),
+        [
+            Raw("node.draft", "node", """{ "kind": "agent" }"""),
+            Raw("node.draft:1", "node", """{ "kind": "agent" }"""),
+        ]);
+
+        Assert.Null(ParentKey(record, "node.draft:1"));
+    }
+
+    [Fact]
+    public void AnUnparseableKey_HasNoParent()
+    {
+        Assert.Null(Read().ParentOf("plan"));
+        Assert.Null(Read().ParentOf(null!));
+        Assert.Null(Read().ParentOf(""));
+    }
+
+    [Fact]
+    public void ChildrenOf_AreTheRowsWhoseParentItIs_InKeyOrder()
+    {
+        var record = Read();
+
+        Assert.Equal(["node.refine#1", "node.refine#2", "node.refine.judge#10"], record.ChildrenOf("node.refine").Select(r => r.Key));
+        Assert.Equal(["node.refine.judge#2", "node.refine.sections#2"], record.ChildrenOf("node.refine#2").Select(r => r.Key));
+        Assert.Equal(["node.sections:1", "node.sections:2", "node.sections.draft:10"], record.ChildrenOf("node.sections").Select(r => r.Key));
+        Assert.Equal(["node.sections.draft:1", "node.sections.paragraphs:1"], record.ChildrenOf("node.sections:1").Select(r => r.Key));
+        Assert.Equal(["node.hpi_section.standard_draft"], record.ChildrenOf("node.hpi_section").Select(r => r.Key));
+        Assert.Equal(["check.part_coverage:1", "check.part_coverage:2"], record.ChildrenOf("check.part_coverage").Select(r => r.Key));
+        Assert.Empty(record.ChildrenOf("node.plan"));
+        Assert.Empty(record.ChildrenOf("node.nope"));
+    }
+
+    [Fact]
+    public void EveryChild_IsUnderExactlyOneParent_AndTopLevelRowsAreNoOnesChild()
+    {
+        var record = Read();
+        var rows = record.Nodes.Concat(record.Checks).ToList();
+        var children = rows.SelectMany(r => record.ChildrenOf(r.Key)).ToList();
+
+        Assert.Equal(children.Count, children.Select(c => c.Key).Distinct().Count());
+        Assert.Equal(rows.Count(r => record.ParentOf(r.Key) != null), children.Count);
+        Assert.DoesNotContain(children, c => c.Key is "node.plan" or "node.refine" or "node.sections" or "node.hpi_section");
     }
 }

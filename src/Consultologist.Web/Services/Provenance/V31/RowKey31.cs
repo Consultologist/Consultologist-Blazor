@@ -63,26 +63,75 @@ public sealed record RowKey31(string Root, string Path, IReadOnlyList<KeyStep31>
     }
 
     /// <summary>
-    /// The row key of the item, pass or call the row sits in: the key without its last scope, its items and passes kept
-    /// (<c>node.sections.paragraphs.draft_paragraph:2/1</c> is in <c>node.sections.paragraphs:2/1</c>;
-    /// <c>node.hpi_section.standard_draft</c> is in the call <c>node.hpi_section</c>); null for a key with one scope, a
-    /// deliverable, a delivery or an unparseable key. A loop's own item row is keyed as its loop is, so the key alone
-    /// cannot tell it from a node in that item: a consumer looks the answer up with <c>Record31.Find</c>.
+    /// The keys that could be this row's parent, most specific first, none equal to the key. A key alone does not say which
+    /// scope its items and passes belong to (the engine writes each where its loop sits, <c>RunKeys.Of</c>), so every
+    /// possibility is listed: (1) the same entry with its last item or pass dropped, the loop or while row an item or
+    /// pass row belongs to; then, for each shorter scope path from the key minus its last scope down to its first, the
+    /// path with the full items and passes, then with the last of them dropped one at a time, down to the bare entry
+    /// (<c>node.refine.sections#2:3</c>: <c>node.refine.sections#2</c>, <c>node.refine#2:3</c>, <c>node.refine#2</c>,
+    /// <c>node.refine</c>). A call's inner rows are keyed through the call node, so the call row is among them.
+    /// <c>Record31.ParentOf</c> picks the one that is a row. Empty for a top-level key, a deliverable, a delivery or an
+    /// unparseable key.
     /// </summary>
-    public string? ParentInstance
+    public IReadOnlyList<string> ParentCandidates
     {
         get
         {
-            if (Steps.Count < 2 || !string.Equals(Root, "node", StringComparison.Ordinal)
-                && !string.Equals(Root, "check", StringComparison.Ordinal))
+            if (Steps.Count == 0 || Root is not ("node" or "check"))
             {
-                return null;
+                return [];
             }
 
-            var entryEnd = InstanceStart(Raw);
-            var scopes = string.Join('.', Steps.Take(Steps.Count - 1).Select(step => step.Scope));
-            return $"{Root}.{scopes}{Raw[entryEnd..]}";
+            var scopes = Steps.Select(step => step.Scope).ToList();
+            var tokens = ReadTokens(Raw, InstanceStart(Raw));
+            var candidates = new List<string>();
+            if (tokens.Count > 0)
+            {
+                candidates.Add(Write(Root, scopes, tokens.Take(tokens.Count - 1)));
+            }
+
+            for (var scopeCount = scopes.Count - 1; scopeCount >= 1; scopeCount--)
+            {
+                for (var tokenCount = tokens.Count; tokenCount >= 0; tokenCount--)
+                {
+                    candidates.Add(Write(Root, scopes.Take(scopeCount), tokens.Take(tokenCount)));
+                }
+            }
+
+            return candidates;
         }
+    }
+
+    private static string Write(string root, IEnumerable<string> scopes, IEnumerable<(bool IsPass, string Text)> tokens)
+    {
+        var key = new System.Text.StringBuilder(root).Append('.').AppendJoin('.', scopes);
+        var items = 0;
+        foreach (var (isPass, text) in tokens)
+        {
+            key.Append(isPass ? "#" : items++ == 0 ? ":" : "/").Append(text);
+        }
+
+        return key.ToString();
+    }
+
+    /// <summary>The instance part of an already validated key as its items and passes in the order written.</summary>
+    private static List<(bool IsPass, string Text)> ReadTokens(string key, int at)
+    {
+        var tokens = new List<(bool, string)>();
+        var i = at;
+        while (i < key.Length)
+        {
+            var isPass = key[i] == '#';
+            var start = ++i;
+            while (i < key.Length && key[i] is not ('/' or '#' or ':'))
+            {
+                i++;
+            }
+
+            tokens.Add((isPass, key[start..i]));
+        }
+
+        return tokens;
     }
 
     /// <summary>Where the instance part of <paramref name="key"/> starts (its first <c>:</c> or <c>#</c>), or its length.</summary>

@@ -66,6 +66,7 @@ public sealed class Record31
     private readonly Dictionary<string, Row31> _byKey = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<Row31>> _deliveries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<Row31>> _decisions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<Row31>> _children = new(StringComparer.Ordinal);
 
     private Record31(ConsultGenerationJobResponse header, List<Row31> nodes, List<Row31> checks, List<Row31> deliverables, List<Row31> decisions)
     {
@@ -143,9 +144,15 @@ public sealed class Record31
 
         foreach (var decision in decisions)
         {
-            if (decision.Text("owner") is { } owner)
+            Group(record._decisions, decision.Text("owner") ?? OwnerOf(decision.Key), decision);
+        }
+
+        // each node and check row's parent, resolved once; rows are in key order, so a parent's children are too
+        foreach (var row in nodes.Concat(checks))
+        {
+            if (record.ParentOf(row.Key) is { } parent)
             {
-                Group(record._decisions, owner, decision);
+                Group(record._children, parent.Key, row);
             }
         }
 
@@ -162,6 +169,60 @@ public sealed class Record31
 
     /// <summary>The row stored under <paramref name="key"/>, in any section, or null.</summary>
     public Row31? Find(string key) => key != null && _byKey.TryGetValue(key, out var row) ? row : null;
+
+    /// <summary>
+    /// The node or check row a row runs in: the loop row of an item row, the while row of a pass row, the item, pass or call
+    /// row of a row inside one; null for a top-level row or a key that is no row key. The first of
+    /// <see cref="RowKey31.ParentCandidates"/> that is a row of the same section is taken, so a parent missing from the
+    /// listing gives the nearest ancestor present. A candidate with the row's own entry (its loop or while row) counts only
+    /// when both rows are a <c>for</c> or a <c>while</c>: a loop's own row, keyed by the item it runs in, is not mistaken
+    /// for an item row.
+    /// </summary>
+    public Row31? ParentOf(string key)
+    {
+        if (key is null)
+        {
+            return null;
+        }
+
+        var parsed = RowKey31.Parse(key);
+        var section = parsed.Root switch { "node" => "node", "check" => "check", _ => null };
+        if (section is null)
+        {
+            return null;
+        }
+
+        var isLoop = IsLoop(Find(key));
+        var entryEnd = RowKey31.InstanceStart(key);
+        foreach (var candidate in parsed.ParentCandidates)
+        {
+            if (Find(candidate) is not { } row || !string.Equals(row.Section, section, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var sameEntry = RowKey31.InstanceStart(candidate) == entryEnd;
+            if (!sameEntry || (isLoop && IsLoop(row)))
+            {
+                return row;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The node and check rows whose <see cref="ParentOf"/> is <paramref name="key"/>, in key order.</summary>
+    public IReadOnlyList<Row31> ChildrenOf(string key) =>
+        key != null && _children.TryGetValue(key, out var rows) ? rows : [];
+
+    private static bool IsLoop(Row31? row) => row?.Text("kind") is "for" or "while";
+
+    /// <summary>A decision's owner from its id (<c>&lt;owner&gt;/if:&lt;site&gt;</c>), for a row with no <c>owner</c> member.</summary>
+    private static string OwnerOf(string id)
+    {
+        var at = id.IndexOf("/if:", StringComparison.Ordinal);
+        return at < 0 ? "" : id[..at];
+    }
 
     private static int ByKey(Row31 a, Row31 b) => RowKeyOrder31.Instance.Compare(a.Key, b.Key);
 

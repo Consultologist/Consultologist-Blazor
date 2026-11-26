@@ -38,7 +38,6 @@ public class RowKey31Tests
 
         Assert.Equal("delivery", parsed.Root);
         Assert.Equal("deliverable.emr.note/email", parsed.Path);
-        Assert.Null(parsed.ParentInstance);
     }
 
     [Theory]
@@ -54,7 +53,6 @@ public class RowKey31Tests
         Assert.Equal("", parsed.Root);
         Assert.Equal(id, parsed.Path);
         Assert.Empty(parsed.Steps);
-        Assert.Null(parsed.ParentInstance);
     }
 
     [Theory]
@@ -76,7 +74,6 @@ public class RowKey31Tests
         Assert.Equal(key, parsed.Path);
         Assert.Equal(key, parsed.Raw);
         Assert.Empty(parsed.Steps);
-        Assert.Null(parsed.ParentInstance);
     }
 
     [Fact]
@@ -88,18 +85,45 @@ public class RowKey31Tests
         Assert.Equal("", parsed.Path);
     }
 
-    [Theory]
-    [InlineData("node.sections.paragraphs.draft_paragraph:2/1", "node.sections.paragraphs:2/1")]
-    [InlineData("node.refine.sections#2:3", "node.refine#2:3")]
-    [InlineData("node.refine.judge#3", "node.refine#3")]
-    [InlineData("node.hpi_section.standard_draft", "node.hpi_section")]
-    [InlineData("node.standards.section.standard_draft:3", "node.standards.section:3")]
-    [InlineData("check.part_coverage.coverage:2", "check.part_coverage:2")]
-    [InlineData("node.plan", null)]
-    [InlineData("node.plan:2", null)]
-    [InlineData("deliverable.emr.note", null)]
-    public void ParentInstance_IsTheEnclosingItemPassOrCall(string key, string? parent)
+    [Fact]
+    public void ParentCandidates_RunFromTheMostSpecific_ToTheBareEnclosingEntry()
     {
-        Assert.Equal(parent, RowKey31.Parse(key).ParentInstance);
+        Assert.Equal(
+            ["node.refine.sections#2", "node.refine#2:3", "node.refine#2", "node.refine"],
+            RowKey31.Parse("node.refine.sections#2:3").ParentCandidates);
+        Assert.Equal(
+            ["node.sections.paragraphs.draft_paragraph:2", "node.sections.paragraphs:2/1", "node.sections.paragraphs:2", "node.sections.paragraphs",
+             "node.sections:2/1", "node.sections:2", "node.sections"],
+            RowKey31.Parse("node.sections.paragraphs.draft_paragraph:2/1").ParentCandidates);
+        Assert.Equal(["node.hpi_section"], RowKey31.Parse("node.hpi_section.standard_draft").ParentCandidates);
+        Assert.Equal(["node.refine.judge", "node.refine#3", "node.refine"], RowKey31.Parse("node.refine.judge#3").ParentCandidates);
+        Assert.Equal(["node.sections"], RowKey31.Parse("node.sections:2").ParentCandidates);
+        Assert.Equal(["check.part_coverage.coverage", "check.part_coverage:2", "check.part_coverage"], RowKey31.Parse("check.part_coverage.coverage:2").ParentCandidates);
+    }
+
+    [Theory]
+    [InlineData("node.plan")]
+    [InlineData("deliverable.emr.note")]
+    [InlineData("delivery:deliverable.emr.note/email")]
+    [InlineData("node.a/render:1")]
+    [InlineData("")]
+    public void AKeyWithNoEnclosingInstance_HasNoCandidates(string key)
+    {
+        Assert.Empty(RowKey31.Parse(key).ParentCandidates);
+    }
+
+    [Theory]
+    [InlineData("node.sections.paragraphs.draft_paragraph:2/1")]
+    [InlineData("node.refine.sections#2:3")]
+    [InlineData("node.refine.judge#3")]
+    [InlineData("node.a.b:1#2")]
+    [InlineData("node.sections:2")]
+    [InlineData("node.refine#2")]
+    public void NoCandidate_EqualsTheKeyItself_OrRepeats(string key)
+    {
+        var candidates = RowKey31.Parse(key).ParentCandidates;
+
+        Assert.DoesNotContain(key, candidates);
+        Assert.Equal(candidates.Count, candidates.Distinct().Count());
     }
 }
