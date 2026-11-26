@@ -84,6 +84,13 @@ public static class PackagePublishSentences
     public static string NotTheActivePackage(string package) =>
         $"{package} is not the account's active account package; the bulk publish migrates only the account package an account's pin names.";
 
+    /// <summary>
+    /// A11-017 (#1508, final review of Part F): the bulk publish's owners' list, for a package whose row is <c>unknown</c>:
+    /// the engine did not answer the request that sent it (a fault, a timeout, a lost answer), so a <c>--publish</c> run may
+    /// have published it. The operator checks its version on the engine before the list is sent.
+    /// </summary>
+    public const string NotAnswered = "The engine did not answer for this package; check whether it was published before sending this list.";
+
     private static string List(IEnumerable<string> items)
     {
         var sorted = items.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
