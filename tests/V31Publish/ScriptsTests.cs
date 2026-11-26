@@ -1,8 +1,10 @@
+using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Publish;
@@ -217,5 +219,300 @@ public class ScriptsTests
         Assert.Contains("static bool IsLink(FileSystemInfo entry) =>", script, StringComparison.Ordinal);
         Assert.Contains("(entry.Attributes & FileAttributes.ReparsePoint) != 0 || entry.LinkTarget != null", script, StringComparison.Ordinal);
         Assert.Contains("// A symbolic link (or any reparse point), file or folder, is skipped", script, StringComparison.Ordinal);
+    }
+
+    // ---- the bulk publish (Task 36) --------------------------------------------------------------------------------------
+
+    private const string Owner1 = "0123456789abcdef0123456789abcdef";
+    private const string Owner2 = "fedcba9876543210fedcba9876543210";
+    private const string Letters = "acct-0123456789ab-letters";
+    private const string Nested = "acct-0123456789ab/nested";
+    private const string Other = "acct-fedcba987654-other";
+    private const string A11001 = "Up to 80,614 steps could run in one job, through node.sections; this engine runs at most 10,000 for one job. Lower a loop's max or split the workflow.";
+    private const string FlagNotice = "Node 'draft' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails.";
+
+    private static readonly Uri Engine = new("https://engine.example.test");
+
+    /// <summary>An in-process engine: it answers <c>Admin/MigratePackage</c> as the route does, and records every request.</summary>
+    private sealed class FakeEngine : HttpMessageHandler
+    {
+        public List<(HttpMethod Method, Uri Uri, string? Authorization, JsonObject? Body)> Requests { get; } = [];
+
+        public JsonObject List { get; set; } = new()
+        {
+            ["packages"] = new JsonArray(
+                Row(Owner1, Letters, "v2026.11.3"), Row(Owner1, Nested, "v2026.11.2"), Row(Owner2, Other, "v2026.11.1")),
+            ["notRead"] = 0,
+        };
+
+        /// <summary>The outcome for each package name; one not named publishes.</summary>
+        public Dictionary<string, string> Outcomes { get; } = new(StringComparer.Ordinal) { [Nested] = "not migrated: " + A11001 };
+
+        /// <summary>A name whose POST is answered with a 500.</summary>
+        public string? Faulting { get; set; }
+
+        private static JsonObject Row(string owner, string name, string version) =>
+            new() { ["owner"] = owner, ["name"] = name, ["version"] = version, ["specVersion"] = 30 };
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? null : JsonNode.Parse(await request.Content.ReadAsStringAsync(cancellationToken))!.AsObject();
+            Requests.Add((request.Method, request.RequestUri!, request.Headers.Authorization?.ToString(), body));
+            if (request.Method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, List);
+
+            var name = (string)body!["name"]!;
+            if (name == Faulting)
+                return Json(HttpStatusCode.InternalServerError, new JsonObject { ["error"] = "boom" });
+            var publish = (bool)body["publish"]!;
+            var outcome = Outcomes.GetValueOrDefault(name) ?? (publish ? "published" : "would publish");
+            var published = !outcome.StartsWith("not migrated: ", StringComparison.Ordinal);
+            return Json(HttpStatusCode.OK, new JsonObject
+            {
+                ["owner"] = body["owner"]!.DeepClone(),
+                ["name"] = name,
+                ["oldVersion"] = name == Letters ? "v2026.11.3" : name == Nested ? "v2026.11.2" : "v2026.11.1",
+                ["newVersion"] = published ? "v2026.12.1" : null,
+                ["outcome"] = outcome,
+                ["handEditsLeft"] = new JsonArray(),
+                ["notices"] = new JsonArray(name == Letters ? FlagNotice : MigrationReport.OneMessageEach),
+                ["report"] = new JsonObject { ["outcome"] = published ? "published" : "refused" },
+                ["options"] = new JsonObject { ["renames"] = new JsonObject(), ["whenEmpty"] = new JsonObject(), ["folderFormats"] = new JsonObject() },
+                ["defaults"] = body["options"] is null ? MigrationOptionsFile.Defaults : null,
+            });
+        }
+
+        private static HttpResponseMessage Json(HttpStatusCode status, JsonObject body) =>
+            new(status) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+    }
+
+    /// <summary>
+    /// An operator's folder: <c>letters</c> has its options.json and hand edits (one a <c>.deleted</c>), <c>nested</c> (a
+    /// nested name) only its options.json, <c>other</c> no folder at all.
+    /// </summary>
+    private static string OperatorFolder()
+    {
+        var dir = Directory.CreateTempSubdirectory("bulk-publish-").FullName;
+        var letters = Path.Combine(dir, Owner1, Letters);
+        Directory.CreateDirectory(Path.Combine(letters, "hand-edits", "nodes"));
+        File.WriteAllText(Path.Combine(letters, "options.json"), """{ "renames": { "parts": "sections" }, "whenEmpty": {}, "folderFormats": {} }""");
+        File.WriteAllText(Path.Combine(letters, "hand-edits", "nodes", "draft.md"), "Write the letter for Dr A. Sample.\n");
+        File.WriteAllText(Path.Combine(letters, "hand-edits", "nodes", "old.md.deleted"), "");
+        var nested = Path.Combine([dir, Owner1, .. Nested.Split('/')]);
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(nested, "options.json"), """{ "renames": {}, "whenEmpty": { "note": "hold" }, "folderFormats": {} }""");
+        return dir;
+    }
+
+    private static async Task<(int Exit, string Output, string Error)> BulkAsync(FakeEngine engine, string folder, bool publish, string? token = "operator-token")
+    {
+        var output = new StringWriter { NewLine = "\n" };
+        var error = new StringWriter { NewLine = "\n" };
+        using var http = new HttpClient(engine);
+        var exit = await BulkPublishScript.RunAsync(new BulkPublishArguments(folder, Engine, publish), http, token, new FixedClock(Now), output, error);
+        return (exit, output.ToString(), error.ToString());
+    }
+
+    private static JsonObject ReadJson(string folder, string file) =>
+        JsonNode.Parse(File.ReadAllText(Path.Combine(folder, file), Encoding.UTF8))!.AsObject();
+
+    [Fact]
+    public async Task TheBulkPublish_SendsEachPackageWithItsFolder_AndWritesTheRecordAndTheOwnersList()
+    {
+        var engine = new FakeEngine();
+        var folder = OperatorFolder();
+        try
+        {
+            var (exit, output, error) = await BulkAsync(engine, folder, publish: true);
+
+            // one package not migrated: exit 1
+            Assert.Equal(BulkPublishScript.NotMigratedExit, exit);
+            Assert.Equal("", error);
+            Assert.Equal(
+                $"{Owner1} {Letters}@v2026.11.3: published\n{Owner1} {Nested}@v2026.11.2: not migrated: {A11001}\n{Owner2} {Other}@v2026.11.1: published\n"
+                + "2 published, 0 would publish, 1 not migrated; written bulk-publish-record.json and owners.json.\n",
+                output);
+
+            // it talks only to the engine it is given, with the operator's token, the list first
+            Assert.All(engine.Requests, r => Assert.Equal(new Uri("https://engine.example.test/api/Admin/MigratePackage"), r.Uri));
+            Assert.All(engine.Requests, r => Assert.Equal("Bearer operator-token", r.Authorization));
+            Assert.Equal([HttpMethod.Get, HttpMethod.Post, HttpMethod.Post, HttpMethod.Post], engine.Requests.Select(r => r.Method));
+
+            // each package's folder: its options.json and its hand edits (a .deleted file as null); none for no folder
+            var letters = engine.Requests[1].Body!;
+            Assert.Equal(["owner", "name", "options", "handEdits", "publish"], letters.Select(p => p.Key));
+            Assert.Equal("""{"renames":{"parts":"sections"},"whenEmpty":{},"folderFormats":{}}""", letters["options"]!.ToJsonString());
+            Assert.Equal("""{"nodes/draft.md":"Write the letter for Dr A. Sample.\n","nodes/old.md":null}""", letters["handEdits"]!.ToJsonString());
+            Assert.True((bool)letters["publish"]!);
+            Assert.Equal(Nested, (string?)engine.Requests[2].Body!["name"]);
+            Assert.Equal("""{}""", engine.Requests[2].Body!["handEdits"]!.ToJsonString());
+            var other = engine.Requests[3].Body!;
+            Assert.Null(other["options"]);
+            Assert.Equal("""{}""", other["handEdits"]!.ToJsonString());
+
+            // the record: one row per package, the engine's answer with the time
+            var record = ReadJson(folder, BulkPublishScript.RecordFile);
+            Assert.Equal(["engine", "publish", "notRead", "rows"], record.Select(p => p.Key));
+            Assert.True((bool)record["publish"]!);
+            var rows = record["rows"]!.AsArray();
+            Assert.Equal(3, rows.Count);
+            Assert.Equal(["owner", "name", "oldVersion", "newVersion", "outcome", "handEditsLeft", "notices", "report", "options", "defaults", "time"],
+                rows[0]!.AsObject().Select(p => p.Key));
+            Assert.Equal("2026-12-01T09:30:00.000Z", (string?)rows[0]!["time"]);
+            Assert.Null((string?)rows[0]!["defaults"]);
+            Assert.Equal(MigrationOptionsFile.Defaults, (string?)rows[2]!["defaults"]);
+
+            // the owners' list: per owner, what was published with its notices, and what was not with the reason and the deadline
+            var owners = ReadJson(folder, BulkPublishScript.OwnersFile);
+            Assert.Equal([Owner1, Owner2], owners.Select(p => p.Key));
+            var first = owners[Owner1]!;
+            var published = Assert.Single(first["published"]!.AsArray())!;
+            Assert.Equal(Letters, (string?)published["name"]);
+            Assert.Equal("v2026.12.1", (string?)published["newVersion"]);
+            Assert.Equal([FlagNotice], published["notices"]!.AsArray().Select(n => (string)n!));
+            var notMigrated = Assert.Single(first["notMigrated"]!.AsArray())!;
+            Assert.Equal(["name", "version", "reason", "notice", "deadline"], notMigrated.AsObject().Select(p => p.Key));
+            Assert.Equal(Nested, (string?)notMigrated["name"]);
+            Assert.Equal("v2026.11.2", (string?)notMigrated["version"]);
+            Assert.Equal(A11001, (string?)notMigrated["reason"]);
+            Assert.Equal(PackagePublishSentences.StaysAt30(Nested, A11001.TrimEnd('.')).Sentence, (string?)notMigrated["notice"]);
+            Assert.Equal("This package stops working when specVersion 30 is retired.", (string?)notMigrated["deadline"]);
+            V31Contract.AssertSentence(new SourceRefusal("A11-015", (string)notMigrated["deadline"]!, ""));
+            Assert.Empty(owners[Owner2]!["notMigrated"]!.AsArray());
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task WithoutPublish_ItIsADryRun_AndExits0WhenEveryPackageWouldPublish()
+    {
+        var engine = new FakeEngine();
+        engine.Outcomes.Clear();
+        var folder = OperatorFolder();
+        try
+        {
+            var (exit, output, error) = await BulkAsync(engine, folder, publish: false);
+
+            Assert.Equal(BulkPublishScript.Clean, exit);
+            Assert.Equal("", error);
+            Assert.All(engine.Requests.Skip(1), r => Assert.False((bool)r.Body!["publish"]!));
+            Assert.EndsWith("0 published, 3 would publish, 0 not migrated (dry run; pass --publish to publish); written bulk-publish-record.json and owners.json.\n", output, StringComparison.Ordinal);
+            Assert.False((bool)ReadJson(folder, BulkPublishScript.RecordFile)["publish"]!);
+            Assert.Equal("would publish", (string?)ReadJson(folder, BulkPublishScript.OwnersFile)[Owner2]!["published"]![0]!["outcome"]);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AnEngineFault_Exits2_TheRecordHoldingWhatWasDoneBeforeIt()
+    {
+        var engine = new FakeEngine { Faulting = Nested };
+        var folder = OperatorFolder();
+        try
+        {
+            var (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Contains($"error: POST https://engine.example.test/api/Admin/MigratePackage for {Owner1} {Nested}: 500 boom", error, StringComparison.Ordinal);
+            // the run stops at the fault: the third package is never sent
+            Assert.Equal(3, engine.Requests.Count);
+            var rows = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
+            Assert.Equal([Letters], rows.Select(r => (string)r!["name"]!));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AListThatDoesNotAnswer_OrAFolderThatDoesNotRead_Exits2_AndNothingIsSent()
+    {
+        var folder = OperatorFolder();
+        try
+        {
+            var engine = new FakeEngine { List = new JsonObject { ["error"] = "not a list" } };
+            var (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.StartsWith("error: GET https://engine.example.test/api/Admin/MigratePackage did not answer the list", error, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(folder, BulkPublishScript.RecordFile)));
+
+            // an options.json that does not read is said before anything is sent
+            File.WriteAllText(Path.Combine([folder, Owner1, .. Nested.Split('/'), "options.json"]), """{ "renames": {}, "renames": {} }""");
+            engine = new FakeEngine();
+            (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Contains("does not read: it names the member 'renames' twice", error, StringComparison.Ordinal);
+            Assert.Equal([HttpMethod.Get], engine.Requests.Select(r => r.Method));
+            Assert.False(File.Exists(Path.Combine(folder, BulkPublishScript.RecordFile)));
+
+            // a name that would leave the folder is never read
+            engine = new FakeEngine();
+            engine.List["packages"] = new JsonArray(new JsonObject { ["owner"] = Owner1, ["name"] = "acct-0123456789ab/../../x", ["version"] = "v1", ["specVersion"] = 30 });
+            (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+            Assert.Equal(BulkPublishScript.Fault, exit);
+            Assert.Contains("without a usable owner and name", error, StringComparison.Ordinal);
+            Assert.Single(engine.Requests);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AccountPackagesThatCouldNotBeRead_Exit1_AndAreSaid()
+    {
+        var engine = new FakeEngine();
+        engine.Outcomes.Clear();
+        engine.List["notRead"] = 2;
+        var folder = OperatorFolder();
+        try
+        {
+            var (exit, _, error) = await BulkAsync(engine, folder, publish: true);
+
+            Assert.Equal(BulkPublishScript.NotMigratedExit, exit);
+            Assert.Equal("warning: 2 of the accounts' active packages could not be read and are not in the record.\n", error);
+            Assert.Equal(2, (int)ReadJson(folder, BulkPublishScript.RecordFile)["notRead"]!);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(new[] { "folder" }, "--engine is not given.")]
+    [InlineData(new[] { "--engine", "https://engine.example.test" }, "The operator folder is not given.")]
+    [InlineData(new[] { "folder", "--engine", "engine.example.test" }, "--engine takes the engine's URL (https://<host>), with no query.")]
+    [InlineData(new[] { "folder", "--engine", "https://engine.example.test/?code=x" }, "--engine takes the engine's URL (https://<host>), with no query.")]
+    [InlineData(new[] { "folder", "--engine", "https://a.test", "--engine", "https://b.test" }, "--engine is given twice.")]
+    [InlineData(new[] { "folder", "other", "--engine", "https://a.test" }, "'other' is a second operator folder.")]
+    [InlineData(new[] { "folder", "--engine", "https://a.test", "--write" }, "--write is not an option of the bulk publish.")]
+    public void TheBulkPublishsArguments_AreRefusedWithAReason(string[] args, string usage)
+    {
+        Assert.Equal((null, usage), BulkPublishScript.Parse(args));
+    }
+
+    [Fact]
+    public void TheBulkPublishScript_IsTheLibrarysRun()
+    {
+        Assert.Equal((new BulkPublishArguments("folder", new Uri("https://engine.example.test"), true), null),
+            BulkPublishScript.Parse(["folder", "--engine", "https://engine.example.test", "--publish"]));
+        Assert.Equal((new BulkPublishArguments("folder", new Uri("https://a.test"), false), null),
+            BulkPublishScript.Parse(["--engine", "https://a.test", "folder"]));
+
+        var script = Script("bulk-publish-v31.cs");
+        Assert.Contains("BulkPublishScript.Parse(args)", script, StringComparison.Ordinal);
+        Assert.Contains("Environment.GetEnvironmentVariable(BulkPublishScript.TokenVariable)", script, StringComparison.Ordinal);
+        Assert.Contains("return await BulkPublishScript.RunAsync(", script, StringComparison.Ordinal);
+        Assert.Contains("return BulkPublishScript.Fault;", script, StringComparison.Ordinal);
+        Assert.Equal("ACCESS_TOKEN", BulkPublishScript.TokenVariable);
     }
 }
