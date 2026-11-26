@@ -123,7 +123,11 @@ file writes) and of an inline format at any site (an input's, a function paramet
 and nowhere else. It is the compiled copy's alone: it is never written in source (the dialect
 refuses it there), `formatHashes` and `typeHashes` are taken from the source without it, a model is
 never sent it (so `sentFormatHash` does not depend on it, § 2.4), and a value is validated as
-before, a validator ignoring it as JSON Schema ignores a keyword it does not know. A `resolve.json`
+before, a validator ignoring it as JSON Schema ignores a keyword it does not know. **A compiled
+format is its source format in the dialect plus `propertyOrder`**: its `$schema` names the dialect of
+its source, and a reader that checks a compiled format against the dialect removes `propertyOrder`
+first (the dialect does not admit it; `resolve.schema.json` judges an inline format as the dialect's
+inline schema plus `propertyOrder`, closed to anything else). A `resolve.json`
 written by an earlier 31 preview, before `propertyOrder`, does not fit `resolve.schema.json`: while
 31 is in preview such a document is published again, not honoured.
 
@@ -157,7 +161,8 @@ Each entry keeps its `$id` URN ([part 02](02-types-and-inputs.md),
 which names its origin and version; a package format's `$id` is derived at publish
 (`urn:consultologist:package:example-nested-note@v2026.12.1:format:verdict`), never written in
 source. Each entry keeps its `$schema` (`urn:consultologist:spec:31:dialect`, checked against
-`specVersion` at publish) and its annotations (`contentMediaType`, `x-markdown`)
+`specVersion` at publish), which names the dialect of its source (the entry is that format plus
+`propertyOrder`, § 2.2), and its annotations (`contentMediaType`, `x-markdown`)
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
 Inline schemas written on an input or a node stay inline where they're written; they carry no
 `contentMediaType` or `x-markdown`.

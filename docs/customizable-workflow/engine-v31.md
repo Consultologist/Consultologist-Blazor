@@ -705,7 +705,8 @@ A plan answers 200 with `V31PackageDescription.Describe(plan)`, from `resolve.js
   `ExpectedContent` and the new `Channel` are both the input's `channel`; `Types` is null;
 - **`Format`** (new, trailing) is the input's format as one JSON Schema 2020-12 compound document: the input's schema
   at the root, every format it reaches under the root's `$defs` once, each with its `$id` kept, and every reference to
-  one written as `{ "$ref": "<its $id URN>" }`. A satellite resolves references by `$id`. A format that cannot be
+  one written as `{ "$ref": "<its $id URN>" }`, with no `propertyOrder` (#1508, R10: it is a schema in the dialect;
+  `Fields` carry the order). A satellite resolves references by `$id`. A format that cannot be
   expanded (recursion) is `false`.
 - **`Fields`** come in written order, as part 09 § 4.3 says: `resolve.json` is canonical JSON, which sorts the
   properties, so each object that has them carries `propertyOrder` beside them, the names as the source writes them

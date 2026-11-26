@@ -2917,7 +2917,7 @@ test's text: a mismatch on text gives hashes, and S07-009's error a path and a k
 **`Format` and `Fields` at 31.** `PlanFormats.SelfContained(format)` gives an input's `Format` as one JSON Schema
 2020-12 compound document (the controller's ruling in the build): the input's schema at the root, each bundled format
 it reaches, transitively, once under the root's `$defs` with its `$id` kept and `$schema` dropped, and every reference
-to one written as `{ "$ref": "<its $id URN>" }`. A format file's own `$defs` stay with it. A format that recurses, names
+to one written as `{ "$ref": "<its $id URN>" }`, every `propertyOrder` left out (R10: it stays a schema in the dialect). A format file's own `$defs` stay with it. A format that recurses, names
 something unknown or passes the node budget gives `false`, as the run's expansion does. `Fields` come in written order
 (part 09 § 4.3): `resolve.json` is canonical JSON and sorts the properties, so each object that has them carries
 `propertyOrder` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), R10), and `Fields` follow it, any property it does not list after, as held.
