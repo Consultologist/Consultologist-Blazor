@@ -30,7 +30,7 @@ public static class RecordCheck31
 
         var recomputed = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(recordBytes));
         lines.Add(recordHash == null
-            ? new RecordCheckLine("recordHash", null, "the job carries no recordHash")
+            ? new RecordCheckLine("recordHash", false, "a finished job at storage 12 carries no recordHash")
             : string.Equals(recordHash, recomputed, StringComparison.Ordinal)
                 ? new RecordCheckLine("recordHash", true, recomputed)
                 : new RecordCheckLine("recordHash", false, $"recorded {recordHash}, recomputed {recomputed}"));
@@ -60,22 +60,47 @@ public static class RecordCheck31
             }
 
             var composedName = $"deliverables[{key}].composedHash";
+            var replayName = $"deliverables[{key}].replay";
+            var substitutions = row["substitutions"] as JsonArray;
             var recorded = Str(row["composedHash"]);
-            if (!composedTexts.TryGetValue(key, out var text) || text == null)
+            var state = Str(row["state"]);
+            var text = composedTexts.TryGetValue(key, out var held) ? held : null;
+
+            // composedHash: the member is always written; null only for a deliverable that was never composed
+            if (!row.ContainsKey("composedHash"))
+            {
+                lines.Add(new RecordCheckLine(composedName, false, "the row has no composedHash member"));
+            }
+            else if (recorded == null && state is not ("skipped" or "failed"))
+            {
+                lines.Add(new RecordCheckLine(composedName, false, $"the row has no composedHash, and a {state ?? "stateless"} deliverable is composed"));
+            }
+            else if (recorded == null)
+            {
+                lines.Add(new RecordCheckLine(composedName, null, $"never composed ({state})"));
+            }
+            else if (text == null)
             {
                 lines.Add(new RecordCheckLine(composedName, null, TextDeleted));
-                continue;
             }
-
-            var textHash = CanonicalJson.HashText(text);
-            lines.Add(recorded == null
-                ? new RecordCheckLine(composedName, null, "the row carries no composedHash")
-                : string.Equals(recorded, textHash, StringComparison.Ordinal)
+            else
+            {
+                var textHash = CanonicalJson.HashText(text);
+                lines.Add(string.Equals(recorded, textHash, StringComparison.Ordinal)
                     ? new RecordCheckLine(composedName, true, textHash)
                     : new RecordCheckLine(composedName, false, $"recorded {recorded}, recomputed {textHash}"));
+            }
 
-            var replays = RecordReplay.Verify(text, row["substitutions"] as JsonArray ?? [], out var fault);
-            lines.Add(new RecordCheckLine($"deliverables[{key}].replay", replays, replays ? "substitutions replay" : fault ?? "replay failed"));
+            // replay: the substitutions member is never absent (part 08 § 10)
+            if (substitutions == null)
+            {
+                lines.Add(new RecordCheckLine(replayName, false, "the row has no substitutions array"));
+            }
+            else if (text != null)
+            {
+                var replays = RecordReplay.Verify(text, substitutions, out var fault);
+                lines.Add(new RecordCheckLine(replayName, replays, replays ? "substitutions replay" : fault ?? "replay failed"));
+            }
         }
 
         return Result(lines);
@@ -83,5 +108,6 @@ public static class RecordCheck31
 
     private static string? Str(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
-    private static RecordCheckResult Result(List<RecordCheckLine> lines) => new(lines.All(l => l.Ok != false), lines);
+    /// <summary>Ok when nothing failed and something was compared: a record where no line was checked is never a green tick.</summary>
+    private static RecordCheckResult Result(List<RecordCheckLine> lines) => new(lines.All(l => l.Ok != false) && lines.Any(l => l.Ok == true), lines);
 }

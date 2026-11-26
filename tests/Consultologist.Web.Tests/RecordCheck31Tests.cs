@@ -100,4 +100,106 @@ public class RecordCheck31Tests
         Assert.Null(line.Ok);
         Assert.Equal("text deleted; hash kept", line.Detail);
     }
+
+    // ---- fix round 1: the checker never reports success without having checked ----
+
+    private static string Changed(Action<JsonObject> change)
+    {
+        var node = JsonNode.Parse(Document())!.AsObject();
+        change(node);
+        return CanonicalJson.Write(node);
+    }
+
+    private static JsonObject Row(JsonObject document) => document["deliverables"]!.AsArray()[0]!.AsObject();
+
+    [Fact]
+    public void NotJson_FailsWithALine_NeverThrows()
+    {
+        var result = Check("not json {", CanonicalJson.HashText("not json {"), Texts());
+
+        Assert.False(result.Ok);
+        Assert.Contains(result.Lines, l => l.Ok == false);
+    }
+
+    [Fact]
+    public void NoDeliverablesMember_Fails()
+    {
+        var document = Changed(d => d.Remove("deliverables"));
+
+        var result = Check(document, CanonicalJson.HashText(document), Texts());
+
+        Assert.False(result.Ok);
+        Assert.Contains(result.Lines, l => l.What == "deliverables" && l.Ok == false);
+    }
+
+    [Fact]
+    public void ADeliverableWithoutSubstitutions_FailsTheReplay()
+    {
+        var document = Changed(d => Row(d).Remove("substitutions"));
+
+        var result = Check(document, CanonicalJson.HashText(document), Texts());
+
+        Assert.False(result.Ok);
+        var failed = Assert.Single(result.Lines, l => l.Ok == false);
+        Assert.Equal($"deliverables[{Key}].replay", failed.What);
+        Assert.Equal("the row has no substitutions array", failed.Detail);
+    }
+
+    [Fact]
+    public void ARowWithoutAKey_Fails()
+    {
+        var document = Changed(d => Row(d).Remove("key"));
+
+        var result = Check(document, CanonicalJson.HashText(document), Texts());
+
+        Assert.False(result.Ok);
+    }
+
+    [Fact]
+    public void ADeliverableWithoutComposedHash_Fails()
+    {
+        var missing = Changed(d => Row(d).Remove("composedHash"));
+        var releasedNull = Changed(d => { Row(d)["state"] = "released"; Row(d)["composedHash"] = null; });
+
+        foreach (var document in new[] { missing, releasedNull })
+        {
+            foreach (var texts in new[] { Texts(), Texts(null) })
+            {
+                var result = Check(document, CanonicalJson.HashText(document), texts);
+
+                Assert.False(result.Ok);
+                Assert.Contains(result.Lines, l => l.What == $"deliverables[{Key}].composedHash" && l.Ok == false);
+            }
+        }
+    }
+
+    [Fact]
+    public void ASkippedDeliverablesNullComposedHash_IsNotAFailure()
+    {
+        var document = Changed(d => { Row(d)["state"] = "skipped"; Row(d)["composedHash"] = null; });
+
+        var result = Check(document, CanonicalJson.HashText(document), Texts(null));
+
+        Assert.True(result.Ok);
+        Assert.Contains(result.Lines, l => l.What == $"deliverables[{Key}].composedHash" && l.Ok == null);
+    }
+
+    [Fact]
+    public void ANullRecordHash_OnATerminalJob_Fails()
+    {
+        var result = Check(Document(), null, Texts());
+
+        Assert.False(result.Ok);
+        Assert.Contains(result.Lines, l => l.What == "recordHash" && l.Ok == false);
+    }
+
+    [Fact]
+    public void ARecordWhereNothingWasCompared_IsNotOk()
+    {
+        // a record hash that cannot be compared and a deliverable whose hash is kept: no green tick for nothing checked
+        var document = Changed(d => d.Remove("deliverables"));
+        var result = RecordCheck31.Check(null, Encoding.UTF8.GetBytes(document), Texts());
+
+        Assert.False(result.Ok);
+    }
 }
