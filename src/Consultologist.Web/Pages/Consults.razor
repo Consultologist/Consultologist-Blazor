@@ -829,6 +829,25 @@
                 </details>
 
                 <div class="consult-run__grid">
+                    @if (IsRun31)
+                    {
+                        @* #1509 (Task 12, D15): a 31 job (record storage 12) is followed by its finished rows. *@
+                        <RunView31 JobId="@(lastAppliedJobId ?? string.Empty)"
+                                   Status="@jobStatus31"
+                                   Error="@(latestRunResponse?.RuntimeFailureError ?? latestRunResponse?.StartFailure)"
+                                   Notice="@(rowsError31 ?? aiRequestError)"
+                                   Blocks="runBlocks31"
+                                   Results="declaredResults"
+                                   Finished="rowsFinished31.Values"
+                                   CurrentKey="@(IsRunFinished ? null : currentKey31)"
+                                   RowStates="latestRunResponse?.RowStates"
+                                   Texts="deliverableRows31"
+                                   TextErrors="deliverableErrors31"
+                                   InFlight="RunInFlight"
+                                   Heading="@RunHeading" />
+                    }
+                    else
+                    {
                     <section class="result-panel">
                         @* #933: said before the text, not after — a block produced from a
                            user-defined schema is unattested (#760): never to be read as a
@@ -1288,6 +1307,7 @@
                             }
                         </div>
                     </section>
+                    }
                 </div>
             </div>
         }
@@ -1995,6 +2015,107 @@
   private SseAttemptState? activeSseAttempt;
   private IReadOnlyList<PackageBlock> activeBlockSnapshots = Array.Empty<PackageBlock>();
 
+  // #1509 (Task 12, D15): a 31 job (record storage 12) reports by rows, not NodeOutputs or Blocks: each stored row is
+  // announced by row-finished (or read from the Rows listing on attaching), and a released deliverable's text is fetched
+  // once by its key. The 5–30 run view's state is untouched by any of it.
+  private bool IsRun31 => latestRunResponse is { SchemaVersion: >= 12 };
+  private string? jobStatus31;
+  private string? currentKey31;
+  private string? rowsError31;
+  private int? rowsListed31;
+  private IReadOnlyList<WorkflowPackageBlockResponse> runBlocks31 = Array.Empty<WorkflowPackageBlockResponse>();
+  private Dictionary<string, Consultologist.Web.Services.Provenance.V31.RowFinished> rowsFinished31 = new(StringComparer.Ordinal);
+  private Dictionary<string, RecordRowText> deliverableRows31 = new(StringComparer.Ordinal);
+  private Dictionary<string, string> deliverableErrors31 = new(StringComparer.Ordinal);
+  private HashSet<string> deliverablesAsked31 = new(StringComparer.Ordinal);
+
+  private void ResetRun31()
+  {
+    jobStatus31 = null;
+    currentKey31 = null;
+    rowsError31 = null;
+    rowsListed31 = null;
+    runBlocks31 = Array.Empty<WorkflowPackageBlockResponse>();
+    rowsFinished31 = new(StringComparer.Ordinal);
+    deliverableRows31 = new(StringComparer.Ordinal);
+    deliverableErrors31 = new(StringComparer.Ordinal);
+    deliverablesAsked31 = new(StringComparer.Ordinal);
+  }
+
+  /// <summary>One stored row, as row-finished announces it or the listing holds it; a decision is never a rail row.</summary>
+  private void NoteRowFinished31(Consultologist.Web.Services.Provenance.V31.RowFinished row)
+  {
+    if (string.Equals(row.Section, "decision", StringComparison.Ordinal))
+    {
+      return;
+    }
+
+    rowsFinished31[row.Key] = row;
+  }
+
+  /// <summary>
+  /// The rows stored so far, from <c>GET …/Rows</c>: on attaching to a 31 job, and on a poll whose row count moved (a poll
+  /// carries no row events). A failure is said in the rail; the stream's events still arrive.
+  /// </summary>
+  private async Task LoadRows31Async(string jobId)
+  {
+    try
+    {
+      var listed = await AIService.GetJobRowsAsync(jobId);
+      foreach (var row in listed)
+      {
+        NoteRowFinished31(new(row.Key, row.Section, Consultologist.Web.Services.Provenance.V31.RunRail31.StatusOf(row.Section, row.Row)));
+      }
+
+      rowsListed31 = latestRunResponse?.Rows;
+      rowsError31 = null;
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+      return;
+    }
+    catch (Exception ex)
+    {
+      rowsError31 = ex.Message;
+    }
+
+    await FetchReleasedDeliverables31Async(jobId);
+  }
+
+  /// <summary>
+  /// Each released deliverable's row and text, by its key, once. A blocked deliverable is never fetched: its text is
+  /// History's to show (R1), and the run view links there.
+  /// </summary>
+  private async Task FetchReleasedDeliverables31Async(string jobId)
+  {
+    var released = rowsFinished31.Values
+      .Where(row => row.Section == "deliverable" && row.Status == "released" && !deliverablesAsked31.Contains(row.Key))
+      .Select(row => row.Key)
+      .ToList();
+
+    foreach (var key in released)
+    {
+      deliverablesAsked31.Add(key);
+      try
+      {
+        if (await AIService.GetJobRowAsync(jobId, key) is { } fetched)
+        {
+          deliverableRows31[key] = fetched;
+        }
+      }
+      catch (AccessTokenNotAvailableException exception)
+      {
+        exception.Redirect();
+        return;
+      }
+      catch (Exception ex)
+      {
+        deliverableErrors31[key] = ex.Message;
+      }
+    }
+  }
+
   [Parameter]
   public string? JobId { get; set; }
 
@@ -2114,6 +2235,12 @@
       }
 
       await LoadJobResultLabelsAsync(snapshot.WorkflowPackage);
+
+      // #1509 (Task 12): a 31 job's rail is built from the rows stored so far; the stream's row events follow.
+      if (IsRun31)
+      {
+        await LoadRows31Async(targetJobId);
+      }
 
       // #202: Cancelled is terminal too. Without it a re-attach would open an
       // SSE stream against an orchestration that has been terminated.
@@ -2397,6 +2524,7 @@
     completedNodeItems = new();
     nodeStatuses = new(StringComparer.Ordinal);
     latestRunResponse = null;
+    ResetRun31();
     railOpen = new(StringComparer.Ordinal);
     unattestedNodes = new Dictionary<string, UnattestedNodes.Entry>(StringComparer.Ordinal);
     showRunDiagram = false;
@@ -2823,6 +2951,13 @@
         var response = await AIService.GetConsultGenerationJobAsync(jobId);
 
         ApplyConsultGenerationJobResponse(response, blockSnapshots);
+
+        // #1509 (Task 12): a poll carries no row events, so a 31 job's rows are listed again when their count moved.
+        if (IsRun31 && response.Rows != rowsListed31)
+        {
+          await LoadRows31Async(jobId);
+        }
+
         await InvokeAsync(StateHasChanged);
 
         if (response.Status is "Completed" or "Failed" or "Cancelled")
@@ -2848,7 +2983,7 @@
     try
     {
       // #1332: output of any kind means a Scheduled run has started.
-      if (scheduledFor is not null && eventName is "block-completed" or "block-skipped" or "block-failed" or "node-completed" or "item-step" or "count-resolved")
+      if (scheduledFor is not null && eventName is "block-completed" or "block-skipped" or "block-failed" or "node-completed" or "item-step" or "count-resolved" or "row-finished")
       {
         NoteScheduledStatus("Running", scheduledFor, startedAtUtc: null);
       }
@@ -2878,6 +3013,25 @@
           if (heartbeat != null && !string.IsNullOrWhiteSpace(heartbeat.Status))
           {
             NoteScheduledStatus(heartbeat.Status, scheduledFor, startedAtUtc: null);
+            if (IsRun31)
+            {
+              jobStatus31 = heartbeat.Status;
+            }
+          }
+          break;
+
+        // #1509 (Task 12, D15): one stored row of a 31 job, { key, section, status }; the rail is set from it with no
+        // fetch, and a released deliverable's text is fetched by its key, once.
+        case "row-finished":
+          var row = JsonSerializer.Deserialize<Consultologist.Web.Services.Provenance.V31.RowFinished>(json, SseJsonOptions);
+          if (row is { Key: not null, Section: not null })
+          {
+            NoteRowFinished31(row);
+            currentKey31 = row.Key;
+            if (lastAppliedJobId is { } rowJobId)
+            {
+              await FetchReleasedDeliverables31Async(rowJobId);
+            }
           }
           break;
 
@@ -3075,6 +3229,13 @@
     runEventSeen = true;
     // #642: the run diagram draws from the whole latest response.
     latestRunResponse = response;
+    if (IsRun31)
+    {
+      // #1509 (Task 12): the rail's blocks are the run's top-level node keys; the status and last row are the job's own.
+      runBlocks31 = blockSnapshots.Select(block => new WorkflowPackageBlockResponse(block.Id, block.Name)).ToList();
+      jobStatus31 = response.Status;
+      currentKey31 = response.CurrentKey ?? currentKey31;
+    }
     NoteScheduledStatus(response.Status, response.ScheduledAtUtc, response.StartedAtUtc);
     unattestedNodes = UnattestedNodes.Of(response);
     generatedBlocks = response.GeneratedBlocks;
@@ -3216,7 +3377,7 @@
   }
 
   // v10 (#496): a deciding job has no count yet and is still a run.
-  private bool IsRunPhase => !editingDraft && (isAiRequestLoading || totalBlockCount > 0 || deciding);
+  private bool IsRunPhase => !editingDraft && (isAiRequestLoading || totalBlockCount > 0 || deciding || IsRun31);
 
   // The frozen v5/v6 input, synthesized when a package declares nothing: one
   // required input labelled as the page always labelled it.

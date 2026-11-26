@@ -1,0 +1,81 @@
+/* #1509 (Task 12): the 31 run view mirrors the Create page's rail rows (scoped CSS is not shared across components). */
+.node-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.node-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.75rem;
+	padding: 0.2rem 0.25rem;
+	font-size: 0.8rem;
+}
+
+.node-row__label {
+	font-weight: 600;
+}
+
+.node-row--item {
+	padding-left: 1.75rem;
+}
+
+.node-row--item .node-row__label {
+	font-weight: 400;
+}
+
+.node-row--current .node-row__label {
+	color: var(--consultologist-accent);
+}
+
+.node-row__count {
+	margin-left: auto;
+	white-space: nowrap;
+	font-size: 0.75rem;
+	color: var(--consultologist-text-muted);
+}
+
+.run31-status {
+	margin: 0;
+	font-weight: 600;
+}
+
+.run31-row-states {
+	margin: 0;
+	font-size: 0.75rem;
+}
+
+.run31-deliverable + .run31-deliverable {
+	margin-top: 1.5rem;
+}
+
+.run31-deliverable__state {
+	font-size: 0.8rem;
+	color: var(--consultologist-text-muted);
+}
+
+.run31-deliverable__plain {
+	white-space: pre-wrap;
+}
+
+.result-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin-bottom: 1rem;
+}
+
+.run31-results ::deep .empty-note-state {
+	display: flex;
+	min-height: 20rem;
+	flex-direction: column;
+	justify-content: center;
+	gap: 0.75rem;
+	border: 1px dashed var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface-muted);
+	padding: clamp(1rem, 2vw, 1.5rem);
+}

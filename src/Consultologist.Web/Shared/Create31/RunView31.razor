@@ -1,0 +1,166 @@
+@using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance.V31
+@using System.Text.Json
+@*
+    #1509 (Task 12, D15; part 09 §§ 3.8, 4.2): the Create page's run view for a 31 job (record storage 12). The rail lists
+    the package's top-level nodes, each set from its row's stored status, its item and pass rows under it as they finish;
+    the result panel shows each deliverable row with its stored state, and a released one's text as Rows?key= gave it.
+    A blocked deliverable's text is never shown here: History shows it (R1). Every status is the stored word, but
+    "delivering" reads "Delivering…" (S09-019). The page fetches and decides; this draws.
+*@
+<section class="result-panel run31-results">
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false"><span class="run31-error">@Error</span></FluentMessageBar>
+    }
+
+    @if (Deliverables.Count > 0)
+    {
+        @foreach (var deliverable in Deliverables)
+        {
+            var fetched = Texts.GetValueOrDefault(deliverable.Key);
+            <article class="run31-deliverable" data-key="@deliverable.Key" @key="deliverable.Key">
+                <div class="result-header">
+                    <h2 class="panel-title">@LabelOf(deliverable.Key, fetched)</h2>
+                    <span class="run31-deliverable__state">@deliverable.Status</span>
+                </div>
+                @if (string.Equals(deliverable.Status, "blocked", StringComparison.Ordinal))
+                {
+                    <p class="run31-deliverable__blocked"><a href="/history/@JobId">View in History</a></p>
+                }
+                else if (string.Equals(deliverable.Status, "released", StringComparison.Ordinal))
+                {
+                    @if (TextErrors.GetValueOrDefault(deliverable.Key) is { } failure)
+                    {
+                        <p class="run31-deliverable__error">@failure</p>
+                    }
+                    else if (fetched is null)
+                    {
+                        <LoadingState>Loading&hellip;</LoadingState>
+                    }
+                    else if (fetched.TextDeleted)
+                    {
+                        <p class="run31-deliverable__deleted">@TextDeletedSentence</p>
+                        @if (Member(fetched.Row, "composedHash") is { } hash)
+                        {
+                            <p class="run31-deliverable__hash muted-text"><code>@hash</code></p>
+                        }
+                    }
+                    else if (Content(fetched) is { } content)
+                    {
+                        @if (string.Equals(Member(fetched.Row, "format"), "markdown_block", StringComparison.Ordinal))
+                        {
+                            <article class="note-preview generated-note">@((MarkupString)MarkdownPreview.Render(content))</article>
+                        }
+                        else
+                        {
+                            <article class="note-preview generated-note run31-deliverable__plain">@content</article>
+                        }
+                    }
+                }
+            </article>
+        }
+    }
+    else
+    {
+        <EmptyState Class="empty-note-state" Icon="@(new Icons.Regular.Size32.DocumentText())" Title="@Heading">
+            <ChildContent>
+                @if (InFlight)
+                {
+                    <LoadingState>Generating&hellip;</LoadingState>
+                }
+            </ChildContent>
+        </EmptyState>
+    }
+</section>
+
+<section class="workflow-panel run-rail run31-rail">
+    <div class="form-stack">
+        <h2 class="panel-title">Run</h2>
+        @if (Status is { } status)
+        {
+            <p class="run31-status" role="status">@RunRail31.StatusText(status)</p>
+        }
+        @if (RowStates is { Count: > 0 } states)
+        {
+            <p class="run31-row-states muted-text">@string.Join(" · ", states.OrderBy(state => state.Key, StringComparer.Ordinal).Select(state => $"{state.Value} {state.Key}"))</p>
+        }
+        <div class="node-grid" aria-busy="@(InFlight ? "true" : "false")">
+            @foreach (var block in Rail)
+            {
+                <div class="node-row@(block.Current ? " node-row--current" : "")" data-key="@block.Key" aria-current="@(block.Current ? "step" : null)" @key="block.Key">
+                    <span class="node-row__label">@block.Name</span>
+                    <span class="node-row__count run31-rail__status">@block.Status</span>
+                </div>
+                @foreach (var child in block.Children)
+                {
+                    <div class="node-row node-row--item" data-key="@child.Key" @key="child.Key">
+                        <span class="node-row__label">@child.Label</span>
+                        <span class="node-row__count run31-rail__status">@child.Status</span>
+                    </div>
+                }
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(Notice))
+        {
+            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@Notice</FluentMessageBar>
+        }
+    </div>
+</section>
+
+@code {
+    /// <summary>A12-002 (part 08 § 11): a released deliverable whose text the retention sweep dropped.</summary>
+    public const string TextDeletedSentence = "The text was deleted 7 days after the job finished. Its hash is kept.";
+
+    [Parameter, EditorRequired] public string JobId { get; set; } = string.Empty;
+
+    /// <summary>The job's stored status; null before the first response.</summary>
+    [Parameter] public string? Status { get; set; }
+
+    /// <summary>The job's stored error sentence, shown as written.</summary>
+    [Parameter] public string? Error { get; set; }
+
+    /// <summary>The page's own message (a fetch or attach that failed).</summary>
+    [Parameter] public string? Notice { get; set; }
+
+    [Parameter, EditorRequired] public IReadOnlyList<WorkflowPackageBlockResponse> Blocks { get; set; } = [];
+
+    /// <summary>The package's deliverables, for a label when a row's own is not fetched.</summary>
+    [Parameter] public IReadOnlyList<WorkflowPackageResultResponse>? Results { get; set; }
+
+    [Parameter, EditorRequired] public IReadOnlyCollection<RowFinished> Finished { get; set; } = [];
+
+    [Parameter] public string? CurrentKey { get; set; }
+
+    [Parameter] public IReadOnlyDictionary<string, int>? RowStates { get; set; }
+
+    /// <summary>The released deliverables' rows as <c>Rows?key=</c> gave them, by key.</summary>
+    [Parameter] public IReadOnlyDictionary<string, RecordRowText> Texts { get; set; } = new Dictionary<string, RecordRowText>();
+
+    /// <summary>A released deliverable whose row could not be fetched, by key: the sentence the route answered.</summary>
+    [Parameter] public IReadOnlyDictionary<string, string> TextErrors { get; set; } = new Dictionary<string, string>();
+
+    [Parameter] public bool InFlight { get; set; }
+
+    [Parameter] public string Heading { get; set; } = "Documents";
+
+    private IReadOnlyList<RailBlock31> Rail => RunRail31.Build(Blocks, Finished, CurrentKey);
+
+    private IReadOnlyList<RowFinished> Deliverables => Finished
+        .Where(row => string.Equals(row.Section, "deliverable", StringComparison.Ordinal))
+        .OrderBy(row => row.Key, StringComparer.Ordinal)
+        .ToList();
+
+    private string LabelOf(string key, RecordRowText? fetched) =>
+        (fetched is null ? null : Member(fetched.Row, "label"))
+        ?? Results?.FirstOrDefault(result => string.Equals(result.Id, key, StringComparison.Ordinal))?.Label
+        ?? key;
+
+    private static string? Content(RecordRowText fetched) =>
+        fetched.Text is { ValueKind: JsonValueKind.Object } text ? Member(text, "content") : null;
+
+    private static string? Member(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+}
