@@ -7,9 +7,9 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// #1508 (ruled by the owner, Q5 of 2026-11-26; R17): what a header rule (a JSON Logic <c>if</c> that decides whether a body
 /// renders at all) asserts is there whenever it holds, so that a read in that body through those objects cannot meet null
 /// (A11-009). Only forms that are false when the path read is null count: <c>{ "var": "x" }</c> alone (null is falsy),
-/// <c>x !== null</c> or <c>x != null</c>, <c>x === v</c> or <c>x == v</c> with a literal <c>v</c> that is not null (either
-/// side), and <c>!!x</c>; each asserts <c>x</c> and every shorter path of it (JSON Logic reads a member of null as null). A
-/// <c>pass.number</c> (past any <c>parent</c>s) <c>&gt; n</c> with <c>n</c> at least 1, or <c>&gt;= n</c> with <c>n</c> at
+/// <c>x !== null</c>, and <c>x === v</c> with a literal <c>v</c> that is not null (either side); 31's JSON Logic has no
+/// <c>==</c>, <c>!=</c> or <c>!!</c> (part 03), so they are not read. Each asserts <c>x</c> and every shorter path of it
+/// (JSON Logic reads a member of null as null). A <c>pass.number</c> (past any <c>parent</c>s) <c>&gt; n</c> with <c>n</c> at least 1, or <c>&gt;= n</c> with <c>n</c> at
 /// least 2, asserts that pass's <c>.previous</c>. <c>and</c> asserts what each of its terms does; anything else asserts
 /// nothing. Never throws on any rule; bounded by the rule's depth.
 /// </summary>
@@ -39,16 +39,13 @@ internal static class NullableGuards
                 if (Var(term) is { } path)
                     found.Add(path);
                 return;
-            case "!!" when args is [var inner] && Var(inner) is { } truthy:
-                found.Add(truthy);
-                return;
-            case "!==" or "!=" when args is [var left, var right]:
+            case "!==" when args is [var left, var right]:
                 if (Var(left) is { } a && right is null)
                     found.Add(a);
                 else if (Var(right) is { } b && left is null)
                     found.Add(b);
                 return;
-            case "===" or "==" when args is [var first, var second]:
+            case "===" when args is [var first, var second]:
                 if (Var(first) is { } c && IsValue(second))
                     found.Add(c);
                 else if (Var(second) is { } d && IsValue(first))

@@ -595,25 +595,38 @@ public static partial class SourceTemplates
         /// <summary>
         /// #1508 (ruled by the owner, Q5 of 2026-11-26; R17; part 05 § 2.5): whether <paramref name="test"/> asks whether an
         /// object that can be null is there: <c>path</c> or <c>path != null</c>, with no pipe, where <paramref name="read"/>
-        /// (the path typed) can be null and is an object (or a union of objects). The guard A11-009 asks for.
+        /// (the path typed) can be null and is an object, or a union whose every member is an object or <c>null</c>. The guard
+        /// A11-009 asks for.
         /// </summary>
         private bool IsPresence(TemplateTest test, TypedRead? read) =>
             test.Pipes.Count == 0 && (test.Operator == null || (test.Operator == "!=" && test.Literal == "null"))
-            && read is { Nullable: true, Format: { } format } && FormatTypes.Shape(format, formats) is FormatShape.Object or FormatShape.Union;
+            && read is { Nullable: true, Format: { } format } && FormatTypes.Shape(format, formats) switch
+            {
+                FormatShape.Object => true,
+                FormatShape.Union => FormatTypes.Follow(format, FormatTypes.Defs(format), formats) is ({ } union, var defs)
+                    && union["anyOf"] is JsonArray members
+                    && members.All(m => FormatTypes.Follow(m, defs, formats).Schema is { } member
+                        && FormatTypes.Shape(member, formats) is FormatShape.Object or FormatShape.Null),
+                _ => false,
+            };
 
         /// <summary>
         /// #1508 (Q5, R17): A11-009 when <paramref name="read"/> steps through an object that can be null (<see cref="TypedRead.Through"/>)
         /// that is not guarded, naming the outermost. An object is guarded when one of <paramref name="guards"/> (the paths the
         /// body <c>if</c>s around the read assert are there) or of the header rules' (<see cref="HeaderGuards"/>) is it, as
-        /// written or rooted (each typed with <paramref name="scope"/>); one null only before a second pass
+        /// written or rooted (each typed with <paramref name="scope"/>, the read's own: a body guard holds only where no <c>for</c>
+        /// between it and the read binds its root again, <see cref="TemplateOutput.Guards"/>, and a header rule's only where no
+        /// <c>for</c> variable around the read has its root's name); one null only before a second pass
         /// (<see cref="TypedRead.AfterFirstPass"/>) is also guarded by a header rule that the pass is past its first.
         /// </summary>
         private void Guarded(TypedRead? read, IReadOnlyList<string>? guards, List<ForVariable> scope)
         {
             if (read?.Through is not { Count: > 0 } through)
                 return;
+            // A header rule reads the roots; under a for whose variable has a root's name, a read of that name is the item's.
+            var bound = scope.Select(v => v.Name).ToHashSet(StringComparer.Ordinal);
             var held = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var guard in (guards ?? []).Concat(HeaderGuards))
+            foreach (var guard in (guards ?? []).Concat(HeaderGuards.Where(g => !bound.Contains(g.Split('.')[0]))))
             {
                 held.Add(guard);
                 if (typing.Type(guard, read.Line, scope).Read is { } typed)

@@ -21,7 +21,8 @@ public sealed record TemplatePipe(string Name, IReadOnlyList<string> Arguments, 
 /// <c>"boolean"</c>, <c>"null"</c>), else <c>null</c>. #1506 (area 09; part 08 § 10): <paramref name="Loop"/> is the nearest
 /// <c>for</c> around it as written (<c>&lt;variable&gt; in &lt;source&gt;</c>), <c>null</c> in none. #1508 (ruled by the
 /// owner, Q5 of 2026-11-26; R17): <paramref name="Guards"/> are the paths the <c>if</c>s around it assert are there (see
-/// <see cref="TemplateTest.Asserts"/>), outermost first; an <c>else</c> asserts nothing.
+/// <see cref="TemplateTest.Asserts"/>), outermost first; an <c>else</c> asserts nothing, and a <c>for</c> drops, in its body,
+/// each guard rooted at its variable.
 /// </summary>
 public sealed record TemplateOutput(
     TemplateTag Tag,
@@ -271,6 +272,10 @@ public sealed record TemplateSyntax(
             }
 
             _loops.Add($"{variable} in {Slice(node.Iterator)}");
+            // #1508 (Q5, R17; Task 26's fix round 1): the for binds its variable anew, so a guard rooted at that name asserts
+            // nothing in its body (it named another value); the dialect has no other statement that binds a name.
+            var outer = new List<string>(_guards);
+            _guards.RemoveAll(g => g.Split('.')[0] == variable);
             Nest("for", node, () =>
             {
                 Walk(node.Body);
@@ -281,6 +286,8 @@ public sealed record TemplateSyntax(
                     Walk(otherwise.Body);
                 }
             });
+            _guards.Clear();
+            _guards.AddRange(outer);
             _loops.RemoveAt(_loops.Count - 1);
         }
 
