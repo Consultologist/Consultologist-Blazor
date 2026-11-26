@@ -76,6 +76,8 @@ public sealed class V31StartChecksRoute(
             }
 
             var signatureBlockId = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["signatureBlockId"];
+            if (string.IsNullOrWhiteSpace(signatureBlockId))
+                signatureBlockId = null;
             var (profile, signature) = await V31JobStarter.ProfileAsync(settings, accounts, plan, account.AppUserId, signatureBlockId, cancellationToken);
             var timeZone = await V31JobStarter.TimeZoneAsync(settings, account.AppUserId, cancellationToken);
             var refusals = V31JobStarter.AccountRefusals(plan, profile, timeZone, signature.Refusal);
@@ -95,21 +97,8 @@ public sealed class V31StartChecksRoute(
         }
         catch (WorkflowPackageSpecVersionException ex) when (ex.SpecVersion == PublishedStamp.SpecVersion && admission != null)
         {
-            if (admission.Runs31 && load is { Unreadable: true })
-            {
-                logger.LogError("Start checks could not read the registry at 31. Ref={Ref}, Detail={Detail}", packageRef, load.OperatorDetail);
-                return await JsonAsync(req, HttpStatusCode.ServiceUnavailable,
-                    new { error = "Workflow package registry is unavailable." }, cancellationToken);
-            }
-
-            return await JsonAsync(req, HttpStatusCode.BadRequest,
-                new
-                {
-                    error = admission.Runs31
-                        ? CompiledPackageStore.NotPublished(packageRef.Name, packageRef.Version)
-                        : admission.NotSupported(PublishedStamp.SpecVersion),
-                },
-                cancellationToken);
+            var (status, error) = WorkflowPackages.NotLoadedAt31(admission, packageRef, load, logger);
+            return await JsonAsync(req, status, new { error }, cancellationToken);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("was not found", StringComparison.Ordinal))
         {

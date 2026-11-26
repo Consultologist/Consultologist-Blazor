@@ -188,6 +188,42 @@ public class V31StartChecksRouteTests
     }
 
     [Fact]
+    public async Task ABlankSignatureBlockId_IsNoPick()
+    {
+        var rig = new Rig(zone: Zone, signatures: Blocks());
+        var packageRef = rig.Put("signature");
+
+        var blank = await rig.Route.GetStartChecksAsync(FakeHttp.Request("GET", null,
+            new Uri($"https://api.example.test/api/WorkflowPackages/Current/StartChecks?ref={packageRef.Name}@{packageRef.Version}&signatureBlockId=%20")));
+
+        Assert.Equal(HttpStatusCode.OK, blank.StatusCode);
+        Assert.Empty(JsonSerializer.Deserialize<WorkflowPackageStartChecksResponse>(FakeHttp.TextOf(blank), new JsonSerializerOptions(JsonSerializerDefaults.Web))!.Refusals);
+    }
+
+    [Fact]
+    public async Task AnUnauthenticatedCaller_Gets401()
+    {
+        var rig = new Rig();
+        rig.Authorizer.AuthorizeAsync(Arg.Any<HttpRequestData>(), Arg.Any<CancellationToken>()).Returns((AppAccount?)null);
+
+        var response = await rig.GetAsync(rig.Put());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnAccountThatCannotUseTheApp_Gets403()
+    {
+        var rig = new Rig();
+        rig.Authorizer.AuthorizeAsync(Arg.Any<HttpRequestData>(), Arg.Any<CancellationToken>())
+            .Returns(AdminDrainTests.Admin.Account(AppUserId) with { Status = AccountStatuses.Disabled });
+
+        var response = await rig.GetAsync(rig.Put());
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task TheRoute_AnswersOptionsWithCors()
     {
         var rig = new Rig();
