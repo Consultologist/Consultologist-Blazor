@@ -168,7 +168,7 @@ public class DeliverableFormatsTests
     [Theory]
     [InlineData("markdown_block")]
     [InlineData("plaintext")]
-    public async Task ALoopsContent_InAMarkdownDeliverable_IsNotEscaped(string itemFormat)
+    public async Task ALoopsContent_InAMarkdownDeliverable_IsWrittenAsItIs_ItsPlaintextItemsEscapedByTheLoop(string itemFormat)
     {
         // #1507 (D23; part 04 § 2.5, part 05 § 5.3): a loop's .content is a standard rendering typed markdown_block,
         // whatever its items' format: the note writes it as it is, ## headers included. #1508 (2026-11-25, item 8): a

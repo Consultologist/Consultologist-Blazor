@@ -604,19 +604,21 @@ public sealed partial class PlanRunner
         /// Settles the loop (§§ 2.4, 2.5): <c>.value</c> its completed items' values, <c>.items</c> every item's element,
         /// <c>.content</c> D11's rendering (<c>## &lt;item name&gt;</c>, a blank line, the item's text; completed items only,
         /// joined by a blank line), and <c>.stopped</c>: <c>until</c>, <c>bound</c> (items beyond <c>max</c>) or <c>end</c>.
-        /// #1508 (2026-11-25, item 8, D23): <c>.content</c> is <c>markdown_block</c>, so when the loop's <c>ret</c> is
-        /// <c>plaintext</c> each item's name and text are escaped where they are joined (<see cref="MarkdownEscape"/>, as a
-        /// direct read of plain text in Markdown is); <c>.items</c> keeps each text as it is.
+        /// #1508 (2026-11-25, item 8, D23): <c>.content</c> is <c>markdown_block</c>, so an item whose text is not Markdown
+        /// (<see cref="WritesMarkdown"/>: plain text, a nullable text, an object's or a list's canonical JSON) has its name
+        /// and text escaped where they are joined (<see cref="MarkdownEscape"/>, as a direct read of plain text in Markdown
+        /// is); <c>.items</c> keeps each text as it is.
         /// </summary>
         private Task SettleLoopAsync(RunInstance instance, LoopState loop)
         {
             loop.Stopped = loop.StopAt != null ? "until" : loop.Max is { } max && loop.Items.Count > max ? "bound" : "end";
             var completed = loop.Items.Where(i => i.State == RowState.Completed).ToList();
-            var plain = instance.Entry.Ret is { } ret && instance.Frame.Map.GetValueOrDefault(ret) is { } produced
-                && plan.Formats.TextFormat(produced.Format) == "plaintext";
-            string Written(string text, bool startsLine) => plain ? MarkdownEscape.Escape(text, startsLine) : text;
             var content = string.Join("\n\n", completed.Select(i =>
-                $"## {Written(i.Name, startsLine: false)}\n\n{Written(SourceLayout.Text(i.Element!["content"]) ?? "", startsLine: true)}"));
+            {
+                var markdown = i.Frame?.Instances.FirstOrDefault(r => r.Entry.Key == instance.Entry.Ret) is { } ret && WritesMarkdown(ret);
+                string Written(string text, bool startsLine) => markdown ? text : MarkdownEscape.Escape(text, startsLine);
+                return $"## {Written(i.Name, startsLine: false)}\n\n{Written(SourceLayout.Text(i.Element!["content"]) ?? "", startsLine: true)}";
+            }));
             var read = new JsonObject
             {
                 ["value"] = new JsonArray(completed.Select(i => i.Element!["value"]?.DeepClone()).ToArray()),
@@ -626,6 +628,35 @@ public sealed partial class PlanRunner
                 ["stopped"] = loop.Stopped,
             };
             return SettleAsync(instance, RowState.Completed, null, read, CanonicalJson.HashText(content));
+        }
+
+        /// <summary>
+        /// #1508 (D23): whether the <c>.content</c> <paramref name="instance"/> settled with is Markdown, as the type checker
+        /// types it (<c>ScopeTree.RenderedContent</c>, D10's <c>ContentOf</c>), followed through what actually ran: a
+        /// <c>for</c>'s standard rendering is; a <c>while</c>'s is its last pass's <c>ret</c>'s, an <c>if</c>'s or a
+        /// <c>case</c>'s its taken branch's <c>ret</c>'s; any other node's is when its format is <c>markdown_block</c> or
+        /// <c>markdown_inline</c>. Plain text, a nullable text (<c>anyOf</c> with <c>null</c>, written as JSON) and an
+        /// object's or a list's canonical JSON are not.
+        /// </summary>
+        private bool WritesMarkdown(RunInstance instance)
+        {
+            for (var at = instance; ;)
+            {
+                switch (at.Entry.Kind)
+                {
+                    case PlanKind.For:
+                        return true;
+                    case PlanKind.While when whiles.TryGetValue(at, out var passes) && passes.Last is { } last:
+                        at = last;
+                        continue;
+                    case PlanKind.If or PlanKind.Case when taken.TryGetValue(at, out var open)
+                        && open.Frame.Instances.FirstOrDefault(i => i.Entry.Key == open.Branch.Ret) is { } ret:
+                        at = ret;
+                        continue;
+                    default:
+                        return plan.Formats.TextFormat(at.Entry.Format) is "markdown_block" or "markdown_inline";
+                }
+            }
         }
 
         /// <summary>
