@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.PackageFormat.V31.Run;
 
@@ -603,12 +604,19 @@ public sealed partial class PlanRunner
         /// Settles the loop (§§ 2.4, 2.5): <c>.value</c> its completed items' values, <c>.items</c> every item's element,
         /// <c>.content</c> D11's rendering (<c>## &lt;item name&gt;</c>, a blank line, the item's text; completed items only,
         /// joined by a blank line), and <c>.stopped</c>: <c>until</c>, <c>bound</c> (items beyond <c>max</c>) or <c>end</c>.
+        /// #1508 (2026-11-25, item 8, D23): <c>.content</c> is <c>markdown_block</c>, so when the loop's <c>ret</c> is
+        /// <c>plaintext</c> each item's name and text are escaped where they are joined (<see cref="MarkdownEscape"/>, as a
+        /// direct read of plain text in Markdown is); <c>.items</c> keeps each text as it is.
         /// </summary>
         private Task SettleLoopAsync(RunInstance instance, LoopState loop)
         {
             loop.Stopped = loop.StopAt != null ? "until" : loop.Max is { } max && loop.Items.Count > max ? "bound" : "end";
             var completed = loop.Items.Where(i => i.State == RowState.Completed).ToList();
-            var content = string.Join("\n\n", completed.Select(i => $"## {i.Name}\n\n{SourceLayout.Text(i.Element!["content"]) ?? ""}"));
+            var plain = instance.Entry.Ret is { } ret && instance.Frame.Map.GetValueOrDefault(ret) is { } produced
+                && plan.Formats.TextFormat(produced.Format) == "plaintext";
+            string Written(string text, bool startsLine) => plain ? MarkdownEscape.Escape(text, startsLine) : text;
+            var content = string.Join("\n\n", completed.Select(i =>
+                $"## {Written(i.Name, startsLine: false)}\n\n{Written(SourceLayout.Text(i.Element!["content"]) ?? "", startsLine: true)}"));
             var read = new JsonObject
             {
                 ["value"] = new JsonArray(completed.Select(i => i.Element!["value"]?.DeepClone()).ToArray()),
