@@ -100,15 +100,19 @@ public sealed record AccountPackageBelow31(string Owner, string Name, string Ver
 /// weekly summary reads them). <see cref="RunAsync"/> migrates the package the account's pin names, as stored, with the
 /// package's <c>options.json</c> (or the defaults, A10-083, §§ 1.9, 1.10), lays the operator's hand edits over it and, when
 /// edits were given, writes its snapshot test anew (<see cref="WorkflowPackageMigration30To31.Snapshot"/>, at the engine's
-/// default limits, so a package past them is refused there); then publishes it through <see cref="V31PackagePublisher"/>
+/// configured limits, so a package past them is refused there); then publishes it through <see cref="V31PackagePublisher"/>
 /// as the account's next version (D5: with its migration report, so the stamp has <c>migratedFrom</c>, the report's
 /// <c>publishedBy</c> is <c>operator-migration</c> and the pin moves as any publish moves it), or with <c>publish: false</c>
 /// runs that publish in memory. A package it cannot publish (a pin that does not name it, A11-016; a stored package that
 /// cannot be read, A11-007; options it cannot read, A10-070 to A10-072 and A10-082; a migration refusal, A10-015 for a package
-/// at 31 already among them; a hand edit left, S10-002; a publish refusal, A11-001 among them) is
+/// at 31 already among them; a hand edit left, S10-002, which is every hand edit whose file is not among the edits given,
+/// edited or deleted; a publish refusal, A11-001 among them) is
 /// <c>not migrated: &lt;first sentence&gt;</c> and nothing is written: its 30 version and its pin are as they were
 /// (comment 8). The answer carries ids, versions, sentences, the publish report and the choices only: no input, model or
-/// profile text. Never an exception but cancellation (and a null argument).
+/// profile text. A failure reading the pin, the stored package, the type registry or the migration itself is answered
+/// (A11-007, logged by its type); a failure of the account store or of the registry's storage while publishing is not
+/// caught here, and reaches the route as a 500: before the stamp nothing is published (an unstamped folder does not
+/// exist for any reader); after it the version is stamped, and the pointer or the pin may not have moved.
 /// </summary>
 public sealed class MigratePackage(
     IAccountStore accounts,
@@ -119,6 +123,7 @@ public sealed class MigratePackage(
     EngineToolchain toolchain,
     WorkflowFormatCatalog formats,
     OutputContractCatalog contracts,
+    EngineLimitSettings limits,
     ILogger<MigratePackage> logger)
 {
     /// <summary>The outcome of a package published at 31.</summary>
@@ -201,7 +206,12 @@ public sealed class MigratePackage(
             answer.Defaults = MigrationOptionsFile.Defaults;
         }
 
-        options = options with { ResolveContract = schema => contracts.TryResolveContract(schema, out var id) ? id : null };
+        // the engine's configured limits: the migration counts its package (A10-081) and the snapshot publishes at them
+        options = options with
+        {
+            ResolveContract = schema => contracts.TryResolveContract(schema, out var id) ? id : null,
+            Limits = limits.PublishLimits,
+        };
         answer.Options = options.ToJson();
 
         // the migration, the operator's edits laid over it, and the snapshot written anew when edits were made
@@ -221,10 +231,14 @@ public sealed class MigratePackage(
         if (!migrated.Succeeded)
             return answer.NotMigrated(migrated.Refusals[0]);
 
-        if (request.HandEdits.Count == 0 && migrated.HandEdits.Count > 0)
+        // a hand edit is made only when the file it names is among the edits (edited, or deleted); any other is left
+        var left = migrated.HandEdits
+            .Where((_, i) => i >= migrated.HandEditFiles.Count || !request.HandEdits.ContainsKey(migrated.HandEditFiles[i]))
+            .ToList();
+        if (left.Count > 0)
         {
-            answer.HandEditsLeft = [.. migrated.HandEdits];
-            return answer.NotMigrated(migrated.HandEdits[0]);
+            answer.HandEditsLeft = left;
+            return answer.NotMigrated(left[0]);
         }
 
         var edited = migrated;
