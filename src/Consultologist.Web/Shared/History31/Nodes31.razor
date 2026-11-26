@@ -36,6 +36,18 @@ else
     [Parameter]
     public JsonElement? Resolve { get; set; }
 
+    /// <summary>Follows a link to a row, a decision or a sub-row of this section (<see cref="RowLinks31"/>); false when it holds none.</summary>
+    public bool Reveal(string target)
+    {
+        if (!Open(target))
+        {
+            return false;
+        }
+
+        StateHasChanged();
+        return true;
+    }
+
     /// <summary>What every row of the section shares: the record, the texts, which rows are open, and the links between rows.</summary>
     public sealed class View
     {

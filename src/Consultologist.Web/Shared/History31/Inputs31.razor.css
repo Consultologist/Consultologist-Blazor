@@ -1,0 +1,30 @@
+/* #1509 (Task 17): History's Inputs section. */
+.history31-inputs,
+.history31-input__elements {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31-input {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    align-items: baseline;
+    margin-bottom: 0.5rem;
+}
+
+.history31-input__elements {
+    flex-basis: 100%;
+    margin-left: 1rem;
+}
+
+.history31-input__element {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+}
+
+.history31-input__model {
+    font-style: italic;
+}

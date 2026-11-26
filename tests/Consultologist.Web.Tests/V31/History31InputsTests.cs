@@ -175,7 +175,7 @@ public class History31InputsTests : ClientRenderTestContext
     }
 
     private const string BillingWithSpot = """
-        { "label": "Billing note", "inputHash": "sha256:11111111", "runNeutralHash": "sha256:22222222",
+        { "kind": "agent", "label": "Billing note", "inputHash": "sha256:11111111", "runNeutralHash": "sha256:22222222",
           "runSpots": [ { "id": "node.billing/spot:1", "site": 2, "pass": null, "start": 14, "length": 16, "reads": "run.date",
                           "valueHash": "sha256:v1", "output": "16 November 2026", "outputHash": "sha256:o1" } ] }
         """;
@@ -216,30 +216,39 @@ public class History31InputsTests : ClientRenderTestContext
         Assert.Contains(all, s => s.TextContent.Contains("node.plan/macro:follow_up_text") && s.TextContent.Contains("31aa"));
     }
 
-    private const string RunDependentComputed = """
-        { "label": "Salutation", "inputHash": "sha256:44444444", "runNeutralHash": "sha256:55555555",
+    private const string RunFactsDate = """{ "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } }""";
+
+    // an agent row: its spot is cut from the prompt (text.sent), which is not the reply (text.content)
+    private const string AgentWithRetainedSpot = """
+        { "kind": "agent", "label": "Salutation", "inputHash": "sha256:44444444", "outputHash": "sha256:99999999", "runNeutralHash": "sha256:55555555",
           "runSpots": [ { "id": "node.salutation/spot:1", "site": 1, "pass": null, "start": 5, "length": 15, "reads": "run.date",
                           "valueHash": "sha256:v2", "output": null, "outputHash": "sha256:o3" } ] }
         """;
 
+    private void RowTextIs(string key, object? text, bool deleted = false) =>
+        AIService.GetJobRowAsync(JobId, key).Returns(new RecordRowText(
+            key, "node", JsonSerializer.SerializeToElement(new { }), text is null ? null : JsonSerializer.SerializeToElement(text), deleted));
+
     [Fact]
-    public async Task ASpotWhoseOutputIsNotInTheRow_ShowsItWhileRetained_ThenItsHash()
+    public async Task ASpotWhoseOutputIsNotInTheRow_ShowsItWhileRetained_FromTheRowsSpots_ThenItsHash()
     {
-        AIService.GetJobRowAsync(JobId, "node.salutation").Returns(new RecordRowText(
-            "node.salutation", "node", JsonSerializer.SerializeToElement(new { }),
-            JsonSerializer.SerializeToElement(new { content = "Dear Margaret Okafor," }), false));
-        var page = Render31(
-            runFacts: """{ "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } }""",
-            rows: [Ref("node.salutation", "node", RunDependentComputed)]);
+        RowTextIs("node.salutation", new
+        {
+            content = "Sehr geehrte Frau,",
+            sent = "Dear Margaret Okafor, please write",
+            spots = new Dictionary<string, string> { ["node.salutation/spot:1"] = "16 November 2026" },
+        });
+        var page = Render31(runFacts: RunFactsDate, rows: [Ref("node.salutation", "node", AgentWithRetainedSpot)]);
 
         // nothing is fetched until the disclosure is opened
         await AIService.DidNotReceive().GetJobRowAsync(Arg.Any<string>(), Arg.Any<string>());
-        Assert.DoesNotContain("Margaret", page.Markup);
+        Assert.DoesNotContain("16 November 2026", page.Markup);
         Assert.Contains("sha256:o3", page.Markup);
 
         page.Find(".history31-spot__show").Click();
 
-        page.WaitForAssertion(() => Assert.Contains("Margaret Okafor", page.Find(".history31-spot__output").TextContent));
+        // the text the engine cut, not a slice of the reply or of the prompt at this page's offsets
+        page.WaitForAssertion(() => Assert.Equal("16 November 2026", page.Find(".history31-spot__output").TextContent));
         await AIService.Received(1).GetJobRowAsync(JobId, "node.salutation");
         Assert.Equal("true", page.Find(".history31-spot__show").GetAttribute("aria-expanded"));
     }
@@ -247,11 +256,8 @@ public class History31InputsTests : ClientRenderTestContext
     [Fact]
     public void ASpotWhoseOutputIsNotInTheRow_AfterTheDrop_ShowsItsHash_AndA12002()
     {
-        AIService.GetJobRowAsync(JobId, "node.salutation").Returns(new RecordRowText(
-            "node.salutation", "node", JsonSerializer.SerializeToElement(new { }), null, true));
-        var page = Render31(
-            runFacts: """{ "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } }""",
-            rows: [Ref("node.salutation", "node", RunDependentComputed)]);
+        RowTextIs("node.salutation", null, deleted: true);
+        var page = Render31(runFacts: RunFactsDate, rows: [Ref("node.salutation", "node", AgentWithRetainedSpot)]);
 
         page.Find(".history31-spot__show").Click();
 
@@ -260,18 +266,64 @@ public class History31InputsTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".history31-spot__output"));
     }
 
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("no spots")]
+    [InlineData("not offered")]
+    [InlineData("fails")]
+    public void ASpotWhoseTextCannotBeRead_SaysSo_NeverAnEmptyPane(string how)
+    {
+        switch (how)
+        {
+            case "missing":
+                AIService.GetJobRowAsync(JobId, "node.salutation").Returns((RecordRowText?)null);
+                break;
+            case "no spots":
+                RowTextIs("node.salutation", new { content = "x", sent = "y" });
+                break;
+            case "not offered":
+                RowTextIs("node.salutation", null);
+                break;
+            default:
+                AIService.GetJobRowAsync(JobId, "node.salutation").Returns(Task.FromException<RecordRowText?>(new HttpRequestException("down")));
+                break;
+        }
+
+        var page = Render31(runFacts: RunFactsDate, rows: [Ref("node.salutation", "node", AgentWithRetainedSpot)]);
+        page.Find(".history31-spot__show").Click();
+
+        page.WaitForAssertion(() => Assert.Contains(HistorySentences31.RecordNotAvailable, page.Find(".history31-spot").TextContent));
+        Assert.Empty(page.FindAll(".history31-spot__output"));
+        Assert.Contains("sha256:o3", page.Find(".history31-spot").TextContent);
+    }
+
+    [Fact]
+    public void AMacrosSpotWithNoOutputInTheRow_ShowsItsHash_AndOffersNoDisclosure()
+    {
+        var page = Render31(runFacts: RunFactsDate, rows:
+        [
+            Ref("node.plan", "node", """
+                { "kind": "agent", "runSpots": [], "macros": [ { "id": "node.plan/macro:m", "contentHash": "sha256:c2", "runNeutralHash": "sha256:c3",
+                    "runSpots": [ { "id": "node.plan/macro:m/spot:1", "site": 1, "pass": null, "start": 0, "length": 3, "reads": "run.date",
+                                    "valueHash": "sha256:v", "output": null, "outputHash": "sha256:om" } ] } ] }
+                """),
+        ]);
+
+        var spot = page.Find("#history31-run-facts .history31-spot");
+        Assert.Contains("sha256:om", spot.TextContent);
+        Assert.Empty(spot.QuerySelectorAll(".history31-spot__show"));
+    }
+
     [Fact]
     public void ABodyWhoseTwoHashesDiffer_SaysA12003()
     {
-        var page = Render31(
-            runFacts: """{ "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } }""",
-            rows:
-            [
-                Ref("node.billing", "node", BillingWithSpot),
-                // equal hashes: nothing to say; none at all: nothing to say
-                Ref("node.same", "node", """{ "inputHash": "sha256:66666666", "runNeutralHash": "sha256:66666666", "runSpots": [] }"""),
-                Ref("node.plain", "node", """{ "inputHash": "sha256:77777777", "runNeutralHash": null, "runSpots": [] }"""),
-            ]);
+        var page = Render31(runFacts: RunFactsDate, rows:
+        [
+            Ref("node.billing", "node", BillingWithSpot),
+            // equal hashes, no neutral hash: nothing to say
+            Ref("node.same", "node", """{ "kind": "agent", "inputHash": "sha256:66666666", "runNeutralHash": "sha256:66666666", "runSpots": [] }"""),
+            Ref("node.plain", "node", """{ "kind": "agent", "inputHash": "sha256:77777777", "runNeutralHash": null, "runSpots": [] }"""),
+        ]);
 
         var bodies = page.FindAll("#history31-run-facts .history31-run-body");
         var billing = Assert.Single(bodies, b => b.TextContent.Contains("node.billing"));
@@ -279,5 +331,72 @@ public class History31InputsTests : ClientRenderTestContext
         Assert.Contains("sha256:11111111", billing.TextContent);
         Assert.Contains("sha256:22222222", billing.TextContent);
         Assert.Equal(1, page.Markup.Split(HistorySentences31.RunFactsDiffer).Length - 1);
+    }
+
+    [Fact]
+    public void TheSentTextHash_IsChosenByTheRowsKind()
+    {
+        var page = Render31(runFacts: RunFactsDate, rows:
+        [
+            // a rendered node's sent text is its content: outputHash; its inputHash is not that text, so it is not compared
+            Ref("node.rendered_differs", "node", """{ "kind": "rendered", "inputHash": "sha256:cccccccc", "outputHash": "sha256:aaaaaaaa", "runNeutralHash": "sha256:bbbbbbbb", "runSpots": [] }"""),
+            Ref("node.rendered_same", "node", """{ "kind": "rendered", "inputHash": "sha256:cccccccc", "outputHash": "sha256:bbbbbbbb", "runNeutralHash": "sha256:bbbbbbbb", "runSpots": [] }"""),
+            Ref("deliverable.d", "deliverable", """{ "composedHash": "sha256:dddddddd", "inputHash": "sha256:bbbbbbbb", "runNeutralHash": "sha256:bbbbbbbb", "runSpots": [] }"""),
+        ]);
+
+        var bodies = page.FindAll("#history31-run-facts .history31-run-body");
+        Assert.Contains(HistorySentences31.RunFactsDiffer, Assert.Single(bodies, b => b.TextContent.Contains("node.rendered_differs")).TextContent);
+        Assert.DoesNotContain(HistorySentences31.RunFactsDiffer, Assert.Single(bodies, b => b.TextContent.Contains("node.rendered_same")).TextContent);
+        Assert.Contains(HistorySentences31.RunFactsDiffer, Assert.Single(bodies, b => b.TextContent.Contains("deliverable.d")).TextContent);
+    }
+
+    [Fact]
+    public void AMissingSentHash_IsNotSaidToDiffer_AndAComputedRowIsNotABody()
+    {
+        var page = Render31(runFacts: RunFactsDate, rows:
+        [
+            Ref("node.no_sent", "node", """{ "kind": "agent", "inputHash": null, "runNeutralHash": "sha256:bbbbbbbb", "runSpots": [] }"""),
+            // a computed value is data read from run-dependent values, not text with run spots: A12-003 does not apply
+            Ref("node.computed", "node", """{ "kind": "computed", "inputHash": "sha256:aaaaaaaa", "runNeutralHash": "sha256:bbbbbbbb", "runSpots": [] }"""),
+        ]);
+
+        Assert.DoesNotContain(HistorySentences31.RunFactsDiffer, page.Markup);
+        Assert.Empty(page.FindAll(".history31-run-body").Where(b => b.TextContent.Contains("node.computed")));
+    }
+
+    // ----- links to a row: the one mechanism Nodes uses (Task 18) ------------------------------------------------------
+
+    [Fact]
+    public void ARunSpotsBodyKey_LinksToItsRow_AndClickingItOpensTheRowInNodes()
+    {
+        var page = Render31(runFacts: RunFactsDate, rows: [Ref("node.billing", "node", BillingWithSpot)]);
+
+        var link = page.Find("#history31-run-facts .history31-spot a");
+        Assert.Equal("#row-node.billing", link.GetAttribute("href"));
+        Assert.Equal("false", page.Find("#history31-nodes [id=\"row-node.billing\"] .history31-node__toggle").GetAttribute("aria-expanded"));
+
+        link.Click();
+
+        page.WaitForAssertion(() =>
+            Assert.Equal("true", page.Find("#history31-nodes [id=\"row-node.billing\"] .history31-node__toggle").GetAttribute("aria-expanded")));
+    }
+
+    [Fact]
+    public void ABannersLink_ToARowOutsideNodes_FollowsTheFragmentOnThisPage()
+    {
+        var page = Render<RecordView31>(parameters =>
+        {
+            var job = Record31Fixtures.Job();
+            var header = job.Header with { JobId = JobId };
+            parameters.Add(p => p.Detail, header)
+                .Add(p => p.Record, Record31.From(header, job.Rows))
+                .Add(p => p.Texts, new RowText31(AIService, JobId));
+        });
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+
+        var link = page.FindAll(".history31-banner a").First(a => a.GetAttribute("href") == "#row-deliverable.refused");
+        link.Click();
+
+        Assert.EndsWith("#row-deliverable.refused", navigation.Uri, StringComparison.Ordinal);
     }
 }

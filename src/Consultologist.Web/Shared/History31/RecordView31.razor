@@ -10,6 +10,7 @@
     that was held, failed or blocked and per destination not sent or failed, each linking to its row (#row-<key>), then the
     five sections in the order the job runs. When the rows cannot be listed, the header and the route's sentence only.
 *@
+<CascadingValue Value="_links" IsFixed="true">
 <div class="history31">
     <Header31 Detail="@Detail" Content="@Content" Stopped="@Stopped">
         @if (Terminal)
@@ -61,7 +62,7 @@
                     <p class="history31-banner history31-banner--@banner.Kind" role="status">
                         @if (banner.LinkKey is { } linkKey)
                         {
-                            <a href="#row-@linkKey">@banner.Text</a>
+                            <RowLink31 Key="@linkKey">@banner.Text</RowLink31>
                         }
                         else
                         {
@@ -83,14 +84,23 @@
         </section>
         <section class="history31-section" id="history31-nodes">
             <h3 class="history31-section__title">Nodes</h3>
-            <Nodes31 Record="Record" Texts="Texts" Resolve="Content?.Resolve" />
+            <Nodes31 @ref="_nodes" Record="Record" Texts="Texts" Resolve="Content?.Resolve" />
         </section>
         <section class="history31-section" id="history31-checks"><h3 class="history31-section__title">Checks</h3></section>
         <section class="history31-section" id="history31-deliverables"><h3 class="history31-section__title">Deliverables</h3></section>
     }
 </div>
+</CascadingValue>
 
 @code {
+    private Nodes31? _nodes;
+    private readonly RowLinks31 _links;
+
+    public RecordView31()
+    {
+        _links = new RowLinks31 { Reveal = key => _nodes?.Reveal(key) == true };
+    }
+
     [Parameter, EditorRequired]
     public ConsultGenerationJobResponse Detail { get; set; } = default!;
 

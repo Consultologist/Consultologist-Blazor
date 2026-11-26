@@ -1,0 +1,49 @@
+/* #1509 (Task 17): History's Run facts section. */
+.history31-run-facts,
+.history31-spots,
+.history31-run-bodies {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31-run-fact {
+    margin-bottom: 0.5rem;
+}
+
+.history31-run-fact__value {
+    margin-left: 0.5rem;
+}
+
+.history31-spots {
+    margin: 0.25rem 0 0 1rem;
+}
+
+.history31-spot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    align-items: baseline;
+}
+
+.history31-spot__output {
+    font-weight: 600;
+}
+
+.history31-spot__unavailable,
+.history31-spot__dropped {
+    color: var(--neutral-foreground-hint, #616161);
+}
+
+.history31-run-body__differs {
+    display: block;
+}
+
+.history31-spot__show {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--accent-foreground-rest, #0f6cbd);
+    cursor: pointer;
+    text-decoration: underline;
+}
