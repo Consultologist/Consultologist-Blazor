@@ -705,7 +705,7 @@ public class V31JobStartTests
 
     // ---- inputs sent by reference (#1509, area 12; R2, D7; part 08 § 3.1) ----------------------------------------
 
-    private const string SourceJob = "0123456789abcdef0123456789abcdef";
+    internal const string SourceJob = "0123456789abcdef0123456789abcdef";
 
     private const string Earlier = "Dear Dr A. Sample, Margaret Okafor was seen in clinic.\r\nShe is well.  ";
 
@@ -1019,7 +1019,7 @@ public class V31JobStartTests
     }
 
     /// <summary>The account's completed run <see cref="SourceJob"/>, its deliverable <c>consult</c> holding <see cref="Earlier"/>.</summary>
-    private static ConsultGenerationJobState SourceRun(string appUserId = "user-1", string status = "Completed") => new()
+    internal static ConsultGenerationJobState SourceRun(string appUserId = "user-1", string status = "Completed") => new()
     {
         JobId = SourceJob,
         AppUserId = appUserId,
@@ -1027,7 +1027,7 @@ public class V31JobStartTests
         AssembledDocuments = [new() { ResultId = "consult", Label = "Consultation note", Text = Earlier, Ordinal = 0 }],
     };
 
-    private static Dictionary<string, List<ConsultInputRef>> Refs(string id, params ConsultInputRef[] refs) =>
+    internal static Dictionary<string, List<ConsultInputRef>> Refs(string id, params ConsultInputRef[] refs) =>
         new(StringComparer.Ordinal) { [id] = [.. refs] };
 
     /// <summary>A request filling <c>intake</c> by the held response (<paramref name="formRef"/>) or a questionnaire file, with <paramref name="value"/> sent beside it.</summary>

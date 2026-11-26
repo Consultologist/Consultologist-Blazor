@@ -616,18 +616,13 @@ public sealed class ConsultGenerationJobs
 
         var request = await RerunRequestAsync(response, cancellationToken);
 
-        var origin = new ConsultGenerationJobOrigin(
-            // The issue's word: a rerun is an app action wherever the source
-            // came from, delivered to the account's verified address (#486),
-            // with the email choice read afresh (#518).
-            ConsultGenerationJobSources.App,
+        // The issue's word: a rerun is an app action wherever the source
+        // came from, delivered to the account's verified address (#486),
+        // with the email choice read afresh (#518).
+        var origin = RerunOriginFor(
+            jobId, response,
             ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)),
-            EmailRequested: await EmailRequestedAsync(account.AppUserId, cancellationToken),
-            RerunOfJobId: jobId,
-            // #582: the verdict's evidence, taken here while the source is in
-            // hand — its hashes are immutable once Completed. #1509 (D8): a 31 job
-            // has none: the link to its source is all it keeps.
-            RerunBaseline: RerunBaselineFor(jobId, response));
+            await EmailRequestedAsync(account.AppUserId, cancellationToken));
 
         var outcome = await _jobStarter.StartAsync(
             client,
@@ -678,6 +673,27 @@ public sealed class ConsultGenerationJobs
             ? throw new InvalidOperationException($"Inputs blob missing for job {response.JobId}.")
             : RerunRequestFrom(response, payload);
     }
+
+    /// <summary>
+    /// The origin a rerun of <paramref name="source"/> starts with: an app action, the source id and its baseline (#549, #582).
+    /// #1509 (D8; part 08 § 5.1): for a 31 source, also the source's origins of the inputs that held an earlier run's text, by
+    /// input id and whole (an array's elements stay aligned), so the rerun's record repeats them with their original job and
+    /// deliverable and the text stays model-derived. Server-side only: no request member carries them.
+    /// </summary>
+    internal static ConsultGenerationJobOrigin RerunOriginFor(
+        string sourceJobId, ConsultGenerationJobResponse source, string? replyToAddress, bool emailRequested) =>
+        new(
+            ConsultGenerationJobSources.App,
+            replyToAddress,
+            EmailRequested: emailRequested,
+            RerunOfJobId: sourceJobId,
+            RerunBaseline: RerunBaselineFor(sourceJobId, source),
+            InheritedInputOrigins: IsRecordStorage12(source) ? PreviousRunOriginsOf(source) : null);
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? PreviousRunOriginsOf(ConsultGenerationJobResponse source) =>
+        source.InputOrigins?
+            .Where(pair => pair.Value.Any(o => o.Kind == ConsultInputOriginKinds.PreviousRun && o.SourceJobId != null))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
 
     /// <summary>#1509 (D8): whether the job's record is a 31 job's (record storage 12), whose held inputs are a run-inputs document.</summary>
     internal static bool IsRecordStorage12(ConsultGenerationJobResponse response) =>

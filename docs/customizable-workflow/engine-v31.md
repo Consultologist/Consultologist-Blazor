@@ -227,9 +227,12 @@ there. When the source recorded `signatureChosen: "job"`, the request names the 
 is made afresh. The new job is a 31 job, and its response names the source as `RerunOf`. Its `RerunVerdict` and
 `RerunDivergence` are `null`: storage 11's comparison of node hashes is not made at 31, and History shows the link between
 the two jobs only. The job response lists a 31 job's held inputs, while they are held, as a 5–30 response lists its own:
-each input's text, a structured value as its JSON. A rerun sends the values the source held, so an input that took an
-element of an earlier run, or a form answer, is sent as a typed value on the rerun: its `previous-run` origin and
-`modelDerived` flag are not carried to the rerun, which records those inputs as `typed`.
+each input's text, a structured value as its JSON. A rerun sends the values the source held as typed values, but the record never marks model output as not model-derived
+(part 08 § 5.1): for each input, and each element of an array input, whose origin on the source was `previous-run`, the
+rerun's record holds that origin again with the original `jobId` and `resultId` and `modelDerived: true`, the run's
+`ModelDerivedInputs` holds the input's id, and the lineage links to the original source runs are written beside the rerun's
+own. The rerun door reads the origins from the source's record and passes them to the start itself; no request member carries
+them, so a caller cannot mark or unmark an input. Typed inputs and documents stay as they were.
 
 ### Asking before a start (#1509, D1)
 

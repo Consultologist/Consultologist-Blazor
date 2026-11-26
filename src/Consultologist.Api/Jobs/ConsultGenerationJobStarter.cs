@@ -37,7 +37,11 @@ public sealed record ConsultGenerationJobOrigin(
     string? RerunOfJobId = null,
     // #582: the source's hashes, captured by the rerun door beside the id —
     // the verdict's evidence, seeded onto the new job's record at Initialize.
-    ConsultRerunBaseline? RerunBaseline = null);
+    ConsultRerunBaseline? RerunBaseline = null,
+    // #1509 (D8; part 08 § 5.1): at 31 only, set by the rerun door and never read from a request: the source job's origins of
+    // the inputs that held an earlier run's text, by input id, which the rerun's record repeats so that text stays
+    // model-derived. Absent for every other start.
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InheritedInputOrigins = null);
 
 public enum ConsultGenerationJobStartError
 {

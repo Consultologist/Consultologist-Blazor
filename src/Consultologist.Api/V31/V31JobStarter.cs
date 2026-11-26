@@ -126,8 +126,23 @@ public sealed class V31JobStarter(
         if (plan.RunFacts.Contains("run.package", StringComparer.Ordinal))
             startFacts["package"] = $"{plan.Package}@{plan.Version}";
 
+        // #1509 (D8; part 08 § 5.1): a rerun's inputs that held an earlier run's text keep the source's origin for it, so the
+        // record never marks that text as typed. Only the rerun door sets them, and only for an input the request supplies.
+        var originsOf = extraction.Origins;
+        if (origin.InheritedInputOrigins is { Count: > 0 } inherited)
+        {
+            var merged = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(originsOf ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(), StringComparer.Ordinal);
+            foreach (var (id, kept) in inherited)
+            {
+                if (!merged.ContainsKey(id) && request.Inputs?.ContainsKey(id) == true)
+                    merged[id] = kept;
+            }
+
+            originsOf = merged;
+        }
+
         // #1509 (D7; part 08 § 3.1): an input holding an element of an earlier run's deliverable starts out model-derived.
-        var modelDerived = (extraction.Origins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
+        var modelDerived = (originsOf ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
             .Where(pair => pair.Value.Any(o => o.Kind == ConsultInputOriginKinds.PreviousRun))
             .Select(pair => pair.Key)
             .ToHashSet(StringComparer.Ordinal);
@@ -138,7 +153,7 @@ public sealed class V31JobStarter(
         var header = Header(jobId, appUserId, $"{plan.Package}@{plan.Version}", origin, request, plan) with
         {
             // #1506 (part 08 § 3.1; D15): each document's origin with what its extraction used.
-            InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins
+            InputDocumentOrigins = originsOf is { Count: > 0 } origins
                 ? origins.ToDictionary(
                     pair => pair.Key,
                     pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.Select(origin => ExtractionSteps.Of(origin, extraction.OcrModelVersions)).ToList(),
@@ -198,7 +213,7 @@ public sealed class V31JobStarter(
         // job's own origins remain the truth this index projects.
         if (links != null)
         {
-            var lineageLinks = ConsultGenerationJobStarter.LinksFrom(jobId, appUserId, extraction.Origins, origin.RerunOfJobId, DateTimeOffset.UtcNow);
+            var lineageLinks = ConsultGenerationJobStarter.LinksFrom(jobId, appUserId, originsOf, origin.RerunOfJobId, DateTimeOffset.UtcNow);
             if (lineageLinks.Count > 0)
             {
                 try

@@ -212,4 +212,107 @@ public class V31RerunTests
         var baseline = ConsultGenerationJobs.RerunBaselineFor("job-30", source);
         Assert.Equal(("job-30", "aaaa", 5), (baseline.SourceJobId, baseline.EffectiveInputHash, baseline.EffectiveInputHashVersion));
     }
+
+    // ---- #1509 (D8; part 08 § 5.1): a rerun keeps the source's origin of an earlier run's text ----------------------------
+
+    /// <summary>A 31 job whose <c>consult_draft</c> (typed) and <c>prior_letters</c> (a typed letter, then an earlier run's deliverable) were started.</summary>
+    private static async Task<(V31JobStartTests.Start Start, ConsultGenerationJobResponse Source)> StartedFromAnEarlierRunAsync()
+    {
+        var start = new V31JobStartTests.Start(preview: "31");
+        start.WithSourceRun(V31JobStartTests.SourceRun());
+        var inputs = V31JobStartTests.Text(V31JobStartTests.Draft);
+        inputs["prior_letters"] = ConsultInputValue.OfArray([ConsultInputValue.OfText(Letter)]);
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, V31JobStartTests.RefText(start.PutPriorLetters()), Inputs: inputs,
+            InputRefs: V31JobStartTests.Refs("prior_letters", new ConsultInputRef(V31JobStartTests.SourceJob, "consult"))));
+        Assert.Null(outcome.Error);
+        return (start, Completed31(start));
+    }
+
+    private static async Task<(JsonArray Header, JsonObject Document, ConsultGenerationJobInitialize Initialize)> RerunAsync(
+        V31JobStartTests.Start start, ConsultGenerationJobResponse source)
+    {
+        var request = await Transport(start.Inputs).RerunRequestAsync(source, CancellationToken.None);
+        var outcome = await start.RunAsync(request, ConsultGenerationJobs.RerunOriginFor(source.JobId, source, null, true));
+        Assert.Null(outcome.Error);
+
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(start.Signals.Last().Payload);
+        var entity = V31JobStartTests.Entity();
+        await entity.Initialize(initialize);
+        var header = V31JobStartTests.StateOf(entity).ToRecordHeader()["inputs"]!.AsArray();
+        return (header, start.Inputs.Documents[initialize.InputsBlob!], initialize);
+    }
+
+    [Fact]
+    public async Task Rerunning_KeepsAnEarlierRunsOrigin_AndItsModelDerivedMark()
+    {
+        var (start, source) = await StartedFromAnEarlierRunAsync();
+        Assert.Equal(["prior_letters"], start.Inputs.Documents.Values.Single()["modelDerived"]!.AsArray().Select(n => (string?)n));
+
+        var (header, document, _) = await RerunAsync(start, source);
+
+        // the input's elements: the typed letter, then the earlier run's text with its ORIGINAL job and deliverable
+        var letters = header.Single(i => (string?)i!["id"] == "prior_letters")!.AsObject();
+        Assert.Equal(
+            """[{"origin":"typed"},{"origin":"previous-run","jobId":"0123456789abcdef0123456789abcdef","resultId":"consult","modelDerived":true}]""",
+            letters["elements"]!.ToJsonString());
+        // the run's decisions read it as model-derived
+        Assert.Equal(["prior_letters"], document["modelDerived"]!.AsArray().Select(n => (string?)n));
+    }
+
+    [Fact]
+    public async Task Rerunning_ATypedInput_StaysTyped()
+    {
+        var (start, source) = await StartedFromAnEarlierRunAsync();
+
+        var (header, document, _) = await RerunAsync(start, source);
+
+        var draft = header.Single(i => (string?)i!["id"] == "consult_draft")!.AsObject();
+        Assert.Equal("typed", (string?)draft["origin"]);
+        Assert.False(draft.ContainsKey("modelDerived"));
+        Assert.DoesNotContain("consult_draft", document["modelDerived"]!.AsArray().Select(n => (string?)n));
+
+        // a source with nothing from an earlier run inherits nothing and records no model-derived member
+        var plain = new V31JobStartTests.Start(preview: "31");
+        Assert.Null((await plain.RunAsync(plain.PutPriorLetters(), V31JobStartTests.Text(V31JobStartTests.Draft))).Error);
+        var plainSource = Completed31(plain);
+        Assert.Null(ConsultGenerationJobs.RerunOriginFor(plainSource.JobId, plainSource, null, true).InheritedInputOrigins?.GetValueOrDefault("consult_draft"));
+        var (_, plainDocument, _) = await RerunAsync(plain, plainSource);
+        Assert.False(plainDocument.ContainsKey("modelDerived"));
+    }
+
+    [Fact]
+    public async Task Rerunning_WritesTheLineageLinksToTheOriginalSources()
+    {
+        var (start, source) = await StartedFromAnEarlierRunAsync();
+        start.Links.ClearReceivedCalls();
+
+        var (_, _, initialize) = await RerunAsync(start, source);
+
+        var rows = Assert.Single(start.Links.ReceivedCalls(), c => c.GetMethodInfo().Name == nameof(IConsultGenerationLinkStore.WriteAsync))
+            .GetArguments()[0] as IReadOnlyList<ConsultGenerationLink>;
+        Assert.Equal(2, rows!.Count);
+        var rerunEdge = Assert.Single(rows, r => r.Kind == ConsultInputOriginKinds.Rerun);
+        Assert.Equal((source.JobId, initialize.JobId), (rerunEdge.SourceJobId, rerunEdge.ConsumerJobId));
+        var original = Assert.Single(rows, r => r.Kind == ConsultInputOriginKinds.PreviousRun);
+        Assert.Equal((V31JobStartTests.SourceJob, initialize.JobId, "prior_letters", "consult", 1),
+            (original.SourceJobId, original.ConsumerJobId, original.InputId, original.ResultId, original.ElementIndex));
+    }
+
+    [Fact]
+    public void AStartRequest_CannotClaimOrDropAnOrigin()
+    {
+        // the public request record has no member that carries an origin, so nothing on the wire can mark or unmark an input
+        Assert.DoesNotContain(
+            typeof(ConsultGenerationRequest).GetProperties(),
+            p => p.Name.Contains("Origin", StringComparison.OrdinalIgnoreCase) && p.Name != nameof(ConsultGenerationRequest.InputRefs)
+                || p.PropertyType.ToString().Contains(nameof(ConsultInputOrigin), StringComparison.Ordinal));
+
+        // and a body that names one binds to nothing
+        var body = System.Text.Json.JsonSerializer.Deserialize<ConsultGenerationRequest>(
+            """{"inputs":{"consult_draft":"x"},"inheritedInputOrigins":{"consult_draft":[{"kind":"previous-run","sourceJobId":"j"}]},"inputOrigins":{"consult_draft":[{"kind":"typed"}]}}""",
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.NotNull(body);
+        Assert.Equal(["consult_draft"], body!.Inputs!.Keys);
+    }
 }
