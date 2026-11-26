@@ -103,7 +103,7 @@ public static class AgentTurn
         if (prepared.Text == null)
             return new AgentOutcome(AgentOutcomeKind.Failed, null, 0, prepared.ErrorKind ?? "plan");
 
-        var value = prepared.Format?.Unwrap(reply) ?? reply;
+        var value = prepared.Format?.Unwrap(reply, prepared.TextReply) ?? reply;
         var detail = prepared.Detail.DeepClone().AsObject();
         var produced = prepared.Produced?.DeepClone().AsObject();
         if (!prepared.TextReply)

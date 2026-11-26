@@ -4,6 +4,7 @@ using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
 using static Consultologist.Api.Tests.V31Run.BodyComposerTests;
@@ -345,6 +346,43 @@ public class AgentTurnTests
         Assert.Equal("{\"points\":[\"a\"]}", objectFormat.Unwrap("{\"points\":[\"a\"]}"));
         Assert.EndsWith("\n" + CanonicalJson.Write(objectFormat.Sent), obj.Text, StringComparison.Ordinal);
         Assert.Equal(objectFormat.Hash, (string)obj.Detail["sentFormatHash"]!);
+    }
+
+    [Fact]
+    public async Task ATextSentThroughAWrappedCustomBinding_IsUnwrappedToItsPlainValue()
+    {
+        // #1508 (2026-11-25, item 13): a text format sent through a via: "custom" binding is enveloped, and its reply's
+        // value is the text itself, with no JSON quotes or escapes. The catalogue binds the built-in text formats through
+        // formats, so the compiled document is rebound here as an engine could meet it.
+        const string quoted = "She said \"yes\".";
+        var plan = RunFixture.Plan(Minimal());
+        plan.Document["bindings"]!["plaintext"]!["generated"]!["via"] = "custom";
+
+        var prepared = Prepared(AgentTurn.Prepare(plan, Call("node.plan", Scope(("input.consult_draft.content", ThePlan))), 100_000, Rejects));
+        Assert.True(prepared.Format!.Wrapped);
+        Assert.True(prepared.TextReply);
+        var reply = CanonicalJson.Write(new JsonObject { [EnvelopedFormat.Member] = quoted });
+        Assert.Equal("{\"value\":\"She said \\\"yes\\\".\"}", reply);
+        Assert.Equal(quoted, AgentTurn.Finish(prepared, reply).Reply);
+        Assert.Equal(quoted, prepared.Format.Unwrap(reply, text: true));
+        Assert.Equal(quoted, (string?)JsonNode.Parse(prepared.Format.Unwrap(reply)!)); // JSON text when the format is not text
+
+        var inputs = RunFixture.GoldenInputs().Inputs.Where(i => plan.Inputs.ContainsKey(i.Key))
+            .ToDictionary(i => i.Key, i => i.Value?["value"]?.DeepClone(), StringComparer.Ordinal);
+        var run = await OfflineRun.RunAsync(plan, new OfflineRequest(inputs, new Dictionary<string, string?>(StringComparer.Ordinal),
+            new JsonObject { ["date"] = "2026-11-21" }, new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.plan"] = quoted },
+            FakeRunHost.Start, GenerateMissing: false));
+
+        Assert.Equal(RunState.Completed, run.State);
+        Assert.Equal(CanonicalJson.HashText(quoted), run.Rows.Single(r => r.Key == "node.plan").ValueHash);
+        Assert.Equal(quoted + "\n", Assert.Single(run.Deliverables).Text);
+
+        // a list or an object value is its JSON text, as before
+        var list = Prepared(AgentTurn.Prepare(RunFixture.Plan(CustomFormats()), Call("node.list_points", PlanScope()), 100_000, Rejects));
+        var points = AgentTurn.Finish(list, "{\"value\":[\"She said \\\"yes\\\".\"]}").Reply!;
+        Assert.StartsWith("[", points, StringComparison.Ordinal);
+        Assert.Equal(quoted, (string?)JsonNode.Parse(points)![0]);
+        Assert.Equal("{\"a\":1}", list.Format!.Unwrap("{\"value\":{\"a\":1}}", text: true));
     }
 
     [Fact]

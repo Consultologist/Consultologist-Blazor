@@ -41,10 +41,11 @@ public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, I
 
     /// <summary>
     /// The reply as its format's value is read from: for an enveloped format, the JSON text of the reply's
-    /// <see cref="Member"/>, or <c>null</c> when the reply is not an object holding that one member; otherwise the reply
-    /// itself. Never throws on a reply.
+    /// <see cref="Member"/> (with <paramref name="text"/>, a text format's, which is read as the text itself: a string
+    /// member's plain value, no quotes or escapes; #1508, 2026-11-25, item 13), or <c>null</c> when the reply is not an
+    /// object holding that one member; otherwise the reply itself. Never throws on a reply.
     /// </summary>
-    public string? Unwrap(string reply)
+    public string? Unwrap(string reply, bool text = false)
     {
         ArgumentNullException.ThrowIfNull(reply);
         if (!Wrapped)
@@ -54,7 +55,11 @@ public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, I
             if (JsonNode.Parse(reply, documentOptions: new JsonDocumentOptions { MaxDepth = PlanFormats.MaxReplyDepth }) is not JsonObject envelope)
                 return null;
             var members = envelope.ToList(); // a repeated member surfaces here
-            return members is [{ Key: Member, Value: var value }] ? value?.ToJsonString() ?? "null" : null;
+            if (members is not [{ Key: Member, Value: var value }])
+                return null;
+            return text && value is JsonValue plain && plain.GetValueKind() == JsonValueKind.String
+                ? plain.GetValue<string>()
+                : value?.ToJsonString() ?? "null";
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or ArgumentException)
         {
