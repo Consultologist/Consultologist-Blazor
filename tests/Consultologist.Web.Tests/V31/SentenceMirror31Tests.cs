@@ -69,6 +69,7 @@ public class SentenceMirror31Tests
     {
         Assert.Equal(Sentence("S09-017"), HistorySentences31.CouldNotSend("<destination>"));
         Assert.Equal(Sentence("S09-004"), HistorySentences31.MigratedFrom("<old version>"));
+        Assert.Equal(Sentence("A12-005"), HistorySentences31.RecordNotChecked("<what could not be read>"));
     }
 
     [Fact]

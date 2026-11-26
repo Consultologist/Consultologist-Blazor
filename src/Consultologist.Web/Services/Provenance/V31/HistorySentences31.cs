@@ -43,6 +43,18 @@ public static class HistorySentences31
     /// <summary>Part 08's last bullet: the stored half of S09-010 to S09-012, and what History adds.</summary>
     public static string RunAgainLater(string error) => $"{error} Run the workflow again later.";
 
+    /// <summary>
+    /// A12-005: Verify could not read the record or a deliverable's text; <paramref name="what"/> names it in plain words
+    /// (<c>the record file</c>, <c>the text of '&lt;label&gt;'</c>).
+    /// </summary>
+    public static string RecordNotChecked(string what) => $"The record couldn't be checked: {what}.";
+
+    /// <summary>
+    /// The record routes' own sentence (the Api's <c>RecordRoutes.NotAvailable</c>), said when the rows cannot be listed
+    /// and the failure carries no words of the route's.
+    /// </summary>
+    public const string RecordNotAvailable = "The record isn't available yet. Try again.";
+
     /// <summary>S09-004: a job whose package the operator migrated.</summary>
     public static string MigratedFrom(string oldVersion) => $"migrated by the operator from {oldVersion}";
 
