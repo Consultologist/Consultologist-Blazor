@@ -2,6 +2,7 @@
   "description": null,
   "items": [
     "problem_list",
-    "sections_item"
+    "sections_item",
+    "follow_up_answer"
   ]
 }

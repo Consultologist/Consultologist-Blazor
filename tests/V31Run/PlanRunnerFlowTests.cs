@@ -696,7 +696,7 @@ public class PlanRunnerFlowTests
         var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(Supplied("sections", new JsonArray(Section("History"))), FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
-        Assert.Equal("""{"node":{"refine":{"notes":{"content":"## History\n\nText of node.refine.notes.note#1:1."}}},"pass":{"node":{"note":{"state":"not_run"}}}}""",
+        Assert.Equal("""{"node":{"refine":{"notes":{"content":"## History\n\nText of node\\.refine\\.notes\\.note\\#1\\:1\\."}}},"pass":{"node":{"note":{"state":"not_run"}}}}""",
             host.Calls.Single(c => c.Key == "node.refine.judge#1").Scope.ToJsonString());
     }
 

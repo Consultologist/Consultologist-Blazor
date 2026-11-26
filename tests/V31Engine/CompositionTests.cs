@@ -43,6 +43,19 @@ public class CompositionTests
     }
 
     [Fact]
+    public void TheHostsRegistrations_GiveThePublisherIts31Branch_AndTheAdmission()
+    {
+        // #1508 (area 11, Task 16): the publisher takes both through optional constructor parameters; a registration gone
+        // missing would answer every 31 publish S09-001 even where the preview setting admits 31
+        using var provider = HostServices(preview: "31");
+        var publisher = provider.GetRequiredService<WorkflowPackagePublisher>();
+
+        Assert.Same(provider.GetRequiredService<V31PackagePublisher>(), FieldOf<V31PackagePublisher>(publisher));
+        Assert.Same(provider.GetRequiredService<SpecVersionAdmission>(), FieldOf<SpecVersionAdmission>(publisher));
+        Assert.IsType<V31RegistryWriter>(provider.GetRequiredService<IV31RegistryWriter>());
+    }
+
+    [Fact]
     public void TheHostsRegistrations_GiveTheRecordsStores_AsSingletons_WithoutTouchingStorage()
     {
         // #1506 (Task 9): the record's rows (a table) and its text and document (blobs); built over a local connection
@@ -172,6 +185,55 @@ public class CompositionTests
         }
 
         return false;
+    }
+
+    [Fact]
+    public void TheRegistry_HasOneLoader()
+    {
+        // #1508 (2026-11-25, item 11; R20): the Api's singleton, the ingestor (which takes it) and the contract fixture read
+        // the same registry through one loader, and TypeRegistry.Read is called from that loader's file alone
+        using var provider = HostServices();
+        var singleton = provider.GetRequiredService<Consultologist.Api.V31.PublishedTypeRegistry>();
+        var ingestor = provider.GetRequiredService<WorkflowPackageIngestor>();
+        Assert.Same(singleton, FieldOf<Consultologist.Api.V31.PublishedTypeRegistry>(ingestor));
+
+        var contract = Listing(V31Source.V31Contract.PublishedTypes());
+        Assert.Equal(contract, Listing(singleton.Registry));
+        Assert.Equal(contract, Listing(FieldOf<Consultologist.Api.V31.PublishedTypeRegistry>(ingestor)!.Registry));
+
+        var root = V31Source.V31Contract.RepoRoot();
+        var callers = new[] { "src", "scripts" }
+            .SelectMany(folder => Directory.EnumerateFiles(Path.Combine(root, folder), "*.cs", SearchOption.AllDirectories))
+            .Select(file => Path.GetRelativePath(root, file).Replace('\\', '/'))
+            .Where(file => !file.Contains("/bin/", StringComparison.Ordinal) && !file.Contains("/obj/", StringComparison.Ordinal))
+            .Where(file => System.Text.RegularExpressions.Regex.IsMatch(File.ReadAllText(Path.Combine(root, file)), @"(?<![A-Za-z0-9_])TypeRegistry\s*\.\s*Read\s*\("))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(["src/Consultologist.PackageFormat/V31/PublishedTypeRegistry.cs"], callers);
+    }
+
+    /// <summary>A registry's canonical listing: every format, binding, agent and renderer it holds, as canonical JSON.</summary>
+    private static string Listing(TypeRegistry registry)
+    {
+        static System.Text.Json.Nodes.JsonObject Formats(IReadOnlyDictionary<string, System.Text.Json.Nodes.JsonObject> formats)
+        {
+            var listed = new System.Text.Json.Nodes.JsonObject();
+            foreach (var (name, format) in formats)
+                listed[name] = format.DeepClone();
+            return listed;
+        }
+
+        var renderers = new System.Text.Json.Nodes.JsonObject();
+        foreach (var (id, renderer) in registry.BuiltInRenderers)
+            renderers[id] = new System.Text.Json.Nodes.JsonObject { ["version"] = renderer.Version, ["header"] = renderer.Header.DeepClone(), ["body"] = renderer.Body };
+        return CanonicalJson.Write(new System.Text.Json.Nodes.JsonObject
+        {
+            ["builtInFormats"] = Formats(registry.BuiltInFormats),
+            ["catalogueFormats"] = Formats(registry.CatalogueFormats),
+            ["bindings"] = registry.Bindings.DeepClone(),
+            ["agents"] = registry.Agents.DeepClone(),
+            ["renderers"] = renderers,
+        });
     }
 
     /// <summary>The host's registrations over a configuration a test can give: a local storage connection string; then <paramref name="change"/>.</summary>

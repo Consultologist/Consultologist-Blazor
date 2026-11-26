@@ -33,19 +33,73 @@ internal static partial class Migrate
             var id = deliverable.Id;
             var file = $"deliverables/{id}.md";
             var condition = deliverable.If ?? deliverable.When;
+            var rule = condition is null ? null : Condition(m, file, "if", condition, m.Scope((string?)null), ConversionKind.Condition);
             m.Put(file, new JsonObject
             {
                 ["label"] = deliverable.Label,
                 ["kind"] = "rendered",
                 ["description"] = null,
                 ["format"] = "markdown_block",
-                ["if"] = condition is null ? null : Condition(m, file, "if", condition, m.Scope((string?)null), ConversionKind.Condition),
+                ["if"] = WhenASourceRan(m, deliverable, file, rule),
                 ["check"] = Gate(m, deliverable.Check),
                 ["whenEmpty"] = m.Options.WhenEmpty?.GetValueOrDefault(id) ?? DefaultWhenEmpty,
             }, Composition(m, deliverable, file, copies));
             m.Items("deliverables").Add(id);
             m.Keys[DeliverableKey(id)] = DeliverableKey(id);
         }
+    }
+
+    /// <summary>
+    /// #1508 (ruled by the owner, Q3 of 2026-11-26; R15): the deliverable's <c>if</c>. 30 skipped a deliverable none of
+    /// whose sources ran; at 31 it would be composed empty and released (A11-010 warns of it in a new package). So when
+    /// every source may not run (<see cref="ConversionRead.AlwaysValued"/> false for each: an <c>if</c> with no
+    /// <c>else</c>, a <c>case</c> with an empty branch), the <c>if</c> says that one ran:
+    /// <c>{ "===": [ { "var": "&lt;source&gt;.state" }, "completed" ] }</c> for each, joined by <c>or</c>, after 30's own
+    /// <paramref name="rule"/> by <c>and</c> (A10-079 says it). A deliverable with no sources, a source the migration does
+    /// not read, or one that always runs keeps <paramref name="rule"/>. A rule the converter refused (30's text with its
+    /// hand edit) is kept too, since nothing is joined to a condition not yet written; where every source may not run it
+    /// gets a second hand edit on the same <c>if</c> naming the term to join to it by <c>and</c>, verbatim (A10-084, the
+    /// final review of Part F), so the condition the operator writes still skips the deliverable as 30 did. A <c>while</c> source counts as one that runs: 30
+    /// composed a while that ran no pass as empty text and released the deliverable, as 31 does, so an <c>if</c> would skip
+    /// what 30 released. Beside another source the while's blank-line separator stays, which no <c>if</c> can drop: the
+    /// expected difference <c>while-no-pass-separator</c> (the controller's ruling on #1508; part 10 §§ 1.2, 3.2).
+    /// </summary>
+    private static JsonNode? WhenASourceRan(Migrated m, WorkflowDeliverableSpec deliverable, string file, JsonNode? rule)
+    {
+        var sources = (deliverable.Sources ?? []).Where(s => s is not null).ToList();
+        if (sources.Count == 0)
+            return rule;
+        var reads = new List<string>();
+        foreach (var source in sources)
+        {
+            var id = source.StartsWith("node.", StringComparison.Ordinal) ? source["node.".Length..] : source;
+            if (!m.NodeReads.TryGetValue(id, out var read) || read.AlwaysValued
+                || m.Manifest30.Nodes?.FirstOrDefault(n => n.Id == id)?.While is not null)
+                return rule;
+            reads.Add(read.Path);
+        }
+
+        var ran = reads.Select(r => (JsonNode)new JsonObject
+        {
+            ["==="] = new JsonArray(new JsonObject { ["var"] = r + ".state" }, "completed"),
+        }).ToList();
+        JsonNode term = ran.Count == 1 ? ran[0] : new JsonObject { ["or"] = new JsonArray([.. ran]) };
+        if (rule is JsonValue)
+        {
+            m.HandEdit(file, "if", MigrationSentences.JoinASourceRan(term.ToJsonString()));
+            return rule;
+        }
+
+        m.Notice(MigrationSentences.SkippedUnlessASourceRan(file, reads));
+        if (rule is null)
+            return term;
+        if (rule is JsonObject { Count: 1 } both && both["and"] is JsonArray terms)
+        {
+            terms.Add(term);
+            return both;
+        }
+
+        return new JsonObject { ["and"] = new JsonArray(rule, term) };
     }
 
     /// <summary>

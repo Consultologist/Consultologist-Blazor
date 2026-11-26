@@ -15,12 +15,14 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// </summary>
 public class MigrateLayoutTests
 {
-    /// <summary>The sixteen packages of the fixtures: area 01's vendored packages and its composer fixtures.</summary>
+    /// <summary>The packages of the fixtures: area 01's vendored packages and its composer fixtures, and (#1508, Task 35) the edge-case packages.</summary>
     public static TheoryData<string> Packages() => new(
         "example-classifier-scope", "example-conditional-documents", "example-conditional-sections", "example-macros",
         "example-macros-warnings", "example-nested-note", "example-prior-letters", "example-problem-list",
         "example-structured-intake", "example-two-documents", "example-v12-constructs", "general", "test/general",
-        "composer-gates", "composer-macros", "composer-sources");
+        "composer-gates", "composer-macros", "composer-sources",
+        "edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace",
+        "edge-unset-object");
 
     private static readonly string[] Folders =
         ["nodes", "checks", "functions", "renderers", "snippets", "macros", "formats", "deliverables", "tests"];
@@ -79,8 +81,10 @@ public class MigrateLayoutTests
             Assert.Equal(Compact("""{ "description": null, "items": [] }"""), JsonOf(result, $"{folder}/index.json").ToJsonString());
         }
 
-        // With no hand edit, tests/ holds the migration's snapshot test (Task 14, part 10 § 4).
-        Assert.Equal(Compact("""{ "description": null, "items": ["migration_snapshot"] }"""), JsonOf(result, "tests/index.json").ToJsonString());
+        // #1508 (R11): its one hand edit (its worst case passes the instances limit) leaves tests/ empty, with A10-011 (part
+        // 10 § 4); a package with no hand edit holds its snapshot test there (Task 14).
+        Assert.Equal(Compact("""{ "description": null, "items": [] }"""), JsonOf(result, "tests/index.json").ToJsonString());
+        Assert.Equal(Compact("""{ "description": null, "items": ["migration_snapshot"] }"""), JsonOf(Migrated("example-prior-letters"), "tests/index.json").ToJsonString());
 
         Assert.Equal(Compact("""{ "description": null, "items": ["section_plan", "outline", "verdict"] }"""),
             JsonOf(result, "formats/index.json").ToJsonString());
@@ -435,7 +439,7 @@ public class MigrateLayoutTests
             Assert.Contains(s, result.Notices);
             V31Contract.AssertSentence(new SourceRefusal("A10-021", s, ""));
         });
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
     }
 
     [Fact]
@@ -529,7 +533,7 @@ public class MigrateLayoutTests
 
         Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
         Assert.Equal("sections_item_2", (string?)JsonOf(result, "snippets/sections/index.json")["format"]);
-        Assert.Equal(Compact("""{ "description": null, "items": ["problem_list", "sections_item", "sections_item_2"] }"""),
+        Assert.Equal(Compact("""{ "description": null, "items": ["problem_list", "sections_item", "sections_item_2", "follow_up_answer"] }"""),
             JsonOf(result, "formats/index.json").ToJsonString());
     }
 

@@ -252,7 +252,11 @@ internal static class FakeHttp
         Request(method, body, null, cancellationToken);
 
     /// <summary>#1506 (Task 12): as <see cref="Request(string, string?, CancellationToken)"/>, at <paramref name="url"/> (its query read as a function reads it).</summary>
-    public static HttpRequestData Request(string method, string? body, Uri? url, CancellationToken cancellationToken = default)
+    public static HttpRequestData Request(string method, string? body, Uri? url, CancellationToken cancellationToken = default) =>
+        RequestWithBytes(method, body == null ? null : System.Text.Encoding.UTF8.GetBytes(body), url, cancellationToken);
+
+    /// <summary>#1508 (Task 19): as <see cref="Request(string, string?, Uri?, CancellationToken)"/>, with <paramref name="body"/>'s bytes as they are.</summary>
+    public static HttpRequestData RequestWithBytes(string method, byte[]? body, Uri? url, CancellationToken cancellationToken = default)
     {
         var services = new ServiceCollection();
         services.Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer());
@@ -262,7 +266,7 @@ internal static class FakeHttp
         var request = new FakeRequest(context, method, url ?? new Uri("https://api.example.test/api/Admin/Drain"));
         if (body != null)
         {
-            request.Body.Write(System.Text.Encoding.UTF8.GetBytes(body));
+            request.Body.Write(body);
             request.Body.Position = 0;
         }
 

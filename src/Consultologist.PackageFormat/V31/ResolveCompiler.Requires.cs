@@ -9,6 +9,8 @@ namespace Consultologist.PackageFormat.V31;
 /// features used, each in <c>constants.json</c>'s order; and each agent the bindings name, with its version.
 /// #1504 (specVersion 31, area 07; ruling 4, R6): with its version as the integer the bindings carry (<c>{ "judgement": 1 }</c>);
 /// the type rules hold a package to one version of each agent (A07-014), so each name has one.
+/// #1508 (area 11; R6, area 07's D15): <c>run-spots</c> only when a body that runs (an agent's, a <c>rendered</c>
+/// node's, a deliverable's) has a run spot, its own or a placed unit's; an unplaced snippet's or macro's does not count.
 /// </summary>
 public static partial class ResolveCompiler
 {
@@ -32,7 +34,7 @@ public static partial class ResolveCompiler
             operations[operation.Name] = $"^{JsonLogicOperations.OperationVersion}";
 
         var kinds = all.Select(n => n.Kind).ToHashSet(StringComparer.Ordinal);
-        var bodies = AllEntries(context.Derived).Select(e => e.Body).OfType<TemplateReads>().ToList();
+        var bodies = TemplatedEntries(context).Select(e => e.Body).OfType<TemplateReads>().ToList();
         var agentBodies = AgentEntries(context).Select(e => e.Body).OfType<TemplateReads>().ToList();
         var features = new HashSet<string>(StringComparer.Ordinal);
         if (all.OfType<SourceFor>().Any(l => l.Parallel))
@@ -78,6 +80,25 @@ public static partial class ResolveCompiler
     /// <summary>Every derived entry, the package's and each function's.</summary>
     private static IEnumerable<DerivedEntry> AllEntries(PackageDerived derived) =>
         derived.Entries.Values.Concat(derived.FunctionEntries.Values.SelectMany(f => f.Values));
+
+    /// <summary>
+    /// The derived entries of every templated entry, whose body runs: each agent and <c>rendered</c> node, the package's
+    /// and each function's, and each deliverable. A body's run spots include those of the units it places (D4).
+    /// </summary>
+    private static IEnumerable<DerivedEntry> TemplatedEntries(Context context)
+    {
+        foreach (var node in context.Tree.All().OfType<SourceLeaf>().Where(l => l.Kind is "agent" or "rendered"))
+        {
+            if (context.Derive(node.Key, context.Tree.FrameOf(node).Function) is { } entry)
+                yield return entry;
+        }
+
+        foreach (var deliverable in Folders(context.Package.Deliverables).SelectMany(f => f.Deliverables))
+        {
+            if (context.Derive(deliverable.Key, null) is { } entry)
+                yield return entry;
+        }
+    }
 
     /// <summary>The derived entries of every agent node, the package's and each function's.</summary>
     private static IEnumerable<DerivedEntry> AgentEntries(Context context)

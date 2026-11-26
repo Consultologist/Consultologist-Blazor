@@ -1,5 +1,7 @@
+using Consultologist.Api.Tests.V31Templates;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
+using Corvus.Text.Json.Validator;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
 namespace Consultologist.Api.Tests.V31Resolve;
@@ -443,6 +445,46 @@ internal static class ResolveFixture
     }
 
     // ---- CheckedNote ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// #1508 (area 11): the pinned <c>&lt;name&gt;.schema.json</c> with every schema it can refer to (each file of
+    /// <c>v31/schemas</c> by its <c>$id</c>, and the format dialect; <paramref name="rootText"/>, when given, is the root instead), so that <c>resolve.schema.json</c>'s references into the
+    /// source schemas (the closed <c>entry</c> names its header members by them) resolve.
+    /// </summary>
+    internal static JsonSchema PinnedSchema(string name, string? rootText = null)
+    {
+        var folder = Path.GetDirectoryName(V31Contract.Path("schemas", "resolve.schema.json"))!;
+        List<AdditionalSchemaFile> files = [new("urn:consultologist:spec:31:dialect", V31Contract.Path("dialect.schema.json"))];
+        foreach (var file in Directory.GetFiles(folder, "*.schema.json").Order(StringComparer.Ordinal))
+        {
+            var id = (string?)System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file))!["$id"];
+            if (id != null && (rootText != null || id != $"urn:consultologist:spec:31:schema:{name}"))
+                files.Add(new(id, file));
+        }
+
+        var options = new JsonSchema.Options(
+            additionalSchemaFiles: files,
+            allowFileSystemAndHttpResolution: false,
+            defaultDialect: Corvus.Text.Json.RuntimeEvaluator.JsonSchemaDialect.Draft202012,
+            alwaysAssertFormat: false,
+            additionalDocumentResolver: null);
+        return rootText == null
+            ? JsonSchema.FromText(File.ReadAllText(V31Contract.Path("schemas", $"{name}.schema.json")), $"urn:consultologist:spec:31:schema:{name}", options, false)
+            : JsonSchema.FromText(rootText, $"urn:consultologist:spec:31:schema:{name}-root", options, false);
+    }
+
+    /// <summary>
+    /// #1508 (area 11): the run goldens' macros package (<see cref="V31Run.RunGoldenTests.Macros"/>: the classifier
+    /// <c>classify</c>, the macro folder <c>section_notes</c>, the part <c>close</c>, the run spot of <c>stamp</c>) with
+    /// the agent <c>terms</c> returning a <c>concept_list</c> and the rendered node <c>terms_text</c> reading it through
+    /// the built-in renderer <c>renderer.concept_bullets</c>, so that the compiled document holds every kind of derived
+    /// member the closed <c>entry</c> names. Fictional (Margaret Okafor, Dr A. Sample).
+    /// </summary>
+    public static Dictionary<string, byte[]> Macros() =>
+        V31Run.RunGoldenTests.Macros()
+            .WithAgent("terms", "List the clinical terms in the plan for Margaret Okafor.\n\n{{ node.plan.content }}\n", "\"concept_list\"")
+            .WithRendered("terms_text", "{{ node.terms.value | renderer.concept_bullets }}\n")
+            .WithJson("nodes/terms_text.md", h => h["modelDerived"] = true);
 
     /// <summary>
     /// <c>example-checked-note</c>, part 06 § 3.4's package cut down: the agent <c>plan</c> (a <c>section_plan</c>), the

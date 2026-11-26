@@ -199,7 +199,7 @@ There are two comparisons, each with its own hash
 
 | Comparison | How | Used for | Hash |
 |---|---|---|---|
-| **type equality** | references compared by name (never dereferenced), `anyOf` members and `properties` sorted by name, annotations (`title`, `description`) dropped | type checks: a written `format` against the derived one (a flow node's, a `computed` node's), `with` against a function's parameters, branch results against each other, a piped value against a renderer's `input` | `typeHash` |
+| **type equality** | references compared by name (the format's id, never the `$id` a reference in `resolve.json`'s bundle is written as; never dereferenced), `anyOf` members and `properties` sorted by name, annotations (`title`, `description`) dropped | type checks: a written `format` against the derived one (a flow node's, a `computed` node's), `with` against a function's parameters, branch results against each other, a piped value against a renderer's `input` | `typeHash` |
 | **full equality** | everything dereferenced, every keyword kept | hashes, and what a model receives | `formatHash` |
 
 - **`formatHash` leaves out `$id`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so the same shape published under two ids hashes
@@ -558,8 +558,12 @@ Every published format has a `$id`, a URN that doesn't depend on where anything 
 
 - **In source, a format is named by its bare id:** `"format": "plaintext"`,
   `{ "$ref": "plaintext" }`. The resolver looks it up **package-local first, then catalogue,
-  then built-in**, and rewrites it to `#/$defs/<id>` in `resolve.json`'s single inline bundle
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6879096084)).
+  then built-in**, and rewrites it in `resolve.json`: to `#/$defs/<id>`, the key of its entry in the
+  single inline bundle, where a `format` names it
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6879096084)),
+  and to the entry's `$id` where a format in the bundle refers to it
+  ([part 07 § 2.4](07-compiled-documents.md#24-formats-and-bindings);
+  [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7064144841)).
 - **No shadowing:** a package format may not reuse a catalogue or built-in name, as #1384 rules for
   nodes. So the lookup order never changes which format a name means.
 - **Inside a format file,** `#/$defs/<name>` refers to that file's own `$defs`.
@@ -717,9 +721,11 @@ earlier run's deliverable, in the order sent (#872, #874, #1144). A data-format 
 except an object filled from a `form`. An element from an earlier run's deliverable starts out
 model-derived (§ 1.2), and its record links to the job it came from.
 
-- **A document uploaded to a Markdown input is converted to Markdown:** headings, lists and tables
-  preserved from docx; best effort from PDF and OCR
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6878562886)).
+- **A document uploaded to a Markdown input gives its extracted text, as at 30.** The
+  document-to-Markdown converter (headings, lists and tables kept from docx; best effort from PDF
+  and OCR, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6878562886))
+  is Milestone 40 ([#1442](https://github.com/Consultologist/Consultologist-Blazor/issues/1442)):
+  when it arrives it is a new definition of `effectiveInputHash`, not a change to 7.
 - A document uploaded to a `plaintext` input gives its extracted text, as today.
 
 ### 8.3 `channel`

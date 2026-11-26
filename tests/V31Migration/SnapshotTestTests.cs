@@ -41,7 +41,7 @@ public class SnapshotTestTests
     }
 
     /// <summary>The pinned <c>test.schema.json</c>, with the common schema it refers to.</summary>
-    private static JsonSchema TestSchema()
+    internal static JsonSchema TestSchema()
     {
         List<AdditionalSchemaFile> files =
         [
@@ -157,7 +157,7 @@ public class SnapshotTestTests
     {
         // An operator's new snapshot of an edited package: the old snapshot and its listing are replaced, an author's own
         // test (listed before it, with its index's description) is kept, bytes and order.
-        const string package = "example-nested-note";
+        const string package = "example-prior-letters";
         var result = MigratedPackagesTests.Migrated(package);
         var files = new Dictionary<string, string>(result.Files, StringComparer.Ordinal)
         {
@@ -210,7 +210,7 @@ public class SnapshotTestTests
         // Snapshot refuses a source that does not publish, with the checker's sentences.
         var snapshot = WorkflowPackageMigration30To31.Snapshot(result.ManifestJson, result.Files, MigrationFixture.Options(package));
         Assert.False(snapshot.Succeeded);
-        var refusals = MigratedPackagesTests.Publish(result);
+        var refusals = MigratedPackagesTests.PublishAtTheEngine(result);
         Assert.Equal(refusals.Select(r => r.Sentence), snapshot.Refusals);
         Assert.Equal(result.Files, snapshot.Files);
     }
@@ -355,6 +355,44 @@ public class SnapshotTestTests
         var again = await OfflineRun.RunAsync(plan, SnapshotTest.Request(snapshot));
         Assert.Equal(RunState.Completed, again.State);
         Assert.Equal(snapshot.ToJsonString(), SnapshotTest.Write(plan, SnapshotTest.Request(snapshot), again).ToJsonString());
+    }
+
+    [Fact]
+    public void Request_UsesTheTestsOwnDate()
+    {
+        // #1508 (2026-11-25, item 10): the run's date is the test's, in its zone, and the clock is 10:00 there on that day.
+        var test = JsonNode.Parse("""
+            { "inputs": {}, "profile": {}, "outputs": {},
+              "run": { "date": { "value": "2027-02-03", "timeZone": "America/Vancouver" }, "package": "p@v1" } }
+            """)!.AsObject();
+
+        var request = SnapshotTest.Request(test);
+
+        Assert.Equal("""{"date":"2027-02-03","package":"p@v1"}""", request.RunFacts.ToJsonString());
+        var vancouver = TimeZoneInfo.FindSystemTimeZoneById("America/Vancouver");
+        Assert.Equal(TimeZoneInfo.ConvertTimeToUtc(new DateTime(2027, 2, 3, 10, 0, 0, DateTimeKind.Unspecified), vancouver), request.StartedAtUtc);
+        Assert.Equal(DateTimeKind.Utc, request.StartedAtUtc.Kind);
+        Assert.Equal(new DateTime(2027, 2, 3, 10, 0, 0), TimeZoneInfo.ConvertTimeFromUtc(request.StartedAtUtc, vancouver));
+
+        // the snapshot's own date gives the snapshot's clock, as before
+        test["run"] = JsonNode.Parse("""{ "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } }""");
+        Assert.Equal(SnapshotTest.StartedAtUtc, SnapshotTest.Request(test).StartedAtUtc);
+    }
+
+    [Theory]
+    [InlineData("""{ "value": "3 February", "timeZone": "America/Vancouver" }""")]
+    [InlineData("""{ "value": "2027-02-03", "timeZone": "Nowhere/Fictional" }""")]
+    [InlineData("""{ "value": 2027, "timeZone": "America/Vancouver" }""")]
+    [InlineData("""{ "value": "0001-01-01", "timeZone": "Pacific/Kiritimati" }""")]
+    [InlineData("\"2027-02-03\"")]
+    public void Request_OfADateItCannotPlace_NeverThrows(string date)
+    {
+        var test = JsonNode.Parse("""{ "inputs": {}, "profile": {}, "outputs": {}, "run": {} }""")!.AsObject();
+        test["run"]!["date"] = JsonNode.Parse(date);
+
+        var request = SnapshotTest.Request(test);
+
+        Assert.Equal(DateTimeKind.Utc, request.StartedAtUtc.Kind);
     }
 
     [Fact]

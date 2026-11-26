@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure;
+using Azure.Storage.Blobs.Models;
+using Azure.Storage.Blobs.Specialized;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
@@ -11,7 +13,10 @@ using Consultologist.PackageFormat.V31.Run;
 
 namespace Consultologist.Api.V31;
 
-/// <summary>#1503 (specVersion 31, area 06): the registry's blobs, read whole.</summary>
+/// <summary>
+/// #1503 (specVersion 31, area 06): the registry's blobs, read whole. #1508 (area 11): and written, each change in the
+/// private container the account's kind picks, as the 5–30 writer's.
+/// </summary>
 public interface IRegistryFiles
 {
     /// <summary>
@@ -19,15 +24,165 @@ public interface IRegistryFiles
     /// <paramref name="packageName"/>, or null when it is absent.
     /// </summary>
     Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct);
+
+    /// <summary>
+    /// #1508 (area 11): the paths of the blobs whose path starts with <paramref name="prefix"/>, in the container that holds
+    /// <paramref name="packageName"/> (the first of its containers that has any, as <see cref="TryReadAsync"/> reads),
+    /// ordinal-sorted; empty when none has any.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListAsync(string packageName, string prefix, CancellationToken ct);
+
+    /// <summary>Writes <paramref name="bytes"/> at <paramref name="path"/> with <paramref name="contentType"/>, replacing any blob there.</summary>
+    Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct);
+
+    /// <summary>
+    /// Creates the blob at <paramref name="path"/> only if none is there (If-None-Match <c>*</c>): false, and nothing
+    /// written, when one is.
+    /// </summary>
+    Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct);
+
+    /// <summary>Deletes every blob whose path starts with <paramref name="prefix"/>, but the one at <paramref name="keep"/>.</summary>
+    Task DeleteAllAsync(string? accountKind, string prefix, string keep, CancellationToken ct);
+
+    /// <summary>
+    /// A lease on the blob at <paramref name="path"/> (created empty when absent), for <see cref="LeaseSeconds"/>: its id,
+    /// or null when another holder's lease is live.
+    /// </summary>
+    Task<string?> TryAcquireLeaseAsync(string? accountKind, string path, CancellationToken ct);
+
+    /// <summary>
+    /// Renews <paramref name="leaseId"/> for another <see cref="LeaseSeconds"/>: false when it is no longer this holder's
+    /// (it expired and was taken, or was released).
+    /// </summary>
+    Task<bool> RenewLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct);
+
+    /// <summary>Releases <paramref name="leaseId"/>; a lease no longer held is left as it is. Never throws on storage's answer.</summary>
+    Task ReleaseLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct);
+
+    /// <summary>How long a lease lasts unrenewed: Azure's longest fixed lease, so a dead holder's lease ends on its own.</summary>
+    const int LeaseSeconds = 60;
 }
 
 /// <summary>
 /// #1503: <see cref="IRegistryFiles"/> over the registry's containers: the public one for a repo-owned name, the private
 /// pair for an <c>acct-*</c> one (<see cref="WorkflowPackageBlobContainerFactory.GetContainersFor"/>), the first hit the
-/// only one, as the 5–30 store reads them.
+/// only one, as the 5–30 store reads them. #1508 (area 11): a change goes to the kind's private container
+/// (<see cref="WorkflowPackageBlobContainerFactory.GetContainer"/>, the 5–30 writer's), its client taken per call.
 /// </summary>
 public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory containers) : IRegistryFiles
 {
+    public async Task WriteAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct) =>
+        await containers.GetContainer(accountKind).GetBlobClient(path).UploadAsync(
+            BinaryData.FromBytes(bytes),
+            new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = contentType } },
+            ct);
+
+    public async Task<bool> TryCreateAsync(string? accountKind, string path, byte[] bytes, string contentType, CancellationToken ct)
+    {
+        try
+        {
+            await containers.GetContainer(accountKind).GetBlobClient(path).UploadAsync(
+                BinaryData.FromBytes(bytes),
+                new BlobUploadOptions
+                {
+                    HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+                    Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All },
+                },
+                ct);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            return false;
+        }
+    }
+
+    public async Task DeleteAllAsync(string? accountKind, string prefix, string keep, CancellationToken ct)
+    {
+        var container = containers.GetContainer(accountKind);
+        await foreach (var blob in container.GetBlobsAsync(prefix: prefix, cancellationToken: ct))
+        {
+            if (blob.Name != keep)
+                await container.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: ct);
+        }
+    }
+
+    public async Task<string?> TryAcquireLeaseAsync(string? accountKind, string path, CancellationToken ct)
+    {
+        var blob = containers.GetContainer(accountKind).GetBlobClient(path);
+        try
+        {
+            await blob.UploadAsync(
+                BinaryData.FromBytes([]),
+                new BlobUploadOptions { Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All } },
+                ct);
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            // there already (and perhaps leased): the lease below decides
+        }
+
+        try
+        {
+            var lease = await blob.GetBlobLeaseClient().AcquireAsync(TimeSpan.FromSeconds(IRegistryFiles.LeaseSeconds), cancellationToken: ct);
+            return lease.Value.LeaseId;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            return null;
+        }
+    }
+
+    public async Task<bool> RenewLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct)
+    {
+        try
+        {
+            await containers.GetContainer(accountKind).GetBlobClient(path).GetBlobLeaseClient(leaseId).RenewAsync(cancellationToken: ct);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            return false;
+        }
+    }
+
+    public async Task ReleaseLeaseAsync(string? accountKind, string path, string leaseId, CancellationToken ct)
+    {
+        try
+        {
+            await containers.GetContainer(accountKind).GetBlobClient(path).GetBlobLeaseClient(leaseId).ReleaseAsync(cancellationToken: ct);
+        }
+        catch (RequestFailedException)
+        {
+            // no longer ours, or storage failed: an unreleased lease expires on its own
+        }
+    }
+
+    public async Task<IReadOnlyList<string>> ListAsync(string packageName, string prefix, CancellationToken ct)
+    {
+        foreach (var container in containers.GetContainersFor(packageName))
+        {
+            var paths = new List<string>();
+            try
+            {
+                await foreach (var blob in container.GetBlobsAsync(prefix: prefix, cancellationToken: ct))
+                    paths.Add(blob.Name);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // no such container: nothing in it
+            }
+
+            if (paths.Count > 0)
+            {
+                paths.Sort(StringComparer.Ordinal);
+                return paths;
+            }
+        }
+
+        return [];
+    }
+
     public async Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct)
     {
         foreach (var container in containers.GetContainersFor(packageName))
@@ -54,8 +209,10 @@ public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory contai
 /// with 31 off. <paramref name="OperatorDetail"/> says what failed (the package, the version, the failure's type and status).
 /// #1506 (area 09; R4): with a plan, <paramref name="Lock"/> is the text of the version's verified <c>lock.json</c>, which a
 /// job's <c>versionsRan</c> is compared with member by member.
+/// #1508 (area 11, Task 19): <paramref name="Version"/>, the version the ref resolved to, on every load that is not
+/// <paramref name="Unreadable"/> (a refusal too), so a reader can serve a stamped version this engine will not run.
 /// </summary>
-public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false, string? Lock = null);
+public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false, string? Lock = null, string? Version = null);
 
 /// <summary>#1503 (specVersion 31, area 06; part 09 § 1.2 steps 1 to 5): loads a 31 version from its stamped pair.</summary>
 public interface ICompiledPackageStore
@@ -105,6 +262,13 @@ public sealed class CompiledPackageStore(
         if (!admission.Runs31)
             return null;
 
+        var (load, version) = await LoadAsync(packageRef, ct);
+        return load is { Unreadable: false } ? load with { Version = version } : load;
+    }
+
+    /// <summary>The load, and the version the ref resolved to (the ref's own when the resolution failed).</summary>
+    private async Task<(CompiledLoad? Load, string Version)> LoadAsync(WorkflowPackageRef packageRef, CancellationToken ct)
+    {
         var name = packageRef.Name;
         var version = packageRef.Version;
         PublishedStamp? stamp;
@@ -113,12 +277,12 @@ public sealed class CompiledPackageStore(
         {
             version = await versions.ResolveVersionAsync(packageRef, ct);
             if (_plans.TryGetValue($"{name}@{version}", out var cached))
-                return Loaded(cached);
+                return (Loaded(cached), version);
 
             var folder = $"{name}/{version}/";
             stamp = PublishedStamp.TryRead(Text(await files.TryReadAsync(name, folder + PublishedStamp.FileName, ct)));
             if (stamp == null)
-                return null;
+                return (null, version);
 
             resolveBytes = await files.TryReadAsync(name, folder + CompiledPackage.ResolveFile, ct);
             lockBytes = await files.TryReadAsync(name, folder + ResolveCompiler.LockFile, ct);
@@ -128,45 +292,45 @@ public sealed class CompiledPackageStore(
             // The registry could not be read: a pointer missing or invalid, a storage failure. Nothing is known of the
             // version, so nothing is refused; the failure's type and status are the operator's (never its message, which
             // can carry a URI).
-            return new CompiledLoad(null, null, null,
+            return (new CompiledLoad(null, null, null,
                 $"The registry could not be read for {name}@{version}: {ex.GetType().Name}{(ex is RequestFailedException failed ? $" {failed.Status}" : "")}.",
-                Unreadable: true);
+                Unreadable: true), version);
         }
 
         var key = $"{name}@{version}";
         if (resolveBytes == null || lockBytes == null)
-            return Refused(NotPublishedId, NotPublished(name, version), null);
+            return (Refused(NotPublishedId, NotPublished(name, version), null), version);
 
         if (CompiledPackage.Verify(name, version, resolveBytes, lockBytes, stamp.ResolveHash, stamp.LockHash) is { } mismatch)
-            return Shown(mismatch, name, version);
+            return (Shown(mismatch, name, version), version);
 
         // Verified: both are the canonical UTF-8 of a JSON document. Neither can be anything but an object here: Verify
         // reads the lock's resolve.hash and the document's lock member, which a non-object lacks, and refuses it (S07-017).
         // The check stays as the guard of the casts below.
         if (Parse(resolveBytes) is not JsonObject resolve || Parse(lockBytes) is not JsonObject @lock)
-            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
 
         // D4: a document declaring another spec version is S09-001; one not declaring it as publish writes is not publish's.
         if (!Declares(resolve, out var other))
-            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
         if (other is { } declared)
-            return Refused(NotSupportedId, admission.NotSupported(declared), null);
+            return (Refused(NotSupportedId, admission.NotSupported(declared), null), version);
 
         if (!Names(resolve, name, version) || !Names(@lock, name, version))
-            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
 
         // #1504 (R6): a document that is not what publish wrote (S07-006, an agent's version not an integer) is shown as S09-009.
         var lacking = RequiresCheck.Engine(resolve, @lock, engine.Value);
         if (lacking.FirstOrDefault(r => r.Id == S07HashId) is { } unwritten)
-            return Shown(unwritten, name, version);
+            return (Shown(unwritten, name, version), version);
         if (lacking.Count > 0)
-            return Refused(lacking[0].Id, lacking[0].Sentence, string.Join("\n", lacking.Select(r => r.Sentence)));
+            return (Refused(lacking[0].Id, lacking[0].Sentence, string.Join("\n", lacking.Select(r => r.Sentence))), version);
 
         var (plan, refusal) = RunPlan.Build(Utf8.GetString(resolveBytes), stamp.ResolveHash, stamp.LockHash, limits.RegexLimit);
         if (plan == null)
-            return Shown(refusal ?? ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+            return (Shown(refusal ?? ResolveSentences.ResolveDoesNotMatch(name, version), name, version), version);
 
-        return Loaded(_plans.GetOrAdd(key, (plan, Utf8.GetString(lockBytes))));
+        return (Loaded(_plans.GetOrAdd(key, (plan, Utf8.GetString(lockBytes)))), version);
     }
 
     /// <summary>A plan as a load answers it, with its lock's text.</summary>
@@ -180,6 +344,13 @@ public sealed class CompiledPackageStore(
         "S07-017" => Refused(S09LockId, LockMismatch(name, version), refusal.Sentence),
         _ => Refused(S09HashId, HashMismatch(name, version), refusal.Sentence),
     };
+
+    /// <summary>
+    /// #1508 (area 11, Task 19): whether a load refused with <paramref name="refusalId"/> because the stamped pair is absent
+    /// (A06-004) or does not verify against the stamp (S09-009, S09-014), so nothing of the version may be served. Any other
+    /// refusal comes after the pair verified: the version is published, only this engine will not run it.
+    /// </summary>
+    public static bool IsIntegrityRefusal(string? refusalId) => refusalId is S09HashId or S09LockId or NotPublishedId;
 
     /// <summary>A06-004 for <paramref name="name"/>@<paramref name="version"/>: stamped 31 without its compiled documents.</summary>
     public static string NotPublished(string name, string version) => $"Workflow {name}@{version} isn't published.";

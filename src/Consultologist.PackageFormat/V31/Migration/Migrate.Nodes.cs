@@ -103,20 +103,191 @@ internal static partial class Migrate
     /// #1507 (Task 15 and its fix round 1; part 10 § 3.1; D16): what 30's engine appended to a classifier's rendered prompt,
     /// its <c>with</c> values in declared order (<c>ClassificationOutputContract.Trailer</c>: a blank line, then <c>Answer
     /// with exactly one of: &lt;values joined by ", "&gt;.</c>), written at the end of the 31 body as package text: 31 has no
-    /// <c>with</c> and appends nothing, so the model is told the values as at 30 and the prompt keeps 30's bytes (A10-064).
+    /// <c>with</c>, so the model is told the values as at 30 and the body keeps 30's bytes (A10-064). The 31 engine then
+    /// appends, after this line, the answer format's own instruction (<c>Answer with one JSON object…</c> and the schema of
+    /// the classifier's <c>&lt;id&gt;_answer</c> enum, bound through <c>custom</c>, #1508 R12, Task 31): the values are sent
+    /// twice, an expected difference under <c>sent-format</c>.
     /// A value is written only when it is a 30 id (snake_case, as 30's validator holds every classifier value, so it holds no
     /// brace, no <c>%</c> and no line ending, and the dialect reads it as text); a package whose values are not is refused at
     /// 30 before this pass (A10-017), and should one reach it, nothing is written and A10-030 says the values were dropped.
     /// <c>""</c> for any other node.
     /// </summary>
-    private static string ClassifierTrailer(WorkflowNodeSpec node, string kind)
+    private static string ClassifierTrailer(WorkflowNodeSpec node, string kind) =>
+        kind == "agent" && ClassifierValues(node) is { } names ? $"\n\nAnswer with exactly one of: {string.Join(", ", names)}." : "";
+
+    /// <summary>
+    /// A 30 classifier's answers: its <c>with</c> values in written order, when <paramref name="node"/> is a leaf of the
+    /// <c>classification</c> format whose values are all 30 ids (as <see cref="ClassifierTrailer"/> writes them); else null.
+    /// </summary>
+    internal static IReadOnlyList<string>? ClassifierValues(WorkflowNodeSpec node)
     {
-        if (kind != "agent" || node.Format != "classification" || node.With?.GetValueOrDefault("values") is not JsonArray values)
-            return "";
+        if (WorkflowImpliedPaths.IsFlow(node) || node.Let is not null || node.Format != "classification"
+            || node.With?.GetValueOrDefault("values") is not JsonArray values)
+        {
+            return null;
+        }
+
         var names = values.Select(SourceLayout.Text).ToList();
         if (names.Count == 0 || names.Any(n => n is null || !WorkflowDeclaredIds.IsValid(n)))
-            return "";
-        return $"\n\nAnswer with exactly one of: {string.Join(", ", names)}.";
+            return null;
+        return [.. names.Select(n => n!)];
+    }
+
+    /// <summary>
+    /// #1508 (comment 6, item 1; R13; part 10 § 1.2's model-chosen row): whether macro <paramref name="key"/> is one 30's
+    /// model chose: it migrates to an offered macro with a non-empty instruction (30's mechanics sentence begins "If so,
+    /// write …", so every such macro was optional at 30, where 31 requires an offered macro's marker exactly once). Not one
+    /// the engine placed (its instruction is written <c>[]</c>, D3), one whose placements disagree (its <c>if</c> is a
+    /// string, A10-036), one with no 30 instruction, or one whose instruction is a template (<c>{{ "" }}</c>, another
+    /// macro's text: A10-042, the operator writes its lines): those keep area 10's hand edits.
+    /// </summary>
+    private static bool ModelChosen(string key, string? instruction30, HashSet<string> byTheEngine, HashSet<string> disagreeing) =>
+        !byTheEngine.Contains(key) && !disagreeing.Contains(key) && !string.IsNullOrWhiteSpace(instruction30)
+        && !instruction30.Contains("{{", StringComparison.Ordinal);
+
+    /// <summary>
+    /// #1508 (comment 6, item 1; R13): for macro <paramref name="key"/> (labelled <paramref name="label"/>, offered when
+    /// <paramref name="offer"/> holds), one <c>judgement</c> node per agent that places it (in the order of its placements:
+    /// a prompt's own, or the agents whose prompts place the snippet holding it; a snippet folder's item places none at 31,
+    /// A10-051), written as the placing node's sibling immediately before it (inside its loop or branch when it is in one):
+    /// <c>&lt;macro id&gt;_applies</c>, fitted to 64 characters (A10-034) and numbered when a node already has the id
+    /// (S10-006), its <c>if</c> <paramref name="offer"/>, its prompt the reads the placing node's prompt makes outside any
+    /// <c>if</c> or <c>for</c> (each on a line of its own, in order, once) followed by an empty question line, which is a
+    /// hand edit (A10-077). Returns each node's read where the macro is placed (<c>node.&lt;id&gt;</c>, its sibling's read: the
+    /// macro's <c>if</c> is evaluated in the placing scope, part 05 § 8.2), in order.
+    /// </summary>
+    private static List<string> ChoiceClassifiers(Migrated m, NodeTree tree, string key, string label, JsonNode? offer)
+    {
+        var placers = new List<string>();
+        foreach (var placement in m.MacroPlacements.Where(p => p.Macro == key))
+        {
+            if (placement.Owner is not null)
+                placers.Add(placement.Owner);
+            else if (SnippetOf(placement.File) is { } snippet && placement.File.Count(c => c == '/') == 1)
+                placers.AddRange(PlacerIdsOf(m, snippet));
+        }
+
+        var keys = new List<string>();
+        foreach (var placer in placers.Distinct(StringComparer.Ordinal).ToList())
+        {
+            var placerFile = $"{FolderOf(tree, placer)}/{placer}.md";
+            if (!tree.ById.ContainsKey(placer) || !m.Sources.TryGetValue(placerFile, out var placing) || (string?)placing.Json["kind"] != "agent")
+                continue;
+
+            var id = ClassifierId(m, tree, key[(key.LastIndexOf('/') + 1)..]);
+            var file = $"{FolderOf(tree, placer)}/{id}.md";
+            m.Put(file, new JsonObject
+            {
+                ["kind"] = "agent",
+                ["producer"] = "generated",
+                ["label"] = $"Whether {label} applies",
+                ["description"] = null,
+                ["format"] = "judgement",
+                ["reproducible"] = false,
+                ["modelDerived"] = false,
+                ["runDependent"] = false,
+                ["profileCarrying"] = false,
+                ["if"] = offer?.DeepClone(),
+                ["onInvalid"] = WorkflowOnInvalid.Fail,
+                ["failIfEmpty"] = null,
+                ["parts"] = null,
+                ["ordered"] = false,
+            }, QuestionPrompt(m, placing.Body ?? ""));
+            SiblingBefore(m, tree, placer, id);
+            m.HandEdit(file, "body", MigrationSentences.WriteTheQuestion(id, key));
+            keys.Add("node." + id);
+        }
+
+        return keys;
+    }
+
+    /// <summary>The agents whose 30 prompts place snippet (or snippet folder) <paramref name="snippet"/>, by id (<see cref="PlacersOf"/>' nodes).</summary>
+    private static IEnumerable<string> PlacerIdsOf(Migrated m, string snippet) =>
+        m.Walk30.Templates
+            .Where(t => t.Kind == TemplateKind.Prompt && (t.References.Snippets.Contains(snippet) || t.References.SnippetFolders.Contains(snippet)))
+            .Where(t => m.Keys.TryGetValue(t.Id, out var rooted) && rooted.StartsWith("node.", StringComparison.Ordinal))
+            .Select(t => t.Id);
+
+    /// <summary>
+    /// A classifier's id for macro <paramref name="macro"/> (its bare id): <c>&lt;macro&gt;_applies</c> fitted (A10-034 when cut),
+    /// or with the first free number, <c>_applies_2</c>, … (S10-006) when a node, a check or a classifier already written has it.
+    /// </summary>
+    private static string ClassifierId(Migrated m, NodeTree tree, string macro)
+    {
+        var taken = new HashSet<string>(tree.ById.Keys, StringComparer.Ordinal);
+        foreach (var path in m.Sources.Keys.Where(p => p.StartsWith("nodes/", StringComparison.Ordinal) || p.StartsWith("checks/", StringComparison.Ordinal)))
+        {
+            var segments = path.Split('/');
+            taken.Add(segments[^1] == WorkflowDataResolver.IndexFileName ? segments[^2] : segments[^1].Replace(".md", "", StringComparison.Ordinal));
+        }
+
+        var wanted = $"{macro}_applies";
+        var suffixed = Renames.Fit(macro, "_applies");
+        var id = suffixed;
+        for (var n = 2; taken.Contains(id); n++)
+            id = Renames.Fit(macro, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"_applies_{n}"));
+        if (wanted.Length > SourceBounds.IdLength)
+            m.Notice(MigrationSentences.RenamedTooLong(Renames.Node, wanted, suffixed));
+        if (id != suffixed)
+            m.Notice(MigrationSentences.RenameTaken(suffixed, id, suffixed));
+        return id;
+    }
+
+    /// <summary>
+    /// A classifier's prompt: each read <paramref name="placing"/> (the placing node's 31 prompt) writes outside any <c>if</c>
+    /// or <c>for</c> (an input, a node, a check, the item), as written, once each in order, on lines of their own, then an
+    /// empty line and the empty question line the operator writes (A10-077). Never a part, a macro or a snippet: a snippet's
+    /// text may place a macro, which a <c>judgement</c> node may not (part 05 § 8.3), and any text it holds would count as
+    /// the question, so the prompt would publish asking nothing (A11-013 counts placed snippets' text, fix round 1).
+    /// </summary>
+    private static string QuestionPrompt(Migrated m, string placing)
+    {
+        var syntax = V31.Templates.TemplateSyntax.Parse(placing);
+        var reads = new List<string>();
+        foreach (var output in syntax.Outputs)
+        {
+            if (output.Depth > 0 || output.Path is not { } path || path.Split('.')[0] is not ("input" or "node" or "check" or "item"))
+                continue;
+            var tag = placing[output.Tag.Start..output.Tag.End];
+            var inner = tag[2..^2].Trim().Trim('~', '-').Trim();
+            var read = $"{{{{ {inner} }}}}";
+            if (!reads.Contains(read))
+                reads.Add(read);
+        }
+
+        return reads.Count == 0 ? "\n" : string.Join("\n\n", reads) + "\n\n";
+    }
+
+    /// <summary>
+    /// Lists node <paramref name="id"/> immediately before <paramref name="sibling"/> where <paramref name="sibling"/> is listed:
+    /// <c>nodes/index.json</c>'s items for a top-level node; else its flow's <c>index.json</c>, in the body that holds it (a
+    /// loop's <c>nodes</c>, an <c>if</c>'s <c>then</c> or <c>else</c>, a <c>case</c> branch's or its <c>else</c>'s).
+    /// </summary>
+    private static void SiblingBefore(Migrated m, NodeTree tree, string sibling, string id)
+    {
+        var lists = new List<JsonArray>();
+        if (!tree.Owner.TryGetValue(sibling, out var flow))
+        {
+            lists.Add(m.Items("nodes"));
+        }
+        else if (m.Sources.TryGetValue(FlowFile(tree, flow), out var index))
+        {
+            var header = index.Json;
+            foreach (var body in new[] { header, header["then"], header["else"] }.Concat((header["branches"] as JsonArray ?? []).Select(b => b)))
+            {
+                if (body?["nodes"] is JsonArray nodes)
+                    lists.Add(nodes);
+            }
+        }
+
+        foreach (var list in lists)
+        {
+            var at = list.Select(n => (string?)n).ToList().IndexOf(sibling);
+            if (at < 0)
+                continue;
+            list.Insert(at, id);
+            return;
+        }
     }
 
     /// <summary>A 30 node's prompt text (its <c>prompt</c>, or the file its id implies), as 30 holds it; <c>""</c> when it has none. Task 9 rewrites it.</summary>
@@ -128,15 +299,16 @@ internal static partial class Migrate
 
     /// <summary>
     /// Part 05 § 1.2: <c>fail</c> and <c>retry</c> are kept; none is <c>fail</c>, 30's default as the engine applies it
-    /// (<c>ConsultNodeDispatch</c>); <c>flag</c>, which kept a reply that did not fit, has no 31 form: <c>fail</c>, with
-    /// A10-013 (D16).
+    /// (<c>ConsultNodeDispatch</c>); <c>flag</c>, which kept a reply that did not fit, has no 31 form: <c>retry</c> (one
+    /// more attempt with the validation error, then the node fails), with A10-013 (#1508, comment 5, item 3, where D16
+    /// wrote <c>fail</c>).
     /// </summary>
     private static string OnInvalid(Migrated m, WorkflowNodeSpec node)
     {
         if (node.OnInvalid == WorkflowOnInvalid.Flag)
         {
-            m.Notice(MigrationSentences.FlagBecomesFail(node.Id));
-            return WorkflowOnInvalid.Fail;
+            m.Notice(MigrationSentences.FlagBecomesRetry(node.Id));
+            return WorkflowOnInvalid.Retry;
         }
 
         return node.OnInvalid == WorkflowOnInvalid.Retry ? WorkflowOnInvalid.Retry : WorkflowOnInvalid.Fail;
@@ -164,7 +336,8 @@ internal static partial class Migrate
     /// A leaf's 31 format (part 02 § 11, part 10 § 1.2): a <c>let</c>'s from its <c>type</c> (<c>text</c> is
     /// <c>plaintext</c>; <c>number</c>, <c>boolean</c> and a format id are kept); a <c>rendered</c> node's
     /// <c>plaintext</c>, the text 30 rendered; an agent's the plain format of the same shape (<see cref="AgentFormat"/>),
-    /// prose a deliverable composes being <c>markdown_block</c> (R9: <paramref name="composed"/>, D20).
+    /// prose a deliverable composes being <c>markdown_block</c> (R9: <paramref name="composed"/>, D20), and a classifier's
+    /// the package format of its answers (R12, <see cref="Migrated.AnswerFormats"/>).
     /// </summary>
     private static JsonNode LeafFormat(Migrated m, WorkflowNodeSpec node, bool composed)
     {
@@ -172,6 +345,8 @@ internal static partial class Migrate
             return JsonValue.Create(node.Type == WorkflowLetAt30.Text ? "plaintext" : node.Type ?? "plaintext");
         if (LeafKind(m, node) == "rendered")
             return JsonValue.Create("plaintext");
+        if (m.AnswerFormats.TryGetValue(node.Id, out var answer))
+            return JsonValue.Create(answer);
         return JsonValue.Create(AgentFormat(node.Format, composed));
     }
 
@@ -197,8 +372,10 @@ internal static partial class Migrate
     /// A 30 condition or <c>let</c> <paramref name="text"/> in <paramref name="file"/>'s <paramref name="member"/>,
     /// converted over <paramref name="scope"/> (part 10 § 2): its canonical JSON Logic, each <c>!x</c> on text that became
     /// <c>blank(x)</c> listed (A10-008), each <c>trim(x) == ""</c> written <c>blank(x)</c> that answers otherwise for a null
-    /// <c>x</c> listed (A10-050), and each <c>size</c> of a list that can be null said (A10-027, the Task 4 ruling:
-    /// 31's <c>size(null)</c> is null where 30 counted 0). One the converter refuses stays 30's text, a JSON string the
+    /// <c>x</c> listed (A10-050), each text compared with a literal written <c>in</c> said (A10-074), each text input
+    /// read whole compared with <c>""</c> written with its null test said (A10-075), and each <c>size</c> of
+    /// a list that can be null said (A10-027, the Task 4 ruling: 31's <c>size(null)</c> is null where 30 counted 0; a
+    /// compared one is written with its null test, #1508, comment 5, item 2). One the converter refuses stays 30's text, a JSON string the
     /// checker refuses (D3), with one hand edit whose reason is the converter's notice.
     /// </summary>
     internal static JsonNode Condition(
@@ -215,6 +392,10 @@ internal static partial class Migrate
             m.Blank(MigrationSentences.BecameBlank(file, member, blank));
         foreach (var trim in result.TrimBlanks)
             m.Blank(MigrationSentences.TrimBecameBlank(file, member, trim));
+        foreach (var literal in result.TextLiterals)
+            m.Notice(MigrationSentences.TextLiteralBecameIn(file, member, literal));
+        foreach (var empty in result.EmptyComparisons)
+            m.Notice(MigrationSentences.EmptyBecameNullTested(file, member, empty));
         foreach (var list in ConditionTyping.NullableSizes(result.Logic, scope))
             m.Notice(MigrationSentences.SizeOfNullable(file, member, list));
         return result.Logic.DeepClone();

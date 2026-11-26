@@ -200,7 +200,7 @@ public class OfflineRunTests
     // ---- D12's markers -----------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task AnOfferedMarker_IsAppendedToAStub()
+    public async Task AnOfferedMarker_IsAppendedToAGeneratedStubOnly()
     {
         // The ordered agent draft places macro b before macro a: a generated stub gets b's marker, then a's.
         var plan = RunFixture.Plan(Ordered());
@@ -211,13 +211,15 @@ public class OfflineRunTests
             WorkflowStubOutputs.Text("node.draft") + " {{ macro.b.content }} {{ macro.a.content }}",
             (string?)generated.Outputs["node.draft"]);
 
-        // A pinned reply that holds b's marker already gets a's alone; one holding both gets none: never twice.
+        // #1508 (R14): a pinned reply is served exactly as written: one that leaves a's marker out gets none appended, and
+        // fails as live; one holding both is served as it is.
         var pinned = await OfflineRun.RunAsync(plan, Request(plan, new JsonObject(), new Dictionary<string, JsonNode?>(StringComparer.Ordinal)
         {
             ["node.draft"] = "Seen with Margaret Okafor. {{ macro.b.content }}",
         }));
-        Assert.True(pinned.State == RunState.Completed, pinned.Sentence);
-        Assert.Equal("Seen with Margaret Okafor. {{ macro.b.content }} {{ macro.a.content }}", (string?)pinned.Outputs["node.draft"]);
+        Assert.Equal(RunState.Failed, pinned.State);
+        Assert.Equal($"Node 'draft': {PackageFormat.V31.Templates.ReplySentences.NoMarker("a")}", pinned.Sentence);
+        Assert.Equal("Seen with Margaret Okafor. {{ macro.b.content }}", (string?)pinned.Outputs["node.draft"]);
 
         var both = await OfflineRun.RunAsync(plan, Request(plan, new JsonObject(), new Dictionary<string, JsonNode?>(StringComparer.Ordinal)
         {

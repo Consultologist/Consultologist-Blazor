@@ -112,7 +112,11 @@ public enum ConsultGenerationJobStartError
     // #1302: new jobs are on hold for a release (Jobs__HoldNewJobs). Not the
     // request's fault and not the account's: 503, and the email door queues
     // the message as it does a rate limit. Appended last.
-    Held
+    Held,
+
+    // #1508 (specVersion 31, area 11; Review Focus 4): the pinned version is a spec version this deployment does not admit
+    // (31 with the preview setting unset): S09-001, a 400. Appended last.
+    SpecVersionNotAdmitted
 }
 
 /// <summary>
@@ -349,6 +353,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         try
         {
             package = await _packageStore.ResolveAsync(packageRef!, cancellationToken);
+        }
+        catch (WorkflowPackageSpecVersionException ex) when (_v31?.NotAdmitted(ex.SpecVersion) is { } notAdmitted)
+        {
+            // #1508 (Review Focus 4): a 31 pin on a deployment that does not admit 31 (the preview setting unset): S09-001,
+            // a 400, as WorkflowPackages/Current and Current/Content answer it.
+            _logger.LogWarning(
+                "Rejected job start: the pinned package is a specVersion this deployment does not admit. Pin={Pin}, SpecVersion={SpecVersion}",
+                packageRef,
+                ex.SpecVersion);
+            return new ConsultGenerationJobStartOutcome(null, ConsultGenerationJobStartError.SpecVersionNotAdmitted, notAdmitted);
         }
         catch (WorkflowPackageSpecVersionException ex)
         {
@@ -1732,7 +1746,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         ConsultGenerationJobStartError ErrorKind = ConsultGenerationJobStartError.InputFileUnreadable,
         // Error when it names only a declared id and fixed prose. Null when
         // the id is one the caller made up.
-        string? SenderSafeError = null);
+        string? SenderSafeError = null,
+        // #1508 (part 08 § 3.1): the dated OCR model version of each document OCR read, by the document's file hash. Only a
+        // 31 start reads it (ExtractionSteps), so no 5–30 origin carries it.
+        IReadOnlyDictionary<string, string>? OcrModelVersions = null);
 
     /// <summary>
     /// Reads every attached document and folds its text into the input map
@@ -2670,6 +2687,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
             : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
         var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(StringComparer.Ordinal);
+        var ocrModelVersions = new Dictionary<string, string>(StringComparer.Ordinal);
         // #874: file-bearing ids whose ref group the loop below already folded
         // in — so the ref-only post-loop skips them.
         var combinedRefIds = new HashSet<string>(StringComparer.Ordinal);
@@ -2847,6 +2865,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // the bytes — it wins over the input's declaration (image-ness is
                 // a server fact). Every other element keeps the input's kind.
                 var elementKind = result.FromImage ? ConsultInputOriginKinds.Image : kind;
+                if (result.OcrModelVersion is { } ocrModelVersion)
+                    ocrModelVersions[fileSha256] = ocrModelVersion;
                 inputOrigins.Add(new ConsultInputOrigin(
                     elementKind,
                     result.ExtractorId,
@@ -3005,7 +3025,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             request with { Inputs = inputs, InputFiles = null, TranscriptInputs = null, AmbientNoteInputs = null },
             origins,
             null,
-            null);
+            null,
+            OcrModelVersions: ocrModelVersions.Count > 0 ? ocrModelVersions : null);
     }
 
     /// <summary>"a text", "an enum", "an array of object" — for a sentence about a declaration.</summary>

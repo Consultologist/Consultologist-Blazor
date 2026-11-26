@@ -1,0 +1,26 @@
+{
+  "description": [
+    "clinic unset. The letter's reply writes follow_up's marker on its own line after the first: 30",
+    "renders it as the macro's body whole, its final line ending included. Each problem paragraph is followed by",
+    "problem_close, which 30's engine joins by a blank line, its body's trailing white space trimmed. The problems",
+    "deliverable starts with clinic_line, Seen at: and the unset clinic, which 30 trims."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; follow-up booked in three months. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "clinic": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "letter": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\n{{ macro.follow_up.content }}\nYours sincerely, Dr A. Sample"
+  }
+}

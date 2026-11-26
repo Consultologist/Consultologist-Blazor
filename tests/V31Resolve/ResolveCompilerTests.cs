@@ -157,24 +157,7 @@ public class ResolveCompilerTests
     }
 
     /// <summary>The pinned <c>resolve.schema.json</c>'s <c>deliverable</c> definition, with the schemas it refers to.</summary>
-    private static JsonSchema DeliverableSchema()
-    {
-        List<AdditionalSchemaFile> files =
-        [
-            new("urn:consultologist:spec:31:schema:common", V31Contract.Path("schemas", "common.schema.json")),
-            new("urn:consultologist:spec:31:dialect", V31Contract.Path("dialect.schema.json")),
-            new("urn:consultologist:spec:31:schema:resolve", V31Contract.Path("schemas", "resolve.schema.json")),
-        ];
-        var options = new JsonSchema.Options(
-            additionalSchemaFiles: files,
-            allowFileSystemAndHttpResolution: false,
-            defaultDialect: Corvus.Text.Json.RuntimeEvaluator.JsonSchemaDialect.Draft202012,
-            alwaysAssertFormat: false,
-            additionalDocumentResolver: null);
-        return JsonSchema.FromText(
-            "{ \"$ref\": \"urn:consultologist:spec:31:schema:resolve#/$defs/deliverable\" }",
-            "urn:consultologist:spec:31:schema:deliverable-entry", options, false);
-    }
+    private static JsonSchema DeliverableSchema() => ResolveFixture.PinnedSchema("resolve", "{ \"$ref\": \"urn:consultologist:spec:31:schema:resolve#/$defs/deliverable\" }");
 
     [Fact]
     public void Entries_HoldEveryHeaderMember()

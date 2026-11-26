@@ -135,8 +135,8 @@ public class DeliveryRunnerTests
     public async Task TheWindow_ClosesOnWhatIsUnsent()
     {
         // Review Focus 4: the note's wait before attempt 3 (4 minutes) is cut to the 3 the window has left, so it ends at the
-        // close and attempt 3 never starts; the letter's send is still in flight at the close. Both are failed, and no timer
-        // is left outstanding.
+        // close and attempt 3 never starts. The letter's send is still in flight at the close and is waited for (#1508); it
+        // then fails with its own error kind. Both are failed, and no timer is left outstanding.
         IReadOnlyList<DeliverableOutcome> outcomes =
         [
             Outcome("deliverable.note", ["email"]),
@@ -154,6 +154,8 @@ public class DeliveryRunnerTests
             host.Advance(TimeSpan.FromMinutes(2));
             Assert.False(run.IsCompleted);
             host.Advance(TimeSpan.FromMinutes(3));
+            Assert.False(run.IsCompleted);
+            host.Answer("delivery:deliverable.letter/email", new DeliverySendOutcome(DeliverySendResult.Failed, "error"));
             return run;
         });
 
@@ -163,9 +165,114 @@ public class DeliveryRunnerTests
         Assert.Equal(["delivery:deliverable.note/email", "delivery:deliverable.letter/email"], result.Rows.Select(r => r.Key));
         Assert.All(result.Rows, r => Assert.Equal(("failed", "failed: email"), (r.Result, r.Reason)));
         Assert.Equal(2, result.Rows[0].Attempts.Count);
-        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "failed: window")], result.Rows[1].Attempts);
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "failed: error")], result.Rows[1].Attempts);
         Assert.Equal(2, result.Failed);
         Assert.Equal(result.Rows, recorder.Deliveries);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
+    [Fact]
+    public async Task ASendInFlightAtTheWindowsClose_IsWaitedFor_AndRecordedAsItEnded()
+    {
+        // #1508: a Durable activity is not cancelled, so the email can still go out after the window's timer ends. The runner
+        // waits for it: the row is sent, never failed: window, and nothing is recorded until it has landed.
+        IReadOnlyList<DeliverableOutcome> outcomes = [Outcome("deliverable.note", ["email"])];
+        var host = new FakeDeliveryHost().Hold("delivery:deliverable.note/email");
+        var recorder = new ListRecorder();
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 5), host, recorder);
+
+        var result = await FakeDeliveryHost.Drive(() =>
+        {
+            var run = runner.RunAsync(outcomes);
+            host.Advance(TimeSpan.FromMinutes(5));
+            Assert.False(run.IsCompleted);
+            Assert.Empty(recorder.Deliveries);
+            host.Answer("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.Sent, null));
+            return run;
+        });
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(("sent", null, FakeDeliveryHost.Start), (row.Result, row.Reason, row.AtUtc));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "sent")], row.Attempts);
+        Assert.Equal(0, result.Failed);
+        Assert.Equal(result.Rows, recorder.Deliveries);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
+    [Fact]
+    public async Task ASendInFlightThatFails_AfterTheClose_IsFailedWithItsOwnReason_AndNotRetried()
+    {
+        IReadOnlyList<DeliverableOutcome> outcomes = [Outcome("deliverable.note", ["email"])];
+        var host = new FakeDeliveryHost().Hold("delivery:deliverable.note/email");
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 5), host, new ListRecorder());
+
+        var result = await FakeDeliveryHost.Drive(() =>
+        {
+            var run = runner.RunAsync(outcomes);
+            host.Advance(TimeSpan.FromMinutes(5));
+            Assert.False(run.IsCompleted);
+            host.Answer("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.Failed, "unreachable"));
+            return run;
+        });
+
+        Assert.Single(host.Sends);
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(("failed", "failed: email"), (row.Result, row.Reason));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "failed: unreachable")], row.Attempts);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
+    [Fact]
+    public async Task ADestinationNeverStarted_AtTheClose_IsFailedWindow()
+    {
+        // The window is already closed when delivery starts: no attempt starts, and the destination is failed.
+        IReadOnlyList<DeliverableOutcome> outcomes = [Outcome("deliverable.note", ["email"])];
+        var host = new FakeDeliveryHost();
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 0), host, new ListRecorder());
+
+        var result = await FakeDeliveryHost.Drive(() => runner.RunAsync(outcomes));
+
+        Assert.Empty(host.Sends);
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(("failed", "failed: email"), (row.Result, row.Reason));
+        Assert.Empty(row.Attempts);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
+    [Fact]
+    public async Task ASendInFlightAtTheWindowsClose_IsWaitedFor_WhileADestinationNeverStarted_IsFailedWithNoAttempt()
+    {
+        // One run, both cases. The note's email fails, and its retry wait (2 minutes) ends at the close of a 2-minute window
+        // before attempt 2 can start: it never gets another attempt. The letter is in flight at the close and goes out.
+        IReadOnlyList<DeliverableOutcome> outcomes =
+        [
+            Outcome("deliverable.letter", ["email"]),
+            Outcome("deliverable.note", ["email"]),
+        ];
+        var host = new FakeDeliveryHost()
+            .Hold("delivery:deliverable.letter/email")
+            .Hold("delivery:deliverable.note/email");
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 2), host, new ListRecorder());
+
+        var result = await FakeDeliveryHost.Drive(() =>
+        {
+            var run = runner.RunAsync(outcomes);
+            host.Answer("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.Failed, "error"));
+            host.Advance(TimeSpan.FromMinutes(2));
+            Assert.False(run.IsCompleted);
+            host.Answer("delivery:deliverable.letter/email", new DeliverySendOutcome(DeliverySendResult.Sent, null));
+            return run;
+        });
+
+        Assert.Equal(2, host.Sends.Count);
+        var (letter, note) = (result.Rows[0], result.Rows[1]);
+        Assert.Equal(("sent", null), (letter.Result, letter.Reason));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "sent")], letter.Attempts);
+        Assert.Equal(("failed", "failed: email"), (note.Result, note.Reason));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "failed: error")], note.Attempts);
+        Assert.Equal(1, result.Failed);
         Assert.Equal(0, host.OutstandingDelays);
     }
 

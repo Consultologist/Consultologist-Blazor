@@ -17,6 +17,8 @@
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 30 [--write] # #1347: the 29 → 30 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] [--rename <old>=<new>]... [--when-empty <deliverable>=release|hold|fail]... [--folder-format <folder>=<format>]...
 //                                                                                                # #1507: the 30 → 31 migration (WorkflowPackageMigration30To31; a package from 5 to 29 raised to 30 in the same run)
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] --options <file>
+//                                                                                                # #1508: the same, its choices read from the package's options.json (R18), in place of the three flags
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 --snapshot [--write]
 //                                                                                                # #1507: a 31 package's snapshot test, once its hand edits are made (tests/migration_snapshot.json)
 //
@@ -47,7 +49,11 @@
 // leaves a 31 folder's own dag.mmd alone). --rename, --when-empty and
 // --folder-format choose a reserved id's 31 id, a deliverable's whenEmpty (the
 // default is release) and a snippet folder's item format (the default is
-// <folder>_item). The write puts new and changed files first and deletes last.
+// <folder>_item). --options <file> (#1508, R18) reads all three from a package's
+// options.json, { "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} } ({} for
+// none), the file kept beside its hand edits; it is not given with the three flags
+// or --snapshot, and a file the migration cannot read is exit 2 (A10-070 to A10-072).
+// The write puts new and changed files first and deletes last.
 // Its exits are part 10's: 0 migrated cleanly (or the
 // snapshot test written); 1 "written; hand edits remain"; 2 refused, writing
 // nothing (an unreadable manifest, a version below 5, any refusal, a path that
@@ -129,12 +135,7 @@ if (to == 31)
     Consultologist.PackageFormat.V31.Toolchain toolchain31;
     try
     {
-        registry31 = Consultologist.PackageFormat.V31.TypeRegistry.Read(
-            Path.Combine(contract31, "formats"),
-            Path.Combine(agents31, "formats"),
-            Path.Combine(contract31, "renderers", "index.json"),
-            Path.Combine(agents31, "bindings.json"),
-            Path.Combine(agents31, "agents.json"));
+        registry31 = Consultologist.PackageFormat.V31.PublishedTypeRegistry.Read(contract31, agents31);
         var specVersions = Path.Combine(repo.FullName, "external", "consultologist-package-format", "spec-versions.json");
         var release = (string?)JsonNode.Parse(File.ReadAllText(specVersions))?["version"]
             ?? throw new InvalidOperationException($"{specVersions} names no version.");

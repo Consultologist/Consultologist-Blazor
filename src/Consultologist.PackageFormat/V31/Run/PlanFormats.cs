@@ -5,10 +5,11 @@ namespace Consultologist.PackageFormat.V31.Run;
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 07 § 2.4, 05-D47(1)): values held to <c>resolve.json</c>'s format bundle,
-/// <c>{ "$defs": { "&lt;key&gt;": &lt;schema&gt;, … } }</c>. A bundle entry keeps its own <c>$id</c> while the references in
-/// it are <c>#/$defs/&lt;key&gt;</c> of the bundle, so a standard validator given an entry resolves them against the entry;
-/// <see cref="Expand"/> inlines every reference instead, and a value is validated against what it gives. The bundle is
-/// read, never changed. Never throws on a bundle, a format or a value.
+/// <c>{ "$defs": { "&lt;key&gt;": &lt;schema&gt;, … } }</c>. #1508 (area 11; R2): a JSON Schema 2020-12 compound document,
+/// each entry with its <c>$id</c> and each reference in an entry to another the target's <c>$id</c>, while a format at a
+/// site (an input's, an entry's) is <c>#/$defs/&lt;key&gt;</c> of the bundle; <see cref="Expand"/> inlines every
+/// reference, and a value is validated against what it gives. The bundle is read, never changed. Never throws on a
+/// bundle, a format or a value.
 /// </summary>
 public sealed class PlanFormats
 {
@@ -47,28 +48,191 @@ public sealed class PlanFormats
 
     private readonly JsonObject defs;
 
+    /// <summary>The bundle's entries by their <c>$id</c>, the first of an <c>$id</c> kept.</summary>
+    private readonly Dictionary<string, JsonObject> ids = new(StringComparer.Ordinal);
+
     /// <summary>The formats of <paramref name="bundle"/> (<c>resolve.json</c>'s <c>formats</c>); anything that is not a bundle has none.</summary>
     public PlanFormats(JsonNode? bundle)
     {
         defs = bundle is JsonObject { } root && root["$defs"] is JsonObject found ? found : new JsonObject();
+        foreach (var (_, entry) in defs)
+        {
+            if (entry is JsonObject schema && SourceLayout.Text(schema["$id"]) is { } id)
+                ids.TryAdd(id, schema);
+        }
     }
 
     /// <summary>
     /// <paramref name="format"/> with every <c>{ "$ref": "#/$defs/&lt;key&gt;" }</c> replaced by that entry of the bundle,
+    /// and every <c>{ "$ref": "&lt;$id&gt;" }</c> by the entry of that <c>$id</c> (R2),
     /// <c>$id</c>, <c>$schema</c> and <c>$defs</c> dropped from each inlined entry (members beside a <c>$ref</c> are kept,
-    /// the entry joining them through <c>allOf</c>), to <see cref="MaxDepth"/> levels. Inside an inlined entry a reference
-    /// is first one of the entry's own <c>$defs</c> (its format file's definitions, which the bundle keeps as written,
-    /// part 02 § 3.1), then the bundle's entry of that key. A reference to a key neither has,
-    /// any other reference, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
+    /// the entry joining them through <c>allOf</c>), to <see cref="MaxDepth"/> levels. Inside an inlined entry a
+    /// <c>#/$defs/&lt;key&gt;</c> reference is first one of the entry's own <c>$defs</c> (its format file's definitions,
+    /// which the bundle keeps as written, part 02 § 3.1), then the bundle's entry of that key. A reference to a key or
+    /// <c>$id</c> none has, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
     /// <c>false</c>, the schema nothing fits. Too large is past <see cref="FormatTypes.SchemaBudget"/> schemas, counted as
     /// publish counts them (A03-011), so a format file publish accepted is not too large here, or past
-    /// <see cref="NodeBudget"/> nodes written in all. A new tree: the bundle is not changed.
+    /// <see cref="NodeBudget"/> nodes written in all. A new tree: the bundle is not changed. #1508 (R10): each
+    /// <c>propertyOrder</c> is kept, copied as an annotation is, so what reads the expansion has the written order; a value
+    /// is validated as before, the validator ignoring it as JSON Schema ignores a keyword it does not know.
     /// </summary>
     public JsonNode Expand(JsonNode? format)
     {
-        var walk = new Walk(defs);
+        var walk = new Walk(defs, ids);
         var expanded = walk.Schema(format, 0);
         return walk.Failed || expanded is null ? JsonValue.Create(false) : expanded;
+    }
+
+    /// <summary>
+    /// #1508 (area 11, Task 18; part 09 § 4.3, part 02 § 12; the coordinator's ruling on Task 18): <paramref name="format"/>
+    /// as one compound document, the <c>Format</c> of <c>WorkflowPackages/Current</c>, "its <c>$id</c>s kept and its
+    /// <c>$ref</c>s resolved within the document". The root is the format itself, or, when it is exactly a reference to a
+    /// bundle entry, that entry with its <c>$id</c>. Every entry it reaches, transitively, sits once under the root's
+    /// <c>$defs</c> (under its bundle key, or its <c>$id</c> when the root's own definitions hold that key) with its
+    /// <c>$id</c>, and every reference to an entry is written <c>{ "$ref": "&lt;its $id&gt;" }</c>, as the bundle writes
+    /// them (R2). A reference to a definition of the entry's own file stays as written, resolved within that entry.
+    /// <c>$schema</c> is dropped, and (#1508, R10) every <c>propertyOrder</c>, so the document is a schema in the dialect
+    /// (the description's <c>Fields</c> carry the order); titles and annotations are kept. A format that reaches no entry has no <c>$defs</c>. What
+    /// <see cref="Expand"/> gives <c>false</c> for (a reference to itself, which publish refuses as S02-032; an unknown
+    /// one; an expansion too deep or too large) is <c>false</c> here too, as the run holds it.
+    /// </summary>
+    public JsonNode SelfContained(JsonNode? format)
+    {
+        if (Expand(format) is JsonValue)
+            return JsonValue.Create(false);
+
+        var compound = new Compound(defs, ids);
+        var named = Target(format);
+        var root = named != null ? compound.Entry(named) : compound.Copy(format, null);
+        if (compound.Failed)
+            return JsonValue.Create(false);
+        if (root is not JsonObject document)
+            return root ?? JsonValue.Create(false);
+
+        var reached = compound.Reach(named);
+        if (compound.Failed)
+            return JsonValue.Create(false);
+        if (reached.Count > 0)
+        {
+            var slots = document["$defs"] as JsonObject ?? new JsonObject();
+            foreach (var (key, entry) in reached)
+                slots[slots.ContainsKey(key) ? SourceLayout.Text(entry["$id"])! : key] = entry;
+            document["$defs"] = slots;
+        }
+
+        return document;
+    }
+
+    /// <summary>
+    /// <see cref="SelfContained"/>'s copy: each node copied, its references to bundle entries written by <c>$id</c>, and the
+    /// entries reached kept in the order first reached.
+    /// </summary>
+    private sealed class Compound(JsonObject defs, Dictionary<string, JsonObject> ids)
+    {
+        /// <summary>Each entry's key in the bundle.</summary>
+        private readonly Dictionary<JsonObject, string> keys = Keys(defs);
+
+        private readonly List<JsonObject> pending = [];
+        private readonly HashSet<JsonObject> seen = new(ReferenceEqualityComparer.Instance);
+
+        public bool Failed { get; private set; }
+
+        private static Dictionary<JsonObject, string> Keys(JsonObject defs)
+        {
+            var keys = new Dictionary<JsonObject, string>(ReferenceEqualityComparer.Instance);
+            foreach (var (key, entry) in defs)
+            {
+                if (entry is JsonObject schema)
+                    keys[schema] = key;
+            }
+
+            return keys;
+        }
+
+        /// <summary><paramref name="entry"/> copied, its own file's definitions as its local ones.</summary>
+        public JsonNode? Entry(JsonObject entry)
+        {
+            seen.Add(entry);
+            return Copy(entry, entry["$defs"] as JsonObject);
+        }
+
+        /// <summary>Every entry reached but <paramref name="root"/>, copied, by bundle key, in the order first reached.</summary>
+        public List<(string Key, JsonNode Entry)> Reach(JsonObject? root)
+        {
+            var reached = new List<(string, JsonNode)>();
+            for (var i = 0; i < pending.Count && !Failed; i++)
+            {
+                if (!ReferenceEquals(pending[i], root) && Entry(pending[i]) is { } copy)
+                    reached.Add((keys[pending[i]], copy));
+            }
+
+            return reached;
+        }
+
+        public JsonNode? Copy(JsonNode? node, JsonObject? local)
+        {
+            switch (node)
+            {
+                case JsonObject obj:
+                {
+                    var copy = new JsonObject();
+                    foreach (var (name, value) in obj)
+                    {
+                        if (name == "$schema" || IsPropertyOrder(obj, name, value))
+                            continue;
+                        copy[name] = name == "$ref" ? Reference(value, local) : Copy(value, local);
+                    }
+
+                    return copy;
+                }
+
+                case JsonArray array:
+                    return new JsonArray(array.Select(item => Copy(item, local)).ToArray());
+                default:
+                    return node?.DeepClone();
+            }
+        }
+
+        /// <summary>
+        /// #1508 (R10, the controller's ruling in Task 37's review): whether <paramref name="name"/> of <paramref name="obj"/>
+        /// is <c>resolve.json</c>'s <c>propertyOrder</c>, a list beside a schema's <c>properties</c>, which the copy leaves
+        /// out so that it is a schema in the dialect. A property named <c>propertyOrder</c> is a schema (an object) in a
+        /// <c>properties</c> map, never a list, and is kept.
+        /// </summary>
+        private static bool IsPropertyOrder(JsonObject obj, string name, JsonNode? value) =>
+            name == CompiledFormats.PropertyOrder && value is JsonArray && obj["properties"] is JsonObject;
+
+        /// <summary>A reference: one to the entry's own definitions as written; one to a bundle entry by that entry's <c>$id</c>.</summary>
+        private JsonNode? Reference(JsonNode? value, JsonObject? local)
+        {
+            var reference = SourceLayout.Text(value);
+            var key = reference != null && reference.StartsWith(DefsPrefix, StringComparison.Ordinal) ? reference[DefsPrefix.Length..] : null;
+            if (key != null && local != null && local.ContainsKey(key))
+                return value!.DeepClone();
+
+            var entry = key != null ? defs[key] as JsonObject : reference != null ? ids.GetValueOrDefault(reference) : null;
+            if (entry == null || SourceLayout.Text(entry["$id"]) is not { } id || !keys.ContainsKey(entry))
+            {
+                Failed = true;
+                return null;
+            }
+
+            if (seen.Add(entry))
+                pending.Add(entry);
+            return id;
+        }
+    }
+
+    /// <summary>
+    /// #1508 (area 11; R5): whether <see cref="Expand"/> of <paramref name="format"/> stays within <see cref="NodeBudget"/>,
+    /// counted by the expansion's own counter, so publish (A11-003) and the run hold one budget. An expansion that fails
+    /// for another reason first (a cycle, the depth, the schema budget) is not past it.
+    /// </summary>
+    public bool WithinNodeBudget(JsonNode? format)
+    {
+        var walk = new Walk(defs, ids);
+        walk.Schema(format, 0);
+        return !walk.PastNodeBudget;
     }
 
     /// <summary><paramref name="value"/> validated against <see cref="Expand"/> of <paramref name="format"/>.</summary>
@@ -97,14 +261,16 @@ public sealed class PlanFormats
 
     /// <summary>
     /// A model's <paramref name="reply"/> as a value of <paramref name="format"/>: for a text format the reply itself, as a
-    /// string; otherwise the reply parsed as JSON (to <see cref="MaxReplyDepth"/> levels, a repeated member refused), with
-    /// <c>Parsed</c> false when it is not.
+    /// string (for <c>markdown_inline</c> with one trailing line ending, <c>\r\n</c>, <c>\n</c> or <c>\r</c>, taken off:
+    /// #1508, 2026-11-25, item 8; a second is still a line ending inside it); otherwise the reply parsed as JSON (to
+    /// <see cref="MaxReplyDepth"/> levels, a repeated member refused), with <c>Parsed</c> false when it is not. The runner
+    /// and the offline host's stub check both read a reply here.
     /// </summary>
     public (JsonNode? Value, bool Parsed) Read(string reply, JsonNode? format)
     {
         ArgumentNullException.ThrowIfNull(reply);
-        if (IsText(format))
-            return (JsonValue.Create(reply), true);
+        if (TextFormat(format) is { } text)
+            return (JsonValue.Create(text == "markdown_inline" ? WithoutOneLineEnding(reply) : reply), true);
 
         try
         {
@@ -119,6 +285,12 @@ public sealed class PlanFormats
             return (null, false);
         }
     }
+
+    /// <summary><paramref name="text"/> with one trailing line ending (<c>\r\n</c>, <c>\n</c> or <c>\r</c>) taken off, if it ends in one.</summary>
+    private static string WithoutOneLineEnding(string text) =>
+        text.EndsWith("\r\n", StringComparison.Ordinal) ? text[..^2]
+        : text.EndsWith('\n') || text.EndsWith('\r') ? text[..^1]
+        : text;
 
     /// <summary>The bundle entry <paramref name="format"/> refers to, when it is exactly one <c>$ref</c> to a key there.</summary>
     private JsonObject? Target(JsonNode? format) =>
@@ -160,7 +332,7 @@ public sealed class PlanFormats
     /// format file to the budget, not the place that refers to it. What the uncounted values hold is bounded by
     /// <see cref="NodeBudget"/>, which counts every node written.
     /// </summary>
-    private sealed class Walk(JsonObject defs)
+    private sealed class Walk(JsonObject defs, Dictionary<string, JsonObject> ids)
     {
         private readonly HashSet<JsonObject> inlining = new(ReferenceEqualityComparer.Instance);
 
@@ -171,6 +343,9 @@ public sealed class PlanFormats
         private int nodes;
 
         public bool Failed { get; private set; }
+
+        /// <summary>Whether the expansion failed because it passed <see cref="NodeBudget"/>.</summary>
+        public bool PastNodeBudget { get; private set; }
 
         /// <summary><paramref name="node"/> where a schema is: counted when it is one written here (an object that is not a reference).</summary>
         public JsonNode? Schema(JsonNode? node, int depth)
@@ -186,7 +361,13 @@ public sealed class PlanFormats
         private bool Counted() => (inlining.Count > 0 ? ++written : ++own) <= Budget;
 
         /// <summary>One more node written, within <see cref="NodeBudget"/>.</summary>
-        private bool Node() => ++nodes <= NodeBudget;
+        private bool Node()
+        {
+            if (++nodes <= NodeBudget)
+                return true;
+            PastNodeBudget = true;
+            return false;
+        }
 
         /// <summary><paramref name="node"/> copied, the references in it inlined, to <see cref="MaxDepth"/> and <see cref="NodeBudget"/>.</summary>
         private JsonNode? Copy(JsonNode? node, int depth)
@@ -251,14 +432,16 @@ public sealed class PlanFormats
             if (obj.ContainsKey("$ref"))
             {
                 var reference = SourceLayout.Text(obj["$ref"]);
-                if (reference is null || !reference.StartsWith(DefsPrefix, StringComparison.Ordinal))
+                if (reference is null)
                     return Fail();
-                var key = reference[DefsPrefix.Length..];
 
-                // The dialect resolves a reference against the file it is written in (part 02 § 3.1), and the bundle keeps a
-                // file's own definitions as written: the entry's own first, then the bundle's entry of that key.
-                var inFile = local != null && local.ContainsKey(key);
-                if ((inFile ? local![key] : defs[key]) is not JsonObject entry || !inlining.Add(entry) || !Counted())
+                // A reference by $id is that entry of the bundle (R2). The dialect resolves a #/$defs/ reference against
+                // the file it is written in (part 02 § 3.1), and the bundle keeps a file's own definitions as written: the
+                // entry's own first, then the bundle's entry of that key.
+                var key = reference.StartsWith(DefsPrefix, StringComparison.Ordinal) ? reference[DefsPrefix.Length..] : null;
+                var inFile = key != null && local != null && local.ContainsKey(key);
+                var found = inFile ? local![key!] : key != null ? defs[key] : ids.GetValueOrDefault(reference);
+                if (found is not JsonObject entry || !inlining.Add(entry) || !Counted())
                     return Fail();
 
                 // A bundle entry's references are its own file's; a definition of the file stays in the file.

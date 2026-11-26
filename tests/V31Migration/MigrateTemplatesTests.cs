@@ -9,7 +9,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.2 the template rows, § 1.4; part 05 §§ 2, 3, 6, 7; R6): the templates pass
 /// over whole packages. Every prompt and <c>rendered</c> body, snippet body, folder item's body and macro body of the
-/// sixteen packages is in the 31 dialect, or carries a hand edit naming its file; an agent's lifted <c>if</c>s are its
+/// fixture packages (#1508: the edge cases too) is in the 31 dialect, or carries a hand edit naming its file; an agent's lifted <c>if</c>s are its
 /// <c>parts</c>; a macro body is kept for the macros pass.
 /// </summary>
 public class MigrateTemplatesTests
@@ -126,7 +126,9 @@ public class MigrateTemplatesTests
         string Said(string text, TemplateSite site = TemplateSite.Prompt) => string.Join(";", Problems(text, site).Select(p => p.Problem));
         Assert.Contains("bare node or input", Said("{{ node.extract_patient_concepts }}"), StringComparison.Ordinal);
         Assert.Contains("placement", Said("{{ if for.first }}{{ macro.x }}{{ end }}"), StringComparison.Ordinal);
-        Assert.Contains("body if", Said("{{ if input.x.value }}a{{ end }}"), StringComparison.Ordinal);
+        Assert.Contains("body if", Said("{{ if input.x.value == \"a\" }}a{{ end }}"), StringComparison.Ordinal);
+        // #1508 (R17): a bare test is the guard A11-009 asks for, typed at publish, not here.
+        Assert.Empty(Said("{{ if input.x.value }}a{{ end }}"));
         Assert.Contains("S05-009", Said("{{ for s in node.x.items }}{{ if s.state != \"skipped\" }}a{{ end }}{{ end }}"), StringComparison.Ordinal);
         Assert.Contains("S05-010", Said("{{ for s in node.x.items }}{{ if s.state == \"done\" }}a{{ else }}{{ end }}{{ end }}"), StringComparison.Ordinal);
         Assert.Contains("profile", Said("{{ profile.name }}"), StringComparison.Ordinal);
@@ -177,6 +179,10 @@ public class MigrateTemplatesTests
             {
                 switch (DialectRules.TestForm(test))
                 {
+                    case BodyTest.Refused when test.Asserts && test.Pipes.Count == 0:
+                        // #1508 (R17, Task 26): a bare or != null test asserts an object that can be null is there, the guard
+                        // A11-009 asks for; whether its path is such an object is the typed check's (publish), not this one's.
+                        break;
                     case BodyTest.Refused:
                         problems.Add(($"body if tests {test.Text}", ifEdits));
                         break;

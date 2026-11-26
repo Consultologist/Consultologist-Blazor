@@ -1,0 +1,7 @@
+{
+  "notices": [
+    "deliverables/plan.md, if: written to skip the deliverable unless node.plan_gate ran, as 30 skipped a deliverable none of whose sources ran."
+  ],
+  "handEdits": [],
+  "refusals": []
+}

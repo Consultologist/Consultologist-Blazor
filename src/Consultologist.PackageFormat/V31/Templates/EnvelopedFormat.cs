@@ -9,7 +9,7 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <paramref name="Sent"/> is <see cref="SentFormat.Prepare"/>'s copy, or, when that copy's root is not an object, the
 /// engine's envelope around it (<c>{ "type": "object", "required": ["value"], "additionalProperties": false,
 /// "properties": { "value": &lt;copy&gt; } }</c>, <paramref name="Wrapped"/>), so a text or a list format can be sent in
-/// strict mode. <paramref name="Hash"/> is the hash of the canonical JSON sent, envelope included (<c>sentFormatHash</c>);
+/// strict mode. <paramref name="Hash"/> is the hash of the format's canonical JSON before any envelope (<c>sentFormatHash</c>, #1506 ruling 3, #1508);
 /// <paramref name="NotSent"/> the keywords strict mode rejects that were removed, as pointers into the format.
 /// </summary>
 public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, IReadOnlyList<string> NotSent)
@@ -36,15 +36,17 @@ public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, I
             ["additionalProperties"] = false,
             ["properties"] = new JsonObject { [Member] = prepared.Schema },
         };
-        return new EnvelopedFormat(envelope, true, CanonicalJson.Hash(envelope), prepared.NotSent);
+        return new EnvelopedFormat(envelope, true, prepared.Hash, prepared.NotSent);
     }
 
     /// <summary>
     /// The reply as its format's value is read from: for an enveloped format, the JSON text of the reply's
-    /// <see cref="Member"/>, or <c>null</c> when the reply is not an object holding that one member; otherwise the reply
+    /// <see cref="Member"/> (with <paramref name="text"/>, a text format's, which is read as the text itself: a string
+    /// member's plain value, no quotes or escapes, and <c>null</c> for any other value, which is no text; #1508,
+    /// 2026-11-25, item 13), or <c>null</c> when the reply is not an object holding that one member; otherwise the reply
     /// itself. Never throws on a reply.
     /// </summary>
-    public string? Unwrap(string reply)
+    public string? Unwrap(string reply, bool text = false)
     {
         ArgumentNullException.ThrowIfNull(reply);
         if (!Wrapped)
@@ -54,7 +56,11 @@ public sealed record EnvelopedFormat(JsonNode Sent, bool Wrapped, string Hash, I
             if (JsonNode.Parse(reply, documentOptions: new JsonDocumentOptions { MaxDepth = PlanFormats.MaxReplyDepth }) is not JsonObject envelope)
                 return null;
             var members = envelope.ToList(); // a repeated member surfaces here
-            return members is [{ Key: Member, Value: var value }] ? value?.ToJsonString() ?? "null" : null;
+            if (members is not [{ Key: Member, Value: var value }])
+                return null;
+            if (!text)
+                return value?.ToJsonString() ?? "null";
+            return value is JsonValue plain && plain.GetValueKind() == JsonValueKind.String ? plain.GetValue<string>() : null;
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or ArgumentException)
         {

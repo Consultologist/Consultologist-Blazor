@@ -9,8 +9,10 @@ namespace Consultologist.PackageFormat.V31;
 /// <c>resolve.json</c> and <c>lock.json</c> must have. Publish writes it last, so a folder without one is not a version
 /// the engine loads. The load path is chosen by it: a stamp with <c>specVersion</c> 31 takes the 31 path, anything else
 /// today's. Area 11 writes it and may add members; <see cref="TryRead"/> ignores them.
+/// #1508 (area 11; D5): <paramref name="MigratedFrom"/>, the old version, when the operator's migration published the
+/// version (part 07 § 5 step 4.6), written only when set.
 /// </summary>
-public sealed record PublishedStamp(string ResolveHash, string LockHash)
+public sealed record PublishedStamp(string ResolveHash, string LockHash, string? MigratedFrom = null)
 {
     /// <summary>The stamp's file name in a version's folder (the name the 5–30 stamp has too).</summary>
     public const string FileName = "publish.json";
@@ -21,13 +23,19 @@ public sealed record PublishedStamp(string ResolveHash, string LockHash)
     /// <summary>The deepest JSON <see cref="TryRead"/> reads: a stamp is one level.</summary>
     private const int MaxDepth = 64;
 
-    /// <summary>The stamp's text: canonical (RFC 8785), with <c>specVersion</c>.</summary>
-    public string ToJson() => CanonicalJson.Write(new JsonObject
+    /// <summary>The stamp's text: canonical (RFC 8785), with <c>specVersion</c>, and <c>migratedFrom</c> only when set.</summary>
+    public string ToJson()
     {
-        ["specVersion"] = SpecVersion,
-        ["resolveHash"] = ResolveHash,
-        ["lockHash"] = LockHash,
-    });
+        var stamp = new JsonObject
+        {
+            ["specVersion"] = SpecVersion,
+            ["resolveHash"] = ResolveHash,
+            ["lockHash"] = LockHash,
+        };
+        if (MigratedFrom != null)
+            stamp["migratedFrom"] = MigratedFrom;
+        return CanonicalJson.Write(stamp);
+    }
 
     /// <summary>
     /// The stamp <paramref name="json"/> holds, or null unless it is a JSON object with <c>specVersion</c> 31 and a

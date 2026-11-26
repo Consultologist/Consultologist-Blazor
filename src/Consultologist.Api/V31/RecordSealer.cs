@@ -49,8 +49,11 @@ public interface IRecordJobs
     /// <summary>The account kind the job's blobs are written under (<see cref="JobOutputsBlobStore.ContainerFor"/>).</summary>
     Task<string?> AccountKindAsync(ConsultGenerationJobState job, CancellationToken ct);
 
-    /// <summary>Stamps <paramref name="recordHash"/> and <paramref name="bytes"/> on the job's entity, write-once.</summary>
-    Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct);
+    /// <summary>
+    /// Stamps <paramref name="recordHash"/>, <paramref name="bytes"/> and <paramref name="rows"/> (the record's size, #1508)
+    /// on the job's entity, write-once; the entity writes the size to the job's index row.
+    /// </summary>
+    Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct, int? rows = null);
 }
 
 /// <summary>
@@ -152,7 +155,7 @@ public sealed class RecordSealer(IRecordJobs jobs, IRecordRowStore rows, IRecord
 
         var recordHash = RecordDocument.Hash(document);
         long bytes = Encoding.UTF8.GetByteCount(document);
-        await jobs.StampAsync(jobId, recordHash, bytes, ct);
+        await jobs.StampAsync(jobId, recordHash, bytes, ct, stored.Count);
         logger.LogInformation(
             "V31 record sealed. JobId={JobId}, Rows={Rows}, Bytes={Bytes}, RecordHash={RecordHash}",
             jobId, stored.Count, bytes, recordHash);
@@ -186,9 +189,9 @@ internal sealed class DurableRecordJobs(DurableTaskClient client, IAccountStore 
     public async Task<string?> AccountKindAsync(ConsultGenerationJobState job, CancellationToken ct) =>
         KindOfHeldInputs(job) ?? await accounts.GetAccountKindAsync(job.AppUserId, ct);
 
-    public Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct) =>
+    public Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct, int? rows = null) =>
         client.Entities.SignalEntityAsync(
-            EntityOf(jobId), nameof(ConsultGenerationJobEntity.RecordV31Seal), new ConsultGenerationV31Seal(recordHash, bytes), cancellation: ct);
+            EntityOf(jobId), nameof(ConsultGenerationJobEntity.RecordV31Seal), new ConsultGenerationV31Seal(recordHash, bytes, rows), cancellation: ct);
 }
 
 /// <summary>

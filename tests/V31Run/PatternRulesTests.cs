@@ -98,6 +98,25 @@ public class PatternRulesTests
     }
 
     [Fact]
+    public async Task TheJobTimeLimit_IsCheckedAfterAHostRulesAnswerReturns()
+    {
+        // #1508 (ruling 4, item 5): the rule's answer comes back at the limit (30 minutes from the start), and says the node
+        // runs; nothing that returned at or after the limit is read, so the job times out (S09-012) and nothing is dispatched
+        var plan = RunFixture.Plan(GatedPlan(Pattern));
+        var host = new FakeRunHost(auto: true, plan).Rule("node.plan", "if", new RuleOutcome(JsonValue.Create(true), null, null))
+            .RuleTakes(TimeSpan.FromMinutes(30));
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        Assert.Equal(RunState.TimedOut, result.State);
+        Assert.Equal("The job didn't finish within 30 minutes. Run the workflow again later.", result.Sentence);
+        V31Contract.AssertSentence(new SourceRefusal("S09-012", result.Sentence!, ""));
+        Assert.Empty(host.Calls);
+        Assert.Empty(recorder.Decisions);
+    }
+
+    [Fact]
     public async Task AGateTheHostCouldNotDecide_BlocksItsDeliverable_AndTheJobCompletes()
     {
         // D4, as for a gate decided inline: the gate's if failed at run time, so the gate settles failed with its sentence,

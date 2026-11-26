@@ -1,0 +1,39 @@
+{
+  "package": "edge-missing-marker",
+  "tag": null,
+  "scenario": "reply-leaves-macro-out",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "letter": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\nMetformin is continued at 1 g twice daily.\nYours sincerely, Dr A. Sample"
+  },
+  "prompts": [
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:0aac96ba6fd7efecc8fdfadb3b44df37ab568499032b57715944d18f383674ee",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; no follow-up booked. (Fictional.)\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:8f60320808bb8ca9ca62342616c50eb54f21f8a6a549025bf7e9c5e89e87f786",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; no follow-up booked. (Fictional.)\n"
+    },
+    {
+      "key": "letter",
+      "hash": "sha256:f1623e41d5dffd0e2130305adcd898f441de80abab4ff845407fa8f0aa02ac36",
+      "text": "Write a short clinic letter from this draft and these problem paragraphs.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; no follow-up booked. (Fictional.)\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nIf the draft books a follow-up visit, the follow-up line goes after the first paragraph; otherwise nothing.\n\nIf so, write {{ macro.follow_up.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "letter",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:262b920393647db1198f98d5b166eecec66ebac549e2643a6697f272c7fb65e7",
+      "text": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\nMetformin is continued at 1 g twice daily.\nYours sincerely, Dr A. Sample"
+    }
+  ]
+}

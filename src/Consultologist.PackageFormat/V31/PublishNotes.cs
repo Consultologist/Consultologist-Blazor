@@ -4,9 +4,11 @@ namespace Consultologist.PackageFormat.V31;
 /// #1502 (specVersion 31, area 05, D11): the engine's numbers that part 04 § 10.2's notes are measured against, which are
 /// not in the format (part 04 § 8): <paramref name="Ceiling"/>, the agent calls one job may have in flight;
 /// <paramref name="ItemsPerLoop"/>, the items one loop instance may be given; <paramref name="CallsPerJob"/>, the agent
-/// calls one job may make.
+/// calls one job may make. #1508 (area 11; R1, D16): <paramref name="Instances"/>, the instances one job may open
+/// (<c>RunLimits.JobInstances</c>), which publish refuses past (A11-001); <paramref name="JobMinutes"/>, the minutes one
+/// job may run, which the worst case's estimate is noted against (S09-016). Null is "not measured".
 /// </summary>
-public sealed record PublishLimits(int Ceiling, int ItemsPerLoop, int CallsPerJob);
+public sealed record PublishLimits(int Ceiling, int ItemsPerLoop, int CallsPerJob, int? Instances = null, int? JobMinutes = null);
 
 /// <summary>
 /// #1502 (specVersion 31, area 05): part 04 § 10.2's notes at publish (§ 8; D11): never refusals, written among
@@ -25,7 +27,12 @@ public sealed record PublishLimits(int Ceiling, int ItemsPerLoop, int CallsPerJo
 /// <item>S04-080: the agent calls of the worst case pass the calls limit: each agent counted once for every run of the
 /// bodies around it (a loop's items: its known length, the items limit, and its <c>max</c>, whichever is least; a
 /// while's <c>max</c> passes; the larger branch of an <c>if</c> or a <c>case</c>).</item>
+/// <item>#1508 (area 11; D16) S09-016: the worst case's minutes pass the job limit: the agent calls of S04-080's count,
+/// one minute for every round of <c>Ceiling</c> calls (the calls divided by the ceiling, rounded up). Area 10's
+/// A10-014 (<c>MigrationReport.WorstCaseNote</c>) is this estimate, in the same words.</item>
 /// </list>
+/// #1508 (area 11; R1, ruled by the owner on #1508) <see cref="Refusals"/>: A11-001, the publish half of the instances
+/// limit, counted over every instance the runner opens (part 09 § 3.4), not only agent calls.
 /// Never throws on package content: the call graph is walked with the functions on the path set aside, and the
 /// counts saturate.
 /// </summary>
@@ -33,7 +40,8 @@ public static class PublishNotes
 {
     /// <summary>
     /// The notes of <paramref name="package"/>, resolved as <paramref name="resolution"/> says, against
-    /// <paramref name="limits"/>: S04-072 or S04-073, then each S04-079 in source order, then S04-080. A package-wide
+    /// <paramref name="limits"/>: S04-072 or S04-073, then each S04-079 in source order, then S04-080, then S09-016 when
+    /// <see cref="PublishLimits.JobMinutes"/> is given. A package-wide
     /// note's path is <c>""</c>; S04-079's is the loop's <c>index.json</c>. A null argument is the caller's error.
     /// </summary>
     public static IReadOnlyList<SourceRefusal> Of(SourcePackage package, Resolution resolution, PublishLimits limits)
@@ -61,21 +69,93 @@ public static class PublishNotes
 
         if (total > limits.CallsPerJob)
             notes.Add(ResolveSentences.CallsPastLimit(total, limits.CallsPerJob));
+        if (Minutes(package, total, limits) is { } minutes)
+            notes.Add(minutes);
         return notes;
     }
 
     /// <summary>
-    /// #1507 (area 10, Task 15; part 10 § 3.2, D14): the agent calls of <paramref name="package"/>'s worst case, as S04-080
-    /// counts them against <paramref name="limits"/> (each agent once for every run of the bodies around it, saturating).
+    /// #1508 (area 11; R1, ruled by the owner on #1508): what publish refuses of <paramref name="package"/> against
+    /// <paramref name="limits"/>: A11-001 when the instances its worst case could open pass
+    /// <see cref="PublishLimits.Instances"/>; empty when that is null. The count is the runner's (part 09 § 3.4,
+    /// <c>PlanRunner</c>'s instances limit): every node, check and deliverable instance, each loop item, each pass and each
+    /// call's body. A body runs as often as S04-080 counts it: a loop's items its known length, the items limit and its
+    /// <c>max</c>, whichever is least (so a loop over a list known only at run time runs at most the items limit, and no
+    /// path is unbounded); a while's <c>max</c> passes, opening one more when it checks first (the pass that finds the bound);
+    /// the larger branch of an <c>if</c> or a <c>case</c>; a call its function's body. The sentence names the outermost
+    /// loop (or call) on the heaviest path, through the <c>if</c>s and <c>case</c>s around it, and its file. Saturating.
+    /// A null argument is the caller's error.
     /// </summary>
-    internal static long WorstCaseCalls(SourcePackage package, Resolution resolution, PublishLimits limits)
+    public static IReadOnlyList<SourceRefusal> Refusals(SourcePackage package, Resolution resolution, PublishLimits limits)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        ArgumentNullException.ThrowIfNull(resolution);
+        ArgumentNullException.ThrowIfNull(limits);
+        return PastInstances(package, resolution, limits) is { } past
+            ? [ResolveSentences.TooManySteps(past.Count, past.Through, past.Limit, past.Path)]
+            : [];
+    }
+
+    /// <summary>
+    /// #1508 (area 11, Task 33; R11): what <see cref="Refusals"/> says A11-001 of, as facts: the instances the worst case
+    /// could open, the key of the outermost loop (or call) on the heaviest path and its file (a loop's <c>index.json</c>),
+    /// and the limit passed; null when <see cref="PublishLimits.Instances"/> is null or the count is within it. The migration
+    /// says it as a hand edit before the bulk publish refuses it.
+    /// </summary>
+    internal static InstancesPast? PastInstances(SourcePackage package, Resolution resolution, PublishLimits limits)
+    {
+        if (limits.Instances is not { } most)
+            return null;
+
+        var walk = new Walk(resolution, limits);
+        var deliverables = Deliverables(package.Deliverables).ToList();
+        var top = package.Nodes.Nodes.Concat(package.Checks.Nodes).ToList();
+        var total = Add(walk.Instances(top), deliverables.Count);
+        if (total <= most)
+            return null;
+
+        if (walk.Heaviest(top) is not { } heaviest)
+        {
+            // No node at all: only the deliverables count (a limit set below their number).
+            var first = deliverables.FirstOrDefault();
+            return new InstancesPast(total, first?.Key ?? "", first?.Path ?? "", most);
+        }
+
+        var through = walk.Through(heaviest);
+        var path = through is SourceLeaf ? through.Path : SourceLayout.Join(through.Path, "index.json");
+        return new InstancesPast(total, through.Key, path, most);
+    }
+
+    /// <summary>A11-001's facts (<see cref="PastInstances"/>): the count, the loop it runs through and its file, the limit.</summary>
+    internal sealed record InstancesPast(long Count, string Through, string Path, int Limit);
+
+    /// <summary>
+    /// #1508 (area 11; D16) S09-016 of <paramref name="package"/> against <paramref name="limits"/>' job minutes, or null
+    /// when they are not given or the estimate is within them; area 10's A10-014 (part 10 § 3.2, D14) is this note's text.
+    /// A null argument is the caller's error.
+    /// </summary>
+    internal static SourceRefusal? MinutesNote(SourcePackage package, Resolution resolution, PublishLimits limits)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(resolution);
         ArgumentNullException.ThrowIfNull(limits);
         var walk = new Walk(resolution, limits);
-        return Add(walk.Total(package.Nodes.Nodes), walk.Total(package.Checks.Nodes));
+        return Minutes(package, Add(walk.Total(package.Nodes.Nodes), walk.Total(package.Checks.Nodes)), limits);
     }
+
+    /// <summary>S09-016 for a worst case of <paramref name="calls"/> agent calls: one minute a round of the ceiling's calls, rounded up.</summary>
+    private static SourceRefusal? Minutes(SourcePackage package, long calls, PublishLimits limits)
+    {
+        if (limits.JobMinutes is not { } limit)
+            return null;
+        var ceiling = Math.Max(limits.Ceiling, 1);
+        var minutes = calls / ceiling + (calls % ceiling == 0 ? 0 : 1);
+        return minutes > limit ? ResolveSentences.WorstCaseMinutes(package.Manifest.Name, minutes, limit) : null;
+    }
+
+    /// <summary>Every deliverable of <paramref name="folder"/> and the delivery folders under it.</summary>
+    private static IEnumerable<SourceDeliverable> Deliverables(SourceDeliveryFolder folder) =>
+        folder.Deliverables.Concat(folder.Folders.SelectMany(Deliverables));
 
     private static long Add(long a, long b) => a > long.MaxValue - b ? long.MaxValue : a + b;
 
@@ -93,6 +173,11 @@ public static class PublishNotes
         private readonly Dictionary<SourceFunction, Facts> facts = new(ReferenceEqualityComparer.Instance);
 
         private readonly HashSet<SourceFor> bounding = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>The instances one call of each function opens (its body), worked out once; and the functions being worked out.</summary>
+        private readonly Dictionary<SourceFunction, long> opened = new(ReferenceEqualityComparer.Instance);
+
+        private readonly HashSet<SourceFunction> opening = new(ReferenceEqualityComparer.Instance);
 
         private readonly Scan top = new();
 
@@ -159,6 +244,53 @@ public static class PublishNotes
             }
 
             return total;
+        }
+
+        /// <summary>The instances one run of <paramref name="nodes"/> could open, as the runner counts them (<see cref="Refusals"/>).</summary>
+        public long Instances(IEnumerable<SourceNode> nodes)
+        {
+            long total = 0;
+            foreach (var node in nodes)
+                total = Add(total, Instances(node));
+            return total;
+        }
+
+        /// <summary>The instances one instance of <paramref name="node"/> could open, itself included.</summary>
+        private long Instances(SourceNode node) => Add(1, node switch
+        {
+            SourceLeaf { Kind: "call" } call => Function(call) is { } function ? Opened(function) : 0,
+            SourceFor loop => Times(Bound(loop), Add(1, Instances(loop.Body.Nodes))),
+            SourceWhile loop => loop.Max < 1 ? 0 : Add(loop.Max + (loop.CheckFirst ? 1 : 0), Times(loop.Max, Instances(loop.Body.Nodes))),
+            SourceIf or SourceCase => ScopeTree.Blocks(node).Select(b => Instances(b.Nodes)).DefaultIfEmpty(0).Max(),
+            _ => 0,
+        });
+
+        /// <summary>The instances one call of <paramref name="function"/> opens in its body; 0 while it is on the path (a ring, refused before).</summary>
+        private long Opened(SourceFunction function)
+        {
+            if (opened.TryGetValue(function, out var known))
+                return known;
+            if (!opening.Add(function))
+                return 0;
+            var count = Instances(function.Body.Nodes);
+            opening.Remove(function);
+            return opened[function] = count;
+        }
+
+        /// <summary>The node of <paramref name="nodes"/> that opens the most, the first of equals; null when there is none.</summary>
+        public SourceNode? Heaviest(IEnumerable<SourceNode> nodes) => nodes.MaxBy(Instances);
+
+        /// <summary>
+        /// The outermost loop, while or call on <paramref name="node"/>'s heaviest path: <paramref name="node"/> itself unless
+        /// it is an <c>if</c> or a <c>case</c>, whose heaviest branch's heaviest node is followed (the <c>if</c> itself
+        /// when that branch is empty).
+        /// </summary>
+        public SourceNode Through(SourceNode node)
+        {
+            while (node is SourceIf or SourceCase
+                && ScopeTree.Blocks(node).MaxBy(b => Instances(b.Nodes)) is { } block && Heaviest(block.Nodes) is { } next)
+                node = next;
+            return node;
         }
 
         /// <summary><paramref name="function"/>'s facts, worked out the first time it is asked for; null while it is on the path.</summary>

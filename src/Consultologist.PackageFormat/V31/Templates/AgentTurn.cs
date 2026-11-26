@@ -7,7 +7,7 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// #1504 (specVersion 31, area 07; part 05 §§ 8.3 to 8.6; part 08 § 4; D8, D11): one attempt of an agent call as it is
 /// sent. <paramref name="Text"/> is what is sent, <c>null</c> when the prompt could not be prepared: then
 /// <paramref name="ErrorKind"/> says why (<c>"plan"</c>: the plan lacks the entry, it is no agent or has no binding,
-/// S07-006; <c>"steps"</c>: <see cref="Composition.TooManySteps"/>, S05-062; <c>"compose"</c>: <see cref="Composition.Failure"/>).
+/// S07-006; <c>"steps"</c>: <see cref="Composition.TooManySteps"/>, S05-062; <c>"compose"</c>: <see cref="Composition.Failure"/>; <c>"engine"</c>: the engine failed reading the body, A11-008).
 /// <paramref name="Composition"/> is the body's (its offered macros in prompt order), <paramref name="Detail"/> the row's
 /// detail in part 08 § 4's names, <paramref name="Format"/> the format the prompt ends with (a <c>via: "custom"</c>
 /// binding's, D8; <c>null</c> for a <c>via: "format"</c> agent, which carries its own), <paramref name="Ordered"/> the
@@ -70,7 +70,7 @@ public static class AgentTurn
         if (composition.TooManySteps)
             return Unprepared(composition, "steps");
         if (composition.Text is not { } body)
-            return Unprepared(composition, "compose");
+            return Unprepared(composition, composition.EngineFault != null ? "engine" : "compose");
 
         var (format, formats) = PlanScope(plan, entry.Format);
         var enveloped = EnvelopedFormat.Of(format, formats, strictRejects);
@@ -90,7 +90,8 @@ public static class AgentTurn
 
     /// <summary>
     /// <paramref name="reply"/> to the attempt <paramref name="prepared"/> sent, finished: unwrapped from its envelope (D8;
-    /// a reply that is not the envelope is given as it is, and its format then refuses it); for a text format, checked and
+    /// a reply that is not the envelope is given as it is, and its format then refuses it; for a text format, which reads any
+    /// string, it is <see cref="AgentOutcome.NotOfFormat"/>, as is an envelope holding no string); for a text format, checked and
     /// replaced by <see cref="MacroReply.Process"/>. <see cref="AgentOutcomeKind.Completed"/> with the substituted text and
     /// the detail (each macro placed said), or, when the markers are wrong, with the reply as it came and
     /// <see cref="AgentOutcome.Invalid"/> set. A prompt that was not prepared is <see cref="AgentOutcomeKind.Failed"/> with
@@ -103,9 +104,14 @@ public static class AgentTurn
         if (prepared.Text == null)
             return new AgentOutcome(AgentOutcomeKind.Failed, null, 0, prepared.ErrorKind ?? "plan");
 
-        var value = prepared.Format?.Unwrap(reply) ?? reply;
+        var unwrapped = prepared.Format?.Unwrap(reply, prepared.TextReply);
         var detail = prepared.Detail.DeepClone().AsObject();
         var produced = prepared.Produced?.DeepClone().AsObject();
+        // #1508 (2026-11-25, item 13): a text format reads any string as itself, so a wrapped text whose reply is not the
+        // envelope holding a string is no text: the reply as it came, not of its format
+        if (prepared.TextReply && prepared.Format is { Wrapped: true } && unwrapped is null)
+            return new AgentOutcome(AgentOutcomeKind.Completed, reply, 0, null, detail, Produced: produced, NotOfFormat: true);
+        var value = unwrapped ?? reply;
         if (!prepared.TextReply)
             return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail, Produced: produced);
 
@@ -168,26 +174,33 @@ public static class AgentTurn
 
     /// <summary>
     /// <paramref name="format"/> and a scope its names resolve in, from the plan's bundle: each <c>#/$defs/&lt;key&gt;</c>
-    /// that is not a definition of its own schema becomes the name <c>&lt;key&gt;</c>, found as the bundle's entry (as
-    /// <see cref="PlanFormats.Expand"/> reads it), so the sent copy is built as publish builds it (a text format's
-    /// description first, then its site's).
+    /// that is not a definition of its own schema, and each <c>$id</c> of an entry (#1508, R2: how an entry refers to
+    /// another), becomes the name <c>&lt;key&gt;</c>, found as the bundle's entry (as <see cref="PlanFormats.Expand"/>
+    /// reads it), so the sent copy is built as publish builds it (a text format's description first, then its site's).
     /// </summary>
     private static (JsonNode? Format, FormatSet Formats) PlanScope(RunPlan plan, JsonNode? format)
     {
         var bundle = (plan.Document["formats"] as JsonObject)?["$defs"] as JsonObject ?? [];
+        var keys = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, schema) in bundle)
+        {
+            if (schema is JsonObject entry && SourceLayout.Text(entry["$id"]) is { } id)
+                keys.TryAdd(id, key);
+        }
+
         var named = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
         foreach (var (key, schema) in bundle)
         {
-            if (schema is JsonObject entry && Rebased(entry, bundle, entry["$defs"] as JsonObject, 0) is JsonObject rebased)
+            if (schema is JsonObject entry && Rebased(entry, bundle, keys, entry["$defs"] as JsonObject, 0) is JsonObject rebased)
                 named[key] = rebased;
         }
 
         var registry = new TypeRegistry(named, new Dictionary<string, JsonObject>(), [], [], new Dictionary<string, BuiltInRenderer>());
-        return (Rebased(format, bundle, null, 0), FormatSet.ForPackage(registry, []));
+        return (Rebased(format, bundle, keys, null, 0), FormatSet.ForPackage(registry, []));
     }
 
     /// <summary>A copy of <paramref name="node"/> with each reference to a bundle entry written as that entry's key (<see cref="PlanScope"/>), to the depth the plan's formats are expanded to.</summary>
-    private static JsonNode? Rebased(JsonNode? node, JsonObject bundle, JsonObject? own, int depth)
+    private static JsonNode? Rebased(JsonNode? node, JsonObject bundle, Dictionary<string, string> keys, JsonObject? own, int depth)
     {
         if (depth > PlanFormats.MaxDepth)
             return node?.DeepClone();
@@ -197,23 +210,30 @@ public static class AgentTurn
                 var copy = new JsonObject();
                 foreach (var (key, value) in obj)
                 {
-                    if (key == "$ref" && SourceLayout.Text(value) is { } reference && reference.StartsWith("#/$defs/", StringComparison.Ordinal)
-                        && reference["#/$defs/".Length..] is var name && own?.ContainsKey(name) != true && bundle.ContainsKey(name))
-                    {
+                    if (key == "$ref" && SourceLayout.Text(value) is { } reference && Key(reference, bundle, keys, own) is { } name)
                         copy[key] = name;
-                    }
                     else
-                    {
-                        copy[key] = Rebased(value, bundle, own, depth + 1);
-                    }
+                        copy[key] = Rebased(value, bundle, keys, own, depth + 1);
                 }
 
                 return copy;
             case JsonArray list:
-                return new JsonArray([.. list.Select(item => Rebased(item, bundle, own, depth + 1))]);
+                return new JsonArray([.. list.Select(item => Rebased(item, bundle, keys, own, depth + 1))]);
             default:
                 return node?.DeepClone();
         }
+    }
+
+    /// <summary>The bundle key <paramref name="reference"/> names: an entry's <c>$id</c>, or <c>#/$defs/&lt;key&gt;</c> that is not one of <paramref name="own"/>'s definitions; else null.</summary>
+    private static string? Key(string reference, JsonObject bundle, Dictionary<string, string> keys, JsonObject? own)
+    {
+        if (keys.TryGetValue(reference, out var key))
+            return key;
+        const string defs = "#/$defs/";
+        return reference.StartsWith(defs, StringComparison.Ordinal) && reference[defs.Length..] is var name
+            && own?.ContainsKey(name) != true && bundle.ContainsKey(name)
+                ? name
+                : null;
     }
 
     // ---- the detail -----------------------------------------------------------------------------

@@ -46,7 +46,8 @@ internal sealed record MacroPlacement(string Macro, string? Owner, string File, 
 /// <c>itemLabel</c> field, <c>macro.x.prompt</c> to the placement <c>macro.x</c>, <c>macro.x.content</c> of a macro
 /// that becomes a snippet to <c>snippet.x.content</c> (D4), a pipe to a 30 renderer to the
 /// <c>renderer.</c> pipe of the node's <c>.value</c>, a <c>for</c> over a loop node to its <c>.items</c> with
-/// <c>.skipped</c> its <c>state</c>), and the tag scanner (<see cref="TemplateTags"/>) gives the whitespace marks, a
+/// <c>.skipped</c> its <c>state</c>, or, #1508 (R16), to its <c>.value</c> when the body reads only each item's text, else
+/// its body guarded on the item's state; R17: an output read through an object that can be null inside its guard), and the tag scanner (<see cref="TemplateTags"/>) gives the whitespace marks, a
 /// <c>-</c> becoming a <c>~</c> and a placement keeping only the forms § 2.6 allows. A body <c>if</c> that tests a value is
 /// lifted, in a prompt, into parts (<c>when_&lt;n&gt;</c>, with its negation for an <c>else</c>), or hoisted off the one
 /// macro it places onto that placement (<see cref="RewrittenBody.Macros"/>); a <c>for</c> over a macro folder is unrolled. Every edit is
@@ -131,8 +132,12 @@ internal static class TemplateRewriter
         }
     }
 
-    /// <summary>A <c>for</c> variable in scope: the 30 loop node it iterates the elements of (part 04 § 2.6's <c>.items</c>), or none.</summary>
-    private sealed record Variable(string? Loop);
+    /// <summary>
+    /// A <c>for</c> variable in scope: the 30 loop node it iterates the elements of (part 04 § 2.6's <c>.items</c>), or none;
+    /// with <paramref name="Values"/> (#1508, R16) the loop reads the node's <c>.value</c>, each item its value, so 30's
+    /// <c>&lt;variable&gt;.content</c> is the variable itself.
+    /// </summary>
+    private sealed record Variable(string? Loop, bool Values = false);
 
     /// <summary>A member chain as written: its root variable, and each step's name (<c>null</c> for a computed index) and token.</summary>
     private sealed record Chain(ScriptVariable Root, IReadOnlyList<(string? Name, ScriptNode? Token)> Steps, IReadOnlyList<ScriptExpression> Indexes)
@@ -172,6 +177,9 @@ internal static class TemplateRewriter
 
         // The condition hoisted onto the placement being rewritten, while a hoisted branch is walked.
         private PlacementRule? hoisting;
+
+        // #1508 (R17): while a lifted part's text is walked, the paths its own if asserts (a part's text holds no if, A07-002).
+        private IReadOnlyList<string>? partAsserts;
 
         public Run(string text, TemplateSite30 site, Migrated m)
         {
@@ -313,6 +321,113 @@ internal static class TemplateRewriter
                 sink.Say(Start(head), line => MigrationSentences.NotInDialect("a placement inside an if or a for", line));
             if (written.WholePath is { } path)
                 sink.Say(Start(head), line => MigrationSentences.WritesWhole(path, line, written.WholeList));
+            Guard(output, vars, sink);
+        }
+
+        /// <summary>
+        /// #1508 (ruled by the owner, Q5 of 2026-11-26; R17): an output that reads a member through an object that can be null
+        /// (<see cref="Through"/>) renders empty at 30 when the object is unset and fails the render at 31 (A11-009 refuses it
+        /// at publish). Its tag is wrapped in the guard A11-009 accepts, <c>{{ if &lt;object&gt; }}…{{ end }}</c> (each object
+        /// it steps through, joined by <c>&amp;&amp;</c>), the tag's outer marks moved onto the guard so the white space they
+        /// take is the same. In a lifted part's text, which holds no <c>if</c> (A07-002), a path the part's own <c>if</c> does
+        /// not assert is a hand edit (A10-080), as is a read where no tag is found.
+        /// </summary>
+        private void Guard(ScriptExpressionStatement output, ImmutableDictionary<string, Variable> vars, Sink sink)
+        {
+            var reads = Chains(output.Expression, vars).ToList();
+            var guards = reads.SelectMany(r => r.Through).Distinct(StringComparer.Ordinal).ToList();
+            if (guards.Count == 0)
+                return;
+            if (partAsserts is { } asserted)
+            {
+                foreach (var (read, through, offset) in reads.SelectMany(r => r.Through.Where(t => !asserted.Contains(t, StringComparer.Ordinal)).Take(1).Select(t => (r.Path, t, r.Offset))))
+                    sink.Say(offset, line => MigrationSentences.NoGuardHere(read, through, line));
+                return;
+            }
+
+            if (TagAt(Start(output)) is not { } tag)
+            {
+                foreach (var read in reads.Where(r => r.Through.Count > 0))
+                    sink.Say(read.Offset, line => MigrationSentences.NoGuardHere(read.Path, read.Through[0], line));
+                return;
+            }
+
+            var left = tag.DashLeft || tag.TildeLeft ? "~" : string.Empty;
+            var right = tag.DashRight || tag.TildeRight ? "~" : string.Empty;
+            sink.Add(tag.Start, tag.Start, "{{" + left + " if " + string.Join(" && ", guards) + " }}");
+            sink.Add(tag.End, tag.End, "{{ end " + right + "}}");
+        }
+
+        /// <summary>A read of a member through objects that can be null: its 31 path, those objects outermost first, and where it is.</summary>
+        private sealed record GuardedRead(string Path, IReadOnlyList<string> Through, int Offset);
+
+        /// <summary>Every member chain <paramref name="node"/> reads (an output's head, a pipe's arguments), each with what it steps through that can be null.</summary>
+        private IEnumerable<GuardedRead> Chains(ScriptNode? node, ImmutableDictionary<string, Variable> vars)
+        {
+            if (node is null)
+                yield break;
+            if (node is ScriptExpression expression && node is ScriptMemberExpression or ScriptVariable or ScriptIndexerExpression
+                && Flatten(expression) is { } chain)
+            {
+                if (Through(chain, vars) is { } read)
+                    yield return read with { Offset = Start(expression) };
+                foreach (var index in chain.Indexes)
+                {
+                    foreach (var inner in Chains(index, vars))
+                        yield return inner;
+                }
+
+                yield break;
+            }
+
+            foreach (var child in node.Children)
+            {
+                foreach (var inner in Chains(child, vars))
+                    yield return inner;
+            }
+        }
+
+        /// <summary>
+        /// R17: the objects a 30 read steps through, at 31, that can be null (<see cref="FormatReads.NullableSteps"/>):
+        /// <c>input.&lt;id&gt;.value</c> of an input not required, a field of an object that can be null, a node's
+        /// <c>.value</c> when it may not run; null when it steps through none (a bare read, a classifier's answer, a loop's
+        /// item, a check's result).
+        /// </summary>
+        private GuardedRead? Through(Chain chain, ImmutableDictionary<string, Variable> vars)
+        {
+            if (vars.ContainsKey(chain.Name) || chain.Steps.Count < 2 || chain.Steps[0].Name is not { } id)
+                return null;
+            var names = chain.Names.TakeWhile(n => n is not null).Select(n => n!).ToList();
+            string head;
+            List<string> steps;
+            JsonNode? format;
+            bool nullable;
+            switch (chain.Name)
+            {
+                case "input" when (m.Manifest["inputs"]?[id]) is JsonObject input:
+                    head = "input." + id;
+                    steps = ["value", .. names.Skip(1)];
+                    format = input["format"];
+                    nullable = !(input["required"] is JsonValue required && required.TryGetValue<bool>(out var isRequired) && isRequired);
+                    break;
+                case "node" when m.NodeReads.TryGetValue(id, out var read) && !read.Path.StartsWith("check.", StringComparison.Ordinal)
+                    && !(nodes30.TryGetValue(id, out var node30) && node30.Format == "classification") && names is [_, "value", _, ..]:
+                    head = "node." + id;
+                    steps = [.. names.Skip(1)];
+                    format = read.Format;
+                    nullable = !read.AlwaysValued;
+                    break;
+                default:
+                    return null;
+            }
+
+            var at = FormatReads.NullableSteps(format, steps, Formats, nullable);
+            if (at.Count == 0)
+                return null;
+            return new GuardedRead(
+                head + "." + string.Join('.', steps),
+                at.Select(i => head + "." + string.Join('.', steps.Take(i + 1))).ToList(),
+                0);
         }
 
         // ----- if ------------------------------------------------------------------------------------------------
@@ -492,7 +607,17 @@ internal static class TemplateRewriter
             var (from, to) = Inner(open, close);
             // A part's text is a template of its own, placed at the top level: its outputs stand at depth 0.
             var inner = new Sink(from, to);
-            Block(body, vars, inner, 0);
+            var outer = partAsserts;
+            partAsserts = NullableGuards.Asserted(logic);
+            try
+            {
+                Block(body, vars, inner, 0);
+            }
+            finally
+            {
+                partAsserts = outer;
+            }
+
             var lines = Finish(inner, $"parts.{id}.text").Split('\n');
             Parts[id] = new JsonObject { ["if"] = logic, ["text"] = new JsonArray([.. lines.Select(l => (JsonNode?)JsonValue.Create(l))]) };
             return "{{ part." + id + " }}";
@@ -609,25 +734,109 @@ internal static class TemplateRewriter
             }
 
             string? loop = null;
+            var values = false;
+            var guardState = false;
+            var name = node.Variable is ScriptVariable variable ? variable.Name : null;
             if (chain is not null && !vars.ContainsKey(chain.Name) && chain.Name == "node" && chain.Names is [{ } id]
                 && nodes30.TryGetValue(id, out var node30) && node30.For is not null && chain.Steps[0].Token is { } token)
             {
-                // Part 04 § 2.6: a 30 for over a loop node iterated its items; at 31 that is its .items.
-                sink.Add(End(token), End(token), ".items");
+                // Part 04 § 2.6: a 30 for over a loop node iterated its items; at 31 that is its .items. #1508 (ruled by the
+                // owner, Q4 of 2026-11-26; R16): 30's list held only the items that ran, where .items holds those its until or
+                // max left not_run too. A body that reads only each item's text loops over .value, the completed items'
+                // values (part 04 § 2.5); one that reads more keeps .items, its body guarded on the item's state unless it
+                // already tests it (30's skipped).
+                var reads = name is null ? null : ItemReads(node, name);
+                var testsState = reads is null || reads.Any(r => r is ["skipped"]);
+                values = !testsState && node.Else is null && reads!.All(r => r is ["content"]) && (reads!.Count == 0 || ItemIsText(id));
+                guardState = !testsState && !values;
+                sink.Add(End(token), End(token), values ? ".value" : ".items");
                 loop = id;
             }
             else
             {
                 Expr(source, vars, sink, false);
+                if (chain is not null && Through(chain, vars) is { } through)
+                    GuardFor(node, through, sink);
             }
 
             foreach (var option in node.NamedArguments ?? [])
                 Expr(option.Value, vars, sink, false);
 
-            var inner = node.Variable is ScriptVariable named ? vars.SetItem(named.Name, new Variable(loop)) : vars;
+            if (guardState && TagAt(Start(node)) is { } forTag && TagAt(End(node)) is { } endTag && forTag.Start != endTag.Start && node.Else is null)
+            {
+                var (from, to) = Inner(forTag, endTag);
+                sink.Add(from, from, "{{ if " + name + ".state == \"completed\" }}");
+                sink.Add(to, to, "{{ else }}{{ end }}");
+            }
+
+            var inner = name is not null ? vars.SetItem(name, new Variable(loop, values)) : vars;
             Block(node.Body, inner, sink, depth + 1);
             Block(node.Else?.Body, inner, sink, depth + 1);
         }
+
+        /// <summary>
+        /// R17: a <c>for</c> over a list read through an object that can be null is wrapped, from its tag to its end, in the
+        /// guard A11-009 accepts (<see cref="Guard"/>); in a part's text a path its <c>if</c> does not assert is a hand edit.
+        /// </summary>
+        private void GuardFor(ScriptForStatement node, GuardedRead read, Sink sink)
+        {
+            var unasserted = partAsserts is { } asserted ? read.Through.Where(t => !asserted.Contains(t, StringComparer.Ordinal)).ToList() : null;
+            if (unasserted is { Count: 0 })
+                return;
+            if (unasserted is not null || TagAt(Start(node)) is not { } forTag || TagAt(End(node)) is not { } endTag || forTag.Start == endTag.Start)
+            {
+                var through = unasserted is { Count: > 0 } ? unasserted[0] : read.Through[0];
+                sink.Say(Start(node), line => MigrationSentences.NoGuardHere(read.Path, through, line));
+                return;
+            }
+
+            var left = forTag.DashLeft || forTag.TildeLeft ? "~" : string.Empty;
+            var right = endTag.DashRight || endTag.TildeRight ? "~" : string.Empty;
+            sink.Add(forTag.Start, forTag.Start, "{{" + left + " if " + string.Join(" && ", read.Through) + " }}");
+            sink.Add(endTag.End, endTag.End, "{{ end " + right + "}}");
+        }
+
+        /// <summary>
+        /// R16: what the body of <paramref name="loop"/> (and its <c>else</c>) reads of its variable <paramref name="name"/>,
+        /// each read as its member names (<c>["content"]</c>, <c>["skipped"]</c>, <c>["item", "value"]</c>, <c>[]</c> for the
+        /// variable read bare), an inner loop that binds the name again read only for its source.
+        /// </summary>
+        private static List<IReadOnlyList<string?>> ItemReads(ScriptForStatement loop, string name)
+        {
+            var found = new List<IReadOnlyList<string?>>();
+            void Walk(ScriptNode? node, int depth)
+            {
+                if (node is null || depth > SourceBounds.JsonDepth)
+                    return;
+                if (node is ScriptExpression expression && node is ScriptMemberExpression or ScriptVariable or ScriptIndexerExpression
+                    && Flatten(expression) is { } chain)
+                {
+                    if (chain.Name == name)
+                        found.Add(chain.Names);
+                    foreach (var index in chain.Indexes)
+                        Walk(index, depth + 1);
+                    return;
+                }
+
+                if (node is ScriptForStatement inner && inner.Variable is ScriptVariable { Name: var bound } && bound == name)
+                {
+                    Walk(inner.Iterator, depth + 1);
+                    return;
+                }
+
+                foreach (var child in node.Children)
+                    Walk(child, depth + 1);
+            }
+
+            Walk(loop.Body, 0);
+            Walk(loop.Else, 0);
+            return found;
+        }
+
+        /// <summary>R16: whether the items of the 30 loop node <paramref name="loop"/> are text at 31 (its <c>ret</c>'s format is a text format).</summary>
+        private bool ItemIsText(string loop) =>
+            m.NodeReads.TryGetValue(loop, out var read) && ExpressionChecker.ItemsOf(read.Format, Formats) is { } item
+            && FormatTypes.TextKind(item, Formats) is not null;
 
         /// <summary>
         /// R6: a <c>for</c> over a macro folder is written out once per folder macro in the folder's order, its variable's
@@ -679,8 +888,8 @@ internal static class TemplateRewriter
                         case "content":
                             // D4: a folder macro never becomes a snippet, so its fixed-text read has no 31 form: written
                             // macro.<folder>.<id>_fixed_text, an item the folder lacks, which 31 refuses (S05-011), with a
-                            // hand edit. (A member after a folder item, macro.<folder>.<id>.fixed_text, is not checked by
-                            // 31's reads, so it would pass.)
+                            // hand edit. (#1508, ruling 12: a member after a folder item, macro.<folder>.<id>.fixed_text, is
+                            // refused too now; the written form stays, so the migrated bytes do not move.)
                             var unread = $"{id}_{FixedText}";
                             while (items.Any(i => i.Id == unread))
                                 unread += "_" + FixedText;
@@ -828,6 +1037,13 @@ internal static class TemplateRewriter
             var steps = chain.Steps;
             if (vars.TryGetValue(chain.Name, out var variable))
             {
+                if (variable.Values && steps is [("content", { } content)])
+                {
+                    // R16: over .value the variable is the item's value, which is its text.
+                    sink.Add(End(chain.Root), End(content), string.Empty);
+                    return Nothing;
+                }
+
                 if (Skipped(chain, vars))
                     sink.Add(Start(whole), End(whole), Wrapped($"{chain.Name}.state == \"skipped\"", wrap));
                 else if (variable.Loop is { } loop && steps.Count > 0 && steps[0] is ({ } member, { } token) && BodyOf(loop).Contains(member))
@@ -918,8 +1134,8 @@ internal static class TemplateRewriter
                         return new Written("snippet", null, null, false);
                     }
 
-                    // D3: no 31 form, so it is written macro.<id>.fixed_text, which 31 refuses (S05-011) until the edit is made;
-                    // left as macro.<id>.content it would pass as a read.
+                    // D3: no 31 form, so it is written macro.<id>.fixed_text, which 31 refuses (S05-011) until the edit is made
+                    // (#1508, ruling 12: macro.<id>.content is refused too now; the written form stays, so the bytes do not move).
                     sink.Add(End(steps[^2].Token!), End(steps[^1].Token!), "." + FixedText);
                     var both = m.Walk30.Templates.Any(t => t.References.MacroPrompts.Contains(fixedText));
                     sink.Say(Start(whole), line => both ? MigrationSentences.ReadBothWays(fixedText) : MigrationSentences.ReadAsFixedText(fixedText, line));

@@ -1,14 +1,12 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.PackageFormat.V31.Run;
 
 public sealed partial class PlanRunner
 {
-    /// <summary>The longest item name (part 04 § 2.7): a longer one is cut to this many characters, ending "…".</summary>
-    private const int NameLength = 120;
-
     /// <summary>
     /// One item of a loop instance: its position in the list (0-based) and id (§ 2.2), its source element once known (a
     /// list's element, a folder item's header data and body, a production item's <c>.items</c> element), its name (§ 2.7),
@@ -307,29 +305,23 @@ public sealed partial class PlanRunner
         }
 
         /// <summary>
-        /// Names <paramref name="item"/> (§ 2.7): its element's <c>itemLabel</c> field, trimmed and cut to
-        /// <see cref="NameLength"/> characters ending "…"; with <c>itemLabel</c> null, or a field empty after trimming (or
-        /// not text), its position name.
+        /// Names <paramref name="item"/> (§ 2.7): its element's <c>itemLabel</c> field as 30 names an item from a field
+        /// (<see cref="WorkflowItemNames.FromField"/>: trimmed, and when longer than
+        /// <see cref="WorkflowItemNames.MaxLength"/> characters cut, trimmed again and ended "…", a surrogate pair never
+        /// split; #1508, 2026-11-25, item 4); with <c>itemLabel</c> null, or a field empty after trimming (or not text),
+        /// its position name.
         /// </summary>
         private static void Name(LoopState loop, LoopItem item, JsonNode? element)
         {
             var drawn = loop.ItemLabel is { } field && element is JsonObject row
                 && row[field] is JsonValue text && text.GetValueKind() == JsonValueKind.String
-                ? text.GetValue<string>().Trim()
+                ? WorkflowItemNames.FromField(text.GetValue<string>())
                 : null;
             if (string.IsNullOrEmpty(drawn))
             {
                 item.Name = PositionName(loop, item.Position);
                 item.PositionName = true;
                 return;
-            }
-
-            if (drawn.Length > NameLength)
-            {
-                var cut = drawn[..(NameLength - 1)];
-                if (char.IsHighSurrogate(cut[^1]))
-                    cut = cut[..^1];
-                drawn = cut + "…";
             }
 
             item.Name = drawn;
@@ -545,7 +537,9 @@ public sealed partial class PlanRunner
                 // #1506 (area 09; part 08 § 6): a check loop's item row is a check row: aligned with its production item, its
                 // check_result's members, and the loop's effect; what it checked and read are on the check rows inside it
                 detail["alignedWith"] = AlignedWith(instance, item);
-                text = WithLists(text, RecordRows.CheckResult(settled["value"], detail));
+                // the item's value is its ret's, so its failWith is the literal in the ret's expression
+                var producer = instance.Entry.Ret is { } retKey ? item.Frame?.Instances.FirstOrDefault(i => i.Entry.Key == retKey)?.Entry : null;
+                text = WithLists(text, RecordRows.CheckResult(settled["value"], detail, producer ?? instance.Entry));
                 detail["effect"] = ReadBy(instance.Entry, instance.Frame.Map);
             }
 
@@ -610,12 +604,21 @@ public sealed partial class PlanRunner
         /// Settles the loop (§§ 2.4, 2.5): <c>.value</c> its completed items' values, <c>.items</c> every item's element,
         /// <c>.content</c> D11's rendering (<c>## &lt;item name&gt;</c>, a blank line, the item's text; completed items only,
         /// joined by a blank line), and <c>.stopped</c>: <c>until</c>, <c>bound</c> (items beyond <c>max</c>) or <c>end</c>.
+        /// #1508 (2026-11-25, item 8, D23): <c>.content</c> is <c>markdown_block</c>, so an item whose text is not Markdown
+        /// (<see cref="WritesMarkdown"/>: plain text, a nullable text, an object's or a list's canonical JSON) has its name
+        /// and text escaped where they are joined (<see cref="MarkdownEscape"/>, as a direct read of plain text in Markdown
+        /// is); <c>.items</c> keeps each text as it is.
         /// </summary>
         private Task SettleLoopAsync(RunInstance instance, LoopState loop)
         {
             loop.Stopped = loop.StopAt != null ? "until" : loop.Max is { } max && loop.Items.Count > max ? "bound" : "end";
             var completed = loop.Items.Where(i => i.State == RowState.Completed).ToList();
-            var content = string.Join("\n\n", completed.Select(i => $"## {i.Name}\n\n{SourceLayout.Text(i.Element!["content"]) ?? ""}"));
+            var content = string.Join("\n\n", completed.Select(i =>
+            {
+                var markdown = i.Frame?.Instances.FirstOrDefault(r => r.Entry.Key == instance.Entry.Ret) is { } ret && WritesMarkdown(ret);
+                string Written(string text, bool startsLine) => markdown ? text : MarkdownEscape.Escape(text, startsLine);
+                return $"## {Written(i.Name, startsLine: false)}\n\n{Written(SourceLayout.Text(i.Element!["content"]) ?? "", startsLine: true)}";
+            }));
             var read = new JsonObject
             {
                 ["value"] = new JsonArray(completed.Select(i => i.Element!["value"]?.DeepClone()).ToArray()),
@@ -625,6 +628,35 @@ public sealed partial class PlanRunner
                 ["stopped"] = loop.Stopped,
             };
             return SettleAsync(instance, RowState.Completed, null, read, CanonicalJson.HashText(content));
+        }
+
+        /// <summary>
+        /// #1508 (D23): whether the <c>.content</c> <paramref name="instance"/> settled with is Markdown, as the type checker
+        /// types it (<c>ScopeTree.RenderedContent</c>, D10's <c>ContentOf</c>), followed through what actually ran: a
+        /// <c>for</c>'s standard rendering is; a <c>while</c>'s is its last pass's <c>ret</c>'s, an <c>if</c>'s or a
+        /// <c>case</c>'s its taken branch's <c>ret</c>'s; any other node's is when its format is <c>markdown_block</c> or
+        /// <c>markdown_inline</c>. Plain text, a nullable text (<c>anyOf</c> with <c>null</c>, written as JSON) and an
+        /// object's or a list's canonical JSON are not.
+        /// </summary>
+        private bool WritesMarkdown(RunInstance instance)
+        {
+            for (var at = instance; ;)
+            {
+                switch (at.Entry.Kind)
+                {
+                    case PlanKind.For:
+                        return true;
+                    case PlanKind.While when whiles.TryGetValue(at, out var passes) && passes.Last is { } last:
+                        at = last;
+                        continue;
+                    case PlanKind.If or PlanKind.Case when taken.TryGetValue(at, out var open)
+                        && open.Frame.Instances.FirstOrDefault(i => i.Entry.Key == open.Branch.Ret) is { } ret:
+                        at = ret;
+                        continue;
+                    default:
+                        return plan.Formats.TextFormat(at.Entry.Format) is "markdown_block" or "markdown_inline";
+                }
+            }
         }
 
         /// <summary>

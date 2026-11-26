@@ -134,6 +134,40 @@ public class RecordSealerTests
     }
 
     [Fact]
+    public async Task TheSeal_WritesTheRecordsSizeOnTheJobIndexRow_OnceAndKeepsIt()
+    {
+        // #1508 (area 11, Task 21): the weekly summary reads the largest record from the index row, with no blob read per job
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var entity = new ConsultGenerationJobEntity(
+            index, Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
+        var jobs = new EntityRecordJobs(entity);
+        await entity.RecordStartFailure(new ConsultGenerationJobStartFailure(Initialize(31), "The package could not be loaded."));
+        index.ClearReceivedCalls();
+
+        await jobs.StampAsync(V31Job.JobId, "sha256:aaaa", 1234, CancellationToken.None, rows: 9);
+        var written = Assert.Single(index.ReceivedCalls(), c => c.GetMethodInfo().Name == nameof(IConsultGenerationJobIndexStore.UpsertAsync));
+        var entry = (ConsultGenerationJobIndexEntry)written.GetArguments()[0]!;
+        Assert.Equal((1234L, 9), (entry.RecordBytes, entry.RecordRows));
+
+        // write-once: a second seal changes nothing and writes nothing; a later index write keeps the size
+        index.ClearReceivedCalls();
+        await jobs.StampAsync(V31Job.JobId, "sha256:bbbb", 99, CancellationToken.None, rows: 1);
+        Assert.Empty(index.ReceivedCalls());
+        var state = (await jobs.ReadAsync(V31Job.JobId, CancellationToken.None))!;
+        Assert.Equal((1234L, 9), (state.ToIndexEntry().RecordBytes, state.ToIndexEntry().RecordRows));
+
+        // a 5–30 job's row holds no size, and the column is not stored for it
+        var thirty = new ConsultGenerationJobIndexEntry("j", "u", "Completed", Now0, null, Now0, 1, 1, 0);
+        Assert.Null(thirty.RecordBytes);
+        Assert.Null(TableConsultGenerationJobIndexStore.ToEntity(thirty) as ConsultGenerationJobRecordIndexEntity);
+        var sized = TableConsultGenerationJobIndexStore.ToEntity(thirty with { RecordStorage = 12, RecordBytes = 5, RecordRows = 2 });
+        var roundTrip = TableConsultGenerationJobIndexStore.ToEntry((ConsultGenerationJobRecordIndexEntity)sized);
+        Assert.Equal((5L, 2), (roundTrip.RecordBytes, roundTrip.RecordRows));
+    }
+
+    private static readonly DateTimeOffset Now0 = new(2026, 11, 23, 8, 0, 0, TimeSpan.Zero);
+
+    [Fact]
     public async Task AFailedJob_IsSealed_WithItsEndState()
     {
         var job = V31Job.Of("nested-note");
@@ -677,6 +711,6 @@ public class RecordSealerTests
 
         public Task<string?> AccountKindAsync(ConsultGenerationJobState job, CancellationToken ct) => inner.AccountKindAsync(job, ct);
 
-        public Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct) => inner.StampAsync(jobId, recordHash, bytes, ct);
+        public Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct, int? rows = null) => inner.StampAsync(jobId, recordHash, bytes, ct, rows);
     }
 }

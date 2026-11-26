@@ -115,10 +115,20 @@ public sealed class PublicRegistryReader
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
         var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
+        // #1508: a set, for the stamp of each 31 version (AccountPackageListing.IsUnstamped31)
+        var listed = new HashSet<string>(packageNames, StringComparer.Ordinal);
+
         foreach (var manifestPath in packageNames.Where(n => WorkflowPackageRef.TryParseManifestPath(n, out _, out _)))
         {
             var listing = await GetListingAsync(WorkflowPackageBlobContainerFactory.ContainerName, manifestPath, cancellationToken);
             var key = manifestPath[..^"/manifest.json".Length];
+
+            // #1508: an unstamped 31 version is not one yet (Assemble drops it); its manifest is not kept, so it is read
+            // again until the stamp is listed.
+            if (AccountPackageListing.IsUnstamped31(key, listing.SpecVersion, listed))
+            {
+                _listingCache.TryRemove($"{WorkflowPackageBlobContainerFactory.ContainerName}/{manifestPath}", out _);
+            }
 
             if (listing.SpecVersion is int spec)
             {
@@ -186,9 +196,15 @@ public sealed class PublicRegistryReader
     {
         // Packages: {name}/{version}/manifest.json + {name}/latest.json — the
         // name read from the right (#448), so a nested one groups as itself.
+        // #1508: a 31 version whose stamp is not listed is no version yet.
+        var listedPackages = packageBlobs as IReadOnlySet<string> ?? new HashSet<string>(packageBlobs, StringComparer.Ordinal);
         var packages = packageBlobs
             .Select(n => WorkflowPackageRef.TryParseManifestPath(n, out var name, out var version) ? (Name: name, Version: version) : default)
             .Where(parsed => parsed.Name != null)
+            .Where(parsed => !AccountPackageListing.IsUnstamped31(
+                $"{parsed.Name}/{parsed.Version}",
+                specVersions != null && specVersions.TryGetValue($"{parsed.Name}/{parsed.Version}", out var spec) ? spec : null,
+                listedPackages))
             .GroupBy(parsed => parsed.Name, StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .Select(g => new PublicPackageSummary(

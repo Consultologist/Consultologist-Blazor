@@ -418,6 +418,32 @@ public class WorkflowV10ValueTests
     }
 
     [Fact]
+    public void ThePackageResponse_IsTheBytesItWasBefore31_ButFormatAndChannelNullOnEachInput()
+    {
+        // #1508 (specVersion 31, area 11, Task 18; part 09 § 4.1): the response changes by addition only. The bytes the
+        // worker writes for a 5–30 package (its serializer at its defaults: PascalCase, every member, nulls included),
+        // pinned as they were before 31, gain "Format":null,"Channel":null at the end of each input and nothing else.
+        var manifest = V10Fixtures.WithInput(FamilyHistory()) with
+        {
+            Inputs = new List<WorkflowInputSpec>(V10Fixtures.WithInput(FamilyHistory()).Inputs!) { Grid() }
+        };
+        var files = V6Fixtures.Files(manifest);
+        var data = WorkflowDataResolver.Resolve(manifest, files, new List<string>());
+        var response = WorkflowPackages.Describe(new WorkflowPackage(manifest, Nodes: manifest.Nodes, Data: data, Results: new List<WorkflowResolvedResult>()));
+
+        const string inputEnd = "\"ExpectedContent\":null,\"Types\":null}";
+        Assert.Equal(response.Inputs!.Count, Before31.Split(inputEnd).Length - 1);
+        Assert.Equal(
+            Before31.Replace(inputEnd, "\"ExpectedContent\":null,\"Types\":null,\"Format\":null,\"Channel\":null}", StringComparison.Ordinal),
+            JsonSerializer.Serialize(response));
+    }
+
+    /// <summary>The bytes of the response above before 31 (the parent of #1508 Task 18), as the worker wrote them.</summary>
+    private const string Before31 = """
+        {"Name":"general","Version":"v2026.08.1","SpecVersion":10,"Blocks":[],"Inputs":[{"Id":"consult_draft","Label":"Consult draft","Required":true,"Type":null,"Values":null,"Items":null,"Fields":null,"ExpectedContent":null,"Types":null},{"Id":"seen_on","Label":"Date seen","Required":true,"Type":"date","Values":null,"Items":null,"Fields":null,"ExpectedContent":null,"Types":null},{"Id":"encounter_kind","Label":"Encounter kind","Required":true,"Type":"enum","Values":["new_patient","follow_up"],"Items":null,"Fields":null,"ExpectedContent":null,"Types":null},{"Id":"billable","Label":"Billable encounter","Required":false,"Type":"boolean","Values":null,"Items":null,"Fields":null,"ExpectedContent":null,"Types":null},{"Id":"length_of_stay","Label":"Length of stay (days)","Required":false,"Type":"number","Values":null,"Items":null,"Fields":null,"ExpectedContent":null,"Types":null},{"Id":"patient","Label":"Patient record","Required":false,"Type":"object","Values":null,"Items":null,"Fields":[{"Id":"family_name","Label":"Family name","Required":true,"Type":null,"Values":null,"Items":null,"Fields":null},{"Id":"age","Label":"Age","Required":true,"Type":"number","Values":null,"Items":null,"Fields":null},{"Id":"sex","Label":"Sex","Required":false,"Type":"enum","Values":["female","male"],"Items":null,"Fields":null}],"ExpectedContent":null,"Types":null},{"Id":"prior_notes","Label":"Prior notes","Required":false,"Type":"array","Values":null,"Items":{"Type":"text","Items":null,"Fields":null,"Values":null},"Fields":null,"ExpectedContent":null,"Types":null},{"Id":"medications","Label":"Medications","Required":false,"Type":"array","Values":null,"Items":{"Type":"object","Items":null,"Fields":[{"Id":"name","Label":"Drug","Required":true,"Type":"text","Values":null,"Items":null,"Fields":null},{"Id":"dose","Label":"Dose","Required":false,"Type":"text","Values":null,"Items":null,"Fields":null}],"Values":null},"Fields":[{"Id":"name","Label":"Drug","Required":true,"Type":null,"Values":null,"Items":null,"Fields":null},{"Id":"dose","Label":"Dose","Required":false,"Type":null,"Values":null,"Items":null,"Fields":null}],"ExpectedContent":null,"Types":null},{"Id":"family_history","Label":"Family history","Required":true,"Type":"array","Values":null,"Items":{"Type":"object","Items":null,"Fields":[{"Id":"relative","Label":"Relative","Required":true,"Type":"text","Values":null,"Items":null,"Fields":null},{"Id":"conditions","Label":"Conditions","Required":false,"Type":"array","Values":null,"Items":{"Type":"text","Items":null,"Fields":null,"Values":null},"Fields":null},{"Id":"contact","Label":"Contact","Required":false,"Type":"object","Values":null,"Items":null,"Fields":[{"Id":"phone","Label":"Phone","Required":true,"Type":"text","Values":null,"Items":null,"Fields":null},{"Id":"preferred","Label":"Preferred","Required":false,"Type":"enum","Values":["phone","email"],"Items":null,"Fields":null}]}],"Values":null},"Fields":[{"Id":"relative","Label":"Relative","Required":true,"Type":null,"Values":null,"Items":null,"Fields":null},{"Id":"conditions","Label":"Conditions","Required":false,"Type":"array","Values":null,"Items":{"Type":"text","Items":null,"Fields":null,"Values":null},"Fields":null},{"Id":"contact","Label":"Contact","Required":false,"Type":"object","Values":null,"Items":null,"Fields":[{"Id":"phone","Label":"Phone","Required":true,"Type":null,"Values":null,"Items":null,"Fields":null},{"Id":"preferred","Label":"Preferred","Required":false,"Type":"enum","Values":["phone","email"],"Items":null,"Fields":null}]}],"ExpectedContent":null,"Types":null},{"Id":"grid","Label":"Grid","Required":false,"Type":"array","Values":null,"Items":{"Type":"array","Items":{"Type":"number","Items":null,"Fields":null,"Values":null},"Fields":null,"Values":null},"Fields":null,"ExpectedContent":null,"Types":null}],"Results":[],"Title":null,"Macros":null}
+        """;
+
+    [Fact]
     public void AConditionOverAHyphenatedNode_ReadsAsANodeValue_AndTheValidatorNamesIt()
     {
         // #498: node ids carry hyphens (draft-section); the operand parser

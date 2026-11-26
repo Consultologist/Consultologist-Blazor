@@ -31,7 +31,7 @@ internal static class MigrationSentences
     }
 
     /// <summary>
-    /// A10-050 (part 05 § 7; #1507, Task 12 fix rounds 1 and 2; the difference is unruled): in <paramref name="file"/>'s <paramref name="member"/>,
+    /// A10-050 (part 05 § 7; #1507, Task 12 fix rounds 1 and 2; the difference is expected, #1508, comment 5, item 8): in <paramref name="file"/>'s <paramref name="member"/>,
     /// the comparison of a trimmed text with <c>""</c> (<see cref="BlankConversion.Written"/>, as the printer shows it)
     /// became <c>blank(x)</c> or <c>not blank(x)</c> (<see cref="BlankConversion.Printed"/>); 30 compared a null text (a node
     /// that did not run, a field of an object input left out) as not empty, so the rule now holds, or no longer holds, when <c>x</c> is null. The wording
@@ -44,6 +44,48 @@ internal static class MigrationSentences
         var holds = trim.Printed.StartsWith("not ", StringComparison.Ordinal) ? "no longer holds" : "also holds";
         return $"{file}, {member}: '{trim.Written}' became {trim.Printed}; it now {holds} when {string.Join(" or ", trim.Reads)} is null.";
     }
+
+    /// <summary>
+    /// A10-074 (#1508, comment 5, item 2; part 10 § 2.2): in <paramref name="file"/>'s <paramref name="member"/>, a text
+    /// compared with a literal (<see cref="BlankConversion.Written"/>, as the printer shows it), which 31 refuses
+    /// (S03-002), became membership in a list of that literal (<see cref="BlankConversion.Printed"/>), which answers as
+    /// 30's comparison did.
+    /// </summary>
+    public static string TextLiteralBecameIn(string file, string member, BlankConversion literal)
+    {
+        ArgumentNullException.ThrowIfNull(literal);
+        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31.";
+    }
+
+    /// <summary>
+    /// A10-075 (#1508, comment 5, item 2; Task 30 fix round 1): in <paramref name="file"/>'s <paramref name="member"/>, a
+    /// text input read whole compared with <c>""</c> (<see cref="BlankConversion.Written"/>) became
+    /// <c>x === null or x in [""]</c> or <c>x !== null and not (x in [""])</c> (<see cref="BlankConversion.Printed"/>):
+    /// 30 read the input not given or blank as <c>""</c>, 31's start leaves it out and it reads null, which the null test
+    /// counts as 30's <c>""</c>, so the rule answers as 30's did.
+    /// </summary>
+    public static string EmptyBecameNullTested(string file, string member, BlankConversion empty)
+    {
+        ArgumentNullException.ThrowIfNull(empty);
+        return $"{file}, {member}: '{empty.Written}' became {empty.Printed}; 31 reads an input not given or blank as null, where 30 read \"\".";
+    }
+
+    /// <summary>
+    /// A10-076 (#1508, comment 5, item 2; Task 30 fix round 1): the 30 condition <paramref name="expression"/>, as written,
+    /// compares <paramref name="text"/> (printed at 31), which reads an input, with blank text: 30 read an input's text
+    /// not given or blank as <c>""</c>, 31 reads it as null or as given, and no 31 form is written for it. A reason S10-002
+    /// gives.
+    /// </summary>
+    public static string ComparedWithBlankText(string expression, string text) =>
+        $"The condition '{expression}' compares {text}, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.";
+
+    /// <summary>
+    /// A10-073 (#1508, comment 5, item 2; part 10 § 2.2): the 30 condition <paramref name="expression"/>, as written, calls
+    /// <c>string.contains</c> on <paramref name="list"/> (the 31 read, printed), a list: 30 wrote the list as text and
+    /// searched it, where 31's <c>in</c> on a list is membership, so no rule is written. A reason S10-002 gives.
+    /// </summary>
+    public static string ContainsOnAList(string expression, string list) =>
+        $"The condition '{expression}' uses string.contains on {list}, a list, which 30 tested as a substring of the list written as text; rewrite it by hand.";
 
     /// <summary>
     /// A10-012 (part 10 § 1.4, D2): the package is at specVersion <paramref name="version"/>, below 5, where no rung
@@ -138,11 +180,12 @@ internal static class MigrationSentences
         "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.";
 
     /// <summary>
-    /// A10-013 (part 05 § 1.2, D16): node <paramref name="id"/> declared <c>onInvalid: flag</c>, which kept a reply that did
-    /// not fit its format; 31 has <c>fail</c> and <c>retry</c> only, and <c>fail</c> is written.
+    /// A10-013 (part 05 § 1.2, D16; #1508, comment 5, item 3): node <paramref name="id"/> declared <c>onInvalid: flag</c>,
+    /// which kept a reply that did not fit its format; 31 has <c>fail</c> and <c>retry</c> only, and <c>retry</c> is
+    /// written. Kept as a notice: #1447's before-and-after notification lists it.
     /// </summary>
-    public static string FlagBecomesFail(string id) =>
-        $"Node '{id}' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.";
+    public static string FlagBecomesRetry(string id) =>
+        $"Node '{id}' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails.";
 
     /// <summary>
     /// A10-027 (part 10 § 2.2, Review Focus 1, the Task 4 ruling): in <paramref name="file"/>'s <paramref name="member"/>,
@@ -158,14 +201,6 @@ internal static class MigrationSentences
     /// </summary>
     public static string CaseNotEnumerated(string subject) =>
         $"the case switches on {subject}, whose values 31 cannot list; switch on an enumerated string.";
-
-    /// <summary>
-    /// A10-032 (part 04 § 5.2, part 10 § 2.2): a reason: the <c>case</c> switches on the 30 classifier <paramref name="id"/>,
-    /// whose answers (its <c>with</c> values) 31 does not type: <c>classification</c>'s <c>value</c> is a plain string, so
-    /// the checker refuses the subject (S04-044) until the classifier's format lists its answers.
-    /// </summary>
-    public static string CaseOnClassifier(string id) =>
-        $"the case switches on classifier '{id}', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.";
 
     /// <summary>
     /// A10-029 (part 04 § 5.2): a reason: the <c>case</c>'s subject <paramref name="subject"/> can be <c>null</c>, which 31
@@ -288,6 +323,43 @@ internal static class MigrationSentences
         $"The chosen format '{format}' for snippet folder '{folder}' cannot be used: '{format}' {(taken ? "is already taken" : "is not a 31 id")}; choose another.";
 
     /// <summary>
+    /// A10-070 (#1508, R18; part 10 § 1.4): <c>options.json</c> (<see cref="Migration31Options.FromJson"/>) has the member
+    /// <paramref name="member"/>, which is none of the three choices. A refusal: an option the migration does not read is
+    /// never ignored.
+    /// </summary>
+    public static string UnknownOption(string member) =>
+        $"options.json has the member '{member}', which is not an option of the migration; its members are renames, whenEmpty and folderFormats.";
+
+    /// <summary>
+    /// A10-071 (#1508, R18): <c>options.json</c>'s <paramref name="member"/> (<c>renames</c>, <c>whenEmpty</c> or
+    /// <c>folderFormats</c>) is missing, or is not an object whose every value is text.
+    /// </summary>
+    public static string OptionNotAMap(string member) =>
+        $"options.json must give {member} as an object whose values are text; write {{}} for none.";
+
+    /// <summary>
+    /// A10-072 (#1508, R18; part 10 § 1.10, part 06): <c>options.json</c>'s <c>whenEmpty</c> gives deliverable
+    /// <paramref name="deliverable"/> a value that is not <c>release</c>, <c>hold</c> or <c>fail</c> (the value itself is
+    /// not repeated).
+    /// </summary>
+    public static string WhenEmptyNotAValue(string deliverable) =>
+        $"options.json gives deliverable '{deliverable}' a whenEmpty that is not release, hold or fail.";
+
+    /// <summary>
+    /// A10-082 (#1508, area 11 Task 36, carried from Task 29's review): <c>options.json</c>'s <paramref name="member"/> maps
+    /// an empty id, or maps an id to an empty choice, which the script's flags refuse too (<c>&lt;key&gt;=&lt;value&gt;</c>).
+    /// </summary>
+    public static string OptionEmpty(string member) =>
+        $"options.json gives {member} an empty id or an empty choice; name each id and its choice.";
+
+    /// <summary>
+    /// A10-083 (#1508, area 11 Task 36; part 10 §§ 1.9, 1.10, part 01 § 3): a package with no <c>options.json</c> is
+    /// migrated with the defaults, and the bulk publish says so in its record.
+    /// </summary>
+    public const string DefaultOptions =
+        "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.";
+
+    /// <summary>
     /// A10-034 (part 01 § 6, § 7 <c>idLength</c>; part 10 § 1.9): the <paramref name="kind"/> <paramref name="id"/>, longer
     /// than 31's 64 characters (30 had no bound), was shortened to <paramref name="newId"/>.
     /// </summary>
@@ -360,6 +432,59 @@ internal static class MigrationSentences
     /// </summary>
     public static string PlacedByTheEngine(string macro, string where) =>
         $"macro '{macro}' was placed {where} the reply by the engine; say in its instruction where the model writes its marker.";
+
+    /// <summary>
+    /// A10-078 (#1508, comment 6, item 1; R13; Task 32 fix round 1): a reason: macro <paramref name="macro"/> is placed by
+    /// more than one agent, so the migration wrote a classifier for each (<paramref name="nodes"/>, in order) and its
+    /// <c>if</c> joins their answers by <c>and</c>, a condition 30 did not have: each of 30's placing nodes' models chose
+    /// on its own.
+    /// </summary>
+    public static string SplitPerPlacer(string macro, IReadOnlyList<string> nodes) =>
+        $"macro '{macro}' is placed by {nodes.Count.ToString(CultureInfo.InvariantCulture)} nodes, with a classifier each ({string.Join(", ", nodes)}), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.";
+
+    /// <summary>
+    /// A10-079 (#1508, comment 7, Q3; R15; part 10 § 1.2): the deliverable <paramref name="file"/> was given the <c>if</c>
+    /// that skips it unless one of its sources (<paramref name="reads"/>, the 31 reads, in <c>sources</c> order) ran: 30
+    /// skipped a deliverable none of whose sources ran, where 31 would compose it empty and release it.
+    /// </summary>
+    public static string SkippedUnlessASourceRan(string file, IReadOnlyList<string> reads) =>
+        $"{file}, if: written to skip the deliverable unless {string.Join(" or ", reads)} ran, as 30 skipped a deliverable none of whose sources ran.";
+
+    /// <summary>
+    /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
+    /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
+    /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is
+    /// not joined to it: the operator writes 30's condition <c>and</c> the term, or 31 releases empty what 30 skipped.
+    /// </summary>
+    public static string JoinASourceRan(string term) =>
+        $"every source may not run, and 30 skipped the deliverable when none ran; join {term} to 30's condition by and.";
+
+    /// <summary>
+    /// A10-080 (#1508, comment 7, Q5; R17; part 10 § 1.4): a reason: the template reads <paramref name="path"/> at
+    /// <paramref name="line"/> through <paramref name="through"/>, which can be null (A11-009 refuses it at publish), at a
+    /// place the dialect holds no <c>if</c> (a part's text, A07-002; a test or an argument): the migration cannot write the
+    /// guard there.
+    /// </summary>
+    public static string NoGuardHere(string path, string through, int line) =>
+        $"the template reads {path} at line {line.ToString(CultureInfo.InvariantCulture)} through {through}, which can be null, where no {{{{ if {through} }}}} can enclose the read; move the read where that guard can stand.";
+
+    /// <summary>
+    /// A10-081 (#1508, comment 7, B2, and comment 8; R11; part 10 § 1.4): a reason: the migrated package's worst case opens
+    /// <paramref name="count"/> instances through <paramref name="loop"/>, past <paramref name="limit"/>, the engine's
+    /// default (<c>RunLimits.JobInstances</c>), so publish refuses it (A11-001); the migration guesses no <c>max</c>. The
+    /// numbers are grouped as A11-001 groups them.
+    /// </summary>
+    public static string PastTheInstanceLimit(long count, string loop, int limit) =>
+        $"up to {count.ToString("N0", CultureInfo.InvariantCulture)} steps could run in one job through {loop}, and this engine runs at most {limit.ToString("N0", CultureInfo.InvariantCulture)} for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.";
+
+    /// <summary>
+    /// A10-077 (#1508, comment 6, item 1; R13; part 10 § 1.4): a reason: the <c>judgement</c> node <paramref name="node"/>
+    /// the migration wrote decides whether macro <paramref name="macro"/> is offered, which 30's model chose from the
+    /// instruction; its prompt ends with an empty question line, which publish refuses (A11-013), and the instruction's
+    /// "otherwise" clause cannot be found reliably by code.
+    /// </summary>
+    public static string WriteTheQuestion(string node, string macro) =>
+        $"node '{node}' decides whether macro '{macro}' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.";
 
     /// <summary>A10-004 (D4): a reason: macro <paramref name="macro"/> is read both as <c>.content</c> (fixed text) and as <c>.prompt</c> (an instruction) at 30.</summary>
     public static string ReadBothWays(string macro) =>

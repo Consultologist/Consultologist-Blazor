@@ -1,0 +1,24 @@
+{
+  "description": [
+    "intake left unset: 30 reads the absent object as empty, so input.intake.reason renders as",
+    "nothing in each problem prompt and in the prepended intake_line, and note is composed with",
+    "the macro's text before the problem blocks."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "intake": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued."
+  }
+}

@@ -62,7 +62,8 @@ public static class DialectSentences
 
     /// <summary>
     /// A08-006 (#1505 ruling 6, R14): reading the body failed in a way no text explains, a fault of the engine and not of the
-    /// package (<see cref="TemplateSyntax.Parse(string)"/>); no package produces it.
+    /// package (<see cref="TemplateSyntax.Parse(string)"/>); no package produces it. #1508 (R8 item 4): its audience is the
+    /// operator, not the author: the caller logs <see cref="SourceRefusal.EngineFault"/> (publish does, Task 16).
     /// </summary>
     public static SourceRefusal EngineFailedReading(string subject, string path) =>
         new("A08-006", $"{subject} couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it.", path);
@@ -310,6 +311,29 @@ public static class DialectSentences
     /// <summary>A07-007 (D13): an object or a list written directly; <paramref name="what"/> is <c>an object</c> or <c>a list</c>.</summary>
     public static SourceRefusal WritesAnObjectOrList(string subject, string readPath, int line, string what, string path) =>
         new("A07-007", $"{subject} writes {readPath} at line {Line(line)}, which is {what}; read a member, loop over it or pipe it into a renderer.", path);
+
+    /// <summary>
+    /// A11-012 (#1508, ruling 12; part 05 § 2.6): a part or a macro, <paramref name="unit"/>, read in an expression (piped,
+    /// a pipe's argument, beside another value) rather than placed on its own.
+    /// </summary>
+    public static SourceRefusal UnitInExpression(string subject, string unit, int line, string path) =>
+        new("A11-012", $"{subject} uses {unit} at line {Line(line)} in an expression; a part or a macro is placed on its own, as {{{{ {unit} }}}}, never piped or used in an expression.", path);
+
+    /// <summary>
+    /// A11-013 (#1508, comment 6, item 1; R13; part 05 § 8.2): the <c>judgement</c> node <paramref name="id"/> asks a yes-or-no
+    /// question, and its prompt (with its parts' text) has nothing outside its tags but white space: the migration writes a
+    /// classifier's prompt so, its question left for the operator.
+    /// </summary>
+    public static SourceRefusal AsksNothing(string id, string path) =>
+        new("A11-013", $"Node '{id}' asks nothing: its prompt has no question.", path);
+
+    /// <summary>
+    /// A11-009 (#1508, ruled by the owner, Q5 of 2026-11-26; R17; part 05 § 2.5): <paramref name="readPath"/> steps through
+    /// <paramref name="objectPath"/>, an object that can be null (an input not required, a nullable field, a node that may
+    /// not run), with no <c>{{ if }}</c> on it around the read: the render would fail when it is null.
+    /// </summary>
+    public static SourceRefusal ReadsThroughNullable(string subject, string readPath, int line, string objectPath, string path) =>
+        new("A11-009", $"{subject} reads {readPath} at line {Line(line)} through {objectPath}, which can be null. Put the read inside {{{{ if {objectPath} }}}}.", path);
 
     /// <summary>A07-008: a bare <c>node.x</c>, <c>input.x</c>, <c>check.x</c>, <c>param.x</c> (or <c>item</c>); <paramref name="member"/> is <c>.value</c>, <c>.content</c> or <c>.title</c>.</summary>
     public static SourceRefusal ReadsBare(string subject, string readPath, int line, string member, string path) =>

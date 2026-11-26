@@ -35,7 +35,8 @@ public class WorkflowPackageIngestorTests
         return OutputContractCatalog.Load(Path.Combine(dir!.FullName, "external", "consultologist-agents", "agents"));
     }
 
-    private static WorkflowPackageIngestor Ingestor() => new(LoadCatalog());
+    // the 31 registry is read only by a 31 upload, which these 5–30 tests never send
+    private static WorkflowPackageIngestor Ingestor() => new(LoadCatalog(), new Consultologist.Api.V31.PublishedTypeRegistry());
 
     private static byte[] Zip(IReadOnlyDictionary<string, string> files, string manifestJson)
     {

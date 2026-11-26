@@ -330,6 +330,60 @@
       ]
     },
     {
+      "id": "edge-answer-outside-set.note.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.triage": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": "routine"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": "urgent"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "edge-no-branch.plan_gate.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.include_plan": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.include_plan": true
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.include_plan": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "refused": null,
       "cases": [
@@ -1880,6 +1934,121 @@
           "scope": {
             "input.patient": {
               "name": ""
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.input.x-empty",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.input.x-not-empty",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.input.x-y-empty",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.patient": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": ""
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {}
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": " "
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": "lorem"
             }
           },
           "result": false,
@@ -3447,6 +3616,130 @@
       ]
     },
     {
+      "id": "row.size.lt",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.problems": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": []
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              ""
+            ]
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              "",
+              " ",
+              "lorem"
+            ]
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.size.le",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.problems": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": []
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              ""
+            ]
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              "",
+              " ",
+              "lorem"
+            ]
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.size.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.problems": "<absent>",
+            "input.count": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [],
+            "input.count": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              ""
+            ],
+            "input.count": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              "",
+              " ",
+              "lorem"
+            ],
+            "input.count": 0
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
       "id": "row.downcase",
       "refused": null,
       "cases": [
@@ -3483,6 +3776,40 @@
             "input.reason": "breathlessness"
           },
           "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.downcase-empty",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
           "error": null
         }
       ]

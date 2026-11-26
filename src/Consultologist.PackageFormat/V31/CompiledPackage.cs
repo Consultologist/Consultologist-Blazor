@@ -24,6 +24,12 @@ public sealed record CompiledPackage(
     /// <summary>The compiled document's file name in a version's folder (§ 6).</summary>
     public const string ResolveFile = "resolve.json";
 
+    /// <summary>#1508 (area 11): <c>resolve.json</c>'s media type (part 07 § 1).</summary>
+    public const string ResolveMediaType = "application/vnd.consultologist.resolve+json";
+
+    /// <summary>#1508 (area 11): <c>lock.json</c>'s media type (part 07 § 1).</summary>
+    public const string LockMediaType = "application/vnd.consultologist.lock+json";
+
     /// <summary>
     /// The deepest nesting <see cref="Verify"/> reads; <see cref="CanonicalJson"/> writes nothing deeper, so a document
     /// past it is not the one published.
@@ -45,13 +51,26 @@ public sealed record CompiledPackage(
         TypeRegistry registry,
         Toolchain toolchain,
         PublishLimits? limits = null,
-        ITemplateReads? templates = null)
+        ITemplateReads? templates = null) =>
+        Publish(upload, registry, toolchain, limits, templates, out _);
+
+    /// <summary>
+    /// The same, with the check's result given out as <paramref name="check"/> whatever the outcome (#1508, area 11): the
+    /// files as normalised, the paths normalised and dropped, and the parsed tests, which publish's later steps read.
+    /// </summary>
+    public static (IReadOnlyList<SourceRefusal> Refusals, CompiledPackage? Compiled) Publish(
+        IReadOnlyDictionary<string, byte[]> upload,
+        TypeRegistry registry,
+        Toolchain toolchain,
+        PublishLimits? limits,
+        ITemplateReads? templates,
+        out SourceCheckResult check)
     {
         ArgumentNullException.ThrowIfNull(upload);
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(toolchain);
 
-        var check = SourceCheck.Run(upload, registry, templates);
+        check = SourceCheck.Run(upload, registry, templates);
         if (check.Refusals.Count > 0)
             return (check.Refusals, null);
 

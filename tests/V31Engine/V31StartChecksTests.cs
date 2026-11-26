@@ -478,7 +478,12 @@ public class V31StartChecksTests
                     m["inputs"]![id] = inputs[id]!.DeepClone();
             })
             .Listed("macros/index.json", "letrozole")
-            .With("macros/letrozole.md", migrated.Files["macros/letrozole.md"]);
+            .With("macros/letrozole.md", migrated.Files["macros/letrozole.md"])
+            // #1508 (R13): the macro's if reads its classifier's answer too; the classifier is written with its question.
+            .Listed("nodes/index.json", "letrozole_applies")
+            .With("nodes/letrozole_applies.md", SourceFixture.Md(
+                FrontMatter.Split(migrated.Files["nodes/letrozole_applies.md"])!.Header,
+                "{{ input.consult_draft.content }}\n\nDoes the plan prescribe letrozole?\n"));
         // The agent takes the migrated macro's format (markdown_block: summary is prose a deliverable composes, R9), and so do the others.
         var format = V31Migration.MigrateMacrosTests.FormatOf(migrated.Files["macros/letrozole.md"]);
         var placements = "{{ macro.letrozole }}\n";
@@ -502,7 +507,9 @@ public class V31StartChecksTests
     public void AChoiceKeyedByTheMacro_SetsTheInputItsIfReads(bool choice)
     {
         var plan = Migrated();
-        Assert.Equal("""{"===":[{"var":"input.letrozole_macro.value"},true]}""", plan.Document["macros"]!["macro.letrozole"]!["if"]!.ToJsonString());
+        Assert.Equal(
+            """{"and":[{"===":[{"var":"input.letrozole_macro.value"},true]},{"===":[{"var":"node.letrozole_applies.value.answer"},true]}]}""",
+            plan.Document["macros"]!["macro.letrozole"]!["if"]!.ToJsonString());
 
         var (supplied, refusals) = V31StartChecks.Choices(plan, NothingSent, new Dictionary<string, bool> { ["letrozole"] = choice });
 

@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using Consultologist.PackageFormat.V31.Templates;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
 namespace Consultologist.Api.Tests.V31Run;
@@ -507,6 +509,132 @@ public class PlanRunnerLoopsTests
         Assert.True((bool)recorder.Row("node.sections.paragraphs:1/1").Detail["positionName"]!);
     }
 
+    [Fact]
+    public async Task AnItemNameCutAt120_IsTrimmedBeforeTheEllipsis()
+    {
+        // #1508 (2026-11-25, item 4): a name cut at 120 characters is trimmed before the ellipsis, as at 30
+        // (WorkflowItemNames.FromField): a space at the cut does not stand before the "…", and a surrogate pair is never split.
+        string[] titles =
+        [
+            new string('a', 118) + " " + new string('x', 81), // the 119th character is a space
+            new string('b', 110) + new string(' ', 9) + new string('x', 81), // spaces run up to the cut
+            new string('c', 118) + "\U0001F600" + new string('x', 80), // a surrogate pair at the cut
+            new string('d', 117) + " \U0001F600" + new string('x', 80), // a surrogate pair at the cut, a space before it
+            "  Past medical history of Margaret Okafor  ",
+        ];
+        var plan = RunFixture.Plan(InputLoop(Members()), InputLoopReads());
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true), recorder).RunAsync(Sections(Rows(titles)), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(new string('a', 118) + "…", titles[0][..119].TrimEnd() + "…");
+        var names = Enumerable.Range(1, titles.Length).Select(n => NodeRowTests.ItemName(recorder.Row($"node.drafts:{n}"))).ToList();
+        Assert.Equal(titles.Select(WorkflowItemNames.FromField), names);
+        Assert.Equal(new string('a', 118) + "…", names[0]);
+        Assert.Equal(new string('d', 117) + "…", names[3]);
+        Assert.Equal("Past medical history of Margaret Okafor", names[4]);
+    }
+
+    // ---- content ------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task PlaintextItems_JoinedIntoALoopsContent_AreEscaped()
+    {
+        // #1508 (2026-11-25, item 8, D23): a loop's .content is markdown_block, so a plaintext item's text and its name are
+        // escaped where they are joined, as a direct read of plain text in Markdown escapes them; markdown_block items are not.
+        const string title = "Plan #1 *urgent*";
+        const string text = "# Letrozole *daily*\n* review in 6 weeks";
+        foreach (var (format, escaped) in new[] { (Plain, true), ("\"markdown_block\"", false) })
+        {
+            var plan = RunFixture.Plan(InputLoop(Members(), format: format), InputLoopReads());
+            var host = new FakeRunHost(auto: true).Reply("node.drafts.draft:1", text);
+
+            var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(Sections(Rows(title, "History")), FakeRunHost.Start);
+
+            Assert.Equal(RunState.Completed, result.State);
+            var second = (string)result.Values["node.drafts"]!["items"]![1]!["content"]!;
+            var expected = escaped
+                ? $"## {MarkdownEscape.Escape(title)}\n\n{MarkdownEscape.Escape(text)}\n\n## History\n\n{MarkdownEscape.Escape(second)}"
+                : $"## {title}\n\n{text}\n\n## History\n\n{second}";
+            Assert.Equal(expected, (string?)result.Values["node.drafts"]!["content"]);
+            Assert.Equal(text, (string?)result.Values["node.drafts"]!["items"]![0]!["content"]); // .items keeps the text as it is
+        }
+
+        Assert.Equal("## Plan \\#1 \\*urgent\\*\n\n\\# Letrozole \\*daily\\*\n\\* review in 6 weeks", $"## {MarkdownEscape.Escape(title)}\n\n{MarkdownEscape.Escape(text)}");
+    }
+
+    [Fact]
+    public async Task AnObjectItem_JoinedIntoALoopsContent_IsEscaped()
+    {
+        // #1508 (D23, fix round 1): the type checker types an item's .content as its text kind, else plaintext (D10), so an
+        // object's canonical JSON (a list's and a nullable plaintext's, below) is plain text too, escaped where joined.
+        const string title = "Plan #1 *urgent*";
+        const string reply = "{\"title\":\"*urgent* #1\",\"kind\":\"narrative\"}";
+        var plan = RunFixture.Plan(InputLoop(Members(), format: "\"section_request\""), InputLoopReads());
+        var host = new FakeRunHost(auto: true).Reply("node.drafts.draft:1", reply);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(Sections(Rows(title)), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        var text = (string)result.Values["node.drafts"]!["items"]![0]!["content"]!;
+        Assert.Equal(CanonicalJson.Write(JsonNode.Parse(reply)), text);
+        Assert.Equal($"## {MarkdownEscape.Escape(title)}\n\n{MarkdownEscape.Escape(text)}", (string?)result.Values["node.drafts"]!["content"]);
+        Assert.Contains("\\*", (string?)result.Values["node.drafts"]!["content"], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AListItem_JoinedIntoALoopsContent_IsEscaped()
+    {
+        // #1508 (D23, fix round 1): a list's .content is its canonical JSON, typed plaintext (D10), so it is escaped where
+        // joined. The ret is a computed node giving the loop's own (required) list.
+        const string list = "{ \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }";
+        var draft = Md(SourceFixture.Node("computed", "Listing the sections", list, true, false,
+            "\"if\": null, \"expression\": { \"var\": \"input.sections.value\" }"), "");
+        var files = InputLoop(Members(), draft: draft)
+            .WithJson("manifest.json", m => m["inputs"]!["sections"]!["required"] = true)
+            .WithJson("nodes/drafts/index.json", h =>
+            {
+                h["format"] = JsonNode.Parse(ArrayOf(list));
+                h["reproducible"] = true;
+                h["modelDerived"] = false;
+            });
+        var plan = RunFixture.Plan(files, InputLoopReads([]));
+        const string title = "Plan #1 *urgent*";
+
+        var result = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true), new ListRecorder()).RunAsync(Sections(Rows(title)), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        var text = (string)result.Values["node.drafts"]!["items"]![0]!["content"]!;
+        Assert.Equal(CanonicalJson.Write(Rows(title)), text);
+        Assert.Equal($"## {MarkdownEscape.Escape(title)}\n\n{MarkdownEscape.Escape(text)}", (string?)result.Values["node.drafts"]!["content"]);
+        Assert.Contains("\\*", (string?)result.Values["node.drafts"]!["content"], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ANullablePlaintextItem_JoinedIntoALoopsContent_IsEscaped()
+    {
+        // #1508 (D23, fix round 1): a ret of plaintext | null is typed plaintext (D10; its .content is the value written as
+        // JSON), so it is escaped where joined too. The ret is a computed node passing the plaintext agent ask's value on.
+        const string nullable = "{ \"anyOf\": [{ \"$ref\": \"plaintext\" }, { \"type\": \"null\" }] }";
+        var draft = Md(SourceFixture.Node("computed", "Passing the draft on", nullable, true, true,
+            "\"if\": null, \"expression\": { \"if\": [{ \"!\": [{ \"blank\": [{ \"var\": \"node.ask.value\" }] }] }, "
+            + "{ \"var\": \"node.ask.value\" }, null] }"), "");
+        var files = InputLoop(Members(), draft: draft, body: ["draft", "ask"])
+            .WithJson("nodes/drafts/index.json", h => h["format"] = JsonNode.Parse(ArrayOf(nullable)));
+        var plan = RunFixture.Plan(files, InputLoopReads(["ask"]));
+        const string title = "Plan #1";
+        const string reply = "# Letrozole *daily*";
+        var host = new FakeRunHost(auto: true).Reply("node.drafts.ask:1", reply);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(Sections(Rows(title)), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        var text = (string)result.Values["node.drafts"]!["items"]![0]!["content"]!;
+        Assert.Equal("\"# Letrozole *daily*\"", text);
+        Assert.Equal($"## {MarkdownEscape.Escape(title)}\n\n{MarkdownEscape.Escape(text)}", (string?)result.Values["node.drafts"]!["content"]);
+    }
+
     // ---- sources ------------------------------------------------------------------------------------
 
     [Fact]
@@ -637,9 +765,10 @@ public class PlanRunnerLoopsTests
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Sections(Rows("History", "Examination", "Plan")), FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
-        const string Expected = "## History\n\nMargaret Okafor reports three months of fatigue.\n\n"
-            + "## Examination\n\nPale; thyroid not enlarged.\n\n"
-            + "## Plan\n\nRepeat TSH in six weeks with Dr A. Sample.";
+        // #1508 (D23): the items are plaintext, so their text is escaped in .content (a markdown_block)
+        const string Expected = "## History\n\nMargaret Okafor reports three months of fatigue\\.\n\n"
+            + "## Examination\n\nPale\\; thyroid not enlarged\\.\n\n"
+            + "## Plan\n\nRepeat TSH in six weeks with Dr A\\. Sample\\.";
         Assert.Equal(Expected, (string?)result.Values["node.drafts"]!["content"]);
         Assert.Equal(CanonicalJson.HashText(Expected), recorder.Row("node.drafts").ValueHash);
         Assert.Equal("Rendered deliverable.note.", (string?)result.Values["deliverable.note"]!["content"]);
@@ -675,7 +804,7 @@ public class PlanRunnerLoopsTests
         Assert.Equal("2", (string?)skipped["item"]!["id"]);
         Assert.Equal(RowState.Skipped, recorder.Row("node.drafts:2").State);
         Assert.Equal("skipped: item.value.kind = \"narrative\" is false", recorder.Row("node.drafts:2").Reason);
-        Assert.Equal("## History\n\nText of node.drafts.draft:1.\n\n## Plan\n\nText of node.drafts.draft:3.", (string?)read["content"]);
+        Assert.Equal("## History\n\nText of node\\.drafts\\.draft\\:1\\.\n\n## Plan\n\nText of node\\.drafts\\.draft\\:3\\.", (string?)read["content"]);
     }
 
     // ---- failures -----------------------------------------------------------------------------------
@@ -755,9 +884,9 @@ public class PlanRunnerLoopsTests
     /// <see cref="SourceFixture.Minimal"/> with the optional list input <c>sections</c> (of <c>section_request</c>) and the
     /// loop <c>drafts</c> over it with <paramref name="members"/>, whose body is <paramref name="body"/> (each an agent
     /// reading <c>item.value.title</c>; <paramref name="draft"/> the file of a body of one, <c>draft</c>), returning the
-    /// first; the note reads the loop's <c>.content</c>.
+    /// first, each of text format <paramref name="format"/>; the note reads the loop's <c>.content</c>.
     /// </summary>
-    private static Dictionary<string, byte[]> InputLoop(string members, string? draft = null, string[]? body = null)
+    private static Dictionary<string, byte[]> InputLoop(string members, string? draft = null, string[]? body = null, string format = Plain)
     {
         body ??= ["draft"];
         var files = ResolveFixture.WithFormats(Minimal(), "section_request")
@@ -765,12 +894,12 @@ public class PlanRunnerLoopsTests
                 "{ \"label\": \"Sections\", \"description\": null, "
                 + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": false, \"channel\": null }"))
             .With("nodes/index.json", Index(["plan", "drafts"]))
-            .With("nodes/drafts/index.json", Json(SourceFixture.Node("for", "Sections", ArrayOf(Plain), false, true,
+            .With("nodes/drafts/index.json", Json(SourceFixture.Node("for", "Sections", ArrayOf(format), false, true,
                 $"\"in\": \"input.sections.value\", {members}, "
                 + $"\"nodes\": [{string.Join(", ", body.Select(b => $"\"{b}\""))}], \"ret\": \"node.drafts.{body[0]}\"")))
             .With("deliverables/note.md", Md(Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"), "{{ node.drafts.content }}\n"));
         foreach (var id in body)
-            files.With($"nodes/drafts/{id}.md", Agent($"Drafting a section ({id})", Plain, "Write the section '{{ item.value.title }}'.\n"));
+            files.With($"nodes/drafts/{id}.md", Agent($"Drafting a section ({id})", format, "Write the section '{{ item.value.title }}'.\n"));
         if (draft != null)
             files.With("nodes/drafts/draft.md", draft);
         return files;

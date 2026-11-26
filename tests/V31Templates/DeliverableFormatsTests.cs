@@ -168,10 +168,11 @@ public class DeliverableFormatsTests
     [Theory]
     [InlineData("markdown_block")]
     [InlineData("plaintext")]
-    public async Task ALoopsContent_InAMarkdownDeliverable_IsNotEscaped(string itemFormat)
+    public async Task ALoopsContent_InAMarkdownDeliverable_IsWrittenAsItIs_ItsPlaintextItemsEscapedByTheLoop(string itemFormat)
     {
-        // #1507 (D23; part 04 § 2.5, part 05 § 5.3): a loop's .content is 30's bytes, a standard rendering typed
-        // markdown_block, whatever its items' format: written as it is, ## headers and the items' Markdown included.
+        // #1507 (D23; part 04 § 2.5, part 05 § 5.3): a loop's .content is a standard rendering typed markdown_block,
+        // whatever its items' format: the note writes it as it is, ## headers included. #1508 (2026-11-25, item 8): a
+        // plaintext item's name and text were escaped where the loop joined them, so its ** stays literal text.
         var files = OverALoop("markdown_block", "{{ node.drafts.content }}\n", itemFormat);
         Assert.Empty(Accepted(files).Templates!.Escapes(NoteKey));
 
@@ -199,8 +200,11 @@ public class DeliverableFormatsTests
 
         Assert.Equal(RunState.Completed, result.State);
         Assert.Equal(
-            "## History\n\nMargaret Okafor reports **three months** of fatigue.\n\n"
-            + "## Plan\n\nRepeat TSH in **six weeks** with Dr A. Sample.\n",
+            itemFormat == "plaintext"
+                ? "## History\n\nMargaret Okafor reports \\*\\*three months\\*\\* of fatigue\\.\n\n"
+                    + "## Plan\n\nRepeat TSH in \\*\\*six weeks\\*\\* with Dr A\\. Sample\\.\n"
+                : "## History\n\nMargaret Okafor reports **three months** of fatigue.\n\n"
+                    + "## Plan\n\nRepeat TSH in **six weeks** with Dr A. Sample.\n",
             (string?)result.Values[NoteKey]!["content"]);
     }
 

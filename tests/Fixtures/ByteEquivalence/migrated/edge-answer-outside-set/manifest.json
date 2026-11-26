@@ -1,0 +1,34 @@
+{
+  "name": "edge-answer-outside-set",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Edge case: a classifier answer outside its set",
+  "description": [
+    "An edge-case fixture (#1508, comment 6 item 3; comment 5 item 1): the classifier triage answers routine or urgent, and the note is written for a routine referral; a reply outside the two is refused. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "problems": {
+      "label": "Problem list",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": true,
+      "channel": null
+    }
+  }
+}

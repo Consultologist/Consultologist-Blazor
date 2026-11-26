@@ -132,7 +132,8 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing.value = true`.
 
 **Never readable by JSON Logic:** `profile.*` (no condition and no computed expression reads the
 profile, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)),
-`snippet.*`, `part.*`, `macro.*`, `renderer.*` and `deliverable.*`. A snippet folder's item data
+`snippet.*`, `part.*`, `macro.*` and `renderer.*`, and `deliverable.*` except in a rule under
+`checks/`, which may read a deliverable's `.content`, `.value` and `.state` (part 06 § 6.7). A snippet folder's item data
 is read through the loop that iterates it (`item.value.title`).
 
 **`.title` may be compared** in conditions and computed expressions, as a `string`: publish
@@ -314,7 +315,7 @@ nullable; "text" is any text format (`plaintext`, `markdown_block`, `markdown_in
 | `-` | 1 (negation) or 2 | `number` | `number` | `null` if any operand is `null` | |
 | `/`, `%` | 2 | `number` | `number` | `null` if any operand is `null`; division or remainder by zero gives `null` | |
 | `min`, `max` | 1 or more | `number` | `number` | `null` if any operand is `null` | part of arithmetic |
-| `in` (list) | 2: `[needle, list]` | data needle; a `list` of the same data type | `boolean` | `null` needle: true only if the list holds `null`; `null` list: false | membership: `input.note_type.value in ["consult", "follow_up"]` |
+| `in` (list) | 2: `[needle, list]` | data needle; a `list` of the same data type; or a text needle and a written list of string literals ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 2) | `boolean` | `null` needle: true only if the list holds `null`; `null` list: false | membership: `input.note_type.value in ["consult", "follow_up"]`; a text is a member when it is exactly one of the literals (ordinal), the form the migration gives 30's `x == "lit"` on text |
 | `in` (text) | 2: `[needle, haystack]` | a `string` needle; a text or `string` haystack | `boolean` | either `null`: false | exact, case-sensitive substring search (ordinal); on Markdown it searches the source ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878673101)) |
 | `cat` | 2 or more | `string`, `number`, plain-text formats | `string` when every operand is `string`; `plaintext` otherwise | a `null` operand contributes `""` (json-logic-js writes `"null"`) | Markdown operands refused (convert with `plain` first, so one result has one media type); numbers in the invariant culture |
 
@@ -549,8 +550,9 @@ The checker types every rule against the dialect (part 02), reading formats as t
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878621423)):
   - **data** (`string`, `number`, `boolean`, `date`) supports `===`, `!==`, `in` (membership),
     and orderings on numbers and dates;
-  - **text** supports `blank`, `size`, `words`, `lines`, `in` (search), `starts_with`,
-    `ends_with`, `matches`, `has_word`, `lower`, `trim`, `plain` and `cat` (plain text only).
+  - **text** supports `blank`, `size`, `words`, `lines`, `in` (search, and membership in a written
+    list of string literals), `starts_with`, `ends_with`, `matches`, `has_word`, `lower`, `trim`,
+    `plain` and `cat` (plain text only).
 - **Refused on text:** `===`/`!==` against a literal or another text; `<`, `>`, `<=`, `>=`;
   `substr`; `!` as a blank test.
 - **Numbers** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) are IEEE doubles. An operation whose result isn't finite (an overflow,
@@ -681,7 +683,7 @@ Every rule below is decided (linked, or in [part 03's decision](https://github.c
 
 Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Node 'x'`,
 `Loop 'x'`, `While 'x'`, `Check 'x'`, `Deliverable 'x'`, `Macro 'x'`, `Part 'p' of node 'x'`,
-`Computed node 'x'`, and inside a function
+`Computed node 'x'` (`Check 'x'` for an entry under `checks/`, which is computed too), and inside a function
 `Node 'x' in function 'f'`. `<member>` is `if`, `while`, `until` or `expression`. `<path>` is a
 `var` path; `<format>` a format's type string (part 02).
 
@@ -704,16 +706,16 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 | *"\<site\> reads \<path\>.title, but \<format\> is a plain enum with no titles; read .value, or give the format oneOf with const and title."* | rule decided (part 02) |
 | *"\<site\> compares \<path\>.title with "\<text\>", which is not one of its titles (\<titles\>)."* | rule decided (part 02) |
 | *"\<site\> reads profile.\<field\>; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."* | rule decided ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)) |
-| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* (for `snippet`, `part`, `macro`, `renderer`, `deliverable`) | rule decided (§ 4.1) |
+| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* (for `snippet`, `part`, `macro`, `renderer`, and `deliverable` outside `checks/`) | rule decided (§ 4.1) |
 | *"Deliverable '\<id\>' if reads node.\<id\>.content; a deliverable's if reads data (.value), not text."* | rule decided ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)) |
 | *"Deliverable '\<id\>' if reads check.\<id\>; a deliverable's existence can't depend on a check."* | as above |
 | *"Macro '\<id\>' if reads param.\<name\>; a macro's if is shared, so it can't depend on one function's parameter."* | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)) |
 | *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | rule decided (v25's enum rule) |
 | *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | rule decided (#1385 decision 5) |
 | *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | rule decided (§ 3) |
-| *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | rule decided (v30's let sentence, adapted) |
-| *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | rule decided (§ 5.4) |
-| *"Computed node '\<id\>' builds \<format\> with \<field\>, which the format doesn't declare."* | as above |
+| *"\<site\> yields \<format\>; it declares \<format\>."* | rule decided (v30's let sentence, adapted) |
+| *"\<site\> builds \<format\> without \<field\>; object must give every property of the format."* | rule decided (§ 5.4) |
+| *"\<site\> builds \<format\> with \<field\>, which the format doesn't declare."* | as above |
 | *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal."* | rule decided ([#1400](https://github.com/Consultologist/Consultologist-Blazor/issues/1400#issuecomment-6905611896), [failWith](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116), [min](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); `<operand>` is `pattern`, `word`, `failWith` or `count_pass`'s `min` |
 | *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | rule decided ([part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
 | *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | rule decided |
@@ -732,7 +734,7 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6925165013)),
   one line per value or decision:
   *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."*
-  and *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."*
+  and *"\<site\> reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."*
 - **Model-derived** is shown, not warned: History, the diagram and the Editor mark each
   model-derived value and decision (§ 4.5); the Editor shows:
   *"computed from model text: node.\<id\>"*.

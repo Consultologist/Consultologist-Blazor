@@ -42,6 +42,7 @@ public class HandEditsTests
     {
         ["example-macros"] = SilentAndWrapUp,
         ["example-macros-warnings"] = SilentAndWrapUp + " Its self_read instruction read the macro's own .content, which rendered the body into the prompt; what the model is told in its place is a choice too.",
+        ["example-nested-note"] = "the owner ruled that no max is guessed (#1508).",
     };
 
     private const string SilentAndWrapUp =
@@ -56,6 +57,17 @@ public class HandEditsTests
     /// <summary>The packages with hand edits whose edits are made.</summary>
     public static TheoryData<string> EditedPackages() =>
         new(MigratedPackagesTests.NamesWithHandEdits.Where(p => !NotEdited.ContainsKey(p)));
+
+    /// <summary>
+    /// #1508 (R11): the packages not edited whose migrated package still runs offline as written, so it is compared: its
+    /// one edit is the instances limit, which publish holds it to and the run does not. <c>example-nested-note</c>'s worst
+    /// case passes the engine's default (A11-001), and no max is guessed.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> ComparedAsMigrated = ["example-nested-note"];
+
+    /// <summary>The packages with hand edits whose reports are compared: those edited, and <see cref="ComparedAsMigrated"/>.</summary>
+    public static TheoryData<string> ComparedPackages() =>
+        new(MigratedPackagesTests.NamesWithHandEdits.Where(p => !NotEdited.ContainsKey(p) || ComparedAsMigrated.Contains(p)));
 
     [Fact]
     public void EveryPackageWithHandEdits_HasItsEdits()
@@ -75,7 +87,7 @@ public class HandEditsTests
         {
             var folder = MigrationFixture.HandEditsOf(package);
             var edits = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-                .Where(f => Path.GetRelativePath(folder, f) != MigrationFixture.HandEditsReadme);
+                .Where(f => Path.GetRelativePath(folder, f) is not (MigrationFixture.HandEditsReadme or MigrationOptionsFile.FileName));
             if (NotEdited.ContainsKey(package))
                 Assert.False(edits.Any(), $"{MigrationFixture.HandEditsFolder}/{package} is not edited, but holds edits.");
             else
@@ -91,7 +103,7 @@ public class HandEditsTests
     public void APackageNotEdited_StaysRefused(string package)
     {
         // An edit not made leaves its notice's construct where the checker refuses it, so the package is not compared.
-        Assert.NotEmpty(MigratedPackagesTests.Publish(MigrationFixture.Edited(package)));
+        Assert.NotEmpty(MigratedPackagesTests.PublishAtTheEngine(MigrationFixture.Edited(package)));
     }
 
     [Theory]
@@ -99,7 +111,7 @@ public class HandEditsTests
     public void TheEditedPackage_Publishes(string package)
     {
         // The invariant (Task 12): no hand edit left means CompiledPackage.Publish refuses nothing.
-        var refusals = MigratedPackagesTests.Publish(MigrationFixture.Edited(package));
+        var refusals = MigratedPackagesTests.PublishAtTheEngine(MigrationFixture.Edited(package));
 
         Assert.True(refusals.Count == 0, "Refusals:\n" + string.Join("\n", refusals.Select(r => $"  {r.Id} {r.Path}: {r.Sentence}")));
     }
@@ -151,7 +163,7 @@ public class HandEditsTests
         {
             var edited = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
                 .Select(f => Path.GetRelativePath(folder, f).Replace(Path.DirectorySeparatorChar, '/'))
-                .Where(f => f != MigrationFixture.HandEditsReadme)
+                .Where(f => f is not (MigrationFixture.HandEditsReadme or MigrationOptionsFile.FileName))
                 .Select(f => f.EndsWith(MigrationFixture.DeletedSuffix, StringComparison.Ordinal) ? f[..^MigrationFixture.DeletedSuffix.Length] : f);
             var text = ByteEquivalenceFixtures.ReadText(readme);
             Assert.All(edited, f => Assert.True(text.Contains($"`{f}`", StringComparison.Ordinal), $"{f} is edited, but the README does not name it."));
@@ -187,7 +199,7 @@ public class HandEditsTests
     }
 
     [Theory]
-    [MemberData(nameof(EditedPackages))]
+    [MemberData(nameof(ComparedPackages))]
     public async Task TheReport_IsValidAgainstItsSchema(string package)
     {
         var report = await EquivalenceFixture.Report(package);
@@ -200,7 +212,7 @@ public class HandEditsTests
     }
 
     [Theory]
-    [MemberData(nameof(EditedPackages))]
+    [MemberData(nameof(ComparedPackages))]
     public async Task TheReport_IsTheGolden(string package)
     {
         var report = (await EquivalenceFixture.Report(package)).ToJson();

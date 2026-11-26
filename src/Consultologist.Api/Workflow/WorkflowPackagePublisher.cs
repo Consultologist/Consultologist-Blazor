@@ -14,7 +14,9 @@ namespace Consultologist.Api.Workflow;
 public sealed record WorkflowPackagePublishResult(
     WorkflowPackagePublishResponse? Response,
     IReadOnlyList<string> Errors,
-    bool Forbidden = false)
+    bool Forbidden = false,
+    // #1508 (specVersion 31, area 11; D3): a refused 31 publish's report (part 07 § 9), for the 400's body; null below 31.
+    JsonElement? Report = null)
 {
     public bool Succeeded => Response != null;
 }
@@ -40,6 +42,8 @@ public sealed class WorkflowPackagePublisher
     private readonly WorkflowFormatCatalog _formats;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<WorkflowPackagePublisher> _logger;
+    private readonly SpecVersionAdmission _admission;
+    private readonly Consultologist.Api.V31.V31PackagePublisher? _v31;
 
     public WorkflowPackagePublisher(
         IWorkflowPackageStore packageStore,
@@ -49,8 +53,14 @@ public sealed class WorkflowPackagePublisher
         TimeProvider timeProvider,
         ILogger<WorkflowPackagePublisher> logger,
         IWorkflowPackageOwnership ownership,
-        WorkflowFormatCatalog formats)
+        WorkflowFormatCatalog formats,
+        // #1508 (specVersion 31, area 11): the 31 branch, entered only where the admission runs 31 (the host registers both;
+        // without them a 31 publish answers S09-001).
+        SpecVersionAdmission? admission = null,
+        Consultologist.Api.V31.V31PackagePublisher? v31 = null)
     {
+        _admission = admission ?? new SpecVersionAdmission(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        _v31 = v31;
         _packageStore = packageStore;
         _writer = writer;
         _settingsStore = settingsStore;
@@ -67,6 +77,12 @@ public sealed class WorkflowPackagePublisher
         WorkflowPackagePublishRequest request,
         CancellationToken cancellationToken)
     {
+        // #1508 (specVersion 31, area 11; D3): a 31 package is its files, manifest.json among them (Manifest is null).
+        if (Consultologist.Api.V31.V31PackagePublisher.IsV31(request.Files))
+        {
+            return await PublishV31Async(appUserId, accountKind, request, cancellationToken);
+        }
+
         var errors = new List<string>();
 
         if (request.Manifest is null)
@@ -278,6 +294,62 @@ public sealed class WorkflowPackagePublisher
         return new WorkflowPackagePublishResult(
             new WorkflowPackagePublishResponse(name, stamped.Version, concreteRef, validation.Warnings),
             Array.Empty<string>());
+    }
+
+    /// <summary>
+    /// #1508 (specVersion 31, area 11; part 07 § 5; D2 to D5): the 31 branch. Not admitted (the preview setting unset): S09-001,
+    /// before anything is read. Then the checks the 5–30 path makes before it reads the content, as it makes them: the
+    /// operator's migration report (D5), the Source (optional here: none is an API publish, D4), its access unless uploaded,
+    /// and the target name (<see cref="ResolveTargetNameAsync"/>). The 5–30 file checks are not applied: the pipeline's
+    /// intake is the 31 package's.
+    /// </summary>
+    private async Task<WorkflowPackagePublishResult> PublishV31Async(
+        string appUserId,
+        string? accountKind,
+        WorkflowPackagePublishRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_v31 is null || !_admission.Runs31)
+        {
+            return new WorkflowPackagePublishResult(null, new[] { _admission.NotSupported(31) });
+        }
+
+        if (_v31.Admit(appUserId, request) is { } refused)
+        {
+            return refused;
+        }
+
+        if (request.Source != null)
+        {
+            if (!WorkflowPackageRef.TryParse(request.Source, out var sourceRef))
+            {
+                return new WorkflowPackagePublishResult(null, new[] { "Source must be a valid package reference (name@vYYYY.MM.N)." });
+            }
+
+            if (sourceRef!.IsLatest)
+            {
+                return new WorkflowPackagePublishResult(null, new[] { "Source must be a concrete version, not @latest." });
+            }
+
+            if (!request.FromUpload && !await _ownership.CanAccessAsync(sourceRef.Name, appUserId, cancellationToken))
+            {
+                return new WorkflowPackagePublishResult(null, new[] { "Source package is not accessible from this account." }, Forbidden: true);
+            }
+        }
+
+        var target = await ResolveTargetNameAsync(appUserId, accountKind, request, cancellationToken);
+        if (target.Result != null)
+        {
+            return target.Result;
+        }
+
+        var (published, report) = await _v31.PublishAsync(appUserId, accountKind, request, target.Name!, cancellationToken);
+        return published != null
+            ? new WorkflowPackagePublishResult(published, Array.Empty<string>())
+            : new WorkflowPackagePublishResult(
+                null,
+                report.Refusals.Select(refusal => refusal.Sentence).ToList(),
+                Report: Consultologist.Api.V31.V31PackagePublisher.ReportElement(report));
     }
 
     private async Task<CalVerVersion?> ReadLatestAsync(string? accountKind, string name, CancellationToken cancellationToken)

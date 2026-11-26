@@ -83,6 +83,7 @@ parts, macro bodies and instructions, deliverables) are Scriban text in the dial
 | `documentVersion` | integer | never | the shape of `resolve.json` itself; `1` at 31 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6957667030)) |
 | `specVersion` | integer | never | `31`. It alone identifies the rules (null handling, whitespace, escaping, culture); there is **no `semantics` block** (#1455) and **no `resolvedBy`** (the toolchain is `lock.json`'s) |
 | `package` | object `{ name: string, version: string }` | never | the package name and its version tag, for example `{ "name": "example-nested-note", "version": "v2026.12.1" }` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979256096)) |
+| `derivedFrom` | string | allowed | the manifest's `derivedFrom`, carried under the same name: the `name@version` this package was copied from, or `null` if none. It only steers publish; the engine does not read it |
 | `title` | string | never | the manifest's title, at the top level; the package's `name` (not `name@version`) when the manifest's `title` is `null` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1504)) |
 | `description` | string | allowed | the manifest's description; `null` when it has none |
 | `tags` | array of string | never | the manifest's tags; `[]` for none |
@@ -99,7 +100,7 @@ parts, macro bodies and instructions, deliverables) are Scriban text in the dial
 | `nodes` | object keyed by rooted key | never | every production node, flat (§ 2.5) |
 | `checks` | object keyed by rooted key | never | every check and check loop, flat; `{}` for none |
 | `functions` | object keyed by function id | never | each function, with its own flat `nodes` map (§ 2.5); `{}` for none |
-| `renderers` | object keyed by rooted key | never | the package's renderers; `{}` for none |
+| `renderers` | object keyed by rooted key | never | the package's renderers, and each built-in renderer the package uses (`renderer.concept_bullets`, `renderer.concept_context`), embedded with the registry's header and body in the shape of a package renderer, so that the engine loads nothing but `resolve.json`; `lock.json`'s `builtins` says which are built in; `{}` for none |
 | `snippets` | object keyed by rooted key | never | every snippet and snippet folder; `{}` for none |
 | `macros` | object keyed by rooted key | never | every macro and macro folder; `{}` for none |
 | `deliverables` | object keyed by rooted key | never | every deliverable, keyed by its path (`deliverable.emr.note`) |
@@ -110,24 +111,45 @@ parts, macro bodies and instructions, deliverables) are Scriban text in the dial
 The manifest keeps identity and inputs; its old `nodes`, `macros` and `snippets` lists are the
 folders' `index.json` files at 31 ([part 01](01-files-and-scopes.md),
 [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)).
-Members of the manifest that only steer publish (for example a `derivedFrom` pointer) are carried
-under the same names when they exist at 31.
+Members of the manifest that only steer publish are carried under the same names when they exist
+at 31; `derivedFrom` is the one there is.
+
+**Every schema object that has `properties` carries `propertyOrder` beside them**
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), R10): the property names in the order the source writes them, each once, since
+RFC 8785 sorts an object's members and the written order would otherwise be lost (as `inputOrder`
+keeps the inputs'). It is written at every depth (under `properties`, `items`, `anyOf` and `$defs`)
+of a bundled format (a package format, a built-in or a catalogue format, in the order its published
+file writes) and of an inline format at any site (an input's, a function parameter's, an entry's),
+and nowhere else. It is the compiled copy's alone: it is never written in source (the dialect
+refuses it there), `formatHashes` and `typeHashes` are taken from the source without it, a model is
+never sent it (so `sentFormatHash` does not depend on it, § 2.4), and a value is validated as
+before, a validator ignoring it as JSON Schema ignores a keyword it does not know. **A compiled
+format is its source format in the dialect plus `propertyOrder`**: its `$schema` names the dialect of
+its source, and a reader that checks a compiled format against the dialect removes `propertyOrder`
+first (the dialect does not admit it; `resolve.schema.json` judges an inline format as the dialect's
+inline schema plus `propertyOrder`, closed to anything else). A `resolve.json`
+written by an earlier 31 preview, before `propertyOrder`, does not fit `resolve.schema.json`. The engine still loads
+and serves such a version (a load checks the stamp's hashes, not the schema), and an object's
+`Fields` then come in the order `resolve.json` holds its properties, sorted, not the written order;
+while 31 is in preview, such a version is published again to have the written order.
 
 ### 2.3 `inputs`
 
 The manifest's inputs object, keyed by id, with each entry's five members as written
 ([part 02](02-types-and-inputs.md)): `label` (string), `description` (lines or `null`), `format`
-(a `$ref` into the bundle, `{ "$ref": "#/$defs/<id>" }`, or the inline schema), `required`
+(a `$ref` into the bundle, `{ "$ref": "#/$defs/<id>" }`, or the inline schema, each object in it
+that has `properties` with `propertyOrder` beside them, § 2.2), `required`
 (boolean) and `channel`. Bare format ids are rewritten to `#/$defs/<id>`, as everywhere in the
-document.
+document outside the bundle (inside it, a reference is the target's `$id`, § 2.4).
 
 **The order is explicit** in `inputOrder`, since RFC 8785 sorts an object's members and the written
 order is the Create page's
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466));
+an object input's fields are in its format's `propertyOrder` (§ 2.2).
 
 ### 2.4 `formats` and `bindings`
 
-**`formats` is one self-contained JSON Schema bundle:** `{ "$defs": { "<id>": <schema>, … } }`,
+**`formats` is one self-contained JSON Schema bundle,** a JSON Schema 2020-12 compound document: `{ "$defs": { "<id>": <schema>, … } }`,
 holding every format the package uses, from its three homes, with no shadowing between them
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6879096608)):
 - **built-ins** (`string`, `number`, `boolean`, `date`, `plaintext`, `markdown_block`,
@@ -141,10 +163,23 @@ Each entry keeps its `$id` URN ([part 02](02-types-and-inputs.md),
 which names its origin and version; a package format's `$id` is derived at publish
 (`urn:consultologist:package:example-nested-note@v2026.12.1:format:verdict`), never written in
 source. Each entry keeps its `$schema` (`urn:consultologist:spec:31:dialect`, checked against
-`specVersion` at publish) and its annotations (`contentMediaType`, `x-markdown`)
+`specVersion` at publish), which names the dialect of its source (the entry is that format plus
+`propertyOrder`, § 2.2), and its annotations (`contentMediaType`, `x-markdown`)
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
 Inline schemas written on an input or a node stay inline where they're written; they carry no
 `contentMediaType` or `x-markdown`.
+
+**Inside the bundle, a format refers to another by its `$id`**
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7064144841)):
+a name written in a bundled format (`{ "$ref": "plaintext" }`, `{ "$ref": "section_plan" }`) is
+rewritten to the target's `$id` URN (`{ "$ref": "urn:consultologist:spec:31:format:plaintext" }`,
+`{ "$ref": "urn:consultologist:package:example-nested-note@v2026.12.1:format:section_plan" }`), so a
+standard validator given the bundle resolves every reference in it as written. A `#/$defs/<name>`
+inside a format is that format file's own definition, as in source. **Outside the bundle,** an
+input's, a node's or any entry's `format` names the bundle's key: `{ "$ref": "#/$defs/<id>" }`.
+Only those references are rewritten, and `propertyOrder` added beside each `properties` (§ 2.2):
+every other byte of a published format is kept, and neither hash below depends on how a reference is
+written or on `propertyOrder`.
 
 **Formats are pure shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)): one `plaintext`, one `markdown_block`, one `boolean`,
 with no producer families or prefixes. **Every node entry carries its `producer`**, as written
@@ -157,11 +192,12 @@ runs; the producer says how its output can be verified.
 **Two hashes per format** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)):
 - **`formatHashes`**, the **full** hash: everything dereferenced, every keyword kept. It's what
   a model's reply is validated against.
-- **`typeHashes`**, the **type** hash: references by name, sorted, annotations dropped. Type checks
+- **`typeHashes`**, the **type** hash: references by name (the format's id, never the `$id` a
+  reference in the bundle is written as), sorted, annotations dropped. Type checks
   compare these: a written `format` against the derived one, `with` against parameters, branch
   results against each other.
 
-**What a model receives** is its format with `title`, `$id` and the keywords strict mode rejects
+**What a model receives** is its format with `title`, `$id`, `propertyOrder` and the keywords strict mode rejects
 (such as `format: "date"`) removed; the list comes from the attested agent definition, and the
 reply is still validated against the full format. `resolve.json` keeps the full format; the record
 holds the sent format's hash and the removed keywords (part 08).
@@ -208,8 +244,10 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 |---|---|---|---|---|
 | `id` | string | never | every entry | the bare id (the file or folder name) |
 | `parent` | string | allowed | every entry | the enclosing flow node's rooted key; `null` at the top level (of the package, or of a function). Not `in`, which a loop's header uses for its source |
-| `nodes` | array of string | never | `for`, `while`, branches | the children's rooted keys, in order |
-| `ret` | string | allowed | `for`, `while`, branches, functions | the returned node's rooted key |
+| `nodes` | array of string | never | `for`, `while`, `if`, `case` | the children's rooted keys, in order |
+| `then`, `else` | object `{ nodes, ret }` | `else` allowed | `if` (`then`, `else`), `case` (`else`) | each body as compiled: `nodes` the body's rooted keys in order and `ret` the rooted key it returns (`null` for an empty body); `else` is `null` when there is none |
+| `branches` | array of `{ when, nodes, ret }` | never | `case` | each branch in order: `when` the subject's values it takes (an array of text), then `nodes` and `ret` as above |
+| `ret` | string | allowed | `for`, `while`, `if`, `case`, functions | the returned node's rooted key; `null` on an `if` and a `case`, whose `then`, `else` and `branches` each hold their own `{ nodes, ret }` |
 | `reads` | array of string | never | every entry | every path the entry reads (header and body), canonical and sorted: `node.plan.value`, `input.consult_draft.content`, `item.value.point`, `run.date`, `profile.signature`, … Snippet and macro body reads count as the placing node's ([part 05](05-templates-and-macros.md)) |
 | `runDependent` | boolean | never | every entry | `true` when anything the entry reads is a `run.*` fact or a run-dependent value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
 | `profileCarrying` | boolean | never | every entry | `true` when the entry's value carries text a profile-reading macro body was substituted into, transitively ([part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); on other entries it is derived only. A condition passes none of the three flags on |
@@ -218,15 +256,37 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 | `bodyHash` | string | allowed | templated kinds | `sha256:` over the body's UTF-8 bytes; `null` when `body` is `null` |
 | `parts` | object keyed by part id | never | agent nodes | the node's parts, each with its `if` and its text (an array of lines, #1412); `{}` for none |
 | `places` | array of string | never | agent nodes | the rooted ids of the macros its prompt places, its parts' text included, in order of appearance; `[]` for none |
+| `names` | object, written head → rooted key | never | agent nodes, `rendered` nodes, deliverables | each head (`node.<…>` or `check.<…>`) that the entry's body, its parts, and the snippets and macros it places write, mapped to the rooted key it names, **only where the two differ**; `{}` otherwise. A body names a node as written at its place (`node.draft_summary`) and the run's scope holds rooted keys, so the composer reads through this member |
+| `placements` | array of placement | never | agent nodes, `rendered` nodes, deliverables | every unit the body places, in order of appearance with placed units expanded in place (a macro body's snippets right after the macro's own entry); `[]` for none. Members below |
 | `renders` | array of render site | never | templated kinds | each pipe step into a `renderer.*`, in order of appearance: `{ "n": <1-based position>, "source": "<path>", "renderer": "<renderer id>" }`; a chain gives one entry per step, and a later step's `source` is the step before it. `[]` for none. Its position `n` is the record's `render:<n>` (part 08). Entry shape [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) |
-| `runSpots` | array of run spot | never | templated kinds | each run spot in the body ([part 05](05-templates-and-macros.md)), the `{{run:<n>}}` marker's `n`: `{ "site": <1-based position>, "at": "<line>:<column>", "reads": "<path>" }`; `[]` for none. A run spot whose read pipes into renderers covers the whole pipeline. Entry shape [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) |
+| `runSpots` | array of run spot | never | templated kinds | each run spot in the body ([part 05](05-templates-and-macros.md)), the `{{run:<n>}}` marker's `n`, numbered per entry in order of appearance with placed snippets, parts and macro instructions expanded in place: `{ "site": <1-based position>, "at": "<line>:<column>", "reads": "<path>", "unit": <site or null>, "neutral": "marker" \| "text" }`; `[]` for none. `unit` is the site whose text holds the spot (`null` for the body itself) and `at` counts in that text. `neutral` says what stands for the spot in the run-neutral render: `"marker"` for a raw `run.*` fact, a run-dependent `computed` value or a run-dependent `for` loop's value; `"text"` for a run-dependent `rendered` node, or a `while`, `if`, `case` or `call` whose `ret` is one, whose neutral render holds that node's run-neutral text. A read of a run-dependent agent's output is no spot. A run spot whose read pipes into renderers covers the whole pipeline |
 | `formatHash` | string | allowed | entries with a `format` | the resolved format's full hash, as in `formatHashes`; `null` for flow kinds that have none |
 | `typeHash` | string | allowed | entries with a `format` | its type hash, as in `typeHashes`; `null` with `formatHash` |
+| `plainConverts` | object, `if` / `expression` / `while` / `until` → array of boolean | never | nodes, checks, deliverables | for each of those four members the entry has non-null, whether each `plain` in its rule converts, in the evaluator's order ([part 03](03-expressions.md)); `[]` for a rule with none; `{}` for an entry with none of the four rules |
 
 `renderers`, `snippets`, `macros` and `deliverables` entries carry their header members the same
 way, with `body`, `bodyHash`, `reads`, `runDependent`, `modelDerived`, `renders` and `runSpots`. A
 deliverable's `reads` are its sources: the retired `sources` member is derived from them
 ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)).
+
+**An entry is closed: it holds the header members of its kind and the derived members above, and no other.** The
+header members, by kind, as written (`format` as `{ "$ref": "#/$defs/<id>" }`, or its inline schema):
+every node and check holds `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `modelDerived`,
+`runDependent`, `profileCarrying` and `if`; an agent node also `onInvalid`, `failIfEmpty`, `parts` and `ordered`; a
+computed node and a check also `expression`; a `call` also `function` and `with`; a `for` also `in`, `parallel`,
+`maxParallel`, `until`, `max`, `itemLabel`, `nodes` and `ret`; a `while` also `while`, `max`, `until`, `checkFirst`,
+`nodes` and `ret`; an `if` has `if`, `then` and `else`; a `case` has `case`, `branches` and `else`. A deliverable
+holds `label`, `kind`, `description`, `format`, `if`, `check` and `whenEmpty`; a renderer `label`, `kind`,
+`description`, `input` and `format`; a macro `label`, `description`, `if`, `format` and `instruction`; a macro folder
+`description`, `items` and `if`; a snippet `label`, `description`, `if` and `format`; a snippet folder `description`,
+`items` and `format`. A function holds `label`, `description`, `format`, `inputs`, `inputOrder` and `uses`, the
+derived members `id`, `parent`, `reads`, `runDependent`, `profileCarrying`, `modelDerived`, `formatHash`, `typeHash`,
+`ret`, `body` and `nodes` (its own flat map of entries), and its own `snippets`, `macros` and `renderers` maps, which
+are the package's. `resolve.schema.json` names each member once, and a member it does not name is refused. The one
+open entry is an item of a snippet folder (a `snippets` key of two segments, `snippet.<folder>.<id>`), whose header
+members are the folder's `format`'s own.
+
+A `placements` entry is `{ "site": "part.<id>" | "snippet.<id>" | "macro.<id>" | "macro-folder.<id>", "within": <the site whose text places it, or null for the body>, "if": <the unit's rule, its keys rooted for this entry's place, or null>, "plainConverts": [<boolean>…], "form": "block" | "inline" | null }`. `plainConverts` is that rule's, as above. `form` is a macro's marker form and `null` for the other kinds. A macro in a folder is preceded, once per entry, by a `macro-folder.<id>` entry, so the folder is decided wherever one of its macros may be. The engine decides what a prompt holds from this member alone; a snippet's, a macro's and a part's own `if` stay as written.
 
 Each `deliverables` entry also carries `delivery` and `bundle`, as its delivery folder's `index.json`
 writes them ([part 06 § 8](06-checks-deliverables-profile.md)): `delivery` an array of `email`, `pdf`,
@@ -556,8 +616,11 @@ In order:
    5. write into the registry's `{name}/{version}/`: the source files and the regenerated `dag.mmd`,
       then `lock.json`, then the publish report, then **`resolve.json` last**.
 
-   6. write the version's **"published" stamp last**, recording `resolveHash` and `lockHash`
-      ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+   6. write the version's **"published" stamp last**, `publish.json`, recording `resolveHash` and `lockHash`:
+      `{ "specVersion": 31, "resolveHash": "sha256:…", "lockHash": "sha256:…" }`, the two hashes `resolve.json` and
+      `lock.json` must have. It is canonical, holds no time, and gains one member, `migratedFrom` (a string:
+      the old version), when the operator's migration publishes the package ([part 10 § 1.5](10-migration-and-tools.md#15-account-packages-by-the-operator)). Its schema,
+      `publish-stamp.schema.json`, refuses any other member; the reader ignores any other member.
 
    Every hash is taken from final bytes. **A version exists only once stamped:** the engine and
    the registry ignore a folder without the stamp, so a publish that dies partway can be retried
@@ -591,6 +654,7 @@ it ships in Milestone 40 (#1422).
   resolve.json                       evidence: what the engine runs
   lock.json                          evidence: what checked it
   publish-report.json                the publish's outcome, tests included
+  publish.json                       the "published" stamp, written last (§ 5)
 ```
 
 ## 7. Evidence and views
@@ -634,7 +698,7 @@ matter. Every member is present (#1394).
 | `inputs` | object keyed by input id | never | a **fictional** value for **every** declared input, valid against its format, or `null` for an optional input left unset. The value is the raw value, as `input.<id>.value` reads it. Never patient text (#1402's rule). Document-filled inputs take their text form here; file fixtures are Milestone 40 (#1442) |
 | `profile` | object keyed by profile field | never | a fixed fictional value for **exactly** the fields in `needs.profile`; `{}` when it's empty |
 | `run` | object keyed by run fact | never | a fixed value for **exactly** the facts in `resolve.json`'s `run`: `"date": { "value": "2026-11-16", "timeZone": "America/Toronto" }`, `"id"`, `"package"`, `"engine"` as strings; `{}` when none is read |
-| `outputs` | object keyed by stub key | never | a stubbed value for every agent node instance that runs, valid against the node's format (§ 8.2) |
+| `outputs` | object keyed by stub key | never | a stubbed value for every agent node instance that runs, valid against the node's format (§ 8.2); a key is a node's or a check's row key |
 | `expect` | object | never | the expectations (§ 8.3); `{}` checks only that the run completes |
 
 ### 8.2 Stub keys
@@ -643,7 +707,9 @@ A stub key is the node's **rooted key**, then, for an instance inside a loop or 
 its path: item ids from the outermost inward, joined by `/`, and `#<n>` for a pass of a `while`
 where it sits, exactly the record's row key ([part 08](08-record.md) § 2.1, #1384; [ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 2): `node.plan`, `node.sections.outline:2`,
 `node.sections.paragraphs.draft_paragraph:2/1`, `node.refine.judge#3`. Inside a function the key
-goes through the call node: `node.hpi_section.standard_draft`.
+goes through the call node: `node.hpi_section.standard_draft`. A check's row key is a stub key too, in the same forms
+(`check.all_covered`, `check.part_coverage.coverage:1`), so a snapshot's `outputs` may hold `check.` keys
+([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 9); any other key is A11-005.
 
 - A text format's stub is a JSON string; a data or object format's stub is the JSON value.
 - **A node that runs with no stub** is an error (§ 10). **A stub for a node that doesn't run** is a
@@ -721,7 +787,7 @@ normalisation, the warnings, and the per-job ceiling note
 | `package` | object `{ name, version }` | never | the version published |
 | `outcome` | `"published"` or `"refused"` | never | a written report always says `published`; a refused publish returns the report without writing it |
 | `publishedAtUtc` | string (RFC 3339) | allowed | when it was written; `null` when refused |
-| `publishedBy` | string | never | `ci` with the tag, `editor`, `api` or `operator-migration` |
+| `publishedBy` | string | never | `ci` with the tag (`ci`, one space and the release tag, as `ci v2026.12.1`; [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508)), `editor`, `api` or `operator-migration`; a bare `ci` is also accepted |
 | `sourceHash` | string | never | as in `resolve.json` |
 | `resolveHash` | string | allowed | `null` when publish stopped before step 4 |
 | `lockHash` | string | allowed | `null` when publish stopped before step 4 |
@@ -771,8 +837,46 @@ points (§ 4.4):
 - *"Test '<test id>' must give exactly the profile fields the workflow reads: <fields>."* and *"Test '<test id>' must give exactly the run facts the workflow reads: <facts>."*
 - *"Tests took longer than 60 seconds in all. Publish stopped."*
 
+**At publish, from the engine's limits** (ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508); this implementation's sentences A11-001 to A11-003, after the check, before anything is written):
+- *"Up to <n> steps could run in one job, through <loop key>; this engine runs at most <limit> for one job. Lower a loop's max or split the workflow."* The package's worst case opens more instances than the engine's `jobInstances` ([part 09 § 3.5](09-engine-and-pages.md#35-the-publish-note)).
+- *"Format '<id>' names format '<name>' and also defines '<name>' in its own $defs. Rename the definition or remove it."* A package's format file names a format and defines the same name for itself ([part 02 § 3.1](02-types-and-inputs.md#31-the-keywords)); no byte of a published format changes.
+- *"Format '<id>' expands to more than <limit> parts, more than this engine can run. Make it smaller."* A bundled format whose expansion at run (every reference inlined, § 2.4) passes the run's own budget of 1,048,576 nodes, counted by the run's counter, so nothing publishes that cannot run.
+
+**At publish, from the manifest, the test files and the registry** (this implementation's sentences A11-004 to
+A11-007, [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508)):
+- *"manifest.json must give name and version as text."* The registry writes the name and version it assigns into
+  `manifest.json` (§ 5 step 0), so both must be text; said first, at `manifest.json`.
+- *"Test '<test id>' <member> is not written as the test grammar says: <what is wrong>."* A member of `expect` of the
+  wrong shape, an unknown expectation, or an `outputs` key that is no row key (§§ 8.1 to 8.3); `<what is wrong>` is a
+  phrase of the grammar, never a value of the file.
+- *"Version <version> of <package> is already published. Publish a new version."* The version's folder was stamped by
+  another publish, and the next versions tried were taken too.
+- *"The workflow couldn't be published because the engine failed. Tell the operator."* An engine fault at publish; the
+  fault's type goes to the operator's log, never to the report.
+
+**At publish, from the templates** (this implementation's sentences A11-012 and A11-009, ruled by the owner on
+[#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), ruling 12: every read is checked at publish,
+and Q5: a member read through a nullable object is told at publish, never at run time):
+- *"<Subject> uses <part or macro> at line <n> in an expression; a part or a macro is placed on its own, as {{ <part or
+  macro> }}, never piped or used in an expression."* A template reads `part.<id>`, `macro.<id>` or `macro.<folder>.<id>`
+  other than alone in its tag ([part 05 § 2.6](05-templates-and-macros.md#26-placement-forms-and-whitespace)): piped, as
+  a pipe's argument or beside another value. The run reads a unit there as nothing, so it is refused at publish.
+- *"<Subject> reads <path> at line <n> through <object path>, which can be null. Put the read inside {{ if <object
+  path> }}."* A template read steps through an object that can be null (an input not required, a field whose format
+  admits `null`, a node that may not run) with no guard on it ([part 05 § 2.5](05-templates-and-macros.md#25-a-body-if-tests-recorded-facts-only)).
+  The render fails when the object is null, so it is refused at publish; `<object path>` is the outermost object not
+  guarded.
+
 **Warnings** (never blocking):
 - *"Test '<test id>' stubs <row key>, which doesn't run."*
+- *"Deliverable '<id>' could be released with nothing in it: everything it reads may not run. Give it an if, or
+  whenEmpty: hold."* This implementation's A11-010 ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508),
+  Q3: new packages are told at publish): a text deliverable with no `if` and `whenEmpty: release` reads at least one node,
+  and every node and check it reads may not run ([part 06 § 6.6](06-checks-deliverables-profile.md#66-when-a-deliverable-comes-out-empty)).
+- *"Deliverable '<id>' writes fixed text for every item of <loop key> at line <n>, also for items that did not run. Loop
+  over .value, or guard on state."* This implementation's A11-011 (Q4): a deliverable's `for` (at line `<n>`) over a
+  loop's `.items` writes literal text beyond white space, or reads anything but its item, outside every `if` that tests
+  the item's `state` ([part 06 § 6.2](06-checks-deliverables-profile.md#62-item-states)).
 - CI, in the examples repository: *"<path> is evidence written only by publish; it is ignored and shouldn't be committed."*
 - The Editor, on import: *"This package's resolve.json and lock.json were ignored; publishing writes new ones."*
 

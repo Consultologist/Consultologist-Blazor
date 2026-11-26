@@ -97,8 +97,10 @@ internal abstract class MailDeliveryChannel(
             await mail.SendMailAsync(mailbox, address, message.Subject, message.Body, ct, message.Attachments);
             return new DeliverySendOutcome(DeliverySendResult.Sent, null, message.LinkOnly);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
+            // #1508: the cancellation of the attempt's own bound is not a fault of the send: it passes through, and the
+            // activity records it as a failed send of kind timeout.
             var kind = ex is HttpRequestException ? "unreachable" : "error";
             logger.LogWarning(
                 "V31 delivery send failed. JobId={JobId}, Kind={Kind}, Attempt={Attempt}, ErrorKind={ErrorKind}, ExceptionType={ExceptionType}",

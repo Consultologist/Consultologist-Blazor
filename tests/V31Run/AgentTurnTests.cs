@@ -4,6 +4,7 @@ using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
 using static Consultologist.Api.Tests.V31Run.BodyComposerTests;
@@ -321,8 +322,11 @@ public class AgentTurnTests
             list.Text);
         var text = list.Text!;
         var sent = JsonNode.Parse(text[(text.LastIndexOf('\n') + 1)..]);
-        Assert.Equal(CanonicalJson.Hash(sent), format.Hash);
-        Assert.Equal(format.Hash, (string)list.Detail["sentFormatHash"]!);
+        // #1508 (area 11, R8): sentFormatHash is taken before wrapping, the format as prepared, not the envelope sent
+        var beforeWrapping = CanonicalJson.Hash(format.Sent["properties"]!["value"]);
+        Assert.Equal(beforeWrapping, format.Hash);
+        Assert.NotEqual(CanonicalJson.Hash(sent), format.Hash);
+        Assert.Equal(beforeWrapping, (string)list.Detail["sentFormatHash"]!);
 
         Assert.Equal("[\"Assessment\",\"Plan\"]", format.Unwrap("{ \"value\": [\"Assessment\", \"Plan\"] }")!.Replace(" ", "", StringComparison.Ordinal));
         Assert.Null(format.Unwrap("[\"Assessment\"]"));
@@ -342,6 +346,88 @@ public class AgentTurnTests
         Assert.Equal("{\"points\":[\"a\"]}", objectFormat.Unwrap("{\"points\":[\"a\"]}"));
         Assert.EndsWith("\n" + CanonicalJson.Write(objectFormat.Sent), obj.Text, StringComparison.Ordinal);
         Assert.Equal(objectFormat.Hash, (string)obj.Detail["sentFormatHash"]!);
+    }
+
+    [Fact]
+    public async Task ATextSentThroughAWrappedCustomBinding_IsUnwrappedToItsPlainValue()
+    {
+        // #1508 (2026-11-25, item 13): a text format sent through a via: "custom" binding is enveloped, and its reply's
+        // value is the text itself, with no JSON quotes or escapes. The catalogue binds the built-in text formats through
+        // formats, so the compiled document is rebound here as an engine could meet it.
+        const string quoted = "She said \"yes\".";
+        var plan = RunFixture.Plan(Minimal());
+        plan.Document["bindings"]!["plaintext"]!["generated"]!["via"] = "custom";
+
+        var prepared = Prepared(AgentTurn.Prepare(plan, Call("node.plan", Scope(("input.consult_draft.content", ThePlan))), 100_000, Rejects));
+        Assert.True(prepared.Format!.Wrapped);
+        Assert.True(prepared.TextReply);
+        var reply = CanonicalJson.Write(new JsonObject { [EnvelopedFormat.Member] = quoted });
+        Assert.Equal("{\"value\":\"She said \\\"yes\\\".\"}", reply);
+        Assert.Equal(quoted, AgentTurn.Finish(prepared, reply).Reply);
+        Assert.Equal(quoted, prepared.Format.Unwrap(reply, text: true));
+        Assert.Equal(quoted, (string?)JsonNode.Parse(prepared.Format.Unwrap(reply)!)); // JSON text when the format is not text
+
+        var inputs = RunFixture.GoldenInputs().Inputs.Where(i => plan.Inputs.ContainsKey(i.Key))
+            .ToDictionary(i => i.Key, i => i.Value?["value"]?.DeepClone(), StringComparer.Ordinal);
+        var run = await OfflineRun.RunAsync(plan, new OfflineRequest(inputs, new Dictionary<string, string?>(StringComparer.Ordinal),
+            new JsonObject { ["date"] = "2026-11-21" }, new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.plan"] = quoted },
+            FakeRunHost.Start, GenerateMissing: false));
+
+        Assert.Equal(RunState.Completed, run.State);
+        Assert.Equal(CanonicalJson.HashText(quoted), run.Rows.Single(r => r.Key == "node.plan").ValueHash);
+        Assert.Equal(quoted + "\n", Assert.Single(run.Deliverables).Text);
+
+        // fix round 1: an envelope holding no string, or a reply that is not the envelope, is no text: not of its format,
+        // which the runner refuses as not plaintext (plaintext itself would read any string)
+        Assert.Null(prepared.Format.Unwrap("{\"value\":5}", text: true));
+        Assert.Null(prepared.Format.Unwrap("{\"value\":null}", text: true));
+        Assert.Equal("5", prepared.Format.Unwrap("{\"value\":5}"));
+        foreach (var notText in new[] { "{\"value\":5}", "{\"value\":null}", "{\"value\":[\"a\"]}", "{\"other\":\"a\"}", "She said yes." })
+        {
+            var finished = AgentTurn.Finish(prepared, notText);
+            Assert.Equal((AgentOutcomeKind.Completed, notText, true), (finished.Kind, finished.Reply, finished.NotOfFormat));
+        }
+
+        Assert.False(AgentTurn.Finish(prepared, reply).NotOfFormat);
+
+        foreach (var generate in new[] { true, false })
+        {
+            var refused = await OfflineRun.RunAsync(plan, new OfflineRequest(inputs, new Dictionary<string, string?>(StringComparer.Ordinal),
+                new JsonObject { ["date"] = "2026-11-21" }, new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.plan"] = 5 },
+                FakeRunHost.Start, GenerateMissing: generate));
+            Assert.Equal(RunState.Failed, refused.State);
+            Assert.Equal(RowState.Failed, refused.Rows.Single(r => r.Key == "node.plan").State);
+            if (generate)
+                Assert.Equal("Node 'plan' gave a reply that isn't plaintext.", refused.Sentence);
+            else
+                Assert.Equal("node.plan", Assert.Single(refused.InvalidOutputs).Key);
+        }
+
+        // a list or an object value is its JSON text, as before
+        var list = Prepared(AgentTurn.Prepare(RunFixture.Plan(CustomFormats()), Call("node.list_points", PlanScope()), 100_000, Rejects));
+        var points = AgentTurn.Finish(list, "{\"value\":[\"She said \\\"yes\\\".\"]}").Reply!;
+        Assert.StartsWith("[", points, StringComparison.Ordinal);
+        Assert.Equal(quoted, (string?)JsonNode.Parse(points)![0]);
+        Assert.Equal("{\"a\":1}", list.Format!.Unwrap("{\"value\":{\"a\":1}}"));
+    }
+
+    [Fact]
+    public void AFormatNamingAnother_IsSentAsPublishBuildsIt()
+    {
+        // #1508 (area 11, R2): in the bundle outline names plaintext by its $id; the sent copy and its hash are those of
+        // the format in its source scope, as before.
+        var files = CustomFormats();
+        var plan = RunFixture.Plan(files);
+        Assert.Equal("urn:consultologist:spec:31:format:plaintext",
+            (string?)plan.Document["formats"]!["$defs"]!["outline"]!["properties"]!["points"]!["items"]!["$ref"]);
+
+        var prepared = Prepared(AgentTurn.Prepare(plan, Call("node.outline_note", PlanScope()), 100_000, Rejects));
+
+        var (_, types, _) = ResolveFixture.Tree(files);
+        var expected = EnvelopedFormat.Of("outline", types.Formats, Rejects);
+        Assert.Equal(CanonicalJson.Write(expected.Sent), CanonicalJson.Write(prepared.Format!.Sent));
+        Assert.Equal(expected.Hash, prepared.Format.Hash);
+        Assert.Equal(expected.Hash, (string)prepared.Detail["sentFormatHash"]!);
     }
 
     [Fact]
@@ -457,6 +543,29 @@ public class AgentTurnTests
         Assert.Equal("node.sections.draft:2/macro:follow_up", (string)macro["id"]!);
         Assert.Equal("node.sections.classify:2", (string)macro["classifier"]!);
         Assert.Equal(["node.sections.draft:2/if:macro.follow_up"], macro["decisions"]!.AsArray().Select(d => (string)d!));
+    }
+
+    [Fact]
+    public void AnEngineFaultPreparingAPrompt_IsKindEngine_NotCompose()
+    {
+        // #1508 (R8 item 4): the engine failing to read the body is "engine" (A11-008), where a body that fails on what it reads is "compose" (A06-008).
+        var plan = RunFixture.Plan(LetrozoleFiles());
+
+        TemplateSyntax.TestParser.Value = _ => throw new InvalidOperationException("Margaret Okafor");
+        PreparedPrompt prepared;
+        try
+        {
+            prepared = AgentTurn.Prepare(plan, Call("node.assessment", new JsonObject()), 100_000, Rejects);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Equal("engine", prepared.ErrorKind);
+        Assert.Null(prepared.Text);
+        Assert.Equal("System.InvalidOperationException", prepared.Composition.EngineFault);
+        Assert.Equal("engine", AgentTurn.Finish(prepared, "anything").ErrorKind);
     }
 
     [Fact]

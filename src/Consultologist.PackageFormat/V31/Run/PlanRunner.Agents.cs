@@ -87,7 +87,7 @@ public sealed partial class PlanRunner
                     if (outcome.Invalid is { Count: > 0 } faults)
                         await InvalidAsync(instance, state, faults);
                     else
-                        await RepliedAsync(instance, state, outcome.Reply ?? "");
+                        await RepliedAsync(instance, state, outcome.Reply ?? "", outcome.NotOfFormat);
                     return;
                 case AgentOutcomeKind.Throttled:
                     if (state.CapacityWaited + wait > limits.CapacityWaitMinutes * 60_000L)
@@ -106,6 +106,7 @@ public sealed partial class PlanRunner
                     {
                         "steps" => RunSentences.StoppedRendering(Subject(instance), limits.RenderSteps),
                         "compose" => RunSentences.CouldNotRender(Subject(instance)),
+                        "engine" => RunSentences.EngineFailedRendering(Subject(instance)),
                         _ => ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence,
                     });
                     return;
@@ -154,13 +155,14 @@ public sealed partial class PlanRunner
         /// as the same call; invalid again, or under <c>"fail"</c>, the node fails with A06-005, which names the format and
         /// never the reply. The outcome is the row's <c>invalid</c> (part 08 § 4): that sentence as its <c>reason</c>, the
         /// node's <c>onInvalid</c> as its <c>action</c>, and the replies the node got as its <c>attempts</c>. A valid value
-        /// that is empty fails the node with its <c>failIfEmpty</c> sentence, when it has one.
+        /// that is empty fails the node with its <c>failIfEmpty</c> sentence, when it has one. A reply
+        /// <paramref name="notOfFormat"/> (<see cref="AgentOutcome.NotOfFormat"/>) is not read, and does not fit.
         /// </summary>
-        private async Task RepliedAsync(RunInstance instance, AgentState state, string reply)
+        private async Task RepliedAsync(RunInstance instance, AgentState state, string reply, bool notOfFormat)
         {
             var entry = instance.Entry;
             state.Replies++;
-            var (value, parsed) = plan.Formats.Read(reply, entry.Format);
+            var (value, parsed) = notOfFormat ? (null, false) : plan.Formats.Read(reply, entry.Format);
             var fits = parsed ? plan.Formats.Validate(value, entry.Format) : null;
             if (fits is not { Valid: true })
             {

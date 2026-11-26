@@ -12,20 +12,18 @@ namespace Consultologist.Api.V31;
 
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 09 § 3.9; D14): the weekly summary's message: the jobs, the failures, the p50 and p90
-/// of the durations (nearest rank, over the jobs that have one), and the two lines areas 09 and 10 fill: the largest
-/// record (area 11's, #1508, not measured in this build) and #1507's (area 10; R11, D22) outstanding migration hand edits.
-/// Counts and minutes only.
+/// of the durations (nearest rank, over the jobs that have one), the largest record sealed in the week (#1508, area 11:
+/// <see cref="RecordFigures"/>) and #1507's (area 10; R11, D22) outstanding migration hand edits. Counts, sizes, minutes
+/// and a job id only.
 /// </summary>
 public static class OperatorSummary
 {
-    /// <summary>D14: what the lines this build cannot measure read.</summary>
-    public const string NotMeasured = "not measured in this build";
-
     /// <summary>
     /// The summary of <paramref name="jobs"/>, each its status and its duration (null when it has none), and of
     /// <paramref name="migration"/>, the hand-edits line's figures: subject and body.
     /// </summary>
-    public static (string Subject, string Body) Compose(IReadOnlyList<(string Status, TimeSpan? Duration)> jobs, MigrationFigures migration)
+    public static (string Subject, string Body) Compose(
+        IReadOnlyList<(string Status, TimeSpan? Duration)> jobs, MigrationFigures migration, RecordFigures? record = null)
     {
         ArgumentNullException.ThrowIfNull(jobs);
         ArgumentNullException.ThrowIfNull(migration);
@@ -35,8 +33,9 @@ public static class OperatorSummary
             .Append("Jobs: ").Append(jobs.Count.ToString(CultureInfo.InvariantCulture)).Append('\n')
             .Append("Failures: ").Append(failures.ToString(CultureInfo.InvariantCulture)).Append('\n')
             .Append("p50 duration: ").Append(Minutes(NearestRank(durations, 50))).Append('\n')
-            .Append("p90 duration: ").Append(Minutes(NearestRank(durations, 90))).Append('\n')
-            .Append("Largest record: ").Append(NotMeasured).Append('\n');
+            .Append("p90 duration: ").Append(Minutes(NearestRank(durations, 90))).Append('\n');
+        foreach (var line in (record ?? RecordFigures.None).Lines)
+            body.Append(line).Append('\n');
         foreach (var line in migration.Lines)
             body.Append(line).Append('\n');
         return ("Consultologist weekly summary", body.ToString());
@@ -58,6 +57,57 @@ public static class OperatorSummary
             return "none";
         var minutes = Math.Round(value.TotalMinutes, 1, MidpointRounding.AwayFromZero);
         return minutes == 1 ? "1 minute" : $"{minutes.ToString("0.#", CultureInfo.InvariantCulture)} minutes";
+    }
+}
+
+/// <summary>
+/// #1508 (area 11, Task 21): the week's sealed records as the job index rows give them: the largest (bytes, rows, job) and
+/// how many sealed 31 jobs' rows hold no size (sealed before sizes were written, or not sealed yet). What is not read is
+/// said, never a zero: with none read, <c>not measured</c>; with some, the largest of those and the count not counted. Ids,
+/// counts and sizes only.
+/// </summary>
+public sealed record RecordFigures(long? Bytes, int? Rows, string? JobId, int NotRead)
+{
+    /// <summary>No 31 job sealed in the week.</summary>
+    public static RecordFigures None { get; } = new(null, null, null, 0);
+
+    /// <summary>The figures of the week's index <paramref name="entries"/> (the jobs that ended in the week); ties go to the lower job id, ordinal.</summary>
+    public static RecordFigures Of(IEnumerable<ConsultGenerationJobIndexEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ConsultGenerationJobIndexEntry? largest = null;
+        var notRead = 0;
+        foreach (var entry in entries.Where(e => e.RecordStorage >= RecordSealer.SealedFrom))
+        {
+            if (entry.RecordBytes is not { } bytes || entry.RecordRows == null)
+            {
+                notRead++;
+                continue;
+            }
+
+            if (largest == null || bytes > largest.RecordBytes
+                || (bytes == largest.RecordBytes && string.CompareOrdinal(entry.JobId, largest.JobId) < 0))
+                largest = entry;
+        }
+
+        return new RecordFigures(largest?.RecordBytes, largest?.RecordRows, largest?.JobId, notRead);
+    }
+
+    /// <summary>The summary's lines for them.</summary>
+    public IReadOnlyList<string> Lines
+    {
+        get
+        {
+            var number = CultureInfo.InvariantCulture;
+            if (Bytes is not { } bytes)
+                return [NotRead == 0
+                    ? "Largest record: none"
+                    : $"Largest record: not measured; the sizes of {NotRead.ToString("N0", number)} sealed records could not be read."];
+            var largest = $"Largest record: {bytes.ToString("N0", number)} bytes, {Rows!.Value.ToString("N0", number)} rows (job {JobId})";
+            return NotRead == 0
+                ? [largest]
+                : [largest, $"Largest record: {NotRead.ToString("N0", number)} sealed records could not be read and are not counted."];
+        }
     }
 }
 
@@ -98,6 +148,7 @@ public sealed class OperatorWeeklySummary(
 
         var from = now.AddDays(-7);
         var jobs = new List<(string Status, TimeSpan? Duration)>();
+        var inWeek = new List<ConsultGenerationJobIndexEntry>();
         var listed = await accounts.ListAsync(ct);
         foreach (var account in listed)
         {
@@ -116,12 +167,13 @@ public sealed class OperatorWeeklySummary(
             {
                 if (!ConsultGenerationJobEntity.IsTerminal(entry.Status) || entry.CompletedAtUtc is not { } ended || ended <= from || ended > now)
                     continue;
+                inWeek.Add(entry);
                 jobs.Add((entry.Status, entry.StartedAtUtc is { } started && ended >= started ? ended - started : null));
             }
         }
 
         var migration = await _handEdits.CountAsync(listed, ct);
-        var (subject, body) = OperatorSummary.Compose(jobs, migration);
+        var (subject, body) = OperatorSummary.Compose(jobs, migration, RecordFigures.Of(inWeek));
         logger.LogInformation(
             "Operator weekly summary. Jobs={Jobs}, Failures={Failures}",
             jobs.Count,

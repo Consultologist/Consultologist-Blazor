@@ -516,7 +516,8 @@ public class OrchestratorV31Tests
     public async Task AFailedDelivery_LeavesTheJobCompleted()
     {
         // Review Focus 4: the letter's email fails at every attempt (the activity fails, which the host makes a failed send);
-        // its PDF is still in flight when the window closes. Both are failed, the job is Completed, and no timer is left.
+        // its PDF is still in flight when the window closes and is waited for (#1508): it then goes out, so the PDF is sent and only
+        // the email is failed. The job is Completed, and no timer is left.
         var job = V31Job.Of("checked-note");
         job.Deliver = input => input.Send.Kind == "email"
             ? throw new InvalidOperationException("Graph mail request failed with status 503.")
@@ -542,7 +543,7 @@ public class OrchestratorV31Tests
         Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
         Assert.Null(job.State.FailureError);
         Assert.Equal([("email", 1), ("pdf", 1), ("email", 2), ("email", 3)], Sends(context).Select(s => (s.Input.Send.Kind, s.Input.Send.Attempt)));
-        Assert.Equal(2, job.State.V31Progress!.States["delivery:failed"]);
+        Assert.Equal(1, job.State.V31Progress!.States["delivery:failed"]);
         Assert.Equal(
             [ConsultGenerationJobStatuses.Running, ConsultGenerationJobStatuses.Delivering, ConsultGenerationJobStatuses.Completed],
             Statuses(context));
@@ -817,6 +818,73 @@ public class OrchestratorV31Tests
 
         Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
         Assert.Equal([new OperatorAlert(OperatorAlertKinds.CapacityWait, V31Job.JobId, "node.plan", 6)], job.Alerts);
+    }
+
+    [Fact]
+    public async Task TheOperatorAlert_IsItsOwnActivity()
+    {
+        // #1508 (ruling 4, item 5): the notice is scheduled as its own activity and not awaited where it is raised: while the
+        // alert is still in flight the run goes on (node.plan's third attempt is dispatched), and the orchestration does not
+        // end until the alert has been answered
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        var context = job.Context().WrapActivityFailures();
+
+        await Task.Run(() =>
+        {
+            var run = V31Job.RunAsync(context.HoldActivities());
+            var alertHeld = (string name, string _) => name == ConsultGenerationActivityNames.AlertOperatorV31;
+            while (context.ReleaseOldest((name, input) => !alertHeld(name, input)))
+            {
+            }
+
+            Assert.Equal(1, context.PeakHeld(ConsultGenerationActivityNames.AlertOperatorV31));
+            Assert.Equal(3, V31Job.AgentCalls(context).Count(c => c.Key == "node.plan"));
+            Assert.Empty(job.Alerts);
+            Assert.False(run.IsCompleted, "The orchestration ended with its alert in flight.");
+
+            while (context.HeldActivities > 0)
+                context.ReleaseOldest();
+            Assert.True(run.IsCompleted, "The orchestration has not ended: something it waits on was never released.");
+            return run;
+        });
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal([new OperatorAlert(OperatorAlertKinds.CapacityWait, V31Job.JobId, "node.plan", 6)], job.Alerts);
+    }
+
+    [Fact]
+    public async Task AFailedAlert_NeverFailsTheJob()
+    {
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        job.Alert = _ => throw new InvalidOperationException("The mailbox is down.");
+        var context = job.Context().WrapActivityFailures();
+
+        await V31Job.DriveAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
+    }
+
+    [Fact]
+    public async Task ACancelledAlert_NeverFailsAnOrchestrationWhoseJobIsFinal()
+    {
+        // #1508 (final review): PendingAlerts.WhenSentAsync is awaited in the orchestrator's finally, after the job is
+        // final; an alert's activity call that ends cancelled must not fault it (the context here does not wrap the fault
+        // in TaskFailedException, so the OperationCanceledException reaches PendingAlerts as it is).
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);
+        job.Alert = _ => throw new OperationCanceledException();
+        var context = job.Context();
+
+        await V31Job.DriveAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.AlertOperatorV31);
     }
 
     [Theory]

@@ -59,6 +59,9 @@ public static partial class SourceTemplates
         {
             var formats = resolution.Tree.FormatsOf(body.Host.Frame);
             var format = deliverable.Header["format"];
+            if (FormatTypes.Shape(format, formats) != FormatShape.Object)
+                MayBeReleasedEmpty(body, deliverable);
+            FixedTextForEveryItem(body, deliverable);
             switch (SourceLayout.Text(format))
             {
                 case "markdown_block":
@@ -76,6 +79,42 @@ public static partial class SourceTemplates
                     return body;
                 default:
                     return body;
+            }
+        }
+
+        /// <summary>
+        /// #1508 (ruled by the owner, Q3 of 2026-11-26; R15) A11-010, a warning: a text deliverable with no <c>if</c> and
+        /// <c>whenEmpty: release</c> that reads at least one node, in its body or a unit it places, where every node and check it
+        /// reads may not run (<see cref="ScopeTree.AlwaysValued"/> false: it can be skipped, and read as null), could be
+        /// composed empty and released. Its other reads (an input, the profile, a run fact) are not judged.
+        /// </summary>
+        private void MayBeReleasedEmpty(CheckedBody body, SourceDeliverable deliverable)
+        {
+            if (deliverable.Header["if"] is not null || SourceLayout.Text(deliverable.Header["whenEmpty"]) != "release")
+                return;
+            var sources = PackageTemplates.Placed(body).SelectMany(b => b.Body.Reads)
+                .Select(r => (r.RootedHead ?? r.Head)?.Split('.') is [var root and ("node" or "check"), var id, ..] ? (Root: root, Node: body.Host.Frame.Visible(root, id)) : default)
+                .Where(s => s.Node is not null)
+                .ToList();
+            if (sources.Any(s => s.Root == "node") && sources.All(s => !ScopeTree.AlwaysValued(s.Node!)))
+                Warnings.Add(ResolveSentences.MayBeReleasedEmpty(deliverable.Id, deliverable.Path));
+        }
+
+        /// <summary>
+        /// #1508 (ruled by the owner, Q4 of 2026-11-26; R16) A11-011, a warning: each <c>for</c> of the deliverable's own text over
+        /// a loop's <c>.items</c> (a node's or a check's, read typed) whose body writes fixed text outside every <c>if</c> on its
+        /// item's <c>state</c> (<see cref="TemplateFor.FixedText"/>) writes it for the items that did not run too; said at the
+        /// <c>for</c>'s line.
+        /// </summary>
+        private void FixedTextForEveryItem(CheckedBody body, SourceDeliverable deliverable)
+        {
+            foreach (var loop in body.Syntax.Fors.Where(f => f.FixedText))
+            {
+                var source = loop.Source.Trim();
+                if (body.Reads.FirstOrDefault(r => r.Written == source && r.Line == loop.Tag.Line) is { } read
+                    && (read.RootedHead ?? read.Head) is { } key && key.Split('.') is ["node" or "check", ..]
+                    && read.Canonical == key + ".items")
+                    Warnings.Add(ResolveSentences.FixedTextForEveryItem(deliverable.Id, key, loop.Tag.Line, deliverable.Path));
             }
         }
 

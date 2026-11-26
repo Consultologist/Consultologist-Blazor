@@ -205,14 +205,23 @@ public static class ApiServices
         services.AddSingleton<Consultologist.Api.V31.IOperatorAlerts, Consultologist.Api.V31.OperatorAlerts>();
         // #1507 (area 10; R11, D22): the summary's hand-edits line migrates each account's active package as stored (the
         // store's raw read), against the bundled 31 type registry, read on first use (area 11's publish path reuses it).
+        // #1508 (R20): the one registry the host holds, read by the library's one loader; the ingestor takes this instance.
         services.AddSingleton<IWorkflowPackageSources>(sp => sp.GetRequiredService<WorkflowPackageStore>());
         services.AddSingleton(_ => new Consultologist.Api.V31.PublishedTypeRegistry());
         services.AddSingleton<Consultologist.Api.V31.OutstandingHandEdits>();
+        // #1508 (area 11): WorkflowPackages/Publish's 31 branch, entered only where the preview setting admits 31; its
+        // registry writer writes a version's folder over the registry's blobs (IRegistryFiles), the stamp last.
+        services.AddSingleton<Consultologist.Api.V31.IV31RegistryWriter, Consultologist.Api.V31.V31RegistryWriter>();
+        services.AddSingleton<Consultologist.Api.V31.V31PackagePublisher>();
         // #1503 (part 09 § 3.6; D9): the drain before a deploy — its state on the text account (drain/ in the job outputs'
         // container), read on every call; both starters park behind it; Admin/Drain, Admin/Resume and GET Admin/Drain drive it.
         services.AddSingleton<IDrainBlobs, TextDrainBlobs>();
         services.AddSingleton<IEngineDrain, EngineDrain>();
         services.AddScoped<AdminDrain>();
+        // #1508 (area 11, Task 36; R21): the operator's bulk publish, one account package a call (Admin/MigratePackage, gated
+        // as Admin/Drain is), driven by scripts/bulk-publish-v31.cs.
+        services.AddSingleton<Consultologist.Api.V31.MigratePackage>();
+        services.AddScoped<AdminMigratePackage>();
         // #449/#398: the build's attestation, computed once — served at Public/Engine
         // and stamped on every record's packageFormatRef/provenanceRef.
         services.AddSingleton(sp => EngineAttestation.Current(

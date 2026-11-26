@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Is the referral in scope?","description":null,"format":"classification","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
+{"kind":"agent","producer":"generated","label":"Is the referral in scope?","description":null,"format":"scope_answer","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
 ---
 You are deciding whether a referral belongs in a general medical outpatient clinic.
 

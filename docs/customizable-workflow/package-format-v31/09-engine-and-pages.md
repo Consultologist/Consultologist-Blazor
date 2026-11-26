@@ -38,7 +38,8 @@ was [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/139
    equal the hash published for that version
    ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175));
    `lock.json`'s hash must equal its published hash; and the link between them must hold
-   (`resolve.json`'s pointer to its lock names that `lockHash`, part 07). A mismatch of any of
+   (`resolve.json`'s pointer names the lock by file name, `lock.json`, and the stamp carries
+   `lockHash`, part 07). A mismatch of any of
    the three refuses the load. The published hashes are in the version's stamp (part 07), and
    **a version without the "published" stamp doesn't exist** for the engine: publish writes the
    stamp last, so a publish that died partway is never loaded, and stamped folders are never
@@ -253,8 +254,20 @@ valid on every deployment; only the note's numbers differ.
 
 **The total-work limits and the job limit are noted the same way** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): when a loop's list
 could be longer than the items limit, when the package's worst case could make more agent calls
-than the job allows, and when its estimated worst case passes the job limit. Each is a note,
-never a refusal (part 04 § 10.2).
+than the job allows, and when its estimated worst case passes the job limit (S09-016: one minute
+for every round of the ceiling's agent calls in the worst case, rounded up). Each is a note, never
+a refusal (part 04 § 10.2).
+
+**The instances limit refuses** (ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), the publish half of § 3.4's tenth limit):
+publish counts the instances the package's worst case could open, as the runner counts them (a
+node, check or deliverable instance, a loop item, a pass, a call's body), each body as often as it
+can run: a loop's items the least of its known length, the items limit and its `max`; a while's
+`max` passes, and one more when it checks first; the larger branch of an `if` or a `case`; a call
+its function's body. A loop over a list known only at run time is bounded by the items limit, so
+no path is unbounded for this count. Past the engine's `jobInstances` (10,000) publish refuses:
+
+> *"Up to <n> steps could run in one job, through <loop key>; this engine runs at most <limit> for
+> one job. Lower a loop's max or split the workflow."*
 
 ### 3.6 Every deploy is preceded by a drain
 
@@ -376,10 +389,10 @@ public sealed record WorkflowPackageInputResponse(
 | `Type` | its format, mapped ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)): a text format (`plaintext`, `markdown_block`) → `text`; `string` with `enum` or a labelled `oneOf` → `enum`; a plain `string` → `text`; `date` → `date`; `boolean` → `boolean`; `number` and `integer` → `number`; an object → `object`; an array → `array` |
 | `Values` | for an enum, the `enum` values, or the `const` of each `oneOf` entry, in order (titles are in `Format`) |
 | `Items` | for an array, its `items` mapped the same way, at every depth |
-| `Fields` | for an object, one per entry in `properties`, in written order: `Id` the property name, `Label` its `title` (the property name when there is none), `Required` as part 02 defines a required field, the rest mapped the same way |
+| `Fields` | for an object, one per entry in `properties`, in written order (the object's `propertyOrder` in `resolve.json`, part 07 § 2.2, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), since canonical JSON sorts the properties): `Id` the property name, `Label` its `title` (the property name when there is none), `Required` as part 02 defines a required field, the rest mapped the same way |
 | `ExpectedContent` | its `channel` (part 02) |
 | `Types` | `null` (31 has no union inputs) |
-| **`Format`** (new) | the input's format as a self-contained schema: a JSON Schema in the dialect, with its `$id`s kept and its `$ref`s resolved within the document ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)). `null` for every package below 31 |
+| **`Format`** (new) | the input's format as a self-contained schema: a JSON Schema in the dialect, with its `$id`s kept and its `$ref`s resolved within the document ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)). It carries no `propertyOrder` (part 07 § 2.2): that member is left out at every depth, so `Format` stays a schema in the dialect, and `Fields` carry the written order. `null` for every package below 31 |
 | **`Channel`** (new) | its `channel` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)). `null` when it has none, and for every package below 31 |
 
 - **Inputs come in written order,** which is the Create page's order (#1385), from `resolve.json`'s
@@ -433,8 +446,9 @@ in written order, each with its `label` and its `description` as help text:
   `null`; a field whose type is not nullable must be filled in before Start is enabled.
 - **Documents need no member.** Any text-format input takes typed text or a document; an array of
   text takes typed rows, documents and earlier runs' deliverables in the order sent (#872, #874,
-  #1144), as today. A document sent to a Markdown input is converted to Markdown, and the
-  converter's, parser's and OCR's versions are recorded with the input
+  #1144), as today. A document sent to a Markdown input gives its extracted text, as at 30 (the
+  converter to Markdown is Milestone 40, #1442), and the parser's and OCR's versions are recorded
+  with the input
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6924904289)).
 - **`channel`** (`transcript`, `image`, `ambient-note`, `form`) does what `expectedContent` does
   today; only the name changes.

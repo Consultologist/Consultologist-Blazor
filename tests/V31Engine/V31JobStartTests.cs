@@ -51,8 +51,9 @@ public class V31JobStartTests
     private const string Zone = "America/Toronto";
 
     [Fact]
-    public async Task WithoutThePreviewSetting_A31PackageIsAnsweredAsToday()
+    public async Task WithoutThePreviewSetting_A31PackageIsS09001_As400()
     {
+        // #1508 (Review Focus 4): nothing of 31 is asked; today's reader refuses the 31 pin, which is S09-001 as a 400.
         var start = new Start(preview: null);
         var packageRef = start.Put("nested-note");
         start.PackageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
@@ -61,7 +62,10 @@ public class V31JobStartTests
         var outcome = await start.RunAsync(packageRef, Text(Draft));
 
         Assert.Null(outcome.JobId);
-        Assert.Equal(ConsultGenerationJobStartError.SpecVersionNotYetExecutable, outcome.Error);
+        Assert.Equal(ConsultGenerationJobStartError.SpecVersionNotAdmitted, outcome.Error);
+        Assert.Equal(SpecVersionAdmissionTests.With(null).NotSupported(31), outcome.ErrorDetail);
+        V31Contract.AssertSentence(new SourceRefusal("S09-001", outcome.ErrorDetail!, ""));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, ConsultGenerationJobs.StatusFor(outcome.Error!.Value));
         Assert.Equal(0, start.Store.Calls);
         Assert.Empty(start.Registry.Reads);
         Assert.Empty(start.Scheduled);
@@ -826,6 +830,38 @@ public class V31JobStartTests
     }
 
     [Fact]
+    public async Task TheOcrModelsDatedVersion_IsRecorded()
+    {
+        // #1508 (ruling 4, item 5; part 08 § 3.1): an image-only PDF read by OCR records the model's dated version
+        // (AnalyzeResult.ModelVersion), not "prebuilt-read" alone, in the input's extraction versions
+        var start = new Start(preview: "31");
+        start.Ocr.IsConfigured.Returns(true);
+        start.Ocr.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int?>(), Arg.Any<CancellationToken>()).Returns(new DocumentOcrResult(
+            DocumentOcrStatus.Extracted, Draft, "docintel/1.0.0+abc12345", 0.99, "2024-11-30"));
+        var request = new ConsultGenerationRequest(
+            null,
+            RefText(start.Put("nested-note")),
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new InputFilePayload("application/pdf", DocumentExtractionTests.ImageOnlyPdf())],
+            });
+
+        var outcome = await start.RunAsync(request);
+
+        Assert.Null(outcome.Error);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        var origin = Assert.Single(initialize.InputDocumentOrigins!["consult_draft"]);
+        Assert.Equal(new ConsultOcrStep("Azure AI Document Intelligence", "prebuilt-read/2024-11-30"), origin.Ocr);
+        // the origin the extraction gave is the 5–30 origin: its extractor is the OCR build's, as it was
+        Assert.Equal("docintel/1.0.0+abc12345", origin.Extractor);
+
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(initialize));
+        var input = Assert.Single(StateOf(entity).ToRecordHeader()["inputs"]!.AsArray())!.AsObject();
+        Assert.Equal("prebuilt-read/2024-11-30", (string?)input["ocr"]!["model"]);
+    }
+
+    [Fact]
     public void ADocumentInput_At30_RecordsItsOriginAsBefore()
     {
         // the 5–30 path's origin is written as it was: none of the 31 members
@@ -1042,7 +1078,7 @@ public class V31JobStartTests
                 Substitute.For<IConsultGenerationLinkStore>(),
                 Substitute.For<Consultologist.Api.Forms.IFormResponseStore>(),
                 Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>(),
-                Substitute.For<IDocumentOcr>(),
+                Ocr,
                 TestFormats.Catalog,
                 null,
                 null,
@@ -1050,6 +1086,9 @@ public class V31JobStartTests
         }
 
         public FakeRegistry Registry { get; } = new();
+
+        /// <summary>The OCR the start reads image-only documents with (#1508: unconfigured until a test says otherwise).</summary>
+        public IDocumentOcr Ocr { get; } = Substitute.For<IDocumentOcr>();
 
         public CountingStore Store { get; }
 

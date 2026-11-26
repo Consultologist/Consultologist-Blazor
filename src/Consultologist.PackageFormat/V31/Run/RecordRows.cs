@@ -159,18 +159,19 @@ internal static class RecordRows
     /// <summary>
     /// #1506 (area 09; part 08 §§ 6, 11; part 06 § 2.1; D2): a <c>check_result</c>'s members on its row's
     /// <paramref name="detail"/>: <c>pass</c> its verdict (<c>null</c> when <paramref name="value"/> is not one: the check was
-    /// skipped or failed to run), <c>failWith</c> its <c>message</c> only when it did not pass, <c>passed</c> and
+    /// skipped or failed to run), <c>failWith</c> the operation's literal (<see cref="FailWithLiteral"/>) only when it did not pass, <c>passed</c> and
     /// <c>total</c> its counts, and its <c>uncovered</c> and <c>untested</c> lists by canonical hash and element count
     /// (<c>null</c> both for a list that is <c>null</c>). The lists themselves come from inputs, so they are returned for
     /// the settled text and never written to the detail; <c>null</c> when there is neither.
     /// </summary>
-    public static JsonObject? CheckResult(JsonNode? value, JsonObject detail)
+    public static JsonObject? CheckResult(JsonNode? value, JsonObject detail, PlanEntry entry)
     {
         ArgumentNullException.ThrowIfNull(detail);
+        ArgumentNullException.ThrowIfNull(entry);
         var result = value as JsonObject;
         bool? pass = result?["pass"] is JsonValue verdict && verdict.TryGetValue<bool>(out var passed) ? passed : null;
         detail["pass"] = pass;
-        detail["failWith"] = pass == false ? SourceLayout.Text(result!["message"]) : null;
+        detail["failWith"] = pass == false ? FailWithLiteral(entry) : null;
         detail["passed"] = Count(result?["passed"]);
         detail["total"] = Count(result?["total"]);
         JsonObject? text = null;
@@ -187,6 +188,22 @@ internal static class RecordRows
         }
 
         return text;
+    }
+
+    /// <summary>
+    /// #1508 (area 11, R8): a check's <c>failWith</c> as the author wrote it: the string literal in the <c>failWith</c> position
+    /// of its expression's <c>all_pass</c>, <c>count_pass</c> or <c>terms_subset</c>, else <c>null</c>. Never the value's own
+    /// <c>message</c>: the record is kept for life, and a value that types as <c>check_result</c> may carry model-written text.
+    /// </summary>
+    private static string? FailWithLiteral(PlanEntry entry)
+    {
+        if (!entry.Rules.TryGetValue("expression", out var rule) || rule.Json is not JsonObject { Count: 1 } call)
+            return null;
+        var (name, arguments) = (call.First().Key, call.First().Value as JsonArray);
+        var at = name switch { "all_pass" => 1, "count_pass" => 2, "terms_subset" => 2, _ => -1 };
+        return at >= 0 && arguments is not null && arguments.Count > at && arguments[at] is JsonValue literal && literal.TryGetValue<string>(out var text)
+            ? text
+            : null;
     }
 
     /// <summary>Part 08 § 13's <c>workflowOutputHashVersions</c> of a 31 deliverable row's <c>composedHash</c>.</summary>

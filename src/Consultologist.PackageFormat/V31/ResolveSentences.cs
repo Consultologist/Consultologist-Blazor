@@ -223,6 +223,51 @@ internal static class ResolveSentences
         new("S04-080", $"Up to {Number(n)} agent calls could run in one job; this engine runs at most {Number(limit)} per job, and fails the job beyond that.", "");
 
     /// <summary>
+    /// S09-016 (a note, part 09 § 3.5; #1508 D16): <paramref name="package"/>'s worst case could run for about
+    /// <paramref name="minutes"/> minutes, past the engine's job limit of <paramref name="limit"/>; area 10's A10-014 has
+    /// the same words.
+    /// </summary>
+    public static SourceRefusal WorstCaseMinutes(string package, long minutes, int limit) =>
+        new("S09-016", $"{package} could run for about {Number(minutes)} minutes in the worst case; this engine stops a job after {Number(limit)} minutes.", "");
+
+    /// <summary>
+    /// A11-001 (#1508 R1, ruled by the owner): up to <paramref name="n"/> instances could open in one job, the heaviest
+    /// path through the loop or call <paramref name="key"/>, past the engine's <paramref name="limit"/> (A09-001's
+    /// <c>jobInstances</c>). Counts are written as A09-001 writes its limit, <c>10,000</c>.
+    /// </summary>
+    public static SourceRefusal TooManySteps(long n, string key, int limit, string path) =>
+        new("A11-001", $"Up to {Grouped(n)} steps could run in one job, through {key}; this engine runs at most {Grouped(limit)} for one job. Lower a loop's max or split the workflow.", path);
+
+    /// <summary>
+    /// A11-002 (#1508 R4, ruled by the owner): the format <paramref name="id"/> names the format <paramref name="name"/> and
+    /// also defines <paramref name="name"/> in its own <c>$defs</c>.
+    /// </summary>
+    public static SourceRefusal NameAlsoDefined(string id, string name, string path) =>
+        new("A11-002", $"Format '{id}' names format '{name}' and also defines '{name}' in its own $defs. Rename the definition or remove it.", path);
+
+    /// <summary>
+    /// A11-003 (#1508 R5, ruled by the owner): the format <paramref name="id"/> expands to more than
+    /// <paramref name="limit"/> nodes (<see cref="Run.PlanFormats.NodeBudget"/>), which the run would hold as <c>false</c>.
+    /// </summary>
+    public static SourceRefusal ExpandsTooFar(string id, int limit, string path) =>
+        new("A11-003", $"Format '{id}' expands to more than {Grouped(limit)} parts, more than this engine can run. Make it smaller.", path);
+
+    /// <summary>
+    /// A11-010 (#1508, ruled by the owner, Q3 of 2026-11-26; R15), a publish warning: the deliverable <paramref name="id"/> has
+    /// no <c>if</c> and <c>whenEmpty: release</c>, and every node or check it reads may not run.
+    /// </summary>
+    public static SourceRefusal MayBeReleasedEmpty(string id, string path) =>
+        new("A11-010", $"Deliverable '{id}' could be released with nothing in it: everything it reads may not run. Give it an if, or whenEmpty: hold.", path);
+
+    /// <summary>
+    /// A11-011 (#1508, ruled by the owner, Q4 of 2026-11-26; R16), a publish warning: the deliverable <paramref name="id"/>'s
+    /// <c>for</c> at <paramref name="line"/> over <c>&lt;loop key&gt;.items</c> (<paramref name="loop"/>) writes fixed text outside
+    /// every <c>if</c> on its item's <c>state</c>.
+    /// </summary>
+    public static SourceRefusal FixedTextForEveryItem(string id, string loop, int line, string path) =>
+        new("A11-011", $"Deliverable '{id}' writes fixed text for every item of {loop} at line {Number(line)}, also for items that did not run. Loop over .value, or guard on state.", path);
+
+    /// <summary>
     /// S07-003 (at job start, part 07 § 10): the package needs <paramref name="component"/> (<c>Scriban</c>, <c>the
     /// evaluator</c> or an operation's name) in <paramref name="range"/>, and the engine runs
     /// <paramref name="engineVersion"/>; also said of a package locked before one of the engine's break points (§ 4.4).
@@ -273,4 +318,6 @@ internal static class ResolveSentences
     private static string Bool(bool value) => value ? "true" : "false";
 
     private static string Number(long value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Grouped(long value) => value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
 }

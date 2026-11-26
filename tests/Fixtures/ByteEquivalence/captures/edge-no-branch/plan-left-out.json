@@ -1,0 +1,40 @@
+{
+  "package": "edge-no-branch",
+  "tag": null,
+  "scenario": "plan-left-out",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued."
+  },
+  "prompts": [
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:f18562cbc553709b49dbfd31fa99d007b4b4ed4899208ef58102b7a9a080970f",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:c211938d63392c30c6c2d18b14d6af99f4a99ab59f63e15c2260d9248b705329",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:afc6525340b0861b6b43777b3e8752fd333bdb46dafc4f69a55375a162117691",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+    },
+    {
+      "id": "plan",
+      "state": "skipped",
+      "reason": "source node.plan_gate took no branch",
+      "hash": null,
+      "text": null
+    }
+  ]
+}

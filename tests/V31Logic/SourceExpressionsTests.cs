@@ -42,7 +42,7 @@ public class SourceExpressionsTests
         Assert.Empty(result.Expressions.Warnings);
 
         // The computed check's site is on the check, with its declared format; the coverage check's if is a Check's.
-        var coverage = Assert.Single(sites, s => s.Context.Site.Subject == "Computed node 'coverage'");
+        var coverage = Assert.Single(sites, s => s.Context.Site.Subject == "Check 'coverage'" && s.Context.Site.Kind == ExpressionSiteKind.Expression);
         Assert.Equal("check_result", coverage.Context.Site.Declared!.GetValue<string>());
         Assert.Contains(sites, s => s.Context.Site.Subject == "Check 'coverage'" && s.Context.Site.Kind == ExpressionSiteKind.CheckIf);
     }
@@ -240,6 +240,38 @@ public class SourceExpressionsTests
         Assert.Equal("S03-026", refusal.Id);
         Assert.Equal("nodes/section_count.md", refusal.Path);
         Assert.Equal("Computed node 'section_count' yields boolean; it declares number.", refusal.Sentence);
+    }
+
+    [Fact]
+    public void AChecksFailure_SaysCheck_NotComputedNode()
+    {
+        // Part 03 § 11.1 (#1508, ruling 4 item 7): a check is computed, but its failures name it as a check, at publish...
+        var wrongType = Run(Set(SourceFixture.Full(), "checks/all_sections.md", "expression",
+            """{"blank":[{"var":"input.consult_draft.content"}]}"""));
+
+        var refusal = Assert.Single(wrongType.Refusals);
+        Assert.Equal("S03-026", refusal.Id);
+        Assert.Equal("checks/all_sections.md", refusal.Path);
+        Assert.Equal("Check 'all_sections' yields boolean; it declares check_result.", refusal.Sentence);
+        V31Contract.AssertSentence(refusal);
+
+        // ... in an expression's own refusal ...
+        var unknown = Run(Set(SourceFixture.Full(), "checks/all_sections.md", "expression", """{"var":"input.nope.value"}"""));
+
+        refusal = Assert.Single(unknown.Refusals);
+        Assert.Equal("S03-014", refusal.Id);
+        Assert.Equal("Check 'all_sections' reads input.nope.value, which doesn't exist here.", refusal.Sentence);
+
+        // ... and in the run-dependent warning; a computed node under nodes/ keeps its words.
+        var stamped = Run(Set(SourceFixture.Full(), "checks/all_sections.md", "expression",
+            """{"if":[{"blank":[{"var":"run.id"}]},{"all_pass":[{"var":"check.section_coverage.items"},"Not every section covers its planned terms."]},{"all_pass":[{"var":"check.section_coverage.items"},"Not every section covers its planned terms."]}]}""")
+            .WithJson("checks/all_sections.md", h => h["runDependent"] = true));
+
+        Assert.True(stamped.Refusals.Count == 0, Said(stamped));
+        var warning = Assert.Single(stamped.Expressions!.Warnings);
+        Assert.Equal("S03-038", warning.Id);
+        Assert.Equal("Check 'all_sections' reads run.id, which is run-dependent; its value can differ between runs with the same inputs.", warning.Sentence);
+        V31Contract.AssertSentence(warning);
     }
 
     [Fact]

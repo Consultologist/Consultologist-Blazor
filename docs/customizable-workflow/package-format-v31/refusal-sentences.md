@@ -2,7 +2,7 @@
 
 Every sentence the v31 design gives to a refusal, a warning, a job-start check or a History reason, in one place. **Milestone 39 uses them as written,** with no manual review, so the build is never held up by wording; the conformance suite pins each one. **They are reviewed in #1483 (Milestone 40),** concurrently with the build ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6985257872)).
 
-Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-sentences). `<…>` marks a placeholder. **Audience** is *author* (the Editor, publish, import, CI) or *clinician* (the Create page, job start, History), where rule 7 applies. The sentences in the parts are the source: if this table and a part disagree, the part wins and this table is corrected.
+Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-sentences). `<…>` marks a placeholder. **Audience** is *author* (the Editor, publish, import, CI) or *clinician* (the Create page, job start, History), where rule 7 applies; an *operator* sentence is for the engine's log alone (a fault in the engine itself, which neither an author nor a clinician can act on; ruled on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508)). The sentences in the parts are the source: if this table and a part disagree, the part wins and this table is corrected.
 
 | Part | Sentences |
 |---|---|
@@ -153,9 +153,9 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S03-023 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | author | |
 | S03-024 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | author | |
 | S03-025 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | author | |
-| S03-026 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | author | |
-| S03-027 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | author | |
-| S03-028 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Computed node '\<id\>' builds \<format\> with \<field\>, which the format doesn't declare."* | author | |
+| S03-026 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> yields \<format\>; it declares \<format\>."* | author | |
+| S03-027 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> builds \<format\> without \<field\>; object must give every property of the format."* | author | |
+| S03-028 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> builds \<format\> with \<field\>, which the format doesn't declare."* | author | |
 | S03-029 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal."* | author | |
 | S03-030 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | author | |
 | S03-031 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | author | |
@@ -165,7 +165,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S03-035 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | author | |
 | S03-036 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S03-037 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."* | author | |
-| S03-038 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."* | author | |
+| S03-038 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"\<site\> reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."* | author | |
 | S03-039 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"computed from model text: node.\<id\>"* | author | |
 | S03-040 | [11.3 Failures at run time](03-expressions.md#113-failures-at-run-time) | *"\<site\> \<member\> could not be decided: matches was given \<n\> MiB of text; the most is 1 MiB."* | author | |
 | S03-041 | [11.3 Failures at run time](03-expressions.md#113-failures-at-run-time) | *"\<site\> \<member\> yields \<a value kind\>; a condition yields a boolean."* | author | |
@@ -331,7 +331,7 @@ Said in a refusal's place when the engine fails reading a template in a way no t
 
 | Id | Section | Sentence | Audience | Review |
 |---|---|---|---|---|
-| A08-006 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it."* | author | |
+| A08-006 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it."* | operator | |
 
 ## 06 Checks, deliverables and the profile
 
@@ -459,3 +459,31 @@ Said at run time when one of a job's record rows is larger than the record's row
 | S10-004 | [Refusals](10-migration-and-tools.md#refusals) | *"the prompt reads profile.\<field\>, which a 31 prompt doesn't read; move it to a deliverable or a macro body."* | author | |
 | S10-005 | [Refusals](10-migration-and-tools.md#refusals) | *"\<package\> stays at version 30 for now: \<reason\>. Its pin is unchanged; you can migrate it in the Editor when Milestone 41 arrives."* | clinician | |
 | S10-006 | [Refusals](10-migration-and-tools.md#refusals) | *"Renamed '\<id\>' to '\<new id\>'; '\<id\>_\<kind\>' was already taken."* | author | |
+
+## 11 Registry and publish
+
+The build's area sentences for area 11, which are not rows of `sentences.json` and are not counted above. Each is added by the task that first says it.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A11-001 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"Up to \<n\> steps could run in one job, through \<loop key\>; this engine runs at most \<limit\> for one job. Lower a loop's max or split the workflow."* | author | |
+| A11-002 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"Format '\<id\>' names format '\<name\>' and also defines '\<name\>' in its own $defs. Rename the definition or remove it."* | author | |
+| A11-003 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"Format '\<id\>' expands to more than \<limit\> parts, more than this engine can run. Make it smaller."* | author | |
+| A11-004 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"manifest.json must give name and version as text."* | author | |
+| A11-005 | [8. In-package tests](07-compiled-documents.md#8-in-package-tests-tests) | *"Test '\<test id\>' \<member\> is not written as the test grammar says: \<what is wrong\>."* | author | |
+| A11-006 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"Version \<version\> of \<package\> is already published. Publish a new version."* | author | |
+| A11-007 | [5. The publish pipeline](07-compiled-documents.md#5-the-publish-pipeline) | *"The workflow couldn't be published because the engine failed. Tell the operator."* | author | |
+| A11-008 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"\<Subject\> couldn't be rendered because the engine failed. Tell the operator."* | clinician | |
+| A11-009 | [2.5 A body `if` tests recorded facts only](05-templates-and-macros.md#25-a-body-if-tests-recorded-facts-only) | *"\<Subject\> reads \<path\> at line \<n\> through \<object path\>, which can be null. Put the read inside {{ if \<object path\> }}."* | author | |
+| A11-010 | [6.6 When a deliverable comes out empty](06-checks-deliverables-profile.md#66-when-a-deliverable-comes-out-empty) | *"Deliverable '\<id\>' could be released with nothing in it: everything it reads may not run. Give it an if, or whenEmpty: hold."* | author | |
+| A11-011 | [6.2 Item states](06-checks-deliverables-profile.md#62-item-states) | *"Deliverable '\<id\>' writes fixed text for every item of \<loop key\> at line \<n\>, also for items that did not run. Loop over .value, or guard on state."* | author | |
+| A11-012 | [2.6 Placement forms and whitespace](05-templates-and-macros.md#26-placement-forms-and-whitespace) | *"\<Subject\> uses \<part or macro\> at line \<n\> in an expression; a part or a macro is placed on its own, as {{ \<part or macro\> }}, never piped or used in an expression."* | author | |
+| A11-013 | [8.2 Whether: the header `if`](05-templates-and-macros.md#82-whether-the-header-if) | *"Node '\<id\>' asks nothing: its prompt has no question."* | author | |
+| A11-014 | [1.2 An agent node's prompt members](05-templates-and-macros.md#12-an-agent-nodes-prompt-members) | *"Node '\<id\>' has onInvalid \<value\>; write retry or fail."* | author | |
+| A11-015 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"This package stops working when specVersion 30 is retired."* | clinician | |
+| A11-016 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"\<package\> is not the account's active account package; the bulk publish migrates only the account package an account's pin names."* | operator | |
+| A11-017 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"The engine did not answer for this package; check whether it was published before sending this list."* | operator | |
+
+A11-013 is said of a `judgement` node whose prompt, with its parts' text, the text of the snippets it places and of the
+snippet folder items it reads as `item.content`, holds nothing outside its tags but white space: a question only an
+input or a node gives at run time is not one the package asks, so such a prompt is refused (part 05 § 8.2).

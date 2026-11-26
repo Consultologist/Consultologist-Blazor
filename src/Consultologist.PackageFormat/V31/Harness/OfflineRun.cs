@@ -11,6 +11,16 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// another format's its JSON value), a key missing generated (<see cref="OfflineStubs"/>); <paramref name="StartedAtUtc"/>
 /// the run's one time; <paramref name="Limits"/> the engine's limits (the defaults when null); and <paramref name="StubSeed"/>
 /// the seed a missing reply is generated from, by row key (the row key itself when null; D12: the comparison passes 30's key).
+/// #1508 (area 11; D6): when <paramref name="GenerateMissing"/> is false a call with no stub is not generated for: it fails its
+/// node as a call that could not be made does (no retry, so its dependants never dispatch) and its key is in
+/// <see cref="OfflineResult.MissingOutputs"/>; a stub that does not fit is served nowhere, fails its node the same way, and is in
+/// <see cref="OfflineResult.InvalidOutputs"/>. Neither is asked again, whatever the node's <c>onInvalid</c>. #1508 (comment 6
+/// item 2; R14): a pinned reply is served exactly as written; one whose macro markers are wrong is not a stub fault but the
+/// node's <c>onInvalid</c>'s, as live, and the attempt a <c>retry</c> asks for has no stub (missing, when not generating).
+/// #1508 (comment 5, item 7, #10; area 11 Task 34): <paramref name="EnginePlaced"/>, by macro site (<c>macro.&lt;id&gt;</c>),
+/// each macro 30's engine placed before (<c>true</c>) or after (<c>false</c>) its node's reply, which a 31 model writes the
+/// marker of: a pinned text reply that lacks the marker of such a macro its prompt offers is given it there
+/// (<see cref="OfflineStubs.Reply"/>), as the macro's instruction asks. Null for none.
 /// </summary>
 public sealed record OfflineRequest(
     IReadOnlyDictionary<string, JsonNode?> Inputs,
@@ -19,7 +29,17 @@ public sealed record OfflineRequest(
     IReadOnlyDictionary<string, JsonNode?> Outputs,
     DateTime StartedAtUtc,
     RunLimits? Limits = null,
-    Func<string, string>? StubSeed = null);
+    Func<string, string>? StubSeed = null,
+    bool GenerateMissing = true,
+    IReadOnlyDictionary<string, bool>? EnginePlaced = null);
+
+/// <summary>
+/// #1508 (specVersion 31, area 11; part 07 § 8.2; D6): a stub that does not fit its node's format (or whose markers are
+/// wrong), found by a run that does not generate: the row key, the format as sentences print one (the bundle key, else
+/// <c>its format</c>), and the first fault as its path and keyword (<c>/concepts/0/term required</c>; <c>/</c> is the root),
+/// never the value.
+/// </summary>
+public sealed record StubFault(string Key, string Format, string Error);
 
 /// <summary>
 /// #1507 (specVersion 31, area 10): one text an offline run produced: its row key, the text, and its hash (the row's
@@ -33,10 +53,13 @@ public sealed record OfflineText(string Key, string Text, string Hash);
 /// (<paramref name="StartRefusals"/>, then nothing ran). <paramref name="Prompts"/> is each agent row's sent prompt in the
 /// order first dispatched (a repaired call's last attempt, whose detail is the row's); <paramref name="Renders"/> each
 /// rendered node's text, in the order rendered (a deliverable's is in <paramref name="Deliverables"/>, the run's outcomes in
-/// plan order). <paramref name="Outputs"/> every reply served, by row key, as served (markers appended, D12);
+/// plan order). <paramref name="Outputs"/> every reply served, by row key, as served (a generated one's markers appended, D12);
 /// <paramref name="Rows"/> and <paramref name="Decisions"/> as recorded; <paramref name="UnusedOutputs"/> the keys of
 /// <see cref="OfflineRequest.Outputs"/> no agent call asked for, in ordinal order (part 07 § 8.2's warning; Review Focus 5:
-/// a key that cannot be mapped is reported, not dropped).
+/// a key that cannot be mapped is reported, not dropped). #1508 (area 11; D6): <paramref name="MissingOutputs"/> the row keys
+/// an agent call asked for that had no stub, in ordinal order, and <paramref name="InvalidOutputs"/> the stubs that did not fit,
+/// by key in ordinal order; both empty unless <see cref="OfflineRequest.GenerateMissing"/> is false (a generated reply that does
+/// not fit is the run's own failure, as before).
 /// </summary>
 public sealed record OfflineResult(
     RunState? State,
@@ -48,7 +71,26 @@ public sealed record OfflineResult(
     IReadOnlyDictionary<string, JsonNode?> Outputs,
     IReadOnlyList<RunRow> Rows,
     IReadOnlyList<RunDecision> Decisions,
-    IReadOnlyList<string> UnusedOutputs);
+    IReadOnlyList<string> UnusedOutputs,
+    IReadOnlyList<string> MissingOutputs,
+    IReadOnlyList<StubFault> InvalidOutputs)
+{
+    /// <summary>The ten-member form area 10's callers use: nothing missing, nothing invalid.</summary>
+    public OfflineResult(
+        RunState? state,
+        string? sentence,
+        IReadOnlyList<SourceRefusal> startRefusals,
+        IReadOnlyList<OfflineText> prompts,
+        IReadOnlyList<OfflineText> renders,
+        IReadOnlyList<DeliverableOutcome> deliverables,
+        IReadOnlyDictionary<string, JsonNode?> outputs,
+        IReadOnlyList<RunRow> rows,
+        IReadOnlyList<RunDecision> decisions,
+        IReadOnlyList<string> unusedOutputs)
+        : this(state, sentence, startRefusals, prompts, renders, deliverables, outputs, rows, decisions, unusedOutputs, [], [])
+    {
+    }
+}
 
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 3.1; part 07 § 8; D12): the offline, deterministic run of a compiled 31 package,
@@ -92,7 +134,7 @@ public static class OfflineRun
         {
             return new OfflineResult(
                 null, null, refusals, [], [], [], new Dictionary<string, JsonNode?>(StringComparer.Ordinal), [], [],
-                request.Outputs.Keys.Order(StringComparer.Ordinal).ToList());
+                request.Outputs.Keys.Order(StringComparer.Ordinal).ToList(), [], []);
         }
 
         var host = new OfflineHost(plan, request);
@@ -109,7 +151,9 @@ public static class OfflineRun
             host.Served,
             recorder.Rows,
             recorder.Decisions,
-            request.Outputs.Keys.Where(key => !host.Asked.Contains(key)).Order(StringComparer.Ordinal).ToList());
+            request.Outputs.Keys.Where(key => !host.Asked.Contains(key)).Order(StringComparer.Ordinal).ToList(),
+            host.Missing.Order(StringComparer.Ordinal).ToList(),
+            host.Invalid.OrderBy(f => f.Key, StringComparer.Ordinal).ToList());
     }
 
     /// <summary>The rows and decisions of one offline run, in the order recorded; delivery rows and notices are not kept.</summary>

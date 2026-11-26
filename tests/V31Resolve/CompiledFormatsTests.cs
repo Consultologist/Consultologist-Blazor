@@ -8,7 +8,8 @@ namespace Consultologist.Api.Tests.V31Resolve;
 /// <summary>
 /// #1502 (specVersion 31, area 05): the formats bundle of <c>resolve.json</c> (part 07 § 2.4; part 02 §§ 2.3, 6.2,
 /// 6.3, 7; D5): every format the package uses, from its three homes, with its <c>$id</c>, its <c>$schema</c> and its
-/// annotations, references rewritten to <c>#/$defs/…</c>; each format's two hashes, as the type services give them;
+/// annotations, references inside the bundle rewritten to the target's <c>$id</c> (#1508, R2) and elsewhere to
+/// <c>#/$defs/…</c>; each format's two hashes, as the type services give them;
 /// and the bindings of the agent nodes, by format and producer.
 /// </summary>
 public class CompiledFormatsTests
@@ -99,9 +100,9 @@ public class CompiledFormatsTests
         var (package, types, formats) = Compile(files);
         var defs = formats.Bundle["$defs"]!.AsObject();
 
-        Assert.Equal("#/$defs/section_plan", (string?)defs["section_note"]!["properties"]!["plan"]!["$ref"]);
+        Assert.Equal("urn:consultologist:package:example-minimal@v2026.12.1:format:section_plan", (string?)defs["section_note"]!["properties"]!["plan"]!["$ref"]);
         Assert.Equal("Plan", (string?)defs["section_note"]!["properties"]!["plan"]!["title"]);
-        Assert.Equal("#/$defs/plaintext",
+        Assert.Equal("urn:consultologist:spec:31:format:plaintext",
             (string?)defs["section_plan"]!["properties"]!["sections"]!["items"]!["properties"]!["title"]!["$ref"]);
 
         // The source is untouched: the bundle holds clones.
@@ -193,7 +194,7 @@ public class CompiledFormatsTests
         Assert.Contains("standard_section", Keys(defs));
         Assert.Equal("urn:consultologist:package:example-minimal@v2026.12.1:function:draft_section:format:excerpt",
             (string?)defs["draft_section__excerpt"]!["$id"]);
-        Assert.Equal("#/$defs/plaintext", (string?)defs["draft_section__excerpt"]!["properties"]!["text"]!["$ref"]);
+        Assert.Equal("urn:consultologist:spec:31:format:plaintext", (string?)defs["draft_section__excerpt"]!["properties"]!["text"]!["$ref"]);
 
         Assert.Equal(FormatTypes.FormatHash(JsonValue.Create("excerpt"), scope), (string?)formats.FormatHashes["draft_section__excerpt"]);
         Assert.Equal(FormatTypes.TypeHash(JsonValue.Create("excerpt"), scope), (string?)formats.TypeHashes["draft_section__excerpt"]);
@@ -243,7 +244,7 @@ public class CompiledFormatsTests
             new Dictionary<string, FormatSet>(), new Dictionary<string, JsonNode>(), new Dictionary<string, AgentBinding>());
         var formats = CompiledFormats.Build(package, types, registry);
 
-        Assert.Equal("#/$defs/outline", (string?)formats.Bundle["$defs"]!["outline"]!["properties"]!["points"]!["items"]!["$ref"]);
+        Assert.Equal("urn:consultologist:package:example-minimal@v2026.12.1:format:outline", (string?)formats.Bundle["$defs"]!["outline"]!["properties"]!["points"]!["items"]!["$ref"]);
         Assert.Contains("outline", Keys(formats.FormatHashes));
     }
 }

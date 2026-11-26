@@ -49,6 +49,33 @@ public class DeliverV31ActivityTests
     }
 
     [Fact]
+    public async Task ASendThatOutlastsItsBound_IsAFailedSendOfKindTimeout()
+    {
+        // #1508: the runner waits for a send in flight at the window's close, so the activity bounds each attempt itself.
+        var slow = new SlowChannel("email");
+        var activity = new DeliverV31Activity(new DeliveryChannels([slow]), new CapturingLogger<DeliverV31Activity>())
+        {
+            SendTimeout = TimeSpan.FromMilliseconds(50),
+        };
+
+        var outcome = await activity.RunAsync(Input("email"), CancellationToken.None);
+
+        Assert.Equal(new DeliverySendOutcome(DeliverySendResult.Failed, "timeout"), outcome);
+        Assert.Equal(TimeSpan.FromMinutes(2), DeliverV31Activity.DefaultSendTimeout);
+    }
+
+    private sealed class SlowChannel(string kind) : IDeliveryChannel
+    {
+        public string Kind { get; } = kind;
+
+        public async Task<DeliverySendOutcome> SendAsync(DeliverV31Input input, CancellationToken ct)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return new DeliverySendOutcome(DeliverySendResult.Sent, null);
+        }
+    }
+
+    [Fact]
     public void TheInputAndTheOutcome_RoundTrip_AsDurableStoresThem()
     {
         var input = Input("pdf");

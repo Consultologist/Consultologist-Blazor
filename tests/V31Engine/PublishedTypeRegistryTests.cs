@@ -3,6 +3,7 @@ using Consultologist.Api.Agents;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31;
+using PublishedTypeRegistry = Consultologist.Api.V31.PublishedTypeRegistry;
 
 namespace Consultologist.Api.Tests.V31Engine;
 

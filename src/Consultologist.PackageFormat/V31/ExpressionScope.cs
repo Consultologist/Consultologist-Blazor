@@ -38,7 +38,7 @@ public enum ExpressionSiteKind
 
 /// <summary>
 /// #1501 (specVersion 31, area 04): one place a rule is written. <paramref name="Subject"/> is D4's <c>&lt;site&gt;</c>
-/// (<c>Node 'gate'</c>, <c>Part 'p' of node 'x'</c>, <c>Computed node 'total'</c>, with <c> in function 'f'</c> inside a
+/// (<c>Node 'gate'</c>, <c>Part 'p' of node 'x'</c>, <c>Computed node 'total'</c> (<c>Check 'x'</c> for a check), with <c> in function 'f'</c> inside a
 /// function); <paramref name="Member"/> is <c>if</c>, <c>while</c>, <c>until</c> or <c>expression</c>; <paramref name="Path"/>
 /// is the file a refusal names. <paramref name="ComputedId"/> and <paramref name="Declared"/> (the node's format as
 /// written) are set for an <see cref="ExpressionSiteKind.Expression"/> only. #1505 (area 08; D1): <paramref name="InChecks"/>

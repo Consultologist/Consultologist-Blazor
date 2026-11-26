@@ -1,0 +1,34 @@
+{
+  "name": "edge-items-not-run",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Edge case: loop items that do not run",
+  "description": [
+    "An edge-case fixture (#1508, comment 6 item 3; comment 7 Q4): the loop problem_loop has max 2, so a third problem does not run. The deliverable note, composed from the loop, writes a heading for each item that ran; the deliverable problem_list reads the rendered node problem_lines, whose template writes a fixed line for each item of the loop, naming its problem. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "problems": {
+      "label": "Problem list",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": true,
+      "channel": null
+    }
+  }
+}

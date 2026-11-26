@@ -55,18 +55,20 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | `prose` and `agent_*` formats; `x-generated` | **the plain format of the same shape:** `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline`; object formats keep their names. **`prose` that a deliverable composes is `markdown_block`** (a node with no format is `prose`): a node a deliverable's `sources` name, and every leaf a source that is a flow reaches through its `ret`s, so the Markdown 30's composer kept is not escaped in the deliverable ([part 06 § 6.4](06-checks-deliverables-profile.md#64-strict-formats)); prose that only prompts read stays `plaintext`; `agent_plaintext`, a `rendered` node and a `let` of `text` stay `plaintext` though a deliverable composes them, and are escaped there ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369)). `x-generated` is dropped: the node's `producer` says who wrote the value ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) | [02](02-types-and-inputs.md), [07](07-compiled-documents.md) |
 | a format file | **`$schema` written** as `urn:consultologist:spec:31:dialect` | [02](02-types-and-inputs.md) |
 | an object format (catalogue or package) whose `required` lists only some properties | every property listed in `required`, the optional ones made nullable (§ 1.8) | [02](02-types-and-inputs.md) |
+| a classifier: a node of format `classification` whose `with` lists its values | **a package format of its answers**, `formats/<node id>_answer.json` (cut to 64 characters, A10-034; `_answer_2`, … when a format already has the name), listed after the package's other formats: `classification`'s shape with `value` an **`enum` of the `with` values in written order**, `{ "$schema": …, "type": "object", "additionalProperties": false, "required": ["value"], "properties": { "value": { "type": "string", "enum": [<values>] } } }`, one per classifier, even for two with the same values. A reply outside the values does not fit the format, so the node takes its `onInvalid`, as 30 refused it, never a silent match of no gate; reads keep `node.<id>.value.value` (§ 2.2), and a `case` on it lists its values as any enum's, with no hand edit. The prompt keeps 30's last line, *"Answer with exactly one of: <values>."* (A10-064); the format is bound `custom`, so 31 sends it after that line, an expected difference (§ 3.2). A `with` with no values keeps `classification`, and A10-030 says `with` was dropped ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 1) | [02](02-types-and-inputs.md) |
 | inputs as an array with `type`, `values`, `fields`, `items`, `expectedContent` | an object keyed by id: `text` → `markdown_block`; `enum` + `values` → **a plain `enum`, with no invented titles**; `date` → `"date"`; `fields` → `properties` + `required` listing every field, optional ones made nullable; `expectedContent` → `channel`; `description: null` added ([grammar](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6919612460), [enums](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)) | [02](02-types-and-inputs.md) |
-| 30's "one or many" union inputs | **their array form**, since inputs refuse a top-level `anyOf` | [02](02-types-and-inputs.md) |
+| 30's "one or many" union inputs | **their array form**, since inputs refuse a top-level `anyOf`; a `string.contains` on one is a hand edit, since 30 searched the list written as text where 31's `in` on a list is membership (§ 2.3, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 2) | [02](02-types-and-inputs.md) |
 | a long free-text `string` field | unchanged; a notice **suggests** a text format, never applied automatically | [02](02-types-and-inputs.md) |
 | bare `input.x` reads, in conditions, expressions and templates | **`input.x.value`**, or **`input.x.content`** for a text-format input, since a bare `input.<id>` is refused | [02](02-types-and-inputs.md) |
 | `labelField` on an input | `itemLabel` on **each loop** that iterates the input (several loops get the same value) | [04](04-loops-and-functions.md) |
 | a node's `when` gate | `if` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064)); a `case` branch keeps `when` | [03](03-expressions.md) |
 | a `case` with no `else` whose branches miss some values (which 30 skipped) | **an explicitly empty branch for the missing values**, `{ "when": [<values>], "nodes": [], "ret": null }`, so every `case` is exhaustive and those values still read as skipped, with the reason *"case '<id>': arm for <value> does nothing"*. The `case` keeps its shape and keys: `example-conditional-sections`' `route` gains `{ "when": ["omit"], "nodes": [], "ret": null }` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) | [04](04-loops-and-functions.md) |
-| string conditions (Scriban) | JSON Logic, by the converter (§ 2); `==`/`!=` written `===`/`!==`; `!x` on text → `blank(x)`, each listed in the migration report (§ 2.3) | [03](03-expressions.md) |
+| string conditions (Scriban) | JSON Logic, by the converter (§ 2); `==`/`!=` written `===`/`!==`; `!x` on text → `blank(x)`, each listed in the migration report (§ 2.3); text compared with a literal → `in` a list of that literal, and a nullable list's `size` compared → with its null test, so each answers as at 30 (§ 2.2) | [03](03-expressions.md) |
 | `let` (a Scriban expression) | `kind: computed` with JSON Logic in `expression`, by the converter | [03](03-expressions.md) |
 | a `terms_subset` check node | a file in `checks/`, `kind: computed`, `format: check_result`, `failWith` a literal; every reader of `node.x` rewritten to `check.x` | [06](06-checks-deliverables-profile.md) |
 | deliverables with `sources`, composed by the engine | a file in `deliverables/` whose generated template **reproduces today's composer bytes**, with `whenEmpty` chosen as § 1.10 says | [06](06-checks-deliverables-profile.md) |
 | the deliverable header's signature | `{{ profile.signature }}` in the template | [06](06-checks-deliverables-profile.md) |
+| a deliverable none of whose sources ran (each an `if` with no `else`, or a `case` with an empty branch), which 30 skipped | **an `if` that says a source ran**: `{ "===": [ { "var": "node.<source>.state" }, "completed" ] }` for each source, joined by `or`, after 30's own `if` by `and`, so the deliverable is skipped as at 30 instead of composed empty and released; a notice says so (A10-079: *"\<file\>, if: written to skip the deliverable unless \<reads\> ran, as 30 skipped a deliverable none of whose sources ran."*). When 30's own `if` is a hand edit (the converter refused it), nothing is joined to it; a second hand edit on that `if` names the term, verbatim, for the operator to join to the condition by `and` (A10-084: *"every source may not run, and 30 skipped the deliverable when none ran; join \<term\> to 30's condition by and."*). A source that always runs leaves the `if` as it was, and so does a `while`: 30 composed a while that ran no pass as empty text and released the deliverable, as 31 does; beside another source its blank-line separator is kept, which no `if` can drop: an expected difference, `while-no-pass-separator` (§ 3.2; `composer-sources` `summary_then_opening`). A new package is warned instead (A11-010) ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), Q3) | [06](06-checks-deliverables-profile.md) |
 | 30's completion reply: the documents as password-protected PDFs, or the link-only email | **the root deliverables folder → `delivery: ["pdf"]`**, `bundle: null`, and no destination folder: the `pdf` kind sends the same message and falls back to the link-only email as 30 did (part 06 § 8; [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968)) | [06](06-checks-deliverables-profile.md) |
 | built-in renderers in C# (`concept_bullets`, `concept_context`) | **built-in Scriban renderers in the registry**, versioned and locked, their ids reserved; piped as `\| renderer.concept_bullets` | [05](05-templates-and-macros.md) |
 | whitespace forms #1412 refuses, `-` on a tag | rewritten to the accepted forms | [05](05-templates-and-macros.md) |
@@ -74,8 +76,12 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | a `{{ for m in macro.<folder> }}… {{ m.prompt }}` loop over a macro folder | **unrolled into one placement per macro in the folder**, in the folder's order: a placement inside a `for` is refused (A07-009), so each macro is placed at the top level of its template, and its own `if` decides it. `example-macros`' `prompts/summary.md` is the fixture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647)) | [05](05-templates-and-macros.md) |
 | a body `if` around a macro placement (`{{ if input.include_counselling == true }}{{ macro.x }}{{ end }}`) | **hoisted into the placement's header `if`**, joined with the macro's own `if` by `and`: a placement inside an `if` is refused (A07-009). `example-macros`' `standing_draft.md` is the fixture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647)) | [05](05-templates-and-macros.md) |
 | a bare read of a node or an input in a template (`{{ input.consult_draft }}`) | **its `.content` form for text, its `.value` form otherwise**: a bare read of an object or a list is refused (A07-007, A07-008). `example-macros` is the fixture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647)) | [05](05-templates-and-macros.md) |
+| a `for` over a loop node (`{{ for e in node.<loop> }}`), whose 30 list held only the items that ran | **over `.value`**, the completed items' values ([part 04 § 2.5](04-loops-and-functions.md#25-reading-a-loop-from-outside)), each written as the item (`e.content` → `e`), where the body reads only each item's text (its `ret` a text format, or nothing of the item read); otherwise **over `.items`** with the body wrapped in `{{ if e.state == "completed" }} … {{ else }}{{ end }}`, inside the loop's own marks, unless it already tests the item's state (30's `skipped`), so an item its `until` or `max` left `not_run` writes no fixed text. A new package is warned instead (A11-011) ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), Q4) | [04](04-loops-and-functions.md), [05](05-templates-and-macros.md) |
+| a member read through an object that can be null (`{{ input.patient.age }}` of an input not required; a field that can be null; a node's `.value` when it may not run), which rendered empty at 30 | **wrapped in its guard**, the form A11-009 accepts: `{{ if input.patient.value }}{{ input.patient.value.age }}{{ end }}`, each object the read steps through joined by `&&`, the tag's outer marks moved onto the guard; a `for` over such a list is wrapped whole. In a lifted part's text, which holds no `if` (A07-002), a path the part's own `if` does not assert is a hand edit (A10-080, § 1.4) ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), Q5) | [05](05-templates-and-macros.md) |
+| `onInvalid: flag` (a reply that did not fit was kept) | **`retry`**: one more attempt with the validation error, then the node fails; a notice (A10-013) says so, and the owner's before-and-after notification lists it ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 3) | [05](05-templates-and-macros.md) |
 | `failIfEmpty` on agent nodes | the failure sentence, or null (part 05 § 1.2); 30's true, false or absent is what the migration converts from | [05](05-templates-and-macros.md) |
 | optional macros: per-run choices with a `default` | **boolean inputs** (§ 1.3) | [02](02-types-and-inputs.md), [05](05-templates-and-macros.md) |
+| a macro the model chose: a macro a prompt places whose instruction left the choice to the model (30's mechanics sentence begins *"If so, write …"*, so every one was optional, where 31 requires an offered macro's marker exactly once, part 05 § 8.6) | **a classifier gates it** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), item 1): for each agent that places it (its prompt, or a snippet its prompt places), a `judgement` agent node `<macro id>_applies` (fitted to 64 characters, A10-034; numbered `_applies_2`, … when a node has the id, S10-006), written as that agent's sibling immediately before it (inside its loop or branch), its `if` the macro's offer condition (its own `if`, its placements', and a choice input's, § 1.3), its prompt the reads the placing prompt makes outside any `if` or `for` (an input, a node, a check, the item; never a part, a macro or a snippet, whose text would stand for the question), each on its own line, then an **empty question line**, a hand edit (A10-077, § 1.4) that publish refuses until it is written (A11-013). The macro's `if` gains `{ "===": [ { "var": "node.<classifier>.value.answer" }, true ] }`, joined by `and` after the rest (one per placing agent); with more than one, a condition 30 did not have (each node's model chose on its own), the macro's `if` is a hand edit too (A10-078). The "otherwise nothing" clause of the instruction is not rewritten by code, which cannot find it reliably: the hand edit says to remove it. A macro with an empty instruction, one whose instruction is a template (`{{ "" }}`, another macro's text: A10-042), one placed by the engine (`before`, `after`: D3, A10-003) and one whose placements disagree (A10-036) keep their hand edits and get no classifier. A `condition` member that compiles to this node at publish is #1534 (Milestone 40) | [05](05-templates-and-macros.md) |
 | no tests | one snapshot test (§ 4) | [07](07-compiled-documents.md) |
 
 ### 1.3 Per-run macro choices become boolean inputs
@@ -125,6 +131,26 @@ validation fails with sentences until each is made, as the 25 migration did. The
 - a body `if` too complex to lift into a part;
 - macros placed on deliverables with conditions or model judgement (#1406);
 - a condition or `let` the converter can't map (§ 2.3);
+- **the question of a classifier the migration wrote** for a macro 30's model chose (§ 1.2), on the prompt's last line,
+  with the "otherwise" clause taken out of the macro's instruction (A10-077: *"node '<id>' decides whether macro '<macro
+  id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the
+  "otherwise" clause from the macro's instruction."*); until it is written, publish refuses the node (A11-013);
+- **a macro placed by more than one agent**, which gets a classifier each (§ 1.2): its `if` needs every answer yes, so it
+  is split into one macro per placing node or its condition chosen (A10-078: *"macro '<id>' is placed by <n> nodes, with a
+  classifier each (<ids>), and its if needs every answer yes, where 30's model chose at each node on its own; split the
+  macro into one per placing node, or choose its condition."*);
+- **a member read through an object that can be null where no guard can stand** (§ 1.2): in a lifted part's text, which holds no
+  `if`, a path the part's own `if` does not assert (A10-080: *"the template reads <path> at line <n> through <object path>, which can
+  be null, where no {{ if <object path> }} can enclose the read; move the read where that guard can stand."*); until it is moved,
+  publish refuses the read (A11-009);
+- **a package whose worst case passes the instances one job may open** at the engine's default (`RunLimits.JobInstances`,
+  10,000), or in the bulk publish (§ 1.5) at the engine's configured limit, which publish refuses (A11-001): the migration counts the package it wrote as publish does, and the hand edit is on the
+  outermost loop's `max` on the heaviest path, with A11-001's count and limit (A10-081: *"up to <n> steps could run in one job
+  through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no
+  max: lower a loop's max or split the workflow."*). **No `max` is written** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459), B2, and
+  [its clarification](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179842619)): until one is chosen the package keeps its 30 version and its pin, and the bulk publish
+  records it *"not migrated: <reason>"*. `example-nested-note` is the fixture: two loops over lists known only at run time open
+  80,614;
 - **a 30 prompt that reads `profile.*`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): at 31 a prompt never reads the profile
   (part 05), so the read is a hand edit, and the owner is told about it in the after-notice
   (§ 1.5), with what replaced it.
@@ -132,10 +158,34 @@ validation fails with sentences until each is made, as the 25 migration did. The
 Notices that need no edit (a renamed id, a `!x` converted to `blank(x)`, a suggested text format)
 are listed in the migration report and block nothing.
 
-The script exits **0** when the package migrated cleanly, **1** with *"written; hand edits remain"*
-(as #1447 decided), and **2** when it refused, writing no package (unreadable input, or a version
-below 5)
+**The choices live beside the hand edits** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), 6). The three choices the migration
+cannot make itself, the renames (§ 1.9), each deliverable's `whenEmpty` (§ 1.10) and the format each
+snippet folder's items take, are a package's `options.json`, kept beside its hand edits:
+`{ "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} }`, every member required, each an object of
+text, `{}` for none, and no other member. The script reads it (`--options <file>`, in place of its
+repeatable `--rename`, `--when-empty` and `--folder-format`, which are refused together with it), as do the
+tests and the operator's bulk publish, so the choices have one source, and the migration report records it
+(§ 3.2). A file the migration cannot read is refused, exit **2**: a member that is no option
+(*"options.json has the member '<member>', which is not an option of the migration; its members are
+renames, whenEmpty and folderFormats."*), a choice missing or not an object of text (*"options.json must
+give <member> as an object whose values are text; write {} for none."*), an empty id or choice, which
+the flags refuse too (A10-082: *"options.json gives <member> an empty id or an empty choice; name each id
+and its choice."*), or a `whenEmpty` that is not `release`, `hold` or `fail` (*"options.json gives
+deliverable '<id>' a whenEmpty that is not release, hold or fail."*). A leading byte-order mark is dropped,
+as a package file's is, and a file that is not strict JSON is refused with A10-019's sentence (*"The file
+'options.json' does not read: it names the member '<member>' twice; fix it, then migrate."*). A package with
+no `options.json` takes the defaults (§§ 1.9, 1.10; part 01 § 3), and the bulk publish (§ 1.5) says so in
+its record (A10-083: *"No options.json was given, so the migration's defaults were used: a reserved id takes
+its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take
+<folder>_item."*).
+
+The script exits **0** when the package migrated cleanly, **1** when hand edits remain, its summary
+ending *"written; hand edits remain"* (as #1447 decided), and **2** when it refused, writing no package
+(unreadable input, or a version below 5)
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6985122999)).
+A dry run (no `--write`) that finds hand edits also exits **1**, though it writes nothing, and its
+summary ends *"(dry run; pass --write to apply)"* in place of *"written; hand edits remain"*
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), 8, D30).
 
 Each notice reads:
 > *"Hand edit needed in <file>, <member>: <reason>."*
@@ -144,8 +194,31 @@ Each notice reads:
 
 - **The operator runs the migration** over every account package and **publishes the migrated
   version as a new version of each owner's package,** making any hand edits, so every package
-  migrates.
-- **Pins move always:** each account pin moves to the migrated version at publish.
+  migrates. Each package's choices are its `options.json` beside its hand edits (§ 1.4), `{}` for
+  each when the operator makes none.
+- **Pins move always** for a package that publishes at 31: each account pin moves to the migrated
+  version at publish.
+- **A package that cannot be published at 31 keeps its 30 version and its pin**
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179842619), the
+  clarification of B2): a publish refusal such as A11-001, or a migration refusal. Nothing is published at 31 for
+  it, and no `max` or other value is guessed to force it through. It keeps running at 30 until 30 is retired
+  (#1450). The bulk publish records it *"not migrated: <reason>"*, with the refusal's sentence, and names its
+  owner in the before-and-after notification (#1447) with the reason and the deadline (A11-015: *"This package
+  stops working when specVersion 30 is retired."*). Where its core idea is still wanted, a new 31 package that
+  does it within the format is written (content work).
+- **The bulk publish** is the engine's operator route `Admin/MigratePackage`, one account package a call, driven
+  by `scripts/bulk-publish-v31.cs` over every account's active account package below 31 ([the engine at
+  specVersion 31](../engine-v31.md), "The bulk publish"; [registry operations](../registry-operations.md), "The bulk
+  publish"). It migrates the package the account's pin names (A11-016 when it does not: *"<package> is not the
+  account's active account package; the bulk publish migrates only the account package an account's pin
+  names."*), lays the operator's hand edits over it, and publishes it as that account's next version, or with
+  no `--publish` runs that publish in memory and writes nothing. A hand edit counts as made only when the file its
+  notice names is among the operator's edits; the migration and the snapshot count the package against the engine's
+  configured limits; the record and the owners' list are written after every package; a package the engine did not
+  answer for is recorded *"unknown: <fault>"*, since it may have been published, and listed for the operator to check
+  (A11-017: *"The engine did not answer for this package; check whether it was published before sending this
+  list."*); and a rerun carries the earlier record's published and unknown rows forward, so no package that was or may
+  have been published drops out of the owners' list.
 - **Recorded as a migration:** the version's publish record says *"migrated by the operator from
   <old version>"*, with the byte-equivalence report and the list of hand edits attached. The
   Editor and History show it ([part 09](09-engine-and-pages.md#62-the-job-header)).
@@ -250,7 +323,8 @@ after `.value`, so 30's `title` fields keep their name
 
 - **In example packages each rename is hand-chosen:** `example-nested-note`'s loop `parts` becomes
   **`sections`**, so `nodes/parts/…` becomes `nodes/sections/…` and `node.parts.…` becomes
-  `node.sections.…` everywhere, `ret` values included.
+  `node.sections.…` everywhere, `ret` values included. A hand-chosen rename is the `renames` of the
+  package's `options.json` (§ 1.4): `{ "parts": "sections" }`.
 - **In account packages the kind is added as a suffix:** a `for` loop `parts` becomes `parts_for`.
 - **A rename that collides** with an existing id gets a numeric suffix (`_2`, `_3`, …), the id
   shortened first so the whole stays within 64 characters, and is listed in the report ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
@@ -263,7 +337,10 @@ after `.value`, so 30's `title` fields keep their name
 - **Account packages:** `"release"`, which keeps 30's behaviour (30 produces an empty deliverable
   as is).
 - **Example packages, hand-chosen:** `"hold"` for `test/general`, `"fail"` for
-  `example-nested-note`, and `"release"` for the rest.
+  `example-nested-note`, and `"release"` for the rest. A hand choice is the `whenEmpty` of the
+  package's `options.json` (§ 1.4), by deliverable id: `{ "consult": "hold" }` for `test/general`
+  (whose `folderFormats` is `{ "standards": "standard_section" }`), `{ "note": "fail" }` for
+  `example-nested-note`; a deliverable it does not name takes `"release"`.
 
 ## 2. The converter
 
@@ -310,28 +387,54 @@ the operations themselves, their signatures and their null rules are part 03's.
 | a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x` | `{ "var": "<the same path, with its root>" }` |
 | a read of an input: `input.x`, `input.x.y` | `{ "var": "input.x.value" }` (or `input.x.content` for a text-format input), `{ "var": "input.x.value.y" }` |
 | `a == b`, `a != b` | `{ "===": [a, b] }`, `{ "!==": [a, b] }` |
+| `x == "lit"`, `x != "lit"`, with `x` text | `{ "in": [x, ["lit"]] }`, `{ "!": [ { "in": [x, ["lit"]] } ] }` (text is never compared with a literal by `===`, part 03 § 7), with a notice; with `""` and `x` a text input read whole, with its null test (below); another comparison of an input's text with blank text is a hand edit (§ 2.3) |
 | `a < b`, `a <= b`, `a > b`, `a >= b` | the same operators, two operands |
 | `a && b`, `a \|\| b` | `and`, `or` (flattened: `a && b && c` is one `and`) |
 | `!a`, with `a` boolean | `{ "!": [a] }` |
 | `!a`, with `a` text | `{ "blank": [a] }` (§ 2.3) |
 | `+ - * / %` on numbers | the same operators |
-| `(x \| array.size)`, `x.size` on a list | `{ "size": [x] }` |
+| `(x \| array.size)`, `x.size` on a list | `{ "size": [x] }`; compared, for a list that can be `null`, with its null test (below) |
 | `string.downcase x`, `string.strip x` | `{ "lower": [x] }`, `{ "trim": [x] }` |
 | `string.starts_with x "p"`, `string.ends_with x "p"` | `starts_with`, `ends_with` |
-| `string.contains x "p"` | `{ "in": ["p", x] }` |
+| `string.contains x "p"`, with `x` text | `{ "in": ["p", x] }` (on a list: a hand edit, § 2.3) |
 | `date.parse "YYYY-MM-DD"` | the literal string, typed `date` by its comparison |
 | a number, `true`, `false`, a quoted string | the JSON literal |
 | `{ a: x, b: y }` (a `let`'s object) | the `object` operation (part 03) |
 | `[x, y]` | a JSON array |
 
 - **Equality is always written strict** (`===`/`!==`); `==`/`!=` are never written (#1386).
-- **A 30 classifier gate keeps its format:** today's catalogue `classification`
-  (`{ value: string }`) is unchanged, so a macro gated on a classifier's *yes* reads
+- **A 30 classifier's reads keep `.value.value`:** its format is the package format of its answers
+  (§ 1.2), `classification`'s shape (`{ value: string }`) with `value` an `enum` of its values
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 1), so a macro gated on a classifier's *yes* reads
   `{ "===": [ { "var": "node.<id>.value.value" }, "yes" ] }`. The built-in `judgement` (part 02
-  § 4) is for classifiers written at 31; the migration doesn't rewrite a `classification` into it
+  § 4) is for classifiers written at 31; the migration doesn't rewrite a 30 classifier into it
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6982429387)).
 - **The output is canonical:** the same input always gives the same bytes (RFC 8785 ordering for
   any object), so migrated packages diff cleanly and the round-trip fixtures are stable.
+- **The size of a list that can be `null` keeps 30's meaning**
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 2; revisited in #1533).
+  30 read an absent list as `[]` and counted 0; 31's `size(null)` is `null`. A comparison of such a
+  `size` is written so that a `null` list counts 0: `size(x) == 0` is
+  `{ "or": [ { "===": [x, null] }, { "===": [ { "size": [x] }, 0 ] } ] }`; `size(x) > 0` and
+  `size(x) != 0` are `{ "and": [ { "!==": [x, null] }, { ">": [ { "size": [x] }, 0 ] } ] }`; any
+  other comparison with a number is the `or` form when it holds at 0 and the `and` form when it
+  doesn't, and one with anything else is `{ "if": [ { "===": [x, null] }, c0, c ] }`, where `c` is
+  the comparison and `c0` the same comparison with 0 in place of the `size`. The migration report still lists each such `size` (A10-027).
+- **Text compared with a literal keeps 30's meaning** (the same ruling): `x == "lit"` on text is
+  exact membership in a list of that literal, which answers as 30's comparison did (a `null` text
+  is in no list of text, as 30's `null` equalled no text); each one is listed in the migration
+  report (A10-074).
+- **Blank text is the exception.** 30 read an input's text not given, or given as white space alone,
+  as `""` (a field's text too), where 31's start leaves out a text input absent or blank, which then
+  reads `null` (part 02 § 8), and keeps a field as given. So a text input read whole compared with
+  `""` is written with its null test, as a nullable list's `size` is: `input.x == ""` is
+  `{ "or": [ { "===": [x, null] }, { "in": [x, [""]] } ] }` and `input.x != ""` is
+  `{ "and": [ { "!==": [x, null] }, { "!": [ { "in": [x, [""]] } ] } ] }`, `x` the input's
+  `{ "var": "input.x.content" }` (or `.value`), so an input not given or blank answers as at 30; each
+  one is listed in the migration report (A10-075). Any other comparison of an input's text with
+  blank text (`string.downcase input.x == ""`, `input.x == " "`, `input.x.y == ""`) is not written: a
+  hand edit (§ 2.3). A node's or an item's text compared with `""` is `in [""]` as above: 30 kept it as
+  written.
 
 ### 2.3 What it refuses, and `!x` on text
 
@@ -341,7 +444,13 @@ turns into a hand edit (§ 1.4), with a notice. In particular:
 - a comparison the 31 checker refuses by type (for example `<` on text), using **the checker's own
   sentence** (part 03);
 - a read of `profile.*` in a condition, which 31 refuses (#1408);
-- an assignment, a template, or more than one statement.
+- an assignment, a template, or more than one statement;
+- `string.contains` on a list: 30 wrote the list as text and searched it, which 31's `in` on a list
+  (membership) is not, so the hand edit's reason says so (A10-073,
+  [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 2);
+- a comparison of an input's text with blank text other than a text input read whole with `""`
+  (§ 2.2): 30 read the input's text not given or blank as `""` and 31 reads it as `null` or as given,
+  so no form is written that would answer otherwise, and the hand edit's reason says so (A10-076).
 
 **`!x` on text converts to `blank(x)`**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
@@ -352,14 +461,21 @@ so `!input.x` never holds at 30. `blank` counts `null`, `""` and whitespace-only
 which is what an author writing `!x` on a text meant. So **the migration report lists every such
 conversion**.
 
+**`strip(x) == ""` on text converts to `blank(x)`** (part 05 § 7), and `!=` to its negation. Where
+`x` can be `null` at 31 and 30 read it as text (a node that did not run, a field of an object input
+left out), `blank(null)` holds where 30's comparison did not; that difference is **expected**
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 8),
+and the migration report lists each such conversion (A10-050).
+
 ### 2.4 How it's tested
 
 - **Fixtures for every row** of § 2.2 and every refusal of § 2.3, with the expected bytes.
 - **Semantic equivalence** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)). For every condition in the public packages and the
   fixture set, 30's evaluator on the Scriban string and 31's evaluator on the converted JSON Logic
   are run on generated fictional inputs, including `null` and absent values, and **must agree,**
-  except the documented `blank(x)` case for empty and whitespace-only text (§ 2.3), which is listed as an expected
-  difference in the byte-equivalence report (§ 3), never silently accepted.
+  except the documented `blank(x)` cases (§ 2.3: `!x` on empty and whitespace-only text, `strip(x) == ""` on a
+  `null` text), which are listed as expected
+  differences in the byte-equivalence report (§ 3), never silently accepted.
 - **The Editor's round trip** (expression → JSON Logic → expression, over a fixture set covering
   every operation) is Milestone 41's, with its screen (#1423).
 
@@ -390,8 +506,12 @@ conversion**.
 - **What it also lists:** every renamed id (§ 1.9), every `_macro` suffix (§ 1.3), every `!x`
   converted to `blank(x)` (§ 2.3), every suggestion made, and every node whose `reproducible` claim at 30 differed. Each is a string of `notices` in the report (below), so a notice that needs no edit is listed, never lost between the hand edits and the compared texts.
 - **Expected differences.** A difference is marked **expected** only when the rewrite declares it and
-  a rule explains the bytes exactly, naming its ruling or section. The rulings so far, each listed in
-  the report with its reason:
+  rules explain all of its bytes, each naming its ruling or section. Each difference within a text is credited on its own
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 5): each rule
+  undoes the difference it declares wherever it finds it, whatever else differs, and is credited only where that brings
+  31's text nearer 30's; what is left after every rule is the unexplained remainder. A text with a rule credited and a
+  remainder is **partly explained**, named with its rules and not expected; the report counts the explained, the partly
+  explained and the unexplained. The rulings so far, each listed in the report with its reason:
   - **`!x` on text → `blank(x)`:** the two differ for **empty and whitespace-only text** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7042190908); § 2.3).
   - **Two captures refused at 30 complete at 31:** `example-prior-letters` / `no-prior-letters` and
     `example-structured-intake` / `all-optional-inputs-unset`, because an empty list settles at 0 items and the job runs
@@ -400,12 +520,62 @@ conversion**.
   - **Reading `.content` of a skipped deliverable** reads `null` and no longer fails the job (ruling 1, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)).
   - **A refused deliverable is withheld, not erased** (ruling 3, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)): the rest of the job reads it as `null`,
     its state and check result stay readable, it is never delivered, and it is kept in the record under the usual retention.
+    Only checks read a deliverable (part 06 § 6.7), so no compared text of a published package holds it, and no rule of the
+    comparison names it (retired, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 8).
   - **A required text input supplied blank** is refused at the start, as a missing one is (ruling 6, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)).
   - **Every deliverable refused by its check:** the job is **Completed**, each deliverable refused with its sentence, not
     Failed (ruling 7, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)).
   - **A macro body's trailing whitespace:** 31 drops exactly one final line ending (part 05 § 8.6), 30 trims all trailing
     whitespace (`TrimEnd()`); each body whose text differs is listed, naming this ruling ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647), 1).
-  - **Plain text escaped into a Markdown deliverable** (part 06 § 6.4): unescaping the 31 text gives 30's bytes.
+  - **Plain text escaped into a Markdown deliverable** (part 06 § 6.4): unescaping the 31 text gives 30's bytes. A `let` of text is escaped too, and its computed value unescapes it ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #13); so are plain-text items joined into a Markdown loop's `.content`, which a prompt that reads the loop holds escaped (D23, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 8). The rule is `escaped-plain-text`.
+  - **A format's description sent** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #3): 31 sends the
+    `description` of a format, at the top or on a property, where 30's sent format had none at that place; beside § 1.8's
+    change the rule `sent-format` sets it aside. A description that differs from 30's, a title, `$schema` or `$id` stay
+    unexpected.
+  - **A classifier's answers sent as its format** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #3, format descriptions sent): 30 sent
+    a classifier no format and ended its prompt with *"Answer with exactly one of: <values>."*, which the migrated prompt
+    keeps; 31 sends the answers' format (§ 1.2) after it, as every `custom` binding is sent. The rule `sent-format`
+    explains exactly that trailer: the custom trailer and a format of `value` alone, closed, an `enum` of the values 30's
+    line lists in its order, with nothing else sent but a description (no title or `$id`). The values are sent twice.
+  - **A reply is never a template** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #5): 30 rendered a
+    reply holding `{{` as a template before it composed; 31 never does. The rule `reply-never-a-template` puts back, where
+    31's text holds such a reply as written, the reply as 30 rendered it (with no variable), and explains a job 30 failed
+    because a reply did not render (*"Node '<id>' reply failed to render"*) where 31 completed that node and the job: the
+    status, and each deliverable only 31 composed (`composer-sources` `awkward-texts`, `unparseable-reply`).
+  - **An input's trailing white space is kept** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #6): where
+    31's text holds an input's text value whole and 30's holds it with its trailing white space trimmed
+    (`input-trailing-whitespace`; `composer-sources` `item-names-and-bounds`).
+  - **A failed job's prompts follow its dispatch order** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #9):
+    both jobs failed at the same reply, refused at both (an empty one by the node's `failIfEmpty`, or one its format
+    refused under `onInvalid: fail`, as an answer outside a classifier's values), and each sent what its dispatch order
+    reached first; a text only one side has is explained (`failed-job-dispatch-order`; `composer-sources` `failed-item`,
+    `edge-answer-outside-set` `answer-outside-set`).
+  - **`onInvalid: flag` is retried** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 3; § 1.2):
+    30 kept a reply that did not fit its format and ran on; at 31 the node asks once more with the validation error, then
+    fails. The status and each text only 30 has are explained (`flag-becomes-retry`; `edge-flag`), and in that node's
+    prompt the retry's text at its end, so another rule may credit the rest (31 sends the format's description).
+  - **A `before`/`after` node macro is a marker** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #10; D3, § 1.4):
+    30's engine placed the macro's body before or after the node's reply, joined by a blank line; at 31 the model writes
+    its marker where the hand-edited instruction says. 30's reply never held a marker for it, so the comparison writes
+    the marker into the captured reply where the instruction asks, alone on the reply's first line (before) or its last
+    (after); a macro the model chose is never given one (above). The rule `before-after-macro-marker` explains the
+    placing prompt's instruction, and in a text that holds the body only the white space between the body and the reply
+    (`composer-macros`).
+  - **A `while` that ran no pass beside another source** (the controller's ruling on #1508, as the owner
+    [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7179739459) for a flow that ran
+    nothing, Q3; § 1.2): both compose the while as empty text, but 30's composer dropped its part with its separator, where
+    31's template keeps the blank line between it and the next source; no `if` can drop a separator and keep the text
+    (`while-no-pass-separator`; `composer-sources` `summary_then_opening`).
+  - **An item named by its position** (part 04 § 2.7; an empty `itemLabel` field too,
+    [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 4): the loop's
+    label and the position at 31, where 30 gave the input's label (`position-names-from-the-loop`).
+  - **A macro the model chose, gated by its classifier** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), items 1
+    and 2; § 1.2): the classifier's prompt is 31's alone, and the comparison answers it from the capture, `answer: true`
+    exactly where 30's reply for the placing node held the macro's marker (`macro.<id>.content`, with the macro's 30 id where the migration renamed it); a captured reply is
+    replayed as 30's model wrote it, no marker added for a macro the model chose (for one 30's engine placed before or after
+    the reply, below, 30's reply never held a marker, and the comparison writes it in). The rule `macro-choice-classifier` explains the classifier's prompt, and the
+    placing prompt only where it holds the macro's 31 instruction in place of its 30 one, that one or it with one
+    "otherwise" clause removed, where the classifier answered yes, and lacks that 30 instruction where it answered no.
   - **One message per deliverable, where 30 sent one per job** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968), 1): a migrated package delivers each
     deliverable by `pdf` in its own message. No compared text carries it, so the report says it in its `notices`. A job whose
     every deliverable is blocked still sends the link-only email, as 30's reply did: a 30 behaviour kept, not a difference ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7086202369)).
@@ -419,10 +589,12 @@ conversion**.
 - **Where it goes:** attached to the publish record of each migrated account version, and shown by
   the Editor and History; for the public packages, attached to the migration PR.
 - **Its shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)). One JSON document (`migration-report.json`) beside the publish
-  report in the version's folder: the old and new versions, the hand edits made, the **`notices`** (an array of strings, `[]` for none), and one entry per
-  compared text with `{ "site", "oldHash", "newHash", "equal", "expected", "explanation" }`, with
-  `explanation` `null` unless `expected` is true. Like the other derived files, it never lives in
-  source.
+  report in the version's folder: the old and new versions, the hand edits made, the **`notices`** (an array of strings, `[]` for none), the
+  **`options`** the package was migrated with (its `options.json`, § 1.4), the **`counts`** of the texts that differ
+  (`{ "explained", "partlyExplained", "unexplained" }`), and one entry per compared text with
+  `{ "site", "oldHash", "newHash", "equal", "expected", "explanation", "rules", "unexplained" }`, with
+  `explanation` `null` unless `expected` is true, `rules` the ids of the rules credited (`[]` for none) and `unexplained`
+  whether a remainder no rule explains is left. Like the other derived files, it never lives in source.
 
 ### 3.3 The fixtures
 
@@ -601,6 +773,13 @@ and the pages' in part 09. The wording below is the starting text. It follows th
 - The worst-case note: *"<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes."*
 - The publish record of a migrated version (#1447): *"migrated by the operator from <old
   version>"*
+- The bulk publish's record, for a package it cannot publish (§ 1.5): *"not migrated: <reason>"*, the reason the
+  refusal's sentence; in the owners' list, beside the notice above: *"This package stops working when specVersion 30
+  is retired."* (A11-015)
+- The bulk publish, asked for a package no account's pin names (§ 1.5): *"<package> is not the account's active
+  account package; the bulk publish migrates only the account package an account's pin names."* (A11-016)
+- The bulk publish's owners' list, for a package the engine did not answer for (§ 1.5): *"The engine did not answer
+  for this package; check whether it was published before sending this list."* (A11-017)
 - A converter refusal on type: the 31 checker's own sentence (part 03), unchanged.
 - A converter refusal for anything else: *"The condition '<expression>' uses
   <construct>, which has no JSON Logic form at 31: rewrite it by hand."*

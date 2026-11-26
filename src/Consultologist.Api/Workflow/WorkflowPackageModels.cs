@@ -144,7 +144,11 @@ public sealed record WorkflowPackageInputResponse(
     string? ExpectedContent = null,
     // v14 (#729): a union input's accepted types, in try order (Type is the
     // primary/first arm). Null for a single-type input.
-    IReadOnlyList<string>? Types = null);
+    IReadOnlyList<string>? Types = null,
+    // #1508 (specVersion 31, area 11; part 09 § 4.3): the input's format as a
+    // self-contained schema, and its channel. Null below 31.
+    JsonElement? Format = null,
+    string? Channel = null);
 
 /// <summary>
 /// One declared field of an object, as the setup form renders it (v9 § 4).
@@ -216,7 +220,14 @@ public sealed record WorkflowPackageContentResponse(
     string Version,
     int SpecVersion,
     JsonElement Manifest,
-    IReadOnlyDictionary<string, string> Files)
+    IReadOnlyDictionary<string, string> Files,
+    // #1508 (specVersion 31, area 11; D5, D14, D15): a stamped 31 version's evidence, parsed from the stored bytes, and the
+    // old version when the operator's migration published it; on an import, the notices said once (S07-016). Null below 31.
+    JsonElement? Resolve = null,
+    JsonElement? Lock = null,
+    JsonElement? PublishReport = null,
+    string? MigratedFrom = null,
+    IReadOnlyList<string>? Notices = null)
 {
     /// <summary>
     /// The response for a resolved manifest and its files; the manifest serialized once, canonically.
@@ -260,13 +271,18 @@ public sealed record WorkflowPackagePublishRequest(
     // The uploaded files are the body, so the Source need not be accessible or
     // resolvable; the package publishes as a new ROOT (no derivedFrom) under the
     // caller's account, with the same server-side validation as any publish.
-    bool FromUpload = false);
+    bool FromUpload = false,
+    // #1508 (specVersion 31, area 11; D5): area 10's migration-report.json, accepted only from the operator; the 31
+    // publish stores it beside the publish report and its stamp names the old version. Null on every other publish.
+    JsonElement? MigrationReport = null);
 
 public sealed record WorkflowPackagePublishResponse(
     string Name,
     string Version,
     string Ref,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    // #1508 (specVersion 31, area 11; D3): the publish report in full (part 07 § 9); null below 31.
+    JsonElement? Report = null);
 
 /// <summary>
 /// #858: the successful (200) result of the import ingest endpoint — the

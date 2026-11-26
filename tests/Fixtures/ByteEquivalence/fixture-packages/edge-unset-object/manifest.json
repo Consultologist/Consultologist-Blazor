@@ -1,0 +1,77 @@
+{
+  "name": "edge-unset-object",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Edge case: an unset optional object input",
+  "description": "An edge-case fixture (#1508, comment 6 item 3; comment 7 Q5): the optional object input intake, left unset, whose member reason the problem prompt and the note's prepended macro read. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    },
+    {
+      "id": "intake",
+      "label": "Intake",
+      "required": false,
+      "type": "object",
+      "fields": [
+        {
+          "id": "reason",
+          "label": "Reason for referral",
+          "required": true,
+          "type": "text"
+        }
+      ]
+    }
+  ],
+  "macros": [
+    "intake_line"
+  ],
+  "nodes": [
+    {
+      "id": "problem_loop",
+      "label": "Problem list",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Clinic note",
+      "sources": [
+        "node.problem_loop"
+      ],
+      "macros": [
+        {
+          "id": "intake_line",
+          "at": "prepend"
+        }
+      ]
+    }
+  ]
+}

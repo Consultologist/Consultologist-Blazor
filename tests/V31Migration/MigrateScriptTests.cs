@@ -75,22 +75,24 @@ public class MigrateScriptTests
     [Fact]
     public void TheDryRun_PrintsTheNoticesAndThePlan_AndWritesNothing()
     {
-        var dir = CopyOf("example-nested-note");
+        // #1508 (R11): example-nested-note now carries a hand edit (its worst case passes the instances limit), so the
+        // clean run is example-prior-letters', which needs no choice.
+        var dir = CopyOf("example-prior-letters");
         try
         {
             var before = Contents(dir);
 
-            var (exit, output, error) = Run(dir, "--rename", "parts=sections", "--when-empty", "note=fail");
+            var (exit, output, error) = Run(dir);
 
             Assert.Equal(Migration31Script.Clean, exit);
             Assert.Equal("", error);
             Assert.Equal(before, Contents(dir));
             var lines = Lines(output);
-            var migrated = MigratedPackagesTests.Migrated("example-nested-note");
+            var migrated = MigratedPackagesTests.Migrated("example-prior-letters");
             foreach (var notice in migrated.Notices)
                 Assert.Contains($"notice: {notice}", lines);
             Assert.Contains("delete:  dag.mmd", lines);
-            Assert.Contains("delete:  prompts/plan.md", lines);
+            Assert.Contains("delete:  prompts/assessment.md", lines);
             Assert.Contains("add:     nodes/index.json", lines);
             Assert.Contains("add:     tests/migration_snapshot.json", lines);
             Assert.Contains("rewrite: manifest.json", lines);
@@ -106,15 +108,16 @@ public class MigrateScriptTests
     [Fact]
     public void TheWrite_LeavesExactlyThe31Files_AndExits0WithNoHandEdit()
     {
-        // D6, D7: --rename and --when-empty fill the options as ExampleChoices does for the golden.
-        var dir = CopyOf("example-nested-note");
+        // #1508 (R11): example-prior-letters, which needs no choice, as the dry run's (--rename and --when-empty are
+        // tested on example-nested-note below).
+        var dir = CopyOf("example-prior-letters");
         try
         {
-            var (exit, output, error) = Run(dir, "--rename", "parts=sections", "--when-empty", "note=fail", "--write");
+            var (exit, output, error) = Run(dir, "--write");
 
             Assert.Equal(Migration31Script.Clean, exit);
             Assert.Equal("", error);
-            Assert.Equal(Expected(MigratedPackagesTests.Migrated("example-nested-note")), Contents(dir));
+            Assert.Equal(Expected(MigratedPackagesTests.Migrated("example-prior-letters")), Contents(dir));
             Assert.False(Directory.Exists(Path.Combine(dir, "prompts")));
             Assert.False(File.Exists(Path.Combine(dir, "dag.mmd")));
             var lines = Lines(output);
@@ -349,6 +352,110 @@ public class MigrateScriptTests
         }
     }
 
+    [Theory]
+    [InlineData("example-nested-note", new[] { "--rename", "parts=sections", "--when-empty", "note=fail" })]
+    [InlineData("test/general", new[] { "--when-empty", "consult=hold", "--folder-format", "standards=standard_section" })]
+    public void TheOptionsFile_GivesThePackageTheFlagsGave(string package, string[] flags)
+    {
+        // R18: --options reads the package's options.json (the one ExampleChoices reads), and writes what the three flags did.
+        var byFlags = CopyOf(package);
+        var byFile = CopyOf(package);
+        try
+        {
+            var (flagsExit, _, flagsError) = Run(byFlags, [.. flags, "--write"]);
+            var (fileExit, output, fileError) = Run(byFile, "--options", ExampleChoices.FileOf(package), "--write");
+
+            Assert.Equal("", flagsError);
+            Assert.Equal("", fileError);
+            Assert.Equal(flagsExit, fileExit);
+            Assert.Equal(Contents(byFlags), Contents(byFile));
+            Assert.Equal(Expected(MigratedPackagesTests.Migrated(package)), Contents(byFile));
+            Assert.DoesNotContain(Lines(output), l => l.Contains(MigrationOptionsFile.FileName, StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(byFlags, recursive: true);
+            Directory.Delete(byFile, recursive: true);
+        }
+    }
+
+    public static TheoryData<string, string> RefusedOptions() => new()
+    {
+        { """{ "renames": {}, "whenEmpty": { "note": "maybe" }, "folderFormats": {} }""", "error: options.json gives deliverable 'note' a whenEmpty that is not release, hold or fail." },
+        { """{ "renames": {}, "whenEmpty": {} }""", "error: options.json must give folderFormats as an object whose values are text; write {} for none." },
+        { """[]""", "is not a JSON object" },
+        // #1508 (Task 36, carried from Task 29's review): a file that is not strict JSON says why, as A10-019 says it.
+        { """{ "renames": {""", "error: The file 'options.json' does not read: it is not JSON; fix it, then migrate." },
+        { """{ "renames": {}, "renames": {}, "whenEmpty": {}, "folderFormats": {} }""",
+            "error: The file 'options.json' does not read: it names the member 'renames' twice; fix it, then migrate." },
+        { """{ "renames": { "": "sections" }, "whenEmpty": {}, "folderFormats": {} }""",
+            "error: options.json gives renames an empty id or an empty choice; name each id and its choice." },
+    };
+
+    [Fact]
+    public void AnOptionsFileWithAByteOrderMark_IsRead()
+    {
+        // #1508 (Task 36, carried from Task 29's review): a leading byte-order mark is dropped, as a package file's is.
+        var package = "example-nested-note";
+        var byFile = CopyOf(package);
+        var file = Path.Combine(Directory.CreateTempSubdirectory("migrate-options-").FullName, MigrationOptionsFile.FileName);
+        File.WriteAllBytes(file, [0xEF, 0xBB, 0xBF, .. File.ReadAllBytes(ExampleChoices.FileOf(package))]);
+        try
+        {
+            var (_, _, error) = Run(byFile, "--options", file, "--write");
+
+            Assert.Equal("", error);
+            Assert.Equal(Expected(MigratedPackagesTests.Migrated(package)), Contents(byFile));
+        }
+        finally
+        {
+            Directory.Delete(byFile, recursive: true);
+            Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(RefusedOptions))]
+    public void AnOptionsFileThatDoesNotRead_Exits2_AndWritesNothing(string optionsJson, string said)
+    {
+        var dir = CopyOf("example-nested-note");
+        var file = Path.Combine(Directory.CreateTempSubdirectory("migrate-options-").FullName, MigrationOptionsFile.FileName);
+        File.WriteAllText(file, optionsJson);
+        try
+        {
+            var before = Contents(dir);
+
+            var (exit, output, error) = Run(dir, "--options", file, "--write");
+
+            Assert.Equal(Migration31Script.Refused, exit);
+            Assert.Equal(before, Contents(dir));
+            Assert.Equal("", output);
+            Assert.Contains(said, error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+            Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AnOptionsFileThatIsMissing_Exits2()
+    {
+        var dir = CopyOf("example-nested-note");
+        try
+        {
+            var (exit, _, error) = Run(dir, "--options", Path.Combine(dir, "no-such-options.json"));
+
+            Assert.Equal(Migration31Script.Refused, exit);
+            Assert.StartsWith("error: ", error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Fact]
     public void TheSnapshot_OfAFolderThatDoesNotPublish_Exits2_AndWritesNothing()
     {
@@ -396,6 +503,13 @@ public class MigrateScriptTests
         Assert.Empty(snapshot.Renames);
         Assert.Empty(snapshot.WhenEmpty);
         Assert.Empty(snapshot.FolderFormats);
+        Assert.Null(snapshot.Options);
+
+        var (byFile, noUsage) = Migration31Script.Parse(["pkg", "--to", "31", "--options", "choices/options.json", "--write"]);
+        Assert.Null(noUsage);
+        Assert.Equal("choices/options.json", byFile!.Options);
+        Assert.True(byFile.Write);
+        Assert.Empty(byFile.Renames);
     }
 
     [Theory]
@@ -414,6 +528,12 @@ public class MigrateScriptTests
     [InlineData("--folder-format", "standards=a", "--folder-format", "standards=b")]
     [InlineData("--snapshot", "--folder-format", "standards=standard_section")]
     [InlineData("--dag")]
+    [InlineData("--options")]
+    [InlineData("--options", "a.json", "--options", "b.json")]
+    [InlineData("--options", "options.json", "--rename", "parts=sections")]
+    [InlineData("--when-empty", "note=fail", "--options", "options.json")]
+    [InlineData("--options", "options.json", "--folder-format", "standards=standard_section")]
+    [InlineData("--snapshot", "--options", "options.json")]
     public void AnArgumentThatDoesNotRead_IsAUsageError(params string[] args)
     {
         var (arguments, usage) = Migration31Script.Parse(["pkg", "--to", "31", .. args]);
@@ -427,6 +547,7 @@ public class MigrateScriptTests
     {
         Assert.Equal("pkg", Migration31Script.PackageDirectory(["--rename", "parts=sections", "--to", "31", "--folder-format", "a=b", "pkg", "--when-empty", "note=fail"]));
         Assert.Equal("pkg", Migration31Script.PackageDirectory(["pkg", "--to", "25"]));
+        Assert.Equal("pkg", Migration31Script.PackageDirectory(["--options", "options.json", "--to", "31", "pkg"]));
         Assert.Null(Migration31Script.PackageDirectory(["--to", "31", "--write"]));
     }
 
@@ -441,6 +562,8 @@ public class MigrateScriptTests
         Assert.Contains(script, l => l.StartsWith("//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31", StringComparison.Ordinal));
         Assert.Contains(script, l => l.StartsWith("//", StringComparison.Ordinal) && l.Contains("--snapshot", StringComparison.Ordinal));
         Assert.Contains(script, l => l.StartsWith("//", StringComparison.Ordinal) && l.Contains("--folder-format <folder>=<format>", StringComparison.Ordinal));
+        Assert.Contains(script, l => l.StartsWith("//", StringComparison.Ordinal) && l.Contains("--options <file>", StringComparison.Ordinal));
+        Assert.Contains("--options <file>", Migration31Script.Usage, StringComparison.Ordinal);
         Assert.Contains(script, l => l.Contains("Migration31Script.Run(", StringComparison.Ordinal));
     }
 }

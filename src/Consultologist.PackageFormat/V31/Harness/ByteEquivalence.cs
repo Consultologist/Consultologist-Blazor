@@ -7,8 +7,13 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// #1507 (specVersion 31, area 10; part 10 § 3.2): one compared text of <c>migration-report.json</c>: its site (D11), the
 /// hash of the text at 30 and at 31 (the hash of the empty text for a side that lacks it), whether the two are equal (both
 /// present, the same bytes), whether the difference is expected, and why (<c>null</c> unless <paramref name="Expected"/>).
+/// #1508 (comment 5, item 5; R19): the ids of the rules credited with part or all of the difference, in
+/// <see cref="ExpectedDifferences.Rules"/>' order (<paramref name="Rules"/>, none for an equal text), and whether a
+/// remainder no rule explains is left (<paramref name="Unexplained"/>); <paramref name="Expected"/> is a difference with a
+/// rule credited and no remainder.
 /// </summary>
-public sealed record ComparedText(string Site, string OldHash, string NewHash, bool Equal, bool Expected, string? Explanation);
+public sealed record ComparedText(
+    string Site, string OldHash, string NewHash, bool Equal, bool Expected, string? Explanation, IReadOnlyList<string> Rules, bool Unexplained);
 
 /// <summary>#1507 (D11): what a compared text is: the job's state, a sent prompt, a rendered node's text, a deliverable's text.</summary>
 public enum ComparedKind
@@ -54,8 +59,9 @@ public sealed record DifferenceContext(
 /// the 31 request of a 30 scenario and its capture: the scenario's inputs and macro choices through 31's start, its profile,
 /// 30's run date, and the capture's replies replayed under 31's row keys (<see cref="KeyMap"/>), a reply the capture lacks
 /// generated from 30's key. <see cref="Compare"/> lists every compared text: the job's state, every prompt, every rendered
-/// node's text and every deliverable's, each at its site (D11), a difference marked expected only when a rule of
-/// <see cref="ExpectedDifferences"/> explains it ("when in doubt, a difference is unexpected").
+/// node's text and every deliverable's, each at its site (D11), each difference credited to the rules of
+/// <see cref="ExpectedDifferences"/> that explain part of it (R19), and marked expected only when they explain all of it
+/// ("when in doubt, a difference is unexpected").
 /// </summary>
 public static class ByteEquivalence
 {
@@ -89,7 +95,13 @@ public static class ByteEquivalence
     /// that cannot be mapped is left out, and the comparison reports the prompt it served under <c>#prompts@30/</c>), with
     /// what 30's engine added to the reply after it came (a <c>concept_list</c>'s <c>source</c>, #1504 ruling 3), and every
     /// member its 31 format lists (<see cref="Fit"/>). A reply the capture lacks is generated, seeded with 30's key
-    /// (<see cref="KeyMap.To30"/>).</item>
+    /// (<see cref="KeyMap.To30"/>). Markers in a captured reply: for a macro 30's model chose (#1508, comment 6 item 2;
+    /// R14), the reply is replayed exactly as 30's model wrote it, no marker added (<see cref="OfflineStubs.Reply"/>), so one
+    /// that left the marker out fails its node as it would live; each macro-choice classifier
+    /// (<see cref="ChoiceClassifiers"/>) is answered from the capture (<see cref="ChoiceAnswers"/>). For a macro 30's engine
+    /// placed before or after the reply (comment 5, item 7, #10; <see cref="EnginePlaced"/>), 30's reply never held a
+    /// marker, so the comparison writes the marker in where the macro's instruction asks
+    /// (<see cref="OfflineRequest.EnginePlaced"/>): alone on the reply's first line, or its last.</item>
     /// </list>
     /// </summary>
     public static OfflineRequest RequestFor(JsonObject scenario30, JsonObject capture30, Migration31Result migrated, RunPlan plan)
@@ -147,13 +159,43 @@ public static class ByteEquivalence
             outputs[key31] = Fit(WithConceptSource(value?.DeepClone(), key30, plan, key31), FormatOf(plan, key31), key30);
         }
 
+        foreach (var (key31, answer) in ChoiceAnswers(capture30, migrated, plan))
+            outputs.TryAdd(key31, answer);
+
         return new OfflineRequest(
             new Dictionary<string, JsonNode?>(supplied, StringComparer.Ordinal),
             profile,
             facts,
             outputs,
             CapturedAtUtc,
-            StubSeed: key31 => KeyMap.To30(key31, migrated, plan) ?? key31);
+            StubSeed: key31 => KeyMap.To30(key31, migrated, plan) ?? key31,
+            EnginePlaced: EnginePlaced(migrated) is { Count: > 0 } placed ? placed : null);
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 7, #10): each macro 30's engine placed on one side of a node's reply, by its 31 site
+    /// (<c>macro.&lt;id&gt;</c>), <c>true</c> before and <c>false</c> after: each macro of <paramref name="migrated"/>'s files
+    /// for which a hand edit holds A10-003's reason (<see cref="Migration.MigrationSentences.PlacedByTheEngine"/>, composed
+    /// with the macro's 30 id, <see cref="Name30"/>, and the side; the edit writes the instruction that says where the model
+    /// writes its marker). A macro placed on both sides is left out: where its marker goes is the edit's own.
+    /// </summary>
+    public static IReadOnlyDictionary<string, bool> EnginePlaced(Migration31Result migrated)
+    {
+        ArgumentNullException.ThrowIfNull(migrated);
+        var placed = new Dictionary<string, bool>(StringComparer.Ordinal);
+        if (migrated.HandEdits.Count == 0)
+            return placed;
+        foreach (var path in migrated.Files.Keys.Where(p => p.StartsWith("macros/", StringComparison.Ordinal) && p.EndsWith(".md", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            var macro = path["macros/".Length..^".md".Length].Replace('/', '.');
+            var id30 = Name30(migrated, macro).Replace('.', '/');
+            bool Says(string where) => migrated.HandEdits.Any(e => e.Contains(Migration.MigrationSentences.PlacedByTheEngine(id30, where), StringComparison.Ordinal));
+            var (before, after) = (Says(WorkflowNodeMacroSpec.Before), Says(WorkflowNodeMacroSpec.After));
+            if (before != after)
+                placed["macro." + macro] = before;
+        }
+
+        return placed;
     }
 
     /// <summary>
@@ -183,14 +225,13 @@ public static class ByteEquivalence
         void Add(ComparedKind kind, string site, string? key30, string? key31, (string Text, string Hash)? old, (string Text, string Hash)? now)
         {
             var equal = old is { } o && now is { } n && o.Hash == n.Hash && o.Text == n.Text;
-            string? explanation = null;
-            if (!equal)
-            {
-                explanation = ExpectedDifferences.Explain(new DifferenceContext(
+            var credited = equal
+                ? new ExpectedDifferences.Credited([], false)
+                : ExpectedDifferences.Credit(new DifferenceContext(
                     package, scenario, at + site, kind, key30, key31, old?.Text, now?.Text, capture30, run31, migrated, plan, request31));
-            }
 
-            texts.Add(new ComparedText(at + site, old?.Hash ?? EmptyHash, now?.Hash ?? EmptyHash, equal, explanation != null, explanation));
+            texts.Add(new ComparedText(at + site, old?.Hash ?? EmptyHash, now?.Hash ?? EmptyHash, equal, credited.Expected,
+                credited.Expected ? credited.Explanation : null, [.. credited.Rules.Select(r => r.Id)], credited.Unexplained));
         }
 
         var status30 = SourceLayout.Text(capture30["status"]) ?? "";
@@ -253,6 +294,59 @@ public static class ByteEquivalence
         }
 
         return texts;
+    }
+
+    /// <summary>The <c>reason</c> each classifier answered from a capture gives: package text, never 30's reply.</summary>
+    public const string ChoiceReason = "Answered from the 30 capture: whether the reply placed the macro.";
+
+    /// <summary>
+    /// #1508 (comment 6, item 2; R14): for each macro-choice classifier of <paramref name="migrated"/> the plan runs, and
+    /// each instance of its placing agent the capture holds a reply for (its 30 key mapped to 31's, <see cref="KeyMap"/>), the
+    /// classifier's reply at the same instance: <c>{ "answer": true, "reason": … }</c> exactly when 30's reply held the
+    /// macro's marker (<c>macro.&lt;id&gt;.content</c> with the macro's 30 id, which 30's model wrote where it placed the
+    /// macro; <see cref="Name30"/>), else
+    /// <c>answer: false</c>. By row key, in the capture's order.
+    /// </summary>
+    public static IEnumerable<(string Key, JsonObject Answer)> ChoiceAnswers(JsonObject capture30, Migration31Result migrated, RunPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(capture30);
+        ArgumentNullException.ThrowIfNull(migrated);
+        ArgumentNullException.ThrowIfNull(plan);
+        var classifiers = ChoiceClassifiers.Of(migrated).Where(c => plan.Entries.ContainsKey(c.Key)).ToList();
+        if (classifiers.Count == 0)
+            yield break;
+        foreach (var (key30, value) in capture30["outputs"] as JsonObject ?? [])
+        {
+            if (KeyMap.To31(key30, migrated, plan) is not { } key31)
+                continue;
+            var end = key31.IndexOfAny([':', '#']);
+            var entry = end < 0 ? key31 : key31[..end];
+            var reply = value is JsonValue text && text.TryGetValue<string>(out var said) ? said : value?.ToJsonString() ?? "";
+            foreach (var classifier in classifiers.Where(c => c.Placing == entry))
+            {
+                var name30 = Name30(migrated, classifier.Macro);
+                yield return (classifier.Key + key31[entry.Length..], new JsonObject
+                {
+                    ["answer"] = reply.Contains($"macro.{name30}.content", StringComparison.Ordinal),
+                    ["reason"] = ChoiceReason,
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Macro <paramref name="macro"/>, as a 31 placement names it (<c>&lt;folder&gt;.&lt;id&gt;</c> for a folder's item), by
+    /// its 30 name: the folder and the item each read back through <see cref="Migration31Result.MacroIds30"/>.
+    /// </summary>
+    internal static string Name30(Migration31Result migrated, string macro)
+    {
+        var ids30 = migrated.MacroIds30;
+        var dot = macro.IndexOf('.', StringComparison.Ordinal);
+        if (dot < 0)
+            return ids30.GetValueOrDefault(macro, macro);
+        var folder30 = ids30.GetValueOrDefault(macro[..dot], macro[..dot]);
+        var item = macro[(dot + 1)..];
+        return $"{folder30}.{ids30.GetValueOrDefault($"{folder30}/{item}", item)}";
     }
 
     /// <summary>31's status word: the run's state, or <see cref="Refused"/> when its start refused it.</summary>

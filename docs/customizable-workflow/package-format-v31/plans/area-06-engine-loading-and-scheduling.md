@@ -68,7 +68,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 |---|---|
 | A06-001 | `<site> <member> could not be decided: <matches \| has_word> took longer than <n> seconds on this text. Use a simpler pattern.` (R2: an evaluation past `ConsultGeneration__RegexMilliseconds`, at run time) |
 | A06-002 | `While '<id>' declares checkFirst true, but its check reads node '<n>' of its own body, which has no value before the first pass: declare "checkFirst": false, or read something that runs before the while.` (R3, at publish) |
-| A06-003 | `Node '<id>' computed a value that isn't <format>.` (a computed value that does not fit its format at run time, 04-D49; `<format>` the bundle key, else `its format`) |
+| A06-003 | `<site> computed a value that isn't <format>.` (a computed value that does not fit its format at run time, 04-D49; `<format>` the bundle key, else `its format`) |
 | A06-004 | `Workflow <package>@<version> isn't published.` (a version stamped 31 whose `resolve.json` or `lock.json` is absent, at load; and a job's plan whose version is no longer stamped 31. A folder with no stamp, or a stamp that cannot be read, is today's path, D1) |
 | A06-005 | `Node '<id>' gave a reply that isn't <format>.` (an agent's reply that does not fit its format, after `onInvalid`) |
 | A06-006 | `Loop '<id>' was given <reference>, which isn't a list.` (a loop's source that is not a list at run time; `<reference>` the `in` as written) |

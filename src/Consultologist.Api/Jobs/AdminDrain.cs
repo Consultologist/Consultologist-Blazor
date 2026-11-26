@@ -169,7 +169,16 @@ public sealed class AdminDrain(
     }
 
     /// <summary>The refusal for a caller who is not an operator, as <c>Operator/*</c> answers it; null for an operator.</summary>
-    private async Task<HttpResponseData?> RefusalAsync(HttpRequestData req, CancellationToken cancellationToken)
+    private Task<HttpResponseData?> RefusalAsync(HttpRequestData req, CancellationToken cancellationToken) =>
+        OperatorRefusalAsync(authorizer, operators, req, cancellationToken);
+
+    /// <summary>
+    /// The refusal for a caller who is not an operator (401 without an account; 403 unless the account can use the app and
+    /// is in <paramref name="operators"/>, or <c>Operators__AppUserIds</c> when null); null for an operator. The operator
+    /// routes' one gate (#1508, Task 36: <c>Admin/MigratePackage</c> too).
+    /// </summary>
+    internal static async Task<HttpResponseData?> OperatorRefusalAsync(
+        IAccountAuthorizer authorizer, IReadOnlySet<string>? operators, HttpRequestData req, CancellationToken cancellationToken)
     {
         var account = await authorizer.AuthorizeAsync(req, cancellationToken);
         if (account == null)

@@ -1,0 +1,9 @@
+{
+  "renames": {},
+  "whenEmpty": {
+    "consult": "hold"
+  },
+  "folderFormats": {
+    "standards": "standard_section"
+  }
+}

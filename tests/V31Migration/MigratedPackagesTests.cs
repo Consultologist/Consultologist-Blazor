@@ -11,7 +11,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.4; the invariant of the plan's Global Constraints): the sixteen packages
-/// (area 01's thirteen vendored and its three composer fixtures) through the migration and the 31 checker. With no
+/// (area 01's thirteen vendored and its three composer fixtures), and (#1508, Task 35) the seven edge-case fixtures, through the migration and the 31 checker. With no
 /// hand-edit notice, <see cref="CompiledPackage.Publish"/> refuses nothing; with one, it refuses something. Each migrated
 /// package is frozen under <c>migrated/&lt;package&gt;/</c> with its <c>notices.json</c> (<c>{ "notices", "handEdits",
 /// "refusals" }</c>); the migration gives the same bytes twice and never writes an unknown member. With
@@ -24,10 +24,10 @@ public class MigratedPackagesTests
 
     private static readonly ConcurrentDictionary<string, Migration31Result> Cache = new(StringComparer.Ordinal);
 
-    /// <summary>The sixteen packages: the vendored ones in the index's order, then the fixture packages.</summary>
+    /// <summary>The twenty-three packages: the vendored ones in the index's order, then the fixture packages.</summary>
     public static TheoryData<string> Packages() => new(Names);
 
-    private static IEnumerable<string> Names =>
+    internal static IEnumerable<string> Names =>
         ByteEquivalenceFixtures.Vendored.Select(v => v.Name).Concat(ByteEquivalenceFixtures.FixturePackages);
 
     /// <summary>The packages whose migration says no hand edit.</summary>
@@ -58,18 +58,31 @@ public class MigratedPackagesTests
         return upload;
     }
 
+    /// <summary>What the checker refuses of <paramref name="result"/> (<see cref="CompiledPackage.Publish(IReadOnlyDictionary{string, byte[]}, TypeRegistry, Toolchain, PublishLimits?, Templates.ITemplateReads?)"/> with no limits).</summary>
     internal static IReadOnlyList<SourceRefusal> Publish(Migration31Result result) =>
         CompiledPackage.Publish(Upload(result), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed).Refusals;
+
+    /// <summary>
+    /// #1508 (R11): what the engine's publish refuses of <paramref name="result"/>: the checker's refusals, and, at the
+    /// engine's default limits (<see cref="WorkflowPackageMigration30To31.EngineLimits"/>), a worst case past the instances one
+    /// job may open (A11-001).
+    /// </summary>
+    internal static IReadOnlyList<SourceRefusal> PublishAtTheEngine(Migration31Result result) =>
+        CompiledPackage.Publish(Upload(result), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, WorkflowPackageMigration30To31.EngineLimits).Refusals;
+
+    /// <summary>#1508 (R11): whether <paramref name="edit"/> is the hand edit of a package past the instances limit (A10-081), which <c>example-nested-note</c> carries.</summary>
+    internal static bool PastTheInstanceLimit(string edit) => edit.Contains(", max: up to ", StringComparison.Ordinal);
 
     private static string Explain(IReadOnlyList<SourceRefusal> refusals, Migration31Result result) =>
         "Refusals:\n" + string.Join("\n", refusals.Select(r => $"  {r.Id} {r.Path}: {r.Sentence}"))
         + "\nHand edits:\n" + string.Join("\n", result.HandEdits.Select(e => "  " + e));
 
     [Fact]
-    public void TheSixteenPackages_AreRun()
+    public void TheTwentyThreePackages_AreRun()
     {
-        Assert.Equal(16, Packages().Count);
-        Assert.Equal(16, PackagesWithoutHandEdits().Count + PackagesWithHandEdits().Count);
+        // #1508 (Task 35): the sixteen and the seven edge-case packages (EdgeCasePackagesTests).
+        Assert.Equal(23, Packages().Count);
+        Assert.Equal(23, PackagesWithoutHandEdits().Count + PackagesWithHandEdits().Count);
     }
 
     [Theory]
@@ -77,7 +90,7 @@ public class MigratedPackagesTests
     public void NoHandEdit_MeansPublishRefusesNothing(string package)
     {
         var result = Migrated(package);
-        var refusals = Publish(result);
+        var refusals = PublishAtTheEngine(result);
 
         Assert.True(refusals.Count == 0, Explain(refusals, result));
     }
@@ -87,9 +100,37 @@ public class MigratedPackagesTests
     public void AHandEdit_MeansPublishRefuses(string package)
     {
         var result = Migrated(package);
-        var refusals = Publish(result);
+        var refusals = PublishAtTheEngine(result);
 
         Assert.True(refusals.Count > 0, Explain(refusals, result));
+    }
+
+    [Fact]
+    public void ANestedLoopPastTheInstanceLimit_IsAHandEdit()
+    {
+        // #1508 (ruled by the owner, B2 of 2026-11-26 and its clarification; R11): A11-001 refuses a package whose worst case
+        // passes the instances one job may open. The migration says it first, as a hand edit on the outermost loop's max
+        // with A11-001's count and limit, and guesses no max: the package keeps its 30 version until one is chosen.
+        var result = Migrated("example-nested-note");
+        var refused = Assert.Single(PublishAtTheEngine(result));
+        Assert.Equal("A11-001", refused.Id);
+
+        const string reason = "up to 80,614 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, "
+            + "so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.";
+        Assert.Equal("nodes/sections/index.json", refused.Path);
+        Assert.Equal("Up to 80,614 steps could run in one job, through node.sections; this engine runs at most 10,000 for one job. Lower a loop's max or split the workflow.", refused.Sentence);
+        var edit = Assert.Single(result.HandEdits);
+        Assert.Equal($"Hand edit needed in {refused.Path}, max: {reason}", edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, refused.Path));
+        V31Contract.AssertSentence(new SourceRefusal("A10-081", reason, ""));
+
+        // No max is written: the loops are as 30 had them.
+        Assert.Null(MigrateNodesTests.Json(result, "nodes/sections/index.json")["max"]);
+        Assert.Null(MigrateNodesTests.Json(result, "nodes/sections/paragraphs/index.json")["max"]);
+
+        // A package within the limit is no hand edit, and nested-note within a larger one neither.
+        Assert.DoesNotContain(Migrated("composer-sources").HandEdits, e => e.Contains(", max: ", StringComparison.Ordinal));
+        Assert.Empty(CompiledPackage.Publish(Upload(result), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, WorkflowPackageMigration30To31.EngineLimits with { Instances = 100_000 }).Refusals);
     }
 
     [Theory]

@@ -1,0 +1,23 @@
+{
+  "description": [
+    "The draft books a follow-up, and the pinned reply writes follow_up's marker on its own line",
+    "after the first. 30 renders the reply as a template, so the marker becomes the macro's body."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; follow-up booked in three months. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "letter": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\n{{ macro.follow_up.content }}\nYours sincerely, Dr A. Sample"
+  }
+}

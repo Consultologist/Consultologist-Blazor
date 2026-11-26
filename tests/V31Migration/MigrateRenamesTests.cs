@@ -18,7 +18,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 public class MigrateRenamesTests
 {
     /// <summary>Options with no hand choice: an account package's (§ 1.9, "the kind is added as a suffix").</summary>
-    private static Migration31Options NoChoice => MigrationFixture.Options("no-choices");
+    private static Migration31Options NoChoice => MigrationFixture.NoChoices;
 
     private static (string Json, Dictionary<string, string> Files) Package(string package)
     {
@@ -89,7 +89,7 @@ public class MigrateRenamesTests
         const string notice = "Renamed node 'parts' to 'sections': 'parts' is reserved at 31.";
         Assert.Equal([notice], result.Report.Renames);
         Assert.Contains(notice, result.Notices);
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
         V31Contract.AssertSentence(new SourceRefusal("A10-006", notice, ""));
     }
 
@@ -188,7 +188,7 @@ public class MigrateRenamesTests
         Assert.Contains(notice, result.Report.Renames);
         Assert.Contains(notice, result.Notices);
         V31Contract.AssertSentence(new SourceRefusal("A10-065", notice, ""));
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
         Assert.Empty(MigratedPackagesTests.Publish(result));
     }
 
@@ -227,6 +227,9 @@ public class MigrateRenamesTests
         Assert.Equal(notices, result.Report.Renames);
         foreach (var notice in notices)
             V31Contract.AssertSentence(new SourceRefusal("A10-006", notice, ""));
+
+        // #1508 (R14; Task 32 fix round 1): each renamed macro's 30 id, which 30's model wrote in its marker (test, written as a snippet, D4, is listed too: it was a 30 macro).
+        Assert.Equal([("macro_macro", "macro"), ("test_snippet", "test")], result.MacroIds30.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => (p.Key, p.Value)));
     }
 
     [Fact]

@@ -41,6 +41,12 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
     /// <summary>The row keys an agent call was made for.</summary>
     public HashSet<string> Asked { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>D6: the row keys asked for with no stub, when the request does not generate.</summary>
+    public HashSet<string> Missing { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>D6: the stubs that did not fit, when the request does not generate.</summary>
+    public List<StubFault> Invalid { get; } = [];
+
     /// <inheritdoc/>
     public Task<AgentOutcome> CallAgentAsync(AgentCall call)
     {
@@ -60,10 +66,54 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
             prompts.Add(text);
         }
 
-        var given = request.Outputs.TryGetValue(call.Key, out var pinned);
-        var (value, reply) = OfflineStubs.Reply(plan, call, prepared, given, pinned, (request.StubSeed ?? (key => key))(call.Key));
+        // #1508 (comment 6 item 2; R14): a test's stub answers the row's first attempt; the attempt a reply with wrong markers
+        // asks for under onInvalid: retry has no stub of its own, so a strict run says it is missing (S07-008), as live a
+        // second reply would be needed.
+        JsonNode? pinned = null;
+        var given = !(call.Repair && !request.GenerateMissing) && request.Outputs.TryGetValue(call.Key, out pinned);
+        if (!given && !request.GenerateMissing)
+        {
+            // D6: no stub is no answer; the call fails as one that could not be made, which no retry changes.
+            Missing.Add(call.Key);
+            return Task.FromResult(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"));
+        }
+
+        var (value, reply) = OfflineStubs.Reply(plan, call, prepared, given, pinned, (request.StubSeed ?? (key => key))(call.Key), request.EnginePlaced);
+        var outcome = AgentTurn.Finish(prepared, reply);
+        if (!request.GenerateMissing && Fault(call, outcome) is { } fault)
+        {
+            // D6: a stub is the test's fixed answer: one that does not fit fails the node, and is not asked for again.
+            Invalid.Add(fault);
+            return Task.FromResult(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"));
+        }
+
         served[call.Key] = value;
-        return Task.FromResult(AgentTurn.Finish(prepared, reply));
+        return Task.FromResult(outcome);
+    }
+
+    /// <summary>
+    /// D6: what is wrong with the reply <paramref name="outcome"/> carries, as the runner checks a reply (read as its format's
+    /// value, then validated, an envelope already taken off): the first fault's path and keyword, never the value; null when
+    /// it fits, and null for a reply with wrong macro markers, which the runner judges under the node's <c>onInvalid</c> (R14).
+    /// </summary>
+    private StubFault? Fault(AgentCall call, AgentOutcome outcome)
+    {
+        if (outcome.Kind != AgentOutcomeKind.Completed)
+            return null;
+        var entries = call.Function == null ? plan.Entries : plan.Functions.GetValueOrDefault(call.Function)?.Entries;
+        var format = entries?.GetValueOrDefault(call.EntryKey)?.Format;
+        var name = format is JsonObject { Count: 1 } site && SourceLayout.Text(site["$ref"]) is { } reference
+            && reference.StartsWith("#/$defs/", StringComparison.Ordinal) ? reference["#/$defs/".Length..] : "its format";
+
+        // #1508 (comment 6 item 2; R14): a reply whose markers are wrong is the node's onInvalid's, as live, not the stub's fault.
+        if (outcome.Invalid is { Count: > 0 })
+            return null;
+        var (value, parsed) = outcome.NotOfFormat ? (null, false) : plan.Formats.Read(outcome.Reply ?? "", format);
+        var fits = parsed ? plan.Formats.Validate(value, format) : new FormatValueResult(false, [new FormatValueFault("", "type")]);
+        if (fits.Valid)
+            return null;
+        var first = fits.Faults[0];
+        return new StubFault(call.Key, name, $"{(first.Pointer.Length == 0 ? "/" : first.Pointer)} {first.Keyword}");
     }
 
     /// <inheritdoc/>

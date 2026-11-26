@@ -210,6 +210,12 @@ public sealed partial class PlanRunner
                     await recorder.FlushRoundAsync();
                 }
             }
+            catch (JobLimitReachedException)
+            {
+                // #1508 (ruling 4, item 5): a host rule's answer returned at or after the limit and was not read. The run is over
+                // as at any other check of the limit: it times out, and nothing more is dispatched.
+                await TimeOutAsync();
+            }
             catch (Exception) when (heldGates.Count > 0)
             {
                 // #1506 (final review F2): an engine fault (the host's own exception) ends the run too; each gate's row still
@@ -417,7 +423,7 @@ public sealed partial class PlanRunner
 
             if ((value.Value != null || entry.Gates.Count > 0) && !plan.Formats.Validate(value.Value, entry.Format).Valid)
             {
-                await FailLeafAsync(instance, $"Node '{entry.Id}' computed a value that isn't {FormatName(entry.Format)}.");
+                await FailLeafAsync(instance, $"{RunSentences.Subject(entry, null)} computed a value that isn't {FormatName(entry.Format)}.");
                 return;
             }
 
@@ -434,11 +440,28 @@ public sealed partial class PlanRunner
         /// than timing the pattern again; every other rule inline.
         /// </summary>
         private async Task<JsonLogicDecision> DecideRuleAsync(RunInstance instance, IJsonLogicRule rule, string member, JsonObject data) =>
-            rule.ReadsPattern ? RuleTurn.DecisionOf(await host.EvaluateAsync(RuleCallOf(instance, member, data))) : rule.Decide(data);
+            rule.ReadsPattern ? RuleTurn.DecisionOf(await AskHostAsync(instance, member, data)) : rule.Decide(data);
 
         /// <summary>As <see cref="DecideRuleAsync"/>, for a computed node's <c>expression</c>: its value.</summary>
         private async Task<JsonLogicValue> EvaluateRuleAsync(RunInstance instance, IJsonLogicRule rule, string member, JsonObject data) =>
-            rule.ReadsPattern ? RuleTurn.ValueOf(await host.EvaluateAsync(RuleCallOf(instance, member, data))) : rule.Evaluate(data);
+            rule.ReadsPattern ? RuleTurn.ValueOf(await AskHostAsync(instance, member, data)) : rule.Evaluate(data);
+
+        /// <summary>
+        /// #1508 (ruling 4, item 5): the host's answer, unless the job's limit has passed by the host's clock when it returns
+        /// (a rule takes no slot and has no timer of the run's, so nothing else would notice): an answer that returns at or after
+        /// the limit is never read, as nothing that finished at or after it is (<see cref="JobLimitReachedException"/>, which
+        /// <see cref="RunAsync"/> ends the run on).
+        /// </summary>
+        private async Task<RuleOutcome> AskHostAsync(RunInstance instance, string member, JsonObject data)
+        {
+            var answer = await host.EvaluateAsync(RuleCallOf(instance, member, data));
+            if (PastTheJobLimit())
+                throw new JobLimitReachedException();
+            return answer;
+        }
+
+        /// <summary>#1508: the host's rule answer returned past the job's limit; carried out of the step that asked, to the run's loop.</summary>
+        private sealed class JobLimitReachedException : Exception;
 
         private static RuleCall RuleCallOf(RunInstance instance, string member, JsonObject data) =>
             new(instance.Key, instance.Entry.Key, instance.Frame.Function, member, data);
@@ -736,7 +759,7 @@ public sealed partial class PlanRunner
             var (target, reads) = CheckReads(instance, instance.EvaluatedOver ?? scope.Data(entry, instance.Frame, entry.Reads));
             detail["checked"] = target;
             detail["reads"] = reads;
-            var lists = RecordRows.CheckResult(read["value"], detail);
+            var lists = RecordRows.CheckResult(read["value"], detail, entry);
             detail["effect"] = entry.Gates.Count > 0 ? null : ReadBy(entry, instance.Frame.Map);
             return lists;
         }
@@ -924,8 +947,10 @@ public sealed partial class PlanRunner
         /// <summary>D4's <c>&lt;site&gt;</c> for an instance's <c>if</c> and its render: <c>Node 'id'</c>, <c>Check 'id'</c> or <c>Deliverable 'id'</c>, with <c> in function 'f'</c> inside one.</summary>
         private static string Subject(RunInstance instance) => RunSentences.Subject(instance.Entry, instance.Frame.Function);
 
-        /// <summary>D4's <c>&lt;site&gt;</c> for a computed node's <c>expression</c>.</summary>
-        private static string ComputedSubject(RunInstance instance) => $"Computed node '{instance.Entry.Id}'{InFunction(instance)}";
+        /// <summary>D4's <c>&lt;site&gt;</c> for a computed node's <c>expression</c>; a check is named as a check (#1508).</summary>
+        private static string ComputedSubject(RunInstance instance) => IsCheck(instance.Key)
+            ? Subject(instance)
+            : $"Computed node '{instance.Entry.Id}'{InFunction(instance)}";
 
         private static string InFunction(RunInstance instance) =>
             instance.Frame.Function is { } function ? $" in function '{function}'" : "";

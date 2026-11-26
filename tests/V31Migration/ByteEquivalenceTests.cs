@@ -137,14 +137,16 @@ public class ByteEquivalenceTests
         Assert.Equal(true, (bool?)request.Inputs["letrozole_macro"]);
         Assert.False(request.Inputs.ContainsKey("letrozole"));
         Assert.False(request.Inputs.ContainsKey("no_such_macro"));
-        var run = await OfflineRun.RunAsync(plan, request);
+        // #1508 (R13): the macro's classifier answers yes, so the choice alone decides.
+        var yes = new Dictionary<string, JsonNode?>(request.Outputs, StringComparer.Ordinal) { ["node.letrozole_applies"] = JsonNode.Parse("""{ "answer": true, "reason": "The plan starts letrozole." }""") };
+        var run = await OfflineRun.RunAsync(plan, request with { Outputs = yes });
         Assert.True(run.StartRefusals.Count == 0, string.Join("\n", run.StartRefusals.Select(r => r.Sentence)));
         var on = run.Prompts.Single(p => p.Key == "node.draft").Text;
 
         // Chosen off, the macro is not offered: the prompt lacks its instruction.
         var off = Equivalence.RequestFor(Scenario(inputs, new JsonObject { ["letrozole"] = false }), Capture(), migrated, plan);
         Assert.Equal(false, (bool?)off.Inputs["letrozole_macro"]);
-        var without = (await OfflineRun.RunAsync(plan, off)).Prompts.Single(p => p.Key == "node.draft").Text;
+        var without = (await OfflineRun.RunAsync(plan, off with { Outputs = yes })).Prompts.Single(p => p.Key == "node.draft").Text;
         Assert.True(on.Length > without.Length && on.StartsWith(without.TrimEnd(), StringComparison.Ordinal), on + "\n---\n" + without);
     }
 
@@ -270,6 +272,29 @@ public class ByteEquivalenceTests
     }
 
     [Fact]
+    public async Task TheReport_HoldsTheOptions_AndTheSchemaRequiresThem()
+    {
+        // R18: migration-report.json records the choices the package was migrated with, as its options.json gives them.
+        var report = await EquivalenceFixture.Report("example-nested-note");
+        var schema = V31ContractsTests.SchemaOf("migration-report");
+
+        Assert.True(JsonNode.DeepEquals(ExampleChoices.Json("example-nested-note"), report.Options));
+        var json = JsonNode.Parse(report.ToJson())!.AsObject();
+        Assert.Equal("""{"folderFormats":{},"renames":{"parts":"sections"},"whenEmpty":{"note":"fail"}}""", json["options"]!.ToJsonString());
+        Assert.True(schema.Validate(json.ToJsonString(), null), json.ToJsonString());
+
+        var without = json.DeepClone().AsObject();
+        without.Remove("options");
+        Assert.False(schema.Validate(without.ToJsonString(), null), "A report without options is accepted.");
+        var wrong = json.DeepClone().AsObject();
+        wrong["options"]!["whenEmpty"]!["note"] = "maybe";
+        Assert.False(schema.Validate(wrong.ToJsonString(), null), "A whenEmpty that is not release, hold or fail is accepted.");
+        var unknown = json.DeepClone().AsObject();
+        unknown["options"]!["toolchain"] = new JsonObject();
+        Assert.False(schema.Validate(unknown.ToJsonString(), null), "An unknown option is accepted.");
+    }
+
+    [Fact]
     public async Task TheReport_ListsEveryNoticeThatNeedsNoEdit()
     {
         // D9: every notice but the hand edits, in the migration's order, then A10-063 for a package with more than one
@@ -285,7 +310,7 @@ public class ByteEquivalenceTests
         Assert.DoesNotContain(MigrationReport.OneMessageEach, (await EquivalenceFixture.Report("example-nested-note")).Notices);
 
         var handEdits = MigratedPackagesTests.Migrated("example-macros");
-        var edited = MigrationReport.Of("v2026.11.3", handEdits, []);
+        var edited = MigrationReport.Of("v2026.11.3", handEdits, ExampleChoices.Json("example-macros"), []);
         Assert.Equal(handEdits.HandEdits, edited.HandEdits);
         Assert.Empty(edited.Notices.Intersect(handEdits.HandEdits));
     }
@@ -307,6 +332,119 @@ public class ByteEquivalenceTests
         Assert.Null(MigrationReport.WorstCaseNote(nested, V31Contract.PublishedTypes(), new RunLimits(JobMinutes: 1_000_000)));
         Assert.Null(MigrationReport.WorstCaseNote(EquivalenceFixture.Migrated("example-classifier-scope"), V31Contract.PublishedTypes()));
         Assert.Equal("p could run for about 31 minutes in the worst case; this engine stops a job after 30 minutes.", MigrationReport.WorstCase("p", 31, 30));
+    }
+
+    [Fact]
+    public async Task AComparedText_NamesTheRulesCredited()
+    {
+        // #1508 (R19): composer-sources' tally is a let of text escaped in a Markdown deliverable (escaped-plain-text), and
+        // its count differs too, because 30 trimmed the topics it counted (unexpected difference 4, not ruled): the rule is
+        // credited, and the text is unexplained, so not expected.
+        var (_, _, texts) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
+        var tally = texts.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally");
+
+        Assert.Equal(["escaped-plain-text"], tally.Rules);
+        Assert.Equal((false, false, true, (string?)null), (tally.Equal, tally.Expected, tally.Unexplained, tally.Explanation));
+
+        // An explained text names its rules and has nothing left; an equal text names none.
+        var (_, _, letters) = await EquivalenceFixture.Compared("example-prior-letters", "default");
+        var read = letters.Single(t => t.Site == "example-prior-letters/default#prompts/node.letters.read_letter:1");
+        Assert.Equal(["item-ids-from-one", "sent-format"], read.Rules);
+        Assert.Equal((true, false), (read.Expected, read.Unexplained));
+        Assert.All(texts.Where(t => t.Equal), t => Assert.Equal((0, false), (t.Rules.Count, t.Unexplained)));
+    }
+
+    [Fact]
+    public async Task TheReport_CountsTheTextsExplained_PartlyExplained_AndUnexplained()
+    {
+        // R19: explained (no remainder), partly explained (a rule credited, a remainder left) and unexplained (no rule),
+        // among the texts that differ; an equal text is in none.
+        string Hash(char c) => "sha256:" + new string(c, 64);
+        var texts = new ComparedText[]
+        {
+            new("p/s#status", Hash('0'), Hash('0'), true, false, null, [], false),
+            new("p/s#prompts/node.a", Hash('0'), Hash('1'), false, true, "sent-format: …", ["sent-format"], false),
+            new("p/s#prompts/node.b", Hash('0'), Hash('2'), false, false, null, ["item-ids-from-one", "sent-format"], true),
+            new("p/s#prompts/node.c", Hash('0'), Hash('3'), false, false, null, [], true),
+            new("p/s#prompts/node.d", Hash('0'), Hash('4'), false, false, null, [], true),
+        };
+        var report = MigrationReport.Of("v2026.11.3", EquivalenceFixture.Migrated("example-nested-note"), ExampleChoices.Json("example-nested-note"), texts);
+        var json = JsonNode.Parse(report.ToJson())!.AsObject();
+
+        Assert.Equal("""{"explained":1,"partlyExplained":1,"unexplained":2}""", json["counts"]!.ToJsonString());
+        Assert.Equal("""["item-ids-from-one","sent-format"]""", json["texts"]![2]!["rules"]!.ToJsonString());
+        Assert.Equal((false, true), ((bool)json["texts"]![1]!["unexplained"]!, (bool)json["texts"]![2]!["unexplained"]!));
+        var schema = V31ContractsTests.SchemaOf("migration-report");
+        Assert.True(schema.Validate(json.ToJsonString(), null), json.ToJsonString());
+        var without = json.DeepClone().AsObject();
+        without.Remove("counts");
+        Assert.False(schema.Validate(without.ToJsonString(), null), "A report without counts is accepted.");
+        var noRules = json.DeepClone().AsObject();
+        noRules["texts"]![1]!.AsObject().Remove("rules");
+        Assert.False(schema.Validate(noRules.ToJsonString(), null), "A text without rules is accepted.");
+    }
+
+    /// <summary>
+    /// The rules no golden report credits, each with the reason it has no hit (R19: every rule either explains a text of a
+    /// compared package or says why none can).
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> RulesWithoutAHit = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["required-blank-refused"] = "no compared capture's 31 start refuses a required text input supplied blank.",
+        ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
+        ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
+    };
+
+    [Fact]
+    public async Task EveryRule_HasAGoldenHit_OrANamedReason()
+    {
+        // #1508 (comment 5, item 5; R19): crediting each rule on its own gives sent-format its hits beside the differences no
+        // rule explains; a rule with none says why.
+        var hits = new HashSet<string>(StringComparer.Ordinal);
+        var reports = Path.Combine(ByteEquivalenceFixtures.Root, GoldenFolder);
+        var packages = Directory.EnumerateFiles(reports, "*.json", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(reports, f)[..^".json".Length].Replace(Path.DirectorySeparatorChar, '/')).Order(StringComparer.Ordinal).ToList();
+        Assert.Contains("composer-macros", packages);
+        foreach (var package in packages)
+        {
+            foreach (var text in (await EquivalenceFixture.Report(package)).Texts)
+                hits.UnionWith(text.Rules);
+        }
+
+        Assert.All(ExpectedDifferences.Rules, rule => Assert.True(hits.Contains(rule.Id) ^ RulesWithoutAHit.ContainsKey(rule.Id),
+            hits.Contains(rule.Id) ? $"{rule.Id} has a golden hit and a reason." : $"{rule.Id} has no golden hit and no reason."));
+        Assert.Contains("sent-format", hits);
+        // #1508 (Task 35 fix round 1): edge-unruled-whitespace's problem_close, placed after each paragraph by 30's engine,
+        // ends its body in more white space than one line ending.
+        Assert.Contains("macro-trailing-whitespace", hits);
+        Assert.All(RulesWithoutAHit.Keys, id => Assert.Contains(id, ExpectedDifferences.Rules.Select(r => r.Id)));
+    }
+
+    [Fact]
+    public async Task AMacroThe30EnginePlaced_HasItsMarkerWhereItsInstructionAsks()
+    {
+        // #1508 (comment 5, item 7, #10): composer-macros' section_intro (before the reply at 30) and section_close (after) are
+        // markers at 31, which the captured replies never held: the request writes each where its instruction asks, so
+        // the job runs on as 30's did.
+        var migrated = EquivalenceFixture.Migrated("composer-macros");
+        Assert.Equal([("macro.section_close", false), ("macro.section_intro", true)],
+            Equivalence.EnginePlaced(migrated).OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => (p.Key, p.Value)));
+
+        // Read through A10-003's own sentence: a macro placed on both sides is left out (its edit says where), and an edit
+        // that names no macro of the package gives nothing.
+        var both = migrated with { HandEdits = ["Hand edit needed in macros/section_intro.md, instruction: macro 'section_intro' was placed before and after the reply by the engine; say in its instruction where the model writes its marker."] };
+        Assert.Empty(Equivalence.EnginePlaced(both));
+        Assert.Empty(Equivalence.EnginePlaced(migrated with { HandEdits = ["Hand edit needed in macros/ghost.md, instruction: macro 'ghost' was placed before the reply by the engine; say in its instruction where the model writes its marker."] }));
+
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario("composer-macros", "empty-body"), EquivalenceFixture.Capture("composer-macros", "empty-body"), migrated, EquivalenceFixture.Plan("composer-macros"));
+        Assert.Equal(Equivalence.EnginePlaced(migrated), request.EnginePlaced);
+
+        var (_, run, _) = await EquivalenceFixture.Compared("composer-macros", "empty-body");
+        Assert.Equal(RunState.Completed, run.State);
+
+        // A package with no such macro gives none.
+        Assert.Null(Equivalence.RequestFor(EquivalenceFixture.Scenario("example-nested-note", "default"), EquivalenceFixture.Capture("example-nested-note", "default"),
+            EquivalenceFixture.Migrated("example-nested-note"), EquivalenceFixture.Plan("example-nested-note")).EnginePlaced);
     }
 
     [Theory]
@@ -337,6 +475,56 @@ public class ByteEquivalenceTests
             ["macroChoices"] = choices,
             ["outputs"] = new JsonObject(),
         };
+    }
+
+    [Fact]
+    public void ChoiceClassifiers_AreFound_ThroughTheSnippetsAPromptPlaces()
+    {
+        // #1508 (R14; Task 32 fix round 1): summary places red_flags and safety_net itself, and house_style through the
+        // snippet style; each classifier is found, so each is answered from the capture.
+        var found = ChoiceClassifiers.Of(MigrateNodesTests.Migrated("example-macros"));
+
+        Assert.Equal(
+            [("node.house_style_applies", "house_style"), ("node.red_flags_applies", "notes.red_flags"), ("node.safety_net_applies", "notes.safety_net")],
+            found.Select(c => (c.Key, c.Macro)));
+        Assert.All(found, c => Assert.Equal("node.summary", c.Placing));
+    }
+
+    [Fact]
+    public void AChoiceAnswer_ReadsTheMacros30Name()
+    {
+        // #1508 (R14; Task 32 fix round 1): 30's model wrote the marker with the macro's 30 id; for a macro the migration
+        // renamed, that id is matched, never the 31 one (said here as if letrozole_prescription_text had been 30's letrozole).
+        var edited = EquivalenceFixture.Migrated("test/general");
+        var renamed = edited with
+        {
+            MacroIds30 = new Dictionary<string, string>(StringComparer.Ordinal) { ["letrozole_prescription_text"] = "letrozole" },
+        };
+        var plan = EquivalenceFixture.Plan("test/general");
+        JsonObject CaptureWith(string reply)
+        {
+            var capture = Capture();
+            capture["outputs"]!["section_instructions:assessment_plan"] = reply;
+            return capture;
+        }
+
+        bool? Answer(Migration31Result migrated, string reply) =>
+            (bool?)Equivalence.ChoiceAnswers(CaptureWith(reply), migrated, plan)
+                .Single(a => a.Key == "node.standards.letrozole_prescription_text_applies:assessment_plan").Answer["answer"];
+
+        Assert.True(Answer(renamed, "Letrozole started.\n{{ macro.letrozole.content }}\n"));
+        Assert.False(Answer(renamed, "Letrozole started.\n"));
+        Assert.True(Answer(edited, "Letrozole started.\n{{ macro.letrozole_prescription_text.content }}\n"));
+        Assert.False(Answer(edited, "Letrozole started.\n{{ macro.letrozole.content }}\n"));
+
+        // A folder's item: the folder and the item are each read back.
+        var folders = edited with
+        {
+            MacroIds30 = new Dictionary<string, string>(StringComparer.Ordinal) { ["notes_macro"] = "notes", ["notes/flags_macro"] = "flags" },
+        };
+        Assert.Equal("notes.flags", Equivalence.Name30(folders, "notes_macro.flags_macro"));
+        Assert.Equal("notes.safety_net", Equivalence.Name30(folders, "notes_macro.safety_net"));
+        Assert.Equal("other.flags_macro", Equivalence.Name30(folders, "other.flags_macro"));
     }
 
     private static JsonObject Capture() => new()
@@ -407,7 +595,7 @@ internal static class EquivalenceFixture
             texts.AddRange((await Compared(package, scenario)).Texts);
         var oldVersion = (string)JsonNode.Parse(ByteEquivalenceFixtures.ReadPackage(package).ManifestJson)!["version"]!;
         var migrated = Migrated(package);
-        return MigrationReport.Of(oldVersion, migrated, texts, MigrationReport.WorstCaseNote(migrated, V31Contract.PublishedTypes()));
+        return MigrationReport.Of(oldVersion, migrated, ExampleChoices.Json(package), texts, MigrationReport.WorstCaseNote(migrated, V31Contract.PublishedTypes()));
     }
 
     private static JsonObject Read(string folder, string package, string scenario) =>

@@ -61,9 +61,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// #1506 (specVersion 31, area 09; part 08 §§ 1.1, 3; D13): a 31 job's record sealed: its <c>recordHash</c> and the
     /// document's length in bytes, write-once. A job below record storage 12, or not terminal, takes none; a second seal
     /// with the same hash changes nothing, and one with another hash changes nothing and is logged with both hashes.
-    /// Not written to the index (it holds no record member).
+    /// #1508 (area 11, Task 21): the first seal also writes the record's size (bytes and rows) on the job's index row, which
+    /// the operator's weekly summary reads without a blob read per job; written here, in the entity, never in an orchestration.
     /// </summary>
-    public void RecordV31Seal(ConsultGenerationV31Seal input)
+    public async Task RecordV31Seal(ConsultGenerationV31Seal input)
     {
         var state = EnsureState();
         if (state.SchemaVersion < 12 || !IsTerminal(state.Status))
@@ -83,7 +84,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         state.RecordHash = input.RecordHash;
         state.RecordBytes = input.Bytes;
+        state.RecordRows = input.Rows;
         State = state;
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
@@ -1980,7 +1983,7 @@ public sealed class ConsultV31ProgressState
 /// #1506 (specVersion 31, area 09; D13): a 31 job's seal for <see cref="ConsultGenerationJobEntity.RecordV31Seal"/>: the hash of
 /// its canonical record document and the document's length in UTF-8 bytes.
 /// </summary>
-public sealed record ConsultGenerationV31Seal(string RecordHash, long Bytes);
+public sealed record ConsultGenerationV31Seal(string RecordHash, long Bytes, int? Rows = null);
 
 public sealed record ConsultGenerationJobFinalize(
     string Status,
@@ -2384,6 +2387,10 @@ public sealed class ConsultGenerationJobState
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public long? RecordBytes { get; set; }
 
+    /// <summary>#1508 (area 11): the number of rows the sealed record holds; null until sealed, and for a job sealed before it was written.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? RecordRows { get; set; }
+
     /// <summary>
     /// #1506 (part 08 § 3.1): each supplied input's hash, by id: the canonical hash of its read form's value. Written once at
     /// the start. Null, and not written, below 31.
@@ -2517,7 +2524,9 @@ public sealed class ConsultGenerationJobState
             InputsHeld: InputsBlob != null,
             InputsDroppedAtUtc: InputsDroppedAtUtc,
             // #1506 (final review F5): written only for a job at record storage 12 or later; a 5–30 row has none
-            RecordStorage: SchemaVersion >= V31.RecordSealer.SealedFrom ? SchemaVersion : null);
+            RecordStorage: SchemaVersion >= V31.RecordSealer.SealedFrom ? SchemaVersion : null,
+            RecordBytes: RecordBytes,
+            RecordRows: RecordRows);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)

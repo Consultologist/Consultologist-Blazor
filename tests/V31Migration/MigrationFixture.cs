@@ -116,15 +116,22 @@ internal static class MigrationFixture
     /// The migration's options for <paramref name="package"/> (a folder of <c>vendored/</c> or <c>fixture-packages/</c>):
     /// the published registry (<see cref="V31Contract.PublishedTypes"/>), the goldens' toolchain
     /// (<see cref="CompiledGoldenTests.Fixed"/>), 30's formats catalogue (<see cref="TestFormats.Catalog"/>), no contract
-    /// resolver (every fixture is at 30), and the package's hand choices (<see cref="ExampleChoices"/>).
+    /// resolver (every fixture is at 30), and the package's hand choices, read from its <c>options.json</c>
+    /// (<see cref="ExampleChoices"/>, R18). A package with no such file, or one that does not read, fails.
     /// </summary>
-    public static Migration31Options Options(string package) => new(
-        V31Contract.PublishedTypes(),
-        CompiledGoldenTests.Fixed,
-        TestFormats.Catalog,
-        Renames: ExampleChoices.Renames(package),
-        WhenEmpty: ExampleChoices.WhenEmpty(package),
-        FolderFormats: ExampleChoices.FolderFormats(package));
+    public static Migration31Options Options(string package)
+    {
+        var (options, refusal) = Migration31Options.FromJson(
+            ExampleChoices.Json(package), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, TestFormats.Catalog);
+        Assert.True(refusal is null, $"{HandEditsFolder}/{package}/{MigrationOptionsFile.FileName}: {refusal}");
+        return options!;
+    }
+
+    /// <summary>
+    /// <see cref="Options"/> with no hand choice, for a package that is no fixture (a test's own, or the vectors' hand-built
+    /// one): an account package's (§ 1.9, "the kind is added as a suffix"; § 1.10, <c>release</c>).
+    /// </summary>
+    public static Migration31Options NoChoices => new(V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, TestFormats.Catalog);
 
     /// <summary><paramref name="package"/> read from the fixtures (<see cref="ByteEquivalenceFixtures.ReadPackage"/>) and migrated with its <see cref="Options"/>.</summary>
     public static Migration31Result Migrate(string package)
@@ -168,7 +175,8 @@ internal static class MigrationFixture
     /// <summary>
     /// <paramref name="migrated"/> with the files under <paramref name="folder"/> laid over it, each at its path relative to
     /// the folder (<c>manifest.json</c> the manifest): a file named <c>&lt;path&gt;.deleted</c> removes <c>&lt;path&gt;</c>, any
-    /// other replaces or adds its path. The folder's own <c>README.md</c> is not a package file, nor is its <c>keys.json</c>
+    /// other replaces or adds its path. The folder's own <c>README.md</c> is not a package file, nor is its <c>options.json</c>
+    /// (<see cref="MigrationOptionsFile"/>, the choices the package was migrated with), nor its <c>keys.json</c>
     /// (<see cref="HandEditsKeys"/>), laid over the keys instead. A folder that does not exist
     /// changes nothing.
     /// </summary>
@@ -183,7 +191,7 @@ internal static class MigrationFixture
         foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
-            if (relative == HandEditsReadme)
+            if (relative is HandEditsReadme or MigrationOptionsFile.FileName)
                 continue;
             if (relative == HandEditsKeys)
             {

@@ -157,7 +157,7 @@ public sealed class PackageTemplates : ITemplateReads
     /// in it, which are substituted into the reply; each followed by the folder items' bodies it reads as
     /// <c>item.content</c> (part 05 § 6.2: rendered where they are read, so their reads are the reader's).
     /// </summary>
-    private static IEnumerable<(CheckedBody Body, bool Sent)> Placed(CheckedBody body)
+    internal static IEnumerable<(CheckedBody Body, bool Sent)> Placed(CheckedBody body)
     {
         foreach (var each in WithFolderItems(body, true))
             yield return each;

@@ -20,8 +20,9 @@ public class ExpectedDifferencesTests
     private static readonly string[] RuleIds =
     [
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
-        "refused-deliverable-withheld", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop", "sent-format", "explicit-null-for-optional",
-        "macro-trailing-whitespace", "blank-conversion",
+        "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
+        "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
+        "while-no-pass-separator", "macro-choice-classifier", "blank-conversion",
     ];
 
     [Fact]
@@ -34,7 +35,7 @@ public class ExpectedDifferencesTests
             Assert.False(string.IsNullOrWhiteSpace(rule.Explanation));
             Assert.Equal($"{rule.Id}: {rule.Explanation} ({rule.Basis})", rule.Said);
         });
-        Assert.Equal(["blank"], ExpectedDifferences.ConditionReasons.Keys);
+        Assert.Equal(["blank", "blank-conversion"], ExpectedDifferences.ConditionReasons.Keys);
     }
 
     [Fact]
@@ -134,24 +135,6 @@ public class ExpectedDifferencesTests
     // ---- bytes rules -----------------------------------------------------------------------------------------
 
     [Fact]
-    public void RefusedDeliverableWithheld_HoldsOnlyInARowThatReadsTheRefusedDeliverable()
-    {
-        // R4 item 3: a deliverable its check refused reads as null at 31, where 30 read its composed text; only in a row that
-        // reads it (final review B1). Part 06 § 6.7 lets only checks read a deliverable at 31, and a plan whose prompt,
-        // rendered node or deliverable reads a checked deliverable does not build (it would wait on a check that runs after
-        // it), so no compared row of a published package reads one and the rule explains no such pair.
-        var run = Run(RunState.Completed, deliverables: [Outcome("deliverable.note", DeliverableState.Blocked, "Diabetes paragraph.")]);
-
-        // The review's scenario: composer-gates' note and record_copy both compose [body], byte-identical at 30; note is
-        // blocked at 31 and a fault leaves record_copy composing "". record_copy does not read note: the lost text is
-        // unexpected, as is a text that lost the blocked one's bytes in its middle.
-        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Deliverable, "Diabetes paragraph.", "", "deliverable.record_copy", run)));
-        Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Deliverable, "Cover.\n\nDiabetes paragraph.\nEnd.", "Cover.\n\n\nEnd.", "deliverable.record_copy", run)));
-        // Nor a key the plan has no row for (the rule's reads are the row's own).
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "Cover.\n\nDiabetes paragraph.\nEnd.", "Cover.\n\n\nEnd.", run: run, key31: "deliverable.cover")));
-    }
-
-    [Fact]
     public void EscapedPlainText_ExplainsADeliverableThatUnescapesTo30sBytes()
     {
         // Part 06 § 6.4: a backslash before each ASCII punctuation character, a line's first space or tab as its reference,
@@ -218,10 +201,14 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(GatesContext(ComparedKind.Prompt, Old, New.Replace("Problems", "Points", StringComparison.Ordinal), "node.cover_note")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "## Prior letters 1", "## Letters 1", "example-prior-letters", key31: "node.assessment")));
 
-        // Near: a loop with an itemLabel (composer-sources' topic_loop, "Topics" over "Requested topics", itemLabel title)
-        // names its items by the field; its position name is only the fallback for an empty one, which is not explained.
-        Assert.Null(ExpectedDifferences.Explain(EditedContext("composer-sources", "item-names-and-bounds", ComparedKind.Deliverable,
+        // #1508 (comment 5, item 4): a loop with an itemLabel (composer-sources' topic_loop, "Topics" over "Requested topics",
+        // itemLabel title) names an item whose field is empty by its position, the loop's label at 31 where 30 gave the
+        // input's: accepted. An item named by its field is the same at both, so a heading 30 wrote "## Requested topics 4"
+        // is the fallback on both sides.
+        Assert.StartsWith("position-names-from-the-loop: ", Explain(EditedContext("composer-sources", "item-names-and-bounds", ComparedKind.Deliverable,
             "## History\n\nStub.\n\n## Requested topics 4\n\nStub four.", "## History\n\nStub.\n\n## Topics 4\n\nStub four.", "deliverable.topics")));
+        Assert.Null(ExpectedDifferences.Explain(EditedContext("composer-sources", "item-names-and-bounds", ComparedKind.Deliverable,
+            "## History\n\nStub.\n\n## Requested topics 4\n\nStub four.", "## History\n\nStub.\n\n## Topics 5\n\nStub four.", "deliverable.topics")));
     }
 
     [Fact]
@@ -233,11 +220,16 @@ public class ExpectedDifferencesTests
         const string At31 = """{"additionalProperties":false,"properties":{"note":{"type":["string","null"]},"summary":{"type":"string"}},"required":["note","summary"],"type":"object"}""";
         Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, Prompt + At30, Prompt + At31, key31: "node.plan", key30: "plan")));
 
-        // Near (the controller's ruling): 31 also sends a description, at the top or on a property, or a title, $schema or
-        // $id: no ruling declares it, so the text stays unexpected even with § 1.8's change beside it.
-        foreach (var (member, at) in new[] { ("\"description\":\"A plan.\",", 1), ("\"title\":\"Plan\",", 1), ("\"$id\":\"urn:x\",", 1) })
+        // #1508 (comment 5, item 7, #3): 31 also sends the format's description, at the top or on a property, where 30's had
+        // none there.
+        Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, Prompt + At30, Prompt + At31.Insert(1, "\"description\":\"A plan.\","), key31: "node.plan")));
+        Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, Prompt + At30, Prompt + At31.Replace("""{"type":"string"}}""", """{"description":"One line.","type":"string"}}""", StringComparison.Ordinal), key31: "node.plan")));
+
+        // Near: a title, $schema or $id 31 sends (no ruling declares them), and a description that differs from the one 30
+        // sent, stay unexpected even with § 1.8's change beside them.
+        foreach (var (member, at) in new[] { ("\"title\":\"Plan\",", 1), ("\"$id\":\"urn:x\",", 1), ("\"$schema\":\"urn:x\",", 1) })
             Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, Prompt + At30, Prompt + At31.Insert(at, member), key31: "node.plan")));
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, Prompt + At30, Prompt + At31.Replace("""{"type":"string"}}""", """{"description":"One line.","type":"string"}}""", StringComparison.Ordinal), key31: "node.plan")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, Prompt + At30.Insert(1, "\"description\":\"A plan.\","), Prompt + At31.Insert(1, "\"description\":\"The plan.\","), key31: "node.plan")));
 
         // Near: the optional property not made nullable; a property 30 did not have (concept_list's source); a required one
         // made nullable; the text before the format differs; a deliverable.
@@ -246,6 +238,34 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, Prompt + At30, Prompt + At31.Replace("""{"type":"string"}}""", """{"type":["string","null"]}}""", StringComparison.Ordinal), key31: "node.plan")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, Prompt + At30, "Draft the note." + At31, key31: "node.plan")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Prompt + At30, Prompt + At31, key31: "deliverable.note")));
+    }
+
+    /// <summary>
+    /// #1508 (R12; comment 5, item 7, #3, format descriptions sent; the controller's ruling on Task 31): a classifier's
+    /// format is a package format of its answers, bound <c>custom</c>, so 31 ends its prompt with the custom trailer and
+    /// that format after 30's own text, which listed the same values ("Answer with exactly one of: …").
+    /// </summary>
+    [Fact]
+    public void SentFormat_ExplainsAClassifiersAnswerFormatAppendedToItsPrompt()
+    {
+        const string At30 = "Decide whether the referral for Margaret Okafor is in scope.\n\nAnswer with exactly one of: in_scope, out_of_scope.";
+        const string Answers = """{"additionalProperties":false,"properties":{"value":{"enum":["in_scope","out_of_scope"],"type":"string"}},"required":["value"],"type":"object"}""";
+        const string At31 = At30 + "\n\n" + AgentTurn.CustomTrailer + "\n" + Answers;
+        Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, At30, At31, key31: "node.scope", key30: "scope")));
+
+        // #1508 (comment 5, item 7, #3): a description sent with the answers' format.
+        Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, At30, At31.Replace("{\"additionalProperties\"", "{\"description\":\"One value.\",\"additionalProperties\"", StringComparison.Ordinal), key31: "node.scope")));
+
+        // Near: other values, or another order, than 30 listed; 30 listed none; a format that is not the answers' shape (a
+        // title sent, another member); the text before it differs; a deliverable.
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("\"out_of_scope\"]", "\"needs_information\"]", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("[\"in_scope\",\"out_of_scope\"]", "[\"out_of_scope\",\"in_scope\"]", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "Decide.", "Decide.\n\n" + AgentTurn.CustomTrailer + "\n" + Answers, key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("{\"additionalProperties\"", "{\"title\":\"One value.\",\"additionalProperties\"", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("\"type\":\"string\"}}", "\"type\":\"string\"},\"reason\":{\"type\":\"string\"}}", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("{\"value\":{\"enum\":[\"in_scope\",\"out_of_scope\"],\"type\":\"string\"}}", "[]", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("Margaret Okafor", "the patient", StringComparison.Ordinal), key31: "node.scope")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, At30, At31, key31: "deliverable.note")));
     }
 
     [Fact]
@@ -308,7 +328,7 @@ public class ExpectedDifferencesTests
         Assert.StartsWith("blank-conversion: ", Explain(Context(ComparedKind.Deliverable, null, "31", run: deliverable, migrated: migrated, package: "example-two-documents", key31: "deliverable.consult_note")));
 
         // Near: a text both sides have, whose bytes the gate does not decide (a deliverable, a prompt); the status; x was null
-        // (30's !x held too); blank did not hold; a gate that is more than blank(x); A10-050's trim == "" (unruled); a text
+        // (30's !x held too); blank did not hold; a gate that is more than blank(x); A10-050's trim == "" (a condition reason only); a text
         // the gate is not on.
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "30", "31", run: deliverable, migrated: migrated, package: "example-two-documents", key31: "deliverable.consult_note")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "30", "31", run: held, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem")));
@@ -336,7 +356,309 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, null, "31", run: inOne, migrated: migrated, package: "example-two-documents", key31: "node.identify_problem.inner:10")));
     }
 
+    // ---- each difference credited on its own (#1508, comment 5, item 5; R19) -----------------------------------
+
+    [Fact]
+    public void ARuledDifferenceBesideAnUnexplainedOne_IsStillCredited()
+    {
+        // The item's number moved by one (item-ids-from-one) and a word changed that no rule explains: the rule is credited,
+        // and the text is unexplained, so it is not expected.
+        const string Old = "What bears on the question:\nstub 1b171b8d\n\nPrior letter 0:\n2026-03-02, urate 0.55 mmol/L.\n";
+        const string New = "What bear on the question:\nstub 1b171b8d\n\nPrior letter 1:\n2026-03-02, urate 0.55 mmol/L.\n";
+        var credited = ExpectedDifferences.Credit(LettersContext(Old, New, "letter_summary:0", "node.letters.letter_summary:1"));
+
+        Assert.Equal(["item-ids-from-one"], credited.Rules.Select(r => r.Id));
+        Assert.True(credited.Unexplained);
+        Assert.False(credited.Expected);
+        Assert.Null(ExpectedDifferences.Explain(LettersContext(Old, New, "letter_summary:0", "node.letters.letter_summary:1")));
+
+        // A rule is credited only where it brings 31's text nearer 30's: the item's number standing where 30's text has
+        // another number is not the rule's.
+        var far = ExpectedDifferences.Credit(LettersContext(Old.Replace("letter 0", "letter 7", StringComparison.Ordinal), New, "letter_summary:0", "node.letters.letter_summary:1"));
+        Assert.Equal((0, true), (far.Rules.Count, far.Unexplained));
+
+        // No rule: nothing credited, unexplained; equal after the rules: explained.
+        var none = ExpectedDifferences.Credit(Context(ComparedKind.Prompt, "Encounter date: 09 Nov 2026", "Encounter date: 2026-11-09", key31: "node.plan", key30: "plan"));
+        Assert.Equal((0, true, false, (string?)null), (none.Rules.Count, none.Unexplained, none.Expected, none.Explanation));
+    }
+
+    [Fact]
+    public void TwoRuledDifferences_AreBothCredited()
+    {
+        // An item's number from 1 and a description sent with the format: both rules, in Rules' order, and nothing is left.
+        const string Trailer = "\n\n" + AgentTurn.CustomTrailer + "\n";
+        const string At30 = """{"type":"object","additionalProperties":false,"required":["note"],"properties":{"note":{"type":"string"}}}""";
+        const string At31 = """{"additionalProperties":false,"description":"What bears on the question.","properties":{"note":{"type":"string"}},"required":["note"],"type":"object"}""";
+        const string Old = "What bears on the question:\n\nPrior letter 0:\n2026-03-02, urate 0.55 mmol/L." + Trailer + At30;
+        const string New = "What bears on the question:\n\nPrior letter 1:\n2026-03-02, urate 0.55 mmol/L." + Trailer + At31;
+        var credited = ExpectedDifferences.Credit(LettersContext(Old, New, "letter_summary:0", "node.letters.letter_summary:1"));
+
+        Assert.Equal(["item-ids-from-one", "sent-format"], credited.Rules.Select(r => r.Id));
+        Assert.False(credited.Unexplained);
+        Assert.True(credited.Expected);
+        Assert.Equal(string.Join("; ", credited.Rules.Select(r => r.Said)), credited.Explanation);
+    }
+
+    // ---- the rules of #1508, comment 5, item 7 -----------------------------------------------------------------
+
+    [Fact]
+    public void ReplyNeverATemplate_ExplainsAReplyThat30RenderedAsATemplate()
+    {
+        // #5: 30 rendered a reply as a template before it composed; 31 never does, so 31's text holds the reply as written
+        // where 30's holds it rendered (composer-sources' draft_plan, its reply holding {{ 3 * 2 }} and {{ "{{" }}).
+        const string Reply = "Repeat the echo in {{ 3 * 2 }} months.\nThe braces {{ \"{{\" }} and {{ \"}}\" }} stay literal.";
+        const string Rendered = "Repeat the echo in 6 months.\nThe braces {{ and }} stay literal.";
+        var run = Run(RunState.Completed, outputs: new() { ["node.plan_gate.draft_plan"] = Reply });
+        Assert.StartsWith("reply-never-a-template: ", Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan", run)));
+
+        // Near: a reply the run did not serve; 30's text is not the rendered reply (another number); a reply that does not
+        // render at 30 (a variable its scope lacks), written the same at 31.
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan")));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered.Replace("6", "7", StringComparison.Ordinal), "# Plan\n\n" + Reply, "deliverable.plan", run)));
+        var unknown = Run(RunState.Completed, outputs: new() { ["node.plan_gate.draft_plan"] = "In {{ months }} months." });
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "In 6 months.", "In {{ months }} months.", "deliverable.plan", unknown)));
+
+        // The job 30 failed because its reply did not render (unparseable-reply), which 31 completes: the status, and each
+        // deliverable only 31 composed.
+        var failure = Capture("Failed", "Drafting the plan failed: Node 'draft_plan' reply failed to render: <input>(1,23) : error : The variable or function `months` was not found");
+        var completed = Run(RunState.Completed, rows: [Row("node.plan_gate.draft_plan", PlanKind.Agent, RowState.Completed)]);
+        Assert.StartsWith("reply-never-a-template: ", Explain(SourcesContext(ComparedKind.Status, "Failed", "Completed", null, completed, failure)));
+        Assert.StartsWith("reply-never-a-template: ", Explain(SourcesContext(ComparedKind.Deliverable, null, "In {{ months }} months.", "deliverable.plan", completed, failure)));
+
+        // Near: 31 failed too; 30 failed otherwise; the node did not complete at 31; a prompt only 31 sent.
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Status, "Failed", "Completed", null, Run(RunState.Failed, rows: [Row("node.plan_gate.draft_plan", PlanKind.Agent, RowState.Completed)]), failure)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Status, "Failed", "Completed", null, completed, Capture("Failed", "Node 'draft_plan' failed."))));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Status, "Failed", "Completed", null, Run(RunState.Completed, rows: [Row("node.plan_gate.draft_plan", PlanKind.Agent, RowState.Failed)]), failure)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, null, "A prompt.", "node.closing", completed, failure)));
+    }
+
+    [Fact]
+    public void InputTrailingWhitespace_ExplainsAnInputs31WhiteSpace()
+    {
+        // #6: 31 keeps an input's trailing white space where 30 trimmed it (composer-sources' "  Padded history  ", and a
+        // title of white space alone).
+        var request = Inputs(new JsonObject { ["topics"] = new JsonArray(new JsonObject { ["title"] = "  Padded history  " }, new JsonObject { ["title"] = "   " }) });
+        Assert.StartsWith("input-trailing-whitespace: ", Explain(SourcesContext(ComparedKind.Prompt,
+            "On the topic \"  Padded history\" from this draft.", "On the topic \"  Padded history  \" from this draft.", "node.topic_loop.topic_gate.draft_topic:1", request: request)));
+        Assert.StartsWith("input-trailing-whitespace: ", Explain(SourcesContext(ComparedKind.Prompt,
+            "On the topic \"\" from this draft.\n   Indented.", "On the topic \"   \" from this draft.\n   Indented.", "node.topic_loop.topic_gate.draft_topic:4", request: request)));
+
+        // Near: 30 trimmed the leading white space too; white space no input holds; the request not passed.
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt,
+            "On the topic \"Padded history\" from this draft.", "On the topic \"  Padded history  \" from this draft.", "node.topic_loop.topic_gate.draft_topic:1", request: request)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt,
+            "On the topic \"History\" from this draft.", "On the topic \"History \" from this draft.", "node.topic_loop.topic_gate.draft_topic:1", request: request)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt,
+            "On the topic \"  Padded history\" from this draft.", "On the topic \"  Padded history  \" from this draft.", "node.topic_loop.topic_gate.draft_topic:1")));
+    }
+
+    [Fact]
+    public void FailedJobDispatchOrder_ExplainsATextOneSideSentBeforeTheFailure()
+    {
+        // #9: both jobs failed at the same reply (draft_topic's third item came back empty, so its failIfEmpty failed it),
+        // and each sent what its dispatch order reached first: a text only one side has is explained.
+        var capture = Capture("Failed", "A for over an input could not assemble: topic_gate:2 did not complete.");
+        capture["outputs"]!["draft_topic:2"] = "";
+        var failed = Run(RunState.Failed, rows: [Row("node.topic_loop.topic_gate.draft_topic:3", PlanKind.Agent, RowState.Failed, "A drafted topic came back empty.")]);
+        Assert.StartsWith("failed-job-dispatch-order: ", Explain(SourcesContext(ComparedKind.Prompt, "List the points.", null, "node.section_loop.outline:1", failed, capture)));
+        Assert.StartsWith("failed-job-dispatch-order: ", Explain(SourcesContext(ComparedKind.Deliverable, "## Assessment", null, "deliverable.sections", failed, capture)));
+        Assert.StartsWith("failed-job-dispatch-order: ", Explain(SourcesContext(ComparedKind.Prompt, null, "Only 31 reached this.", "node.closing", failed, capture)));
+
+        // Near: a text both sides have; 31 completed; 31 failed for another reason; 30's reply was not empty; 30 completed.
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "List the points.", "List the points!", "node.section_loop.outline:1", failed, capture)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "List the points.", null, "node.section_loop.outline:1", Run(RunState.Completed), capture)));
+        var other = Run(RunState.Failed, rows: [Row("node.topic_loop.topic_gate.draft_topic:3", PlanKind.Agent, RowState.Failed, "The reply has no marker for macro 'x'.")]);
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "List the points.", null, "node.section_loop.outline:1", other, capture)));
+        var answered = (JsonObject)capture.DeepClone();
+        answered["outputs"]!["draft_topic:2"] = "Examination paragraph.";
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "List the points.", null, "node.section_loop.outline:1", failed, answered)));
+        var completed30 = (JsonObject)capture.DeepClone();
+        completed30["status"] = "Completed";
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "List the points.", null, "node.section_loop.outline:1", failed, completed30)));
+    }
+
+    [Fact]
+    public void FailedJobDispatchOrder_ExplainsAReplyItsFormatRefusedAtBoth()
+    {
+        // #9; #1508 (comment 6, item 3, edge-answer-outside-set): triage answered outside its values, which 30 refused (onInvalid:
+        // fail) and 31's enum refuses too; 30 stopped there, 31 had sent the problem prompts beside it.
+        var capture = Capture("Failed", "Is the referral routine? failed: Node 'triage' reply does not conform to format 'classification' (onInvalid: fail): Classifier 'triage' answered outside its values.");
+        capture["outputs"]!["triage"] = JsonNode.Parse("""{ "value": "soon" }""");
+        JsonObject Invalid(string action, string reason = "Node 'triage' gave a reply that isn't triage_answer.") =>
+            new() { ["invalid"] = new JsonObject { ["reason"] = reason, ["action"] = action, ["attempts"] = 1 } };
+        var failed = Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "Node 'triage' gave a reply that isn't triage_answer.", Invalid("fail"))]);
+        DifferenceContext Outside(OfflineResult run, JsonObject captured, string? old = null) =>
+            Context(ComparedKind.Prompt, old, "Write one paragraph.", "edge-answer-outside-set", "answer-outside-set", captured, run, key30: "problem_draft:0", key31: "node.problem_loop.problem_draft:1");
+        Assert.StartsWith("failed-job-dispatch-order: ", Explain(Outside(failed, capture)));
+
+        // Near: a text both sides have; 31's row failed another way (no invalid reply); 30 failed on another node; 30 holds no reply.
+        Assert.Null(ExpectedDifferences.Explain(Outside(failed, capture, old: "Write one paragraph!")));
+        Assert.Null(ExpectedDifferences.Explain(Outside(Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "The call could not be made.")]), capture)));
+        // Nor a reply 31 refused for its markers (S05-053's short form), not its format.
+        Assert.Null(ExpectedDifferences.Explain(Outside(Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "x", Invalid("fail", "macro follow_up: missing"))]), capture)));
+        var other = (JsonObject)capture.DeepClone();
+        other["failure"] = "Drafting a problem failed: Node 'problem_draft' reply does not conform to format 'prose' (onInvalid: fail).";
+        Assert.Null(ExpectedDifferences.Explain(Outside(failed, other)));
+        var unanswered = (JsonObject)capture.DeepClone();
+        unanswered["outputs"]!.AsObject().Remove("triage");
+        Assert.Null(ExpectedDifferences.Explain(Outside(failed, unanswered)));
+    }
+
+    [Fact]
+    public void FlagBecomesRetry_ExplainsTheRetry_TheStatus_AndWhat30RanOnTheKeptReply()
+    {
+        // #1508 (comment 5, item 3; comment 6, item 3; edge-flag): summary declared onInvalid: flag, so 30 kept a reply that did
+        // not fit and composed the note; at 31 it is retry, asked once more with the validation error, then failed.
+        var capture = Capture("Completed", null);
+        JsonObject Invalid(string action, int attempts) => new() { ["invalid"] = new JsonObject { ["reason"] = "Node 'summary' gave a reply that isn't summary.", ["action"] = action, ["attempts"] = attempts } };
+        OfflineResult Failed(string action = "retry", int attempts = 2, string key = "node.summary") =>
+            Run(RunState.Failed, rows: [Row(key, PlanKind.Agent, RowState.Failed, "Node 'summary' gave a reply that isn't summary.", Invalid(action, attempts))]);
+        DifferenceContext Flag(ComparedKind kind, string? old, string? now, string? key30, string? key31, OfflineResult run, JsonObject? captured = null, Migration31Result? migrated = null) =>
+            Context(kind, old, now, "edge-flag", "reply-does-not-fit", captured ?? capture, run, migrated, key30, key31);
+
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed())));
+        // The retried prompt: only the retry's text is this rule's (R19), so a difference beside it is left to the other rules.
+        const string Retry = "\n\nYour last reply could not be used: it did not fit the required format. Write the reply again.";
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Prompt, "Summarise.\n", "Summarise." + Retry, "summary", "node.summary", Failed())));
+        var beside = ExpectedDifferences.Credit(Flag(ComparedKind.Prompt, "Summarise.\n", "Summarise!" + Retry, "summary", "node.summary", Failed()));
+        Assert.Equal(["flag-becomes-retry"], beside.Rules.Select(r => r.Id));
+        Assert.True(beside.Unexplained);
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Prompt, "Summarise.\n", "Summarise.\n\nAgain.", "summary", "node.summary", Failed())));
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Prompt, "Write one paragraph.", null, "problem_draft:0", "node.problem_loop.problem_draft:1", Failed())));
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Deliverable, "## Problem list 1", null, null, "deliverable.note", Failed())));
+
+        // Near: a text only 31 has; another prompt both have; the node was not asked again (fail), or asked once; 30 failed too;
+        // the node was never flag at 30 (its notice not among the migration's).
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Prompt, null, "Only 31.", "problem_draft:0", "node.problem_loop.problem_draft:1", Failed())));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Prompt, "Write one paragraph.", "Write one paragraph!", "problem_draft:0", "node.problem_loop.problem_draft:1", Failed())));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed(action: "fail", attempts: 1))));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed(attempts: 1))));
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Failed", "Failed", null, null, Failed(), Capture("Failed", "x"))));
+        var notFlag = EquivalenceFixture.Migrated("edge-flag") with { Notices = [] };
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed(), migrated: notFlag)));
+    }
+
+    [Fact]
+    public void BeforeAfterMacroMarker_ExplainsTheInstructionAndTheBodysPlace()
+    {
+        // #10: composer-macros' section_intro and section_close, which 30's engine placed before and after section_draft's
+        // reply, are markers at 31: the placing prompt holds each offered macro's instruction (the hand edit's), and the
+        // texts that hold the bodies differ only in the white space around them, where 30 joined body and reply by a blank
+        // line and 31 has what the model wrote around its marker.
+        const string Prompt = "Write the section \"History\" of a clinic letter from this draft.\nDraft. (Fictional.)\n";
+        const string Intro = "Write the following marker alone on the first line of your reply, before the section's text:\n{{~ macro.section_intro.content }}";
+        const string Close = "Write the following marker alone on the last line of your reply, after the section's text:\n{{~ macro.section_close.content }}";
+        Assert.StartsWith("before-after-macro-marker: ", Explain(MacrosContext(ComparedKind.Prompt, Prompt, Prompt + Intro + "\n" + Close + "\n", "node.section_loop.section_draft:1")));
+        Assert.StartsWith("before-after-macro-marker: ", Explain(MacrosContext(ComparedKind.Prompt, Prompt, Prompt + Intro + "\n\n", "node.section_loop.section_draft:2")));
+
+        const string Note30 = "## History\n\nThe History section follows.\n\nHistory paragraph.\n\nEnd of the History section.\n\n## Plan";
+        const string Note31 = "## History\n\nThe History section follows.\nHistory paragraph.\n\n\nEnd of the History section.\n\n## Plan";
+        Assert.StartsWith("before-after-macro-marker: ", Explain(MacrosContext(ComparedKind.Deliverable, Note30, Note31, "deliverable.sections_note")));
+
+        // Near: an instruction of a macro the engine did not place; the prompt differs before the instructions; white space
+        // away from the bodies; a row that cannot hold the bodies (signed_only reads letter_body, which places no macro).
+        Assert.Null(ExpectedDifferences.Explain(MacrosContext(ComparedKind.Prompt, Prompt, Prompt + "Write the cc line.\n", "node.section_loop.section_draft:1")));
+        Assert.Null(ExpectedDifferences.Explain(MacrosContext(ComparedKind.Prompt, Prompt, Prompt.Replace("History", "Plan", StringComparison.Ordinal) + Intro + "\n", "node.section_loop.section_draft:1")));
+        Assert.Null(ExpectedDifferences.Explain(MacrosContext(ComparedKind.Deliverable, Note30, Note31.Replace("## History\n\n", "## History\n", StringComparison.Ordinal), "deliverable.sections_note")));
+        Assert.Null(ExpectedDifferences.Explain(MacrosContext(ComparedKind.Deliverable, Note30, Note31, "deliverable.signed_only")));
+    }
+
+    [Fact]
+    public void EscapedPlainText_ExplainsAComputedTextValue_AndALoopsContentAPromptReads()
+    {
+        // #13: a let of text (composer-sources' topic_tally) is escaped in a Markdown deliverable; its value, the run's own,
+        // unescapes it.
+        var tally = Run(RunState.Completed, rows: [Row("node.topic_tally", PlanKind.Computed, RowState.Completed, text: new JsonObject { ["content"] = "Topic section length: 131" })]);
+        Assert.StartsWith("escaped-plain-text: ", Explain(SourcesContext(ComparedKind.Deliverable, "Topic section length: 131", "Topic section length\\: 131", "deliverable.tally", tally)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "Topic section length: 131", "Topic section length\\: 131", "deliverable.tally")));
+
+        // #1508 (comment 5, item 8, D23): a prompt that reads a Markdown loop's content (example-v12-constructs'
+        // extract_letter_terms reads standards_letter_body, for its check) holds its plain-text items escaped; a prompt that
+        // reads no escaped text is never escaped.
+        const string Letter = "We have received this referral and will be in touch with an appointment.";
+        var replied = Run(RunState.Completed, outputs: new() { ["node.ack_letter_body"] = Letter });
+        Assert.StartsWith("escaped-plain-text: ", Explain(V12Context("Extract: " + Letter, "Extract: " + MarkdownEscape.Escape(Letter, startsLine: false), "node.extract_letter_terms", replied)));
+        Assert.Null(ExpectedDifferences.Explain(V12Context("Extract: " + Letter, "Extract: " + MarkdownEscape.Escape(Letter, startsLine: false), "node.tone", replied)));
+    }
+
+    [Fact]
+    public void WhileNoPassSeparator_ExplainsTheSeparatorBesideAWhileThatRanNoPass()
+    {
+        // The controller's ruling (Task 33's review): a while that ran no pass reads as empty text at both, but 30's composer
+        // dropped its part, and 31's template keeps the blank line between it and the next source (summary_then_opening:
+        // "{{ node.refine.content }}\n\n{{ node.opening.content }}"); no if can drop a separator and keep the text.
+        var noPass = Run(RunState.Completed, rows: [Row("node.refine", PlanKind.While, RowState.Skipped, detail: new JsonObject { ["passes"] = 0 })]);
+        Assert.StartsWith("while-no-pass-separator: ", Explain(SourcesContext(ComparedKind.Deliverable, "Opening line.", "\n\nOpening line.", "deliverable.summary_then_opening", noPass)));
+
+        // Near: the while ran a pass; the blank line stands elsewhere; a deliverable whose template has no while beside a
+        // separator (opening alone); a prompt.
+        var onePass = Run(RunState.Completed, rows: [Row("node.refine", PlanKind.While, RowState.Completed, detail: new JsonObject { ["passes"] = 1 })]);
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "Opening line.", "\n\nOpening line.", "deliverable.summary_then_opening", onePass)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "Opening line.", "Opening line.\n\n", "deliverable.summary_then_opening", noPass)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "Opening line.", "\n\nOpening line.", "deliverable.single", noPass)));
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "Opening line.", "\n\nOpening line.", "node.closing", noPass)));
+    }
+
     // ---- helpers ---------------------------------------------------------------------------------------------
+
+    // ---- macro-choice-classifier (#1508, comment 6, items 1 and 2; R13, R14) ------------------------------------
+
+    private const string Placing = "node.standards.section_instructions:assessment_plan";
+
+    private const string Classifier = "node.standards.letrozole_prescription_text_applies:assessment_plan";
+
+    /// <summary>A prompt of test/general (edited: its classifier written with its question), the classifier having answered <paramref name="yes"/>.</summary>
+    private static DifferenceContext ChoiceContext(string? old, string now, bool? yes, string key31 = Placing)
+    {
+        var outputs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+        if (yes is { } answer)
+            outputs[Classifier] = new JsonObject { ["answer"] = answer, ["reason"] = Consultologist.PackageFormat.V31.Harness.ByteEquivalence.ChoiceReason };
+        var run = new OfflineResult(RunState.Completed, null, [], [], [], [], outputs, [], [], []);
+        return new("test/general", "default", $"test/general/default#prompts/{key31}", ComparedKind.Prompt, null, key31, old, now,
+            Capture("Completed", null), run, EquivalenceFixture.Migrated("test/general"), EquivalenceFixture.Plan("test/general"));
+    }
+
+    [Fact]
+    public void MacroChoiceClassifier_ExplainsTheClassifiersPrompt_AndTheInstructionItGates()
+    {
+        var classifier = Assert.Single(ChoiceClassifiers.Of(EquivalenceFixture.Migrated("test/general")));
+        Assert.Equal(("node.standards.letrozole_prescription_text_applies", "node.standards.section_instructions", "letrozole_prescription_text"),
+            (classifier.Key, classifier.Placing, classifier.Macro));
+        var now31 = classifier.Instruction;
+        var was30 = now31.Replace("assessment and plan.", "assessment and plan; otherwise nothing.", StringComparison.Ordinal);
+        Assert.NotEqual(now31, was30);
+
+        // The classifier's prompt, which only 31 sends.
+        Assert.StartsWith("macro-choice-classifier: ", Explain(ChoiceContext(null, "Does the plan prescribe letrozole?\n", true, Classifier)));
+
+        // Answered yes: 30's instruction, its "otherwise" clause removed at 31.
+        Assert.StartsWith("macro-choice-classifier: ", Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + now31 + "Margaret Okafor.", true)));
+
+        // Answered no: the macro is not offered, so 31's prompt lacks 30's instruction.
+        Assert.StartsWith("macro-choice-classifier: ", Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\nMargaret Okafor.", false)));
+    }
+
+    [Fact]
+    public void MacroChoiceClassifier_DoesNotExplainANearPair()
+    {
+        var now31 = Assert.Single(ChoiceClassifiers.Of(EquivalenceFixture.Migrated("test/general"))).Instruction;
+        var was30 = now31.Replace("assessment and plan.", "assessment and plan; otherwise nothing.", StringComparison.Ordinal);
+
+        // A prompt only 31 sent that is no classifier's.
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext(null, "Only 31 sent this.", true)));
+
+        // The instruction missing where the classifier answered yes, or kept where it answered no.
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\nMargaret Okafor.", true)));
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + now31 + "Margaret Okafor.", false)));
+
+        // With no answer (the classifier did not run), nothing is explained.
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\nMargaret Okafor.", null)));
+
+        // More than the "otherwise" clause changed, or text beside the instruction.
+        var reworded = now31.Replace("side-effect counselling", "counselling", StringComparison.Ordinal);
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + reworded + "Margaret Okafor.", true)));
+        Assert.Null(ExpectedDifferences.Explain(ChoiceContext("Standard:\n" + was30 + "Margaret Okafor.", "Standard:\n" + now31 + "Dr A. Sample.", true)));
+    }
 
     private static string Explain(DifferenceContext context) =>
         ExpectedDifferences.Explain(context) ?? throw new Xunit.Sdk.XunitException($"No rule explains {context.Site}.");
@@ -362,7 +684,11 @@ public class ExpectedDifferencesTests
         new("composer-macros", "default", $"composer-macros/default#{key31}", ComparedKind.Deliverable, null, key31, old, now,
             Capture("Completed", null), Run(RunState.Completed), migrated, EquivalenceFixture.Plan("composer-macros"), request);
 
-    /// <summary><paramref name="package"/> as compared, with <paramref name="path"/> holding a 30 macro's body (<see cref="Migration31Result.MacroBodies"/>).</summary>
+    /// <summary>
+    /// <paramref name="package"/> as compared, with <paramref name="path"/> holding a 30 macro's body
+    /// (<see cref="Migration31Result.MacroBodies"/>), and no hand edit, so no macro reads as placed by 30's engine
+    /// (before-after-macro-marker) and R5's rule is read alone.
+    /// </summary>
     private static Migration31Result WithMacro(string package, string path, string body)
     {
         var migrated = EquivalenceFixture.Migrated(package);
@@ -370,7 +696,7 @@ public class ExpectedDifferencesTests
         {
             [path] = "---\n{\"label\":\"Closing\",\"description\":null,\"if\":null,\"format\":\"markdown_block\",\"instruction\":[]}\n---\n" + body,
         };
-        return migrated with { Files = files, MacroBodies = [path] };
+        return migrated with { Files = files, MacroBodies = [path], HandEdits = [] };
     }
 
     private static OfflineRequest Request(string? draft, bool drop = false, string? signature = null)
@@ -404,8 +730,35 @@ public class ExpectedDifferencesTests
     };
 
     private static OfflineResult Run(
-        RunState? state, IReadOnlyList<SourceRefusal>? refusals = null, IReadOnlyList<DeliverableOutcome>? deliverables = null, IReadOnlyList<RunDecision>? decisions = null) =>
-        new(state, null, refusals ?? [], [], [], deliverables ?? [], new Dictionary<string, JsonNode?>(StringComparer.Ordinal), [], decisions ?? [], []);
+        RunState? state, IReadOnlyList<SourceRefusal>? refusals = null, IReadOnlyList<DeliverableOutcome>? deliverables = null, IReadOnlyList<RunDecision>? decisions = null,
+        Dictionary<string, JsonNode?>? outputs = null, IReadOnlyList<RunRow>? rows = null) =>
+        new(state, null, refusals ?? [], [], [], deliverables ?? [], outputs ?? new Dictionary<string, JsonNode?>(StringComparer.Ordinal), rows ?? [], decisions ?? [], []);
+
+    private static RunRow Row(string key, PlanKind kind, RowState state, string? reason = null, JsonObject? detail = null, JsonObject? text = null)
+    {
+        var end = key.IndexOfAny([':', '#']);
+        return new(key, end < 0 ? key : key[..end], kind, state, reason, null, detail ?? new JsonObject(), text);
+    }
+
+    /// <summary>A context on composer-sources (edited, Task 16), so its own plan is read.</summary>
+    private static DifferenceContext SourcesContext(
+        ComparedKind kind, string? old, string? now, string? key31, OfflineResult? run = null, JsonObject? capture = null, OfflineRequest? request = null) =>
+        new("composer-sources", "default", $"composer-sources/default#{key31 ?? "status"}", kind, null, key31, old, now,
+            capture ?? Capture("Completed", null), run ?? Run(RunState.Completed), EquivalenceFixture.Migrated("composer-sources"), EquivalenceFixture.Plan("composer-sources"), request);
+
+    /// <summary>A context on composer-macros (edited, Task 16).</summary>
+    private static DifferenceContext MacrosContext(ComparedKind kind, string old, string now, string key31) =>
+        new("composer-macros", "default", $"composer-macros/default#{key31}", kind, null, key31, old, now,
+            Capture("Completed", null), Run(RunState.Completed), EquivalenceFixture.Migrated("composer-macros"), EquivalenceFixture.Plan("composer-macros"));
+
+    /// <summary>A prompt of example-v12-constructs (no hand edit), so its own plan is read.</summary>
+    private static DifferenceContext V12Context(string old, string now, string key31, OfflineResult run) =>
+        new("example-v12-constructs", "default", $"example-v12-constructs/default#{key31}", ComparedKind.Prompt, null, key31, old, now,
+            Capture("Completed", null), run, EquivalenceFixture.Migrated("example-v12-constructs"), EquivalenceFixture.Plan("example-v12-constructs"));
+
+    private static OfflineRequest Inputs(JsonObject inputs) =>
+        new(inputs.ToDictionary(i => i.Key, i => i.Value?.DeepClone(), StringComparer.Ordinal), new Dictionary<string, string?>(StringComparer.Ordinal),
+            new JsonObject(), new Dictionary<string, JsonNode?>(StringComparer.Ordinal), Consultologist.PackageFormat.V31.Harness.ByteEquivalence.CapturedAtUtc);
 
     private static DeliverableOutcome Outcome(string key, DeliverableState state, string? text) =>
         new(key, key, "markdown_block", "", state, null, null, text, text is null ? null : CanonicalJson.HashText(text), ["pdf"], null);

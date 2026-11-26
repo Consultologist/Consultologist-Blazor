@@ -225,7 +225,7 @@ public class AgentTurnActivityTests
             TemplateSyntax.TestParser.Value = null;
         }
 
-        Assert.Equal((AgentOutcomeKind.Failed, "compose"), (outcome.Kind, outcome.ErrorKind));
+        Assert.Equal((AgentOutcomeKind.Failed, "engine"), (outcome.Kind, outcome.ErrorKind));
         Assert.Empty(run.Agent.Sent);
         var line = Assert.Single(EngineFaults(run.AgentLog));
         Assert.Contains("node.draft", line, StringComparison.Ordinal);
@@ -253,7 +253,7 @@ public class AgentTurnActivityTests
         }
 
         Assert.Null(outcome.Text);
-        Assert.EndsWith("couldn't be rendered.", outcome.Failure, StringComparison.Ordinal); // A06-008, not the package's S07-006
+        Assert.EndsWith("couldn't be rendered because the engine failed. Tell the operator.", outcome.Failure, StringComparison.Ordinal); // A11-008, not A06-008 or the package's S07-006
         var line = Assert.Single(EngineFaults(run.RenderLog));
         Assert.Contains("node.stamp", line, StringComparison.Ordinal);
         Assert.Contains("System.NullReferenceException", line, StringComparison.Ordinal);

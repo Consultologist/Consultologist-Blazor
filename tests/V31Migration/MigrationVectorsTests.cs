@@ -21,12 +21,10 @@ public class MigrationVectorsTests
             File.ReadAllBytes,
             StringComparer.Ordinal);
 
-    private static IReadOnlyDictionary<string, string>? Map(JsonNode? map) =>
-        map?.AsObject().ToDictionary(p => p.Key, p => (string)p.Value!, StringComparer.Ordinal);
-
     /// <summary>
-    /// The options a pinned case's <c>options.json</c> states: its hand choices, and its toolchain, which must be the
-    /// goldens' (<see cref="CompiledGoldenTests.Fixed"/>); the registry and 30's catalogue are
+    /// The options a pinned case's <c>options.json</c> states: its hand choices, read as a package's <c>options.json</c> is
+    /// (<see cref="Migration31Options.FromJson"/>, R18), and its toolchain, which must be the goldens'
+    /// (<see cref="CompiledGoldenTests.Fixed"/>); the registry and 30's catalogue are
     /// <see cref="MigrationFixture.Options"/>' (the published ones).
     /// </summary>
     private static Migration31Options OptionsOf(string optionsJson, string where)
@@ -36,12 +34,11 @@ public class MigrationVectorsTests
         Assert.True(
             JsonNode.DeepEquals(JsonNode.Parse(CompiledDocumentsExport.ToolchainJson(CompiledGoldenTests.Fixed)), options["toolchain"]),
             $"{where}/options.json: the toolchain is not the goldens'.");
-        return MigrationFixture.Options(MigrationVectorsExport.HandBuiltName) with
-        {
-            Renames = Map(options["renames"]),
-            WhenEmpty = Map(options["whenEmpty"]),
-            FolderFormats = Map(options["folderFormats"]),
-        };
+        var choices = (JsonObject)options.DeepClone();
+        choices.Remove("toolchain");
+        var (read, refusal) = Migration31Options.FromJson(choices, V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, TestFormats.Catalog);
+        Assert.True(refusal is null, $"{where}/options.json: {refusal}");
+        return read!;
     }
 
     [Fact]

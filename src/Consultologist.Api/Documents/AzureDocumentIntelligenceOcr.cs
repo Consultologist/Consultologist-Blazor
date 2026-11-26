@@ -92,7 +92,7 @@ internal sealed class AzureDocumentIntelligenceOcr : IDocumentOcr
 
             return string.IsNullOrWhiteSpace(analysis.Content)
                 ? new DocumentOcrResult(DocumentOcrStatus.Empty, null, null)
-                : new DocumentOcrResult(DocumentOcrStatus.Extracted, analysis.Content, ExtractorId, meanConfidence);
+                : new DocumentOcrResult(DocumentOcrStatus.Extracted, analysis.Content, ExtractorId, meanConfidence, DatedVersion(analysis));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -112,6 +112,14 @@ internal sealed class AzureDocumentIntelligenceOcr : IDocumentOcr
             return Unavailable;
         }
     }
+
+    /// <summary>
+    /// #1508 (part 08 § 3.1): the dated version the service analysed with. The pinned SDK's <see cref="AnalyzeResult"/> has
+    /// no <c>ModelVersion</c>: the result's <c>apiVersion</c> is the dated release (<c>2024-11-30</c>) the model ran under, and
+    /// is what <see cref="AnalyzeResult.ApiVersion"/> gives. Null when the service gave none.
+    /// </summary>
+    internal static string? DatedVersion(AnalyzeResult analysis) =>
+        string.IsNullOrWhiteSpace(analysis.ApiVersion) ? null : analysis.ApiVersion.Trim();
 
     private static readonly DocumentOcrResult Unavailable = new(DocumentOcrStatus.Unavailable, null, null);
 

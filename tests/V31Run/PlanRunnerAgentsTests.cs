@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Run;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
@@ -198,7 +199,6 @@ public class PlanRunnerAgentsTests
     [InlineData("Seen by **Dr A. Sample** in clinic.", null)]
     [InlineData("Seen by **Dr A. Sample**\nin clinic.", "Node 'plan' gave a reply that isn't markdown_inline: markdown_inline text sits inside a line and holds no line ending.")]
     [InlineData("Seen by **Dr A. Sample**\r\nin clinic.", "Node 'plan' gave a reply that isn't markdown_inline: markdown_inline text sits inside a line and holds no line ending.")]
-    [InlineData("Seen by **Dr A. Sample**\r", "Node 'plan' gave a reply that isn't markdown_inline: markdown_inline text sits inside a line and holds no line ending.")]
     public async Task AMarkdownInlineValue_IsOneLine(string reply, string? sentence)
     {
         // #1507, 2026-11-22 (2), 3 (R10) and D21: a markdown_inline value holds no line ending (part 02 § 5: it sits inside
@@ -222,6 +222,42 @@ public class PlanRunnerAgentsTests
         Assert.Equal(new JsonObject { ["reason"] = sentence, ["action"] = "retry", ["attempts"] = 2 }.ToJsonString(),
             recorder.Row("node.plan").Detail["invalid"]!.ToJsonString());
         Assert.DoesNotContain("Sample", recorder.Row("node.plan").Detail.ToJsonString());
+    }
+
+    [Theory]
+    [InlineData("Seen by **Dr A. Sample**\n", true)]
+    [InlineData("Seen by **Dr A. Sample**\r\n", true)]
+    [InlineData("Seen by **Dr A. Sample**\r", true)]
+    [InlineData("Seen by **Dr A. Sample**\n\n", false)]
+    [InlineData("Seen by **Dr A. Sample**\r\n\r\n", false)]
+    public async Task AMarkdownInlineReply_LosesOneTrailingLineEnding_BeforeItIsValidated(string reply, bool fits)
+    {
+        // #1508 (2026-11-25, item 8): one trailing line ending (\n, \r\n or \r) is taken off a markdown_inline reply before it
+        // is read and validated; a second is still a line ending inside it (A10-052). The offline host's stub check is the same.
+        const string text = "Seen by **Dr A. Sample**";
+        var plan = RunFixture.Plan(Planned(format: "\"markdown_inline\""), StubTemplates.Empty());
+
+        var result = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true).Reply("node.plan", reply), new ListRecorder())
+            .RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        var inputs = RunFixture.GoldenInputs().Inputs.Where(i => plan.Inputs.ContainsKey(i.Key))
+            .ToDictionary(i => i.Key, i => i.Value?["value"]?.DeepClone(), StringComparer.Ordinal);
+        var offline = await OfflineRun.RunAsync(plan, new OfflineRequest(inputs, new Dictionary<string, string?>(StringComparer.Ordinal),
+            new JsonObject { ["date"] = "2026-11-21" }, new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.plan"] = reply },
+            FakeRunHost.Start, GenerateMissing: false));
+
+        if (fits)
+        {
+            Assert.Equal(RunState.Completed, result.State);
+            Assert.Equal(text, (string?)result.Values["node.plan"]!["value"]);
+            Assert.Empty(offline.InvalidOutputs);
+            Assert.Equal(RunState.Completed, offline.State);
+            return;
+        }
+
+        Assert.Equal(RunState.Failed, result.State);
+        V31Contract.AssertSentence(new SourceRefusal("A10-052", result.Sentence!, ""));
+        Assert.Equal("node.plan", Assert.Single(offline.InvalidOutputs).Key);
     }
 
     // ---- retries --------------------------------------------------------------------------------
@@ -340,6 +376,7 @@ public class PlanRunnerAgentsTests
     [Theory]
     [InlineData("steps", "S05-062", "Node 'plan' stopped rendering: it took more than 100,000 steps.")]
     [InlineData("compose", "A06-008", "Node 'plan' couldn't be rendered.")]
+    [InlineData("engine", "A11-008", "Node 'plan' couldn't be rendered because the engine failed. Tell the operator.")]
     [InlineData("plan", "S07-006", null)]
     public async Task ACallThatCouldNotBeMade_FailsTheNodeAtOnce_WithItsSentence(string kind, string id, string? expected)
     {

@@ -128,11 +128,29 @@ internal static partial class RefusalPackages
 
     private static IEnumerable<RefusalCase> TemplateReads()
     {
+        // #1508 (ruled by the owner, ruling 12 of 2026-11-25): every step of a read is checked, beyond the first id, so the
+        // case is the ruling's own, a member read past a macro folder's item.
         yield return new RefusalCase("S05-011",
-            "A template reads what is there (chapter 5 § 5.3.1). The note writes the plan. Invalid: it reads "
-            + "node.plan.value.sections, which a plaintext does not have. Valid: node.plan.content.",
-            Minimal(),
-            Minimal().Edit(Note, "{{ node.plan.content }}", "{{ node.plan.value.sections }}"));
+            "A template reads what is there, at every step (chapter 5 § 5.3.1). The agent closing places the macro hpi of the "
+            + "folder section_notes. Invalid: it reads macro.section_notes.hpi.anything, which the macro does not have. "
+            + "Valid: it places macro.section_notes.hpi.",
+            SectionNotes(),
+            SectionNotes().Edit("nodes/closing.md", "{{~ macro.section_notes.hpi }}", "{{ macro.section_notes.hpi.anything }}"));
+
+        // #1508 (ruling 12; Task 25's fix round 1): a unit is placed on its own, never read in an expression.
+        yield return new RefusalCase("A11-012",
+            "A part or a macro is placed on its own (chapter 5 § 5.2.6). The agent closing places the macro follow_up. "
+            + "Invalid: it pipes macro.follow_up into string.upcase, which is no placement. Valid: it places it.",
+            FollowUp(),
+            FollowUp().Edit("nodes/closing.md", FollowUpPlaced, "{{ macro.follow_up | string.upcase }}\n"));
+
+        // #1508 (Q5 of 2026-11-26, R17; Task 26): a member read through an object that can be null stands under its guard.
+        yield return new RefusalCase("A11-009",
+            "A member read through an object that can be null is guarded (chapter 5 § 5.2.5). The optional object input intake is "
+            + "unset in some jobs. Invalid: the plan's prompt reads input.intake.value.reason bare, which fails to render when intake "
+            + "is unset. Valid: it reads it inside {{ if input.intake.value }}.",
+            Intake(IntakeGuarded),
+            Intake(IntakeRead));
 
         yield return new RefusalCase("S05-020",
             "A template reads only its site's roots (chapter 5 § 5.3.1). The plan's prompt writes the draft. Invalid: it reads "
@@ -394,6 +412,14 @@ internal static partial class RefusalPackages
 
     private static IEnumerable<RefusalCase> Macros()
     {
+        // #1508 (comment 6, item 1; R13; Task 32): a judgement node asks its question; the migration leaves it empty.
+        yield return new RefusalCase("A11-013",
+            "A classifier asks its question (chapter 5 § 5.8.2). The judgement agent applies decides whether a follow-up line "
+            + "is offered, from the draft. Invalid: its prompt gives the draft and asks nothing. Valid: it asks whether the "
+            + "draft plans a follow-up.",
+            Applies("Does the draft plan a follow-up visit?\n"),
+            Applies(""));
+
         yield return new RefusalCase("S05-042",
             "A macro's body places no macro (chapter 5 § 5.8.1). The agent closing places the macro follow_up. Invalid: "
             + "follow_up's body places macro.recall. Valid: it places nothing.",
@@ -652,6 +678,39 @@ internal static partial class RefusalPackages
             .Edit("snippets/index.json", "\"items\": []", "\"items\": [\"closer\"]")
             .With("snippets/closer.md", Md("{ \"label\": \"Closer\", \"description\": null, \"if\": null, \"format\": \"plaintext\" }",
                 "Thank Dr A. Sample.\n"));
+
+    /// <summary>The macro folder <c>section_notes</c> holding <c>hpi</c>, and the agent <c>closing</c>, which places it.</summary>
+    private static Dictionary<string, byte[]> SectionNotes() =>
+        MinimalListing("closing")
+            .Edit("macros/index.json", "\"items\": []", "\"items\": [\"section_notes\"]")
+            .With("macros/section_notes/index.json", SourceFixture.Index(["hpi"], extra: ", \"if\": null"))
+            .With("macros/section_notes/hpi.md", Md(
+                "{ \"label\": \"History\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place the history's closing line alone:\", \"{{~ macro.section_notes.hpi.content }}\"] }",
+                "History taken from Margaret Okafor and her daughter.\n"))
+            .With("nodes/closing.md", Agent("Writing the closing", Plain, "Write the closing line of the history.\n{{~ macro.section_notes.hpi }}\n"));
+
+    private const string IntakeRead = "Reason for referral: {{ input.intake.value.reason }}";
+
+    private const string IntakeGuarded = "{{ if input.intake.value }}Reason for referral: {{ input.intake.value.reason }}{{ end }}";
+
+    /// <summary>
+    /// <see cref="SourceFixture.Minimal"/> with the optional object input <c>intake</c> (its <c>reason</c>, text), whose plan's
+    /// prompt writes <paramref name="line"/> after the draft.
+    /// </summary>
+    private static Dictionary<string, byte[]> Intake(string line) =>
+        Minimal()
+            .Edit("manifest.json", "\"channel\": null }\n  }",
+                "\"channel\": null },\n"
+                + "    \"intake\": { \"label\": \"Intake form\", \"description\": null, \"format\": { \"type\": \"object\", "
+                + "\"required\": [\"reason\"], \"additionalProperties\": false, \"properties\": { \"reason\": { \"type\": \"string\", "
+                + "\"title\": \"Reason for referral\" } } }, \"required\": false, \"channel\": null }\n  }")
+            .Edit(Plan, DraftRead, DraftRead + "\n" + line);
+
+    /// <summary>The <c>judgement</c> agent <c>applies</c>, its prompt the draft, a blank line and <paramref name="question"/>.</summary>
+    private static Dictionary<string, byte[]> Applies(string question) =>
+        MinimalListing("applies")
+            .With("nodes/applies.md", Agent("Whether a follow-up applies", "\"judgement\"", "{{ input.consult_draft.content }}\n\n" + question));
 
     /// <summary>The macros <c>follow_up</c> and <c>recall</c> (unplaced), and the agent <c>closing</c>, which places follow_up.</summary>
     private static Dictionary<string, byte[]> FollowUp() =>

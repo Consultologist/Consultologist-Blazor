@@ -25,7 +25,7 @@ internal static class RecordRuns
 
     /// <summary>The names of the run goldens, as <c>Golden/&lt;name&gt;.run.txt</c> has them.</summary>
     public static IEnumerable<string> Names() =>
-        CompiledGoldenTests.Cases().Select(c => c.Name).Append("macros").Append("checked-note-outcomes");
+        CompiledGoldenTests.Cases().Select(c => c.Name).Append("checked-note-outcomes");
 
     public sealed record Ran(ListRecorder Recorder, RunResult Result);
 

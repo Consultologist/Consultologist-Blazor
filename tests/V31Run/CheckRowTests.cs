@@ -79,6 +79,31 @@ public class CheckRowTests
     }
 
     [Fact]
+    public void AnAggregatesFailWith_IsTheOperationsLiteral_NeverTheValuesMessage()
+    {
+        // #1508 (area 11, R8): the record is kept for life, so a check_result's own message, which a value can carry from the
+        // model, never reaches it. The row holds the literal in its operation's failWith position; a check with no such
+        // operation (proofread is an object) holds null.
+        var plan = RunFixture.Plan("checked-note");
+        var written = JsonNode.Parse(
+            "{ \"pass\": false, \"message\": \"Margaret Okafor's plan is unsafe, the model says.\", "
+            + "\"uncovered\": null, \"untested\": null, \"passed\": 0, \"total\": 1 }");
+
+        string? FailWith(string key, JsonNode? value)
+        {
+            var detail = new JsonObject();
+            RecordRows.CheckResult(value, detail, plan.Entries[key]);
+            return (string?)detail["failWith"];
+        }
+
+        Assert.Equal("Not every section covers its planned terms.", FailWith("check.all_sections_covered", written)); // all_pass
+        Assert.Equal("The section does not cover every term its plan names.", FailWith("check.part_coverage.coverage", written)); // terms_subset
+        Assert.Null(FailWith("check.proofread", written)); // no such operation
+        Assert.Null(FailWith("check.all_sections_covered", JsonNode.Parse("{ \"pass\": true, \"message\": null }"))); // it passed
+        Assert.Null(FailWith("check.all_sections_covered", null)); // it did not run
+    }
+
+    [Fact]
     public async Task ACheckResultsLists_AreByHash()
     {
         var run = await RunGoldenTests.Run(RunFixture.Plan("functions"), new RunLimits(), seed: null);

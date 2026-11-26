@@ -1,0 +1,34 @@
+{
+  "description": [
+    "edge-unset-object, scenario intake-unset (#1508, comment 6 item 3; comment 7 Q5): the 30 capture's replies",
+    "under their 31 keys. intake is not given; each read of its reason is inside the guard the migration wrote, so the",
+    "problem prompt and the note's intake line read nothing there, as 30 did, and both are 30's text."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "intake": null
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.problem_loop.problem_draft:1": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "node.problem_loop.problem_draft:2": "Medication paragraph: metformin continued."
+  },
+  "expect": {
+    "prompts": {
+      "node.problem_loop.problem_draft:1": {
+        "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nReason for referral: \nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+      }
+    },
+    "deliverables": {
+      "deliverable.note": {
+        "state": "released",
+        "text": "Referred for:  (from the intake form).\n\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+      }
+    }
+  }
+}

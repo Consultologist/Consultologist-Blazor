@@ -248,33 +248,47 @@ public class MigrateFlowsTests
             """), tone["branches"]!.ToJsonString());
         Assert.Null(tone["else"]);
 
-        // A classifier: its values are the ones its with gave at 30 (a missing value each, in their order).
-        var result = Migrated("example-v12-constructs", root =>
-        {
-            Node(root, "tone")["with"] = new JsonObject { ["values"] = new JsonArray("formal", "friendly", "neutral") };
-            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "formal_note", ["label"] = "A formal note", ["format"] = "prose" });
-            root["deliverables"]!.AsArray().OfType<JsonObject>().First()["sources"]!.AsArray().Add("node.tone_line");
-            root["nodes"]!.AsArray().Add(new JsonObject
-            {
-                ["id"] = "tone_line", ["label"] = "A line in the referral's tone", ["case"] = "node.tone.value",
-                ["branches"] = new JsonArray(new JsonObject { ["when"] = new JsonArray("formal"), ["nodes"] = new JsonArray("formal_note"), ["ret"] = "node.formal_note" }),
-            });
-        }, files => files["prompts/formal_note.md"] = "Write one formal line.\n");
-        var line = Json(result, "nodes/tone_line/index.json");
-        Assert.Equal("node.tone.value.value", (string?)line["case"]);
-        Assert.Equal(Compact("""{ "when": ["friendly", "neutral"], "nodes": [], "ret": null }"""), line["branches"]![1]!.ToJsonString());
-        // But a classifier's answers are not typed at 31 (classification's value is a plain string; its with is dropped),
-        // so the 31 checker refuses the subject (S04-044): a hand edit on the case.
-        var edit = Assert.Single(result.HandEdits, e => e.Contains("tone_line", StringComparison.Ordinal));
-        const string reason = "the case switches on classifier 'tone', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.";
-        Assert.Equal($"Hand edit needed in nodes/tone_line/index.json, case: {reason}", edit);
-        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "nodes/tone_line/index.json"));
-        V31Contract.AssertSentence(new SourceRefusal("A10-032", reason, ""));
-
         // A case that lists every value gains nothing.
         var complete = Json(Migrated("composer-sources", root =>
             Node(root, "tone_case")["branches"]![1]!["when"] = new JsonArray("plain", "none")), "nodes/tone_case/index.json");
         Assert.Equal(2, complete["branches"]!.AsArray().Count);
+    }
+
+    /// <summary>
+    /// #1508 (R12, comment 5, item 1; A10-032 retired): a <c>case</c> on a 30 classifier switches on its answer format's
+    /// enum, so it is written with no hand edit: three values, two branches and no <c>else</c>, the missing value gets the
+    /// empty branch part 10 § 1.2 writes, and the package publishes.
+    /// </summary>
+    [Fact]
+    public void ACaseOnAClassifier_NeedsNoHandEdit()
+    {
+        var result = Migrated("example-classifier-scope", root =>
+        {
+            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "in_scope_note", ["label"] = "An in-scope note", ["format"] = "prose" });
+            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "out_of_scope_note", ["label"] = "An out-of-scope note", ["format"] = "prose" });
+            root["nodes"]!.AsArray().Add(new JsonObject
+            {
+                ["id"] = "scope_line", ["label"] = "A line on the referral's scope", ["case"] = "node.scope.value",
+                ["branches"] = new JsonArray(
+                    new JsonObject { ["when"] = new JsonArray("in_scope"), ["nodes"] = new JsonArray("in_scope_note"), ["ret"] = "node.in_scope_note" },
+                    new JsonObject { ["when"] = new JsonArray("out_of_scope"), ["nodes"] = new JsonArray("out_of_scope_note"), ["ret"] = "node.out_of_scope_note" }),
+            });
+            root["deliverables"]!.AsArray().OfType<JsonObject>().First()["sources"]!.AsArray().Add("node.scope_line");
+        }, files =>
+        {
+            files["prompts/in_scope_note.md"] = "Write one line saying the clinic will see Margaret Okafor.\n";
+            files["prompts/out_of_scope_note.md"] = "Write one line saying the clinic does not see this request.\n";
+        });
+
+        var line = Json(result, "nodes/scope_line/index.json");
+        Assert.Equal("node.scope.value.value", (string?)line["case"]);
+        Assert.Equal(3, line["branches"]!.AsArray().Count);
+        Assert.Equal(Compact("""{ "when": ["needs_information"], "nodes": [], "ret": null }"""), line["branches"]![2]!.ToJsonString());
+        Assert.Null(line["else"]);
+        Assert.Empty(result.HandEdits);
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("Hand edit needed", StringComparison.Ordinal));
+        var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed);
+        Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));
     }
 
     [Fact]

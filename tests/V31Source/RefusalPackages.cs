@@ -66,7 +66,7 @@ internal static partial class RefusalPackages
     public static IReadOnlyList<RefusalCase> All() =>
         Intake().Concat(Layout()).Concat(Headers()).Concat(Members()).Concat(Ids()).Concat(Kinds())
             .Concat(Loops()).Concat(Branches()).Concat(Functions()).Concat(Scopes()).Concat(Registry())
-            .Concat(Types()).Concat(Logic()).Concat(Resolve()).Concat(Engine()).Concat(Templates()).Concat(Checks())
+            .Concat(Types()).Concat(Logic()).Concat(Resolve()).Concat(Engine()).Concat(Templates()).Concat(Checks()).Concat(PublishRefusals())
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
 

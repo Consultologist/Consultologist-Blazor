@@ -1,0 +1,9 @@
+{
+  "renames": {
+    "parts": "sections"
+  },
+  "whenEmpty": {
+    "note": "fail"
+  },
+  "folderFormats": {}
+}

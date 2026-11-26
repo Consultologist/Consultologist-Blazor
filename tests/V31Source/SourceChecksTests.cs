@@ -57,6 +57,8 @@ public class SourceChecksTests
         index["itemLabel"] = null;
     }
 
+    private const string MaybeBoolean = "{ \"type\": [\"boolean\", \"null\"] }";
+
     private const string ReadsBilling = "{ \"===\": [{ \"var\": \"input.include_billing.value\" }, true] }";
 
     [Fact]
@@ -134,6 +136,22 @@ public class SourceChecksTests
         AssertRefusal(
             WithOptionalInput().WithJson(AllSections, h => h["if"] = JsonNode.Parse(ReadsBilling)),
             "S06-035", "Check 'all_sections' gates deliverable 'consult', and its if reads input.include_billing.value, which can be null; "
+            + "a gate check's if reads values that are always set.",
+            AllSections);
+
+    [Fact]
+    public void S06035_FailsClosed_ThroughAGatesDependencies() =>
+        // the gate's if reads node.billed, which reads node.billing_on, which is skipped when the optional input is not true:
+        // the nullable read is two steps from the gate, and a gate that can be null is refused all the same
+        AssertRefusal(
+            WithOptionalInput()
+                .With("nodes/index.json", Index(["plan", "standards", "extract_input_terms", "extract_note_terms", "billing_on", "billed"]))
+                .With("nodes/billing_on.md", Md(SourceFixture.Node("computed", "Whether billing is on", MaybeBoolean, true, true,
+                    $"\"if\": {ReadsBilling}, \"expression\": {{ \"var\": \"input.include_billing.value\" }}"), ""))
+                .With("nodes/billed.md", Md(SourceFixture.Node("computed", "Whether the note is billed", MaybeBoolean, true, true,
+                    "\"if\": null, \"expression\": { \"var\": \"node.billing_on.value\" }"), ""))
+                .WithJson(AllSections, h => h["if"] = JsonNode.Parse("{ \"===\": [{ \"var\": \"node.billed.value\" }, true] }")),
+            "S06-035", "Check 'all_sections' gates deliverable 'consult', and its if reads node.billed.value, which can be null; "
             + "a gate check's if reads values that are always set.",
             AllSections);
 

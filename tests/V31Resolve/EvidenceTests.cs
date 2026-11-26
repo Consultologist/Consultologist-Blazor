@@ -41,6 +41,20 @@ public class EvidenceTests
     }
 
     [Fact]
+    public void AnUploadedStamp_IsDroppedUnread_AndNamed()
+    {
+        // #1508 (area 11, Global Constraints): publish.json is evidence too; bytes that are not even text are never read.
+        var upload = SourceFixture.Minimal();
+        upload["publish.json"] = [0xFF];
+
+        var intake = SourceIntake.Read(upload);
+
+        Assert.Equal(["publish.json"], intake.Dropped);
+        Assert.Empty(intake.Refusals);
+        Assert.DoesNotContain(intake.Files, file => file.Key == "publish.json");
+    }
+
+    [Fact]
     public void AnUploadWithout_IsToldNothing()
     {
         var parsed = SourceParser.Parse(SourceFixture.Minimal(), SourceFixture.EmptyRegistry());

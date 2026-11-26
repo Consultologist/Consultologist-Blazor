@@ -1,0 +1,29 @@
+{
+  "package": "edge-answer-outside-set",
+  "tag": null,
+  "scenario": "answer-outside-set",
+  "status": "Failed",
+  "failure": "Is the referral routine? failed: Node 'triage' reply does not conform to format 'classification' (onInvalid: fail): Classifier 'triage' answered outside its values.",
+  "outputs": {
+    "triage": {
+      "value": "soon"
+    }
+  },
+  "prompts": [
+    {
+      "key": "triage",
+      "hash": "sha256:eada0a52b122c44a07a20dd2c065454c52dab2999153f8a4e98c4e5ad9ef0429",
+      "text": "Decide whether this referral is routine or urgent.\nMargaret Okafor, 58, referred for review of type 2 diabetes with an HbA1c of 71 mmol/mol. (Fictional.)\n\n\nAnswer with exactly one of: routine, urgent."
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    }
+  ]
+}

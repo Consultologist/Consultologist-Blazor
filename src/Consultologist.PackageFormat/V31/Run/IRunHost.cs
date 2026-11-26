@@ -18,7 +18,7 @@ public enum AgentOutcomeKind
     /// <summary>
     /// The call could not be made, for a reason not the model service's, which no retry changes: its <c>ErrorKind</c> is
     /// <c>"steps"</c> (its body passed the step budget, S05-062), <c>"compose"</c> (its body could not be composed,
-    /// A06-008) or <c>"plan"</c> (its plan is not the job's, or lacks its entry or its agent: S07-006). The node fails.
+    /// A06-008), <c>"engine"</c> (the engine failed reading its body, A11-008) or <c>"plan"</c> (its plan is not the job's, or lacks its entry or its agent: S07-006). The node fails.
     /// </summary>
     Failed,
 }
@@ -42,17 +42,20 @@ public sealed record AgentCall(
 /// <summary>
 /// #1503 (specVersion 31, area 06; D7): what one attempt gave: the reply, or the wait the activity worked out
 /// (<c>retry-after</c>, else the back-off with its jitter) and the error's kind (<c>"timeout"</c>, <c>"error"</c> or
-/// <c>"unreachable"</c>; for <see cref="AgentOutcomeKind.Failed"/> <c>"steps"</c>, <c>"compose"</c> or <c>"plan"</c>), never
+/// <c>"unreachable"</c>; for <see cref="AgentOutcomeKind.Failed"/> <c>"steps"</c>, <c>"compose"</c>, <c>"engine"</c> or <c>"plan"</c>), never
 /// its content. #1504 (area 07; part 08 §§ 4, 4.3): <paramref name="Detail"/> is the attempt's row detail in part 08's names
 /// (<see cref="AgentTurn"/>), and <paramref name="Invalid"/> the reply's marker faults, null when there were none. #1506
 /// (area 09; part 08 § 4; R14): an attempt that called the model has <c>tokens { input, output, total }</c> in its detail.
 /// #1506 (area 09; D2, D10): <paramref name="Produced"/> is the text the attempt produced, which never rides in
 /// <paramref name="Detail"/>: <c>{ sent, neutral, renders: { "&lt;sub-row id&gt;[#&lt;pass&gt;]": { input, output } },
 /// macros: { "&lt;macro id&gt;": body } }</c> (<see cref="AgentTurn.Produced"/>); null when nothing was composed.
+/// #1508 (2026-11-25, item 13): <paramref name="NotOfFormat"/> is a reply that is not of its format whatever it reads as
+/// (<see cref="AgentTurn.Finish"/>: a text sent in an envelope whose reply is not that envelope holding a string), which
+/// the runner refuses as it refuses any reply that does not fit, never reading <paramref name="Reply"/>.
 /// </summary>
 public sealed record AgentOutcome(
     AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind, JsonObject? Detail = null, IReadOnlyList<ReplyFault>? Invalid = null,
-    JsonObject? Produced = null);
+    JsonObject? Produced = null, bool NotOfFormat = false);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): one render of a rendered node or a deliverable, with its step budget. #1504 (area 07;

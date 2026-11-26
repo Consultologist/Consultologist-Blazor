@@ -17,19 +17,41 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
       "id": "composer-macros.section_draft.section_close.if",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "!": [
+          {
+            "in": [
+              {
+                "var": "item.value.title"
+              },
+              [
+                "Plan"
+              ]
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "item.value.title"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition 'item.value.title != \"Plan\"' compares item.value.title (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "textLiterals": [
+        {
+          "written": "item.value.title ≠ \"Plan\"",
+          "printed": "not (item.value.title in [\"Plan\"])"
+        }
+      ],
+      "emptyComparisons": [],
+      "notices": []
     },
     {
       "id": "composer-macros.gated.review_note.if",
@@ -48,6 +70,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -67,6 +91,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -86,6 +112,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -105,6 +133,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -124,6 +154,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -143,6 +175,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -162,6 +196,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -176,6 +212,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -186,10 +224,54 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand.",
         "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.size, which has no JSON Logic form at 31: rewrite it by hand."
       ]
+    },
+    {
+      "id": "edge-answer-outside-set.note.if",
+      "logic": {
+        "===": [
+          {
+            "var": "node.triage.value.value"
+          },
+          "routine"
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.triage.value.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
+      "id": "edge-no-branch.plan_gate.if",
+      "logic": {
+        "===": [
+          {
+            "var": "input.include_plan.value"
+          },
+          true
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.include_plan.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
     },
     {
       "id": "example-classifier-scope.plan.if",
@@ -208,6 +290,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -227,6 +311,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -246,6 +332,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -265,6 +353,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -284,6 +374,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -298,6 +390,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -317,6 +411,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -349,6 +445,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -368,6 +466,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -382,6 +482,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -401,6 +503,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -420,6 +524,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -439,6 +545,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -483,6 +591,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -502,6 +612,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -521,6 +633,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -540,6 +654,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -554,6 +670,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -573,6 +691,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -592,6 +712,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -611,6 +733,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -655,6 +779,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -674,6 +800,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -693,6 +821,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -711,6 +841,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -730,6 +862,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -749,6 +883,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -768,6 +904,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -787,6 +925,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -806,20 +946,34 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
       "id": "example-structured-intake.notes_index.if",
       "logic": {
-        ">": [
+        "and": [
           {
-            "size": [
+            "!==": [
               {
                 "var": "input.prior_notes.value"
-              }
+              },
+              null
             ]
           },
-          2
+          {
+            ">": [
+              {
+                "size": [
+                  {
+                    "var": "input.prior_notes.value"
+                  }
+                ]
+              },
+              2
+            ]
+          }
         ]
       },
       "resultFormat": "boolean",
@@ -829,6 +983,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -848,6 +1004,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -867,6 +1025,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -886,19 +1046,37 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
       "id": "row.read.node-content",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "in": [
+          {
+            "var": "node.summary.content"
+          },
+          [
+            "Reviewed in clinic."
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "node.summary.content"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition 'node.summary.content == \"Reviewed in clinic.\"' compares node.summary.content (plaintext | null) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "textLiterals": [
+        {
+          "written": "node.summary.content = \"Reviewed in clinic.\"",
+          "printed": "node.summary.content in [\"Reviewed in clinic.\"]"
+        }
+      ],
+      "emptyComparisons": [],
+      "notices": []
     },
     {
       "id": "row.read.item-id",
@@ -917,6 +1095,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -936,6 +1116,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -955,6 +1137,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -974,30 +1158,162 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
       "id": "row.input.x",
-      "logic": null,
-      "resultFormat": null,
-      "reads": [],
+      "logic": {
+        "in": [
+          {
+            "var": "input.reason.content"
+          },
+          [
+            "Breathlessness"
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
-      "notices": [
-        "The condition 'input.reason == \"Breathlessness\"' compares input.reason.content (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
-      ]
+      "textLiterals": [
+        {
+          "written": "input.reason.content = \"Breathlessness\"",
+          "printed": "input.reason.content in [\"Breathlessness\"]"
+        }
+      ],
+      "emptyComparisons": [],
+      "notices": []
     },
     {
       "id": "row.input.x-y",
+      "logic": {
+        "in": [
+          {
+            "var": "input.patient.value.name"
+          },
+          [
+            "Margaret Okafor"
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.patient.value.name"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [
+        {
+          "written": "input.patient.value.name = \"Margaret Okafor\"",
+          "printed": "input.patient.value.name in [\"Margaret Okafor\"]"
+        }
+      ],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
+      "id": "row.input.x-empty",
+      "logic": {
+        "or": [
+          {
+            "===": [
+              {
+                "var": "input.reason.content"
+              },
+              null
+            ]
+          },
+          {
+            "in": [
+              {
+                "var": "input.reason.content"
+              },
+              [
+                ""
+              ]
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [
+        {
+          "written": "input.reason.content = \"\"",
+          "printed": "input.reason.content = null or input.reason.content in [\"\"]"
+        }
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.input.x-not-empty",
+      "logic": {
+        "and": [
+          {
+            "!==": [
+              {
+                "var": "input.reason.content"
+              },
+              null
+            ]
+          },
+          {
+            "!": [
+              {
+                "in": [
+                  {
+                    "var": "input.reason.content"
+                  },
+                  [
+                    ""
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [
+        {
+          "written": "input.reason.content ≠ \"\"",
+          "printed": "input.reason.content ≠ null and not (input.reason.content in [\"\"])"
+        }
+      ],
+      "notices": []
+    },
+    {
+      "id": "row.input.x-y-empty",
       "logic": null,
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
-        "The condition 'input.patient.name == \"Margaret Okafor\"' compares input.patient.value.name (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
+        "The condition 'input.patient.name == \"\"' compares input.patient.value.name, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand."
       ]
     },
     {
@@ -1017,6 +1333,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1036,6 +1354,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1055,6 +1375,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1074,6 +1396,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1093,6 +1417,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1112,6 +1438,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1148,6 +1476,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1184,6 +1514,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1202,6 +1534,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1227,6 +1561,8 @@
         }
       ],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1252,6 +1588,8 @@
         }
       ],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1276,6 +1614,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1300,6 +1640,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1324,6 +1666,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1348,6 +1692,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1372,6 +1718,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1396,20 +1744,34 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
       "id": "row.size.pipe",
       "logic": {
-        ">": [
+        "and": [
           {
-            "size": [
+            "!==": [
               {
                 "var": "input.problems.value"
-              }
+              },
+              null
             ]
           },
-          1
+          {
+            ">": [
+              {
+                "size": [
+                  {
+                    "var": "input.problems.value"
+                  }
+                ]
+              },
+              1
+            ]
+          }
         ]
       },
       "resultFormat": "boolean",
@@ -1419,20 +1781,34 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
       "id": "row.size.member",
       "logic": {
-        "===": [
+        "or": [
           {
-            "size": [
+            "===": [
               {
                 "var": "input.problems.value"
-              }
+              },
+              null
             ]
           },
-          0
+          {
+            "===": [
+              {
+                "size": [
+                  {
+                    "var": "input.problems.value"
+                  }
+                ]
+              },
+              0
+            ]
+          }
         ]
       },
       "resultFormat": "boolean",
@@ -1442,18 +1818,176 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
+      "id": "row.size.lt",
+      "logic": {
+        "or": [
+          {
+            "===": [
+              {
+                "var": "input.problems.value"
+              },
+              null
+            ]
+          },
+          {
+            "<": [
+              {
+                "size": [
+                  {
+                    "var": "input.problems.value"
+                  }
+                ]
+              },
+              2
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.problems.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
+      "id": "row.size.le",
+      "logic": {
+        "or": [
+          {
+            "===": [
+              {
+                "var": "input.problems.value"
+              },
+              null
+            ]
+          },
+          {
+            "<=": [
+              {
+                "size": [
+                  {
+                    "var": "input.problems.value"
+                  }
+                ]
+              },
+              1
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.problems.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
+      "id": "row.size.if",
+      "logic": {
+        "if": [
+          {
+            "===": [
+              {
+                "var": "input.problems.value"
+              },
+              null
+            ]
+          },
+          {
+            ">=": [
+              0,
+              {
+                "var": "input.count.value"
+              }
+            ]
+          },
+          {
+            ">=": [
+              {
+                "size": [
+                  {
+                    "var": "input.problems.value"
+                  }
+                ]
+              },
+              {
+                "var": "input.count.value"
+              }
+            ]
+          }
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.problems.value",
+        "input.count.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
       "id": "row.downcase",
+      "logic": {
+        "in": [
+          {
+            "lower": [
+              {
+                "var": "input.reason.content"
+              }
+            ]
+          },
+          [
+            "breathlessness"
+          ]
+        ]
+      },
+      "resultFormat": "boolean",
+      "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [
+        {
+          "written": "lower(input.reason.content) = \"breathlessness\"",
+          "printed": "lower(input.reason.content) in [\"breathlessness\"]"
+        }
+      ],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
+      "id": "row.downcase-empty",
       "logic": null,
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
-        "The condition '(string.downcase input.reason) == \"breathlessness\"' compares lower(input.reason.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+        "The condition '(string.downcase input.reason) == \"\"' compares lower(input.reason.content), read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand."
       ]
     },
     {
@@ -1472,6 +2006,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1495,6 +2031,8 @@
           "printed": "blank(node.summary.content)"
         }
       ],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1518,6 +2056,8 @@
           "printed": "blank(input.patient.value.name)"
         }
       ],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1537,6 +2077,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1556,6 +2098,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1575,6 +2119,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1594,6 +2140,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1613,6 +2161,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1632,6 +2182,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1651,6 +2203,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1670,6 +2224,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1689,6 +2245,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": []
     },
     {
@@ -1699,6 +2257,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "Computed node '{ priority: node.triage.value.priority, age: input.age }' builds triage_summary with age as number | null; the format declares it number."
       ]
@@ -1711,6 +2271,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "Computed node '{ reasons: [input.reason, node.summary.content] }' mixes markdown_block | null and plaintext | null in a list; they have one type."
       ]
@@ -1723,6 +2285,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition '(string.upcase input.reason) == \"BREATHLESSNESS\"' uses string.upcase, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1735,6 +2299,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition '(math.round input.age) == 65' uses math.round, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1747,6 +2313,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition '(input.problems | array.first) == \"\"' uses array.first, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1759,6 +2327,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition 'input.reason < \"m\"' orders input.reason.content (markdown_block | null); <, >, ≤ and ≥ compare numbers or dates."
       ]
@@ -1771,6 +2341,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition 'profile.name == \"Dr A. Sample\"' reads profile.name; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."
       ]
@@ -1783,6 +2355,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition 'x = 1' uses an assignment, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1795,6 +2369,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition '{{ input.kind }}' uses a template, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1807,6 +2383,8 @@
       "blankConversions": [],
       "blanks": [],
       "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
       "notices": [
         "The condition 'input.urgent; input.kind == \"new\"' uses more than one statement, which has no JSON Logic form at 31: rewrite it by hand."
       ]

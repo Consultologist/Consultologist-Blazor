@@ -48,6 +48,13 @@ public sealed class V31JobStarter(
     };
 
     /// <summary>
+    /// #1508 (Review Focus 4): S09-001 for <paramref name="specVersion"/> when it is 31 and this deployment does not admit
+    /// it (the preview setting unset), for today's path to answer a 31 pin with; null otherwise.
+    /// </summary>
+    internal string? NotAdmitted(int specVersion) =>
+        specVersion == PublishedStamp.SpecVersion && !admission.Admits(specVersion) ? admission.NotSupported(specVersion) : null;
+
+    /// <summary>
     /// Starts <paramref name="request"/> as a 31 job <paramref name="jobId"/> of <paramref name="packageRef"/>, or null when
     /// this deployment does not run 31 or the version is not a 31 one, so today's path continues unchanged.
     /// <paramref name="extract"/> is the starter's own reading of a request's documents against a manifest.
@@ -122,7 +129,7 @@ public sealed class V31JobStarter(
             InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins
                 ? origins.ToDictionary(
                     pair => pair.Key,
-                    pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.Select(ExtractionSteps.Of).ToList(),
+                    pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.Select(origin => ExtractionSteps.Of(origin, extraction.OcrModelVersions)).ToList(),
                     StringComparer.Ordinal)
                 : null,
             SignatureBlockId = signature.BlockId,

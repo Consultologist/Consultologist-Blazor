@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Is a reassessment arranged?","description":null,"format":"classification","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
+{"kind":"agent","producer":"generated","label":"Is a reassessment arranged?","description":null,"format":"follow_up_answer","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
 ---
 You are deciding one thing about a consult draft: whether it arranges for the patient to be reassessed.
 

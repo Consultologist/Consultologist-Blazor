@@ -52,7 +52,7 @@ a `kind: agent` node's header holds the members that govern its prompt and reply
 
 | Member | Type | Null | Meaning |
 |---|---|---|---|
-| `onInvalid` | `"retry"` or `"fail"` | no | what an invalid reply does: a reply that fails its format, or a macro marker check (§ 8.6). `retry` asks once more; `fail` fails the job. As at version 30. |
+| `onInvalid` | `"retry"` or `"fail"` | no | what an invalid reply does: a reply that fails its format, or a macro marker check (§ 8.6). `retry` asks once more; `fail` fails the job. As at version 30, but for 30's `flag`, which kept a reply that did not fit: the migration writes it `retry` (part 10 § 1.2). Any other value, `flag` among them, is refused (A11-014). |
 | `failIfEmpty` | string | yes: an empty value doesn't fail | the sentence the job fails with when the reply's value is empty. Carried over from version 30 unchanged, and always written (`null` when unused). |
 | `parts` | object | yes: none | the node's conditional prompt text (§ 7) |
 | `ordered` | boolean | no | whether triggered macro markers must come back in order (§ 8.5) |
@@ -150,7 +150,11 @@ that fails to render is never sent. The failure follows the node's normal failur
 
 **Carried over from version 30:**
 - **strict variables:** reading a member that doesn't exist is refused at publish, and a render
-  that meets one fails;
+  that meets one fails. A member of nothing is not there either: a read that steps through an
+  object that can be null (an input not required, a field whose format admits `null`, a node that
+  may not run, read as `.value.<member>`) fails its render when it is null, so publish refuses it
+  unless it stands under a guard on that object (§ 2.5; A11-009, ruled by the owner on
+  [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), Q5). A nullable value read as the last step renders nothing, as `null` always does;
 - **dates render as ISO** (`%Y-%m-%d`) unless formatted;
 - **an empty list counts as false** where a truth value is read.
 
@@ -174,9 +178,29 @@ engine has already decided and recorded
 | loop position | `for.first`, `for.last`, `for.index`, `for.even`, `for.odd` | as Scriban gives them |
 | an item's or node's state | `s.state == "completed"` | the closed set `completed`, `skipped`, `not_run` ([Part 06](06-checks-deliverables-profile.md#62-item-states)) |
 | whether a check passed | `check.coverage.value.pass` | `true` or `false` |
+| whether an object that can be null is there | `input.intake.value`, `input.intake.value != null` | there or not |
 
 - The tests combine with `!`, `&&`, `||` and parentheses.
 - A `state` is compared only with a literal from the closed set.
+- **The guard** (ruled by the owner on [#1508](https://github.com/Consultologist/Consultologist-Blazor/issues/1508), Q5): an object that can be null (an input not
+  required, a field whose format admits `null`, a node that may not run) is tested bare or with
+  `!= null`, never piped; an object that is always there is a data value, so testing it is refused.
+  A read that steps through such an object (`input.intake.value.reason`) stands inside a branch
+  that asserts it: the branch's own condition is the test, or the test joined to others by `&&`
+  and parentheses alone (`{{ if input.intake.value && input.intake.value.contact }}`, where the
+  second test reads under the first, since `&&` reads no right side of a false left). An `else`
+  guards nothing, an `else if` only by its own test, and a test under `!` or `||` or on another
+  path is no guard. Each object the read steps through needs its guard, outermost first. A read with no
+  guard is refused (A11-009). The header rule of the text the read is in guards it too: the `if`
+  of the node, the deliverable, the snippet or the macro, and a part's own `if`, when it asserts the
+  object: `{ "var": x }` alone, `x !== null`, or `x === v` with a literal `v` that is not `null`
+  (either side), each joined by `and`, where `x` is the object or a path under it; and
+  `pass.number > n` with `n` at least 1, or `>= n` with `n` at least 2 (the count on the left;
+  `pass.parent.number` for the `while` around), for an object that is null only on that `while`'s
+  first pass (`pass.previous.node.<id>.value` of a node that runs in every pass). No other form
+  guards. A `for` whose variable has the guard's root as its name (`for e`
+  under `{{ if e.contact }}`, `for input` under a header rule on `input.…`) names another value in
+  its body, so the guard holds nothing there.
 - **Testing anything else is refused:** a data value, an input, a node's text, a run fact. The
   one exception is a renderer's body, which may test its own `value` (§ 5.1). The
   sentence points to the header forms: a part (§ 7), a snippet's `if` (§ 6) or a macro's `if`
@@ -636,6 +660,13 @@ record shows which was false. The folder is a namespace: `macro.<folder>.<id>`
   `_macro` (`letrozole` → `letrozole_macro`), reported by the migration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)). A `MacroChoices` entry keyed by a macro's id sets the one boolean input that macro's `if` reads ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647); part 10 § 1.3).
 - One classifier per macro, per node, per item. A classifier answering several questions is
   #1416 (Milestone 40).
+- **A classifier asks its question** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), item 1): a `judgement` node
+  whose prompt, with its parts' text, the text of the snippets it places and of the snippet folder items it reads as
+  `item.content` (§ 6.2), holds nothing outside its tags but white space asks nothing, and is refused
+  (A11-013). The migration writes a classifier so, for a macro 30's model chose, and the operator writes the question
+  (part 10 §§ 1.2, 1.4).
+  A question only an input or a node gives at run time is not one the package asks: the prompt is refused, since
+  publish cannot know that what it reads holds a question.
 
 ### 8.3 Where: placing the instruction
 
@@ -752,6 +783,8 @@ naming each macro and what was wrong, since the reply may hold patient text.
   marker; no `macro.*` or `part.*` placement; snippets only under the guard (§ 6.3); no
   `profile.*`.
 - **Each template:** a macro placed at most once, counting its parts' text.
+- **Each `judgement` node:** its prompt asks a question (§ 8.2, A11-013).
+- **Each agent:** its `onInvalid` is `retry` or `fail` (§ 1.2, A11-014).
 - **Each body:** it suits `format` (no Markdown in a `plaintext` macro); no markers; no
   placement of `macro.*` or `part.*`; its reads within § 3.1's macro-body column; no cycles.
 

@@ -25,41 +25,32 @@ public class ConditionEquivalenceTests
     /// <summary>The reason a difference gets when no ruling or spec section explains it.</summary>
     private const string Unruled = "unruled";
 
+    /// <summary>The reason of a <c>trim(x) == ""</c> written <c>blank(x)</c> on a null <c>x</c> (#1508, comment 5, item 8).</summary>
+    private const string BlankConversionReason = "blank-conversion";
+
     private static readonly CorvusJsonLogicEvaluator Evaluator = new();
 
     /// <summary>
     /// The expressions § 2.2's table maps (and the package expressions) that give no logic once typed, each with its
-    /// notice ids (part 10 § 2.3 as written: text compared with a literal is S03-002, part 03 § 7; a list mixing formats
-    /// is A04-003; an optional read into a non-nullable field is A04-009; builtins with no row are S10-003). The § 2.3
+    /// notice ids (part 10 § 2.3 as written: an input's text compared with blank text other than a text input read whole
+    /// with <c>""</c> is A10-076; a list mixing formats is A04-003; an optional read into a non-nullable field is A04-009; builtins with no row are S10-003). The § 2.3
     /// refusals (<c>refuse.*</c>) are not listed here: every one of them gives no logic by design.
     /// </summary>
     private static readonly Dictionary<string, string[]> NotConverted = new(StringComparer.Ordinal)
     {
-        ["composer-macros.section_draft.section_close.if"] = ["S03-002"],
         ["composer-sources.topic_tally.let"] = ["S10-003", "S10-003"],
-        ["row.read.node-content"] = ["S03-002"],
-        ["row.input.x"] = ["S03-002"],
-        ["row.input.x-y"] = ["S03-002"],
-        ["row.downcase"] = ["S03-002"],
+        ["row.input.x-y-empty"] = ["A10-076"],
+        ["row.downcase-empty"] = ["A10-076"],
         ["row.let-object"] = ["A04-009"],
         ["row.let-array"] = ["A04-003"],
     };
 
-    /// <summary>The differences no ruling or spec section explains (<c>&lt;id&gt;#&lt;case&gt;</c>), for the owner.</summary>
-    /// <remarks>
-    /// <c>row.size.member#0</c>: <c>input.problems.size == 0</c> with the optional list input absent. At 30 an absent
-    /// list input reads <c>[]</c> (the effective map's <c>""</c>), so its size is 0 and the condition holds; at 31 it is
-    /// not given and reads <c>null</c> (part 03 § 6.1), <c>size</c> of <c>null</c> is <c>null</c> and <c>===</c> compares
-    /// <c>null</c> with 0 as a value (part 03 § 6.2): <c>false</c>. No ruling covers it; the package expression of the same
-    /// shape (<c>example-structured-intake.notes_index.if</c>, <c>&gt; 2</c>) agrees on every case.
-    /// <c>row.strip.node#0</c>, <c>row.strip.input-field#0</c> and <c>#2</c>: <c>(x | string.strip) == ""</c>, written
-    /// <c>blank(x)</c> (part 05 § 7), with <c>x</c> null: a node with no output, a field of an object input left out or the
-    /// object absent (an unsupplied object input is an empty object at 30). 30's comparison is <c>false</c> on a null
-    /// text, 31's <c>blank(null)</c> is <c>true</c>. No ruling covers it; the migration lists each such conversion
-    /// (A10-050), and no public package's condition has that shape (its <c>strip == ""</c> reads are a text input whole
-    /// and a folder item's text, which agree).
-    /// </remarks>
-    private static readonly string[] UnruledDifferences = ["row.size.member#0", "row.strip.node#0", "row.strip.input-field#0", "row.strip.input-field#2"];
+    /// <summary>
+    /// The differences no ruling or spec section explains (<c>&lt;id&gt;#&lt;case&gt;</c>), for the owner: none since
+    /// #1508's comment 5 (the size of a nullable list keeps 30's meaning, item 2; <c>strip(x) == ""</c> written
+    /// <c>blank(x)</c> is expected, item 8).
+    /// </summary>
+    private static readonly string[] UnruledDifferences = [];
 
     [Fact]
     public void EveryConvertedExpression_AnswersAs30Does()
@@ -155,6 +146,23 @@ public class ConditionEquivalenceTests
         Assert.Equal(["row.not-text.node#1", "row.not-text.node#2", "row.not-text.input#0", "row.not-text.input#1", "row.not-text.input#2"], blank);
     }
 
+    /// <summary>
+    /// #1508 (comment 5, item 8): <c>(x | string.strip) == ""</c> written <c>blank(x)</c> is expected on a null <c>x</c>
+    /// (a node with no output, a field of an object input left out or the object absent), where 30's comparison is
+    /// <c>false</c> and <c>blank(null)</c> <c>true</c>; and since item 2 the size of an absent list agrees with 30's 0.
+    /// </summary>
+    [Fact]
+    public void StripEqualsEmpty_IsExpected()
+    {
+        var expected = Run()
+            .SelectMany(e => e.Cases.Where(c => c.Reason == BlankConversionReason).Select(c => $"{e.Id}#{c.Index}"))
+            .ToList();
+
+        Assert.Equal(["row.strip.node#0", "row.strip.input-field#0", "row.strip.input-field#2"], expected);
+        Assert.True(ExpectedDifferences.ConditionReasons.ContainsKey(BlankConversionReason));
+        Assert.All(Run().Single(e => e.Id == "row.size.member").Cases, c => Assert.True(c.Agrees, $"row.size.member#{c.Index}: 31 gives {c.Answer31}."));
+    }
+
     [Fact]
     public void DataOf_PassesInputsThrough31sStart_AndPlacesEachReadWhere31ReadsIt()
     {
@@ -230,7 +238,7 @@ public class ConditionEquivalenceTests
                 var error30 = (string?)vectorCase["error"];
                 var agrees = error30 is null && answer == Json(result30);
                 var run = new CaseRun(index++, scope, data, result30, error30, answer, agrees, null);
-                cases.Add(run with { Reason = error30 is null && !agrees ? ReasonOf(result.BlankConversions, run) : null });
+                cases.Add(run with { Reason = error30 is null && !agrees ? ReasonOf(result, run) : null });
             }
 
             runs.Add(new ExpressionRun(id, kind, true, result.NoticeIds, result.BlankConversions, vectorCases.Count, cases));
@@ -257,9 +265,27 @@ public class ConditionEquivalenceTests
 
     private static string Json(JsonNode? node) => CanonicalJson.Write(node);
 
-    /// <summary>Why a case differs: <c>blank</c> when R1 explains it, else <c>unruled</c>.</summary>
-    private static string ReasonOf(IReadOnlyList<string> blankConversions, CaseRun run) =>
-        BlankApplies(blankConversions, run.Data) ? "blank" : Unruled;
+    /// <summary>
+    /// Why a case differs: <c>blank</c> when R1 explains it, <c>blank-conversion</c> when a <c>trim(x) == ""</c> written
+    /// <c>blank(x)</c> reads a null <c>x</c> (#1508, comment 5, item 8), else <c>unruled</c>.
+    /// </summary>
+    private static string ReasonOf(ConversionResult result, CaseRun run) =>
+        BlankApplies(result.BlankConversions, run.Data) ? "blank"
+        : TrimBlankApplies(result.TrimBlanks, run.Data) ? BlankConversionReason
+        : Unruled;
+
+    /// <summary>#1508, comment 5, item 8: a <c>trim(x) == ""</c> written <c>blank(x)</c> whose <c>x</c> reads null here, where 30's comparison held false.</summary>
+    private static bool TrimBlankApplies(IReadOnlyList<BlankConversion> trims, JsonObject data) =>
+        trims.SelectMany(t => t.Reads).Any(path =>
+        {
+            JsonNode? at = data;
+            foreach (var segment in path.Split('.'))
+            {
+                at = at is JsonObject obj ? obj[segment] : null;
+            }
+
+            return at is null;
+        });
 
     private static bool BlankApplies(ExpressionRun expression, CaseRun run) => BlankApplies(expression.BlankConversions, run.Data);
 

@@ -17,7 +17,10 @@ namespace Consultologist.PackageFormat;
 /// <see cref="WorkflowPackageMigration30To31.Migrate"/> ends by writing the snapshot test (publishing the migrated package
 /// in memory and running it offline). With it <c>false</c> nothing is published or run, no A10-011, A10-060 or A10-061
 /// is said, and <c>tests/index.json</c> is written with <c>"items": []</c>: for a caller that reads only the hand edits
-/// and whether the migration succeeded (the operator's weekly summary).
+/// and whether the migration succeeded (the operator's weekly summary). <paramref name="Limits"/> (#1508, Task 36 fix round 1;
+/// default the engine's starting values, <see cref="WorkflowPackageMigration30To31.EngineLimits"/>): the limits the
+/// migration counts its package against (A10-081) and its snapshot publishes at; the operator's bulk publish gives the
+/// engine's configured ones, so a package within them is neither a hand edit nor refused.
 /// </summary>
 public sealed record Migration31Options(
     V31.TypeRegistry Registry,
@@ -27,7 +30,117 @@ public sealed record Migration31Options(
     IReadOnlyDictionary<string, string>? Renames = null,
     IReadOnlyDictionary<string, string>? WhenEmpty = null,
     IReadOnlyDictionary<string, string>? FolderFormats = null,
-    bool WriteSnapshot = true);
+    bool WriteSnapshot = true,
+    V31.PublishLimits? Limits = null)
+{
+    /// <summary>The members of <c>options.json</c> (R18), in the order it is written.</summary>
+    private static readonly string[] Members = ["renames", "whenEmpty", "folderFormats"];
+
+    /// <summary>The <c>whenEmpty</c> values a deliverable takes (part 06).</summary>
+    internal static readonly string[] WhenEmptyValues = ["release", "hold", "fail"];
+
+    /// <summary>
+    /// #1508 (area 11, Task 29; R18, ruled on #1508 2026-11-25, comment 5 item 6): the options of a package's
+    /// <c>options.json</c> (<see cref="MigrationOptionsFile"/>), beside its hand edits, with <paramref name="registry"/>,
+    /// <paramref name="toolchain"/> and <paramref name="formats30"/> as given (no contract resolver; the snapshot written).
+    /// <paramref name="json"/> is <c>{ "renames": {…}, "whenEmpty": {…}, "folderFormats": {…} }</c>, every member required
+    /// and an object of text (<c>{}</c> for none), and no other member. Or <c>null</c> and the first thing it cannot read,
+    /// in written order: a member that is no option (A10-070), then by member a missing one or one that is not an object of
+    /// text (A10-071) or one with an empty id or choice (A10-082, as the flags refuse it), then a <c>whenEmpty</c> that is not
+    /// <c>release</c>, <c>hold</c> or <c>fail</c> (A10-072). Never throws on the file's content.
+    /// </summary>
+    public static (Migration31Options? Options, string? Refusal) FromJson(
+        JsonObject json, V31.TypeRegistry registry, V31.Toolchain toolchain, WorkflowFormatCatalog formats30)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(toolchain);
+        ArgumentNullException.ThrowIfNull(formats30);
+
+        if (json.Select(p => p.Key).FirstOrDefault(k => !Members.Contains(k, StringComparer.Ordinal)) is { } unknown)
+            return (null, MigrationSentences.UnknownOption(unknown));
+
+        var maps = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+        foreach (var member in Members)
+        {
+            if (!json.TryGetPropertyValue(member, out var node) || node is not JsonObject map)
+                return (null, MigrationSentences.OptionNotAMap(member));
+            var read = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (key, value) in map)
+            {
+                if (value is not JsonValue text || !text.TryGetValue<string>(out var s))
+                    return (null, MigrationSentences.OptionNotAMap(member));
+                if (key.Length == 0 || s.Length == 0)
+                    return (null, MigrationSentences.OptionEmpty(member));
+                read[key] = s;
+            }
+
+            maps[member] = read;
+        }
+
+        if (maps["whenEmpty"].FirstOrDefault(p => !WhenEmptyValues.Contains(p.Value, StringComparer.Ordinal)) is { Key: { } deliverable })
+            return (null, MigrationSentences.WhenEmptyNotAValue(deliverable));
+
+        return (new Migration31Options(
+            registry, toolchain, formats30,
+            Renames: maps["renames"], WhenEmpty: maps["whenEmpty"], FolderFormats: maps["folderFormats"]), null);
+    }
+
+    /// <summary>
+    /// #1508 (R18): the three choices as <c>options.json</c> has them, what <see cref="FromJson"/> reads:
+    /// <c>renames</c>, <c>whenEmpty</c> and <c>folderFormats</c> in that order, each map's keys in ordinal order, <c>{}</c>
+    /// for none (or <c>null</c>). The migration report records it (<c>options</c>).
+    /// </summary>
+    public JsonObject ToJson()
+    {
+        static JsonObject Map(IReadOnlyDictionary<string, string>? map)
+        {
+            var json = new JsonObject();
+            foreach (var (key, value) in (map ?? new Dictionary<string, string>()).OrderBy(p => p.Key, StringComparer.Ordinal))
+                json[key] = value;
+            return json;
+        }
+
+        return new JsonObject
+        {
+            ["renames"] = Map(Renames),
+            ["whenEmpty"] = Map(WhenEmpty),
+            ["folderFormats"] = Map(FolderFormats),
+        };
+    }
+}
+
+/// <summary>
+/// #1508 (area 11, Task 29; R18): the file that holds a package's migration choices, beside its hand edits
+/// (<c>hand-edits/&lt;package&gt;/options.json</c> for the tests' fixtures, and the operator's bulk publish's own folder),
+/// read with <see cref="Migration31Options.FromJson"/>. It is not a package file: an overlay of hand edits skips it.
+/// </summary>
+public static class MigrationOptionsFile
+{
+    /// <summary>The file's name.</summary>
+    public const string FileName = "options.json";
+
+    /// <summary>What <see cref="Parse"/> says of a file that is JSON but not an object.</summary>
+    public const string NotAnObject = "options.json is not a JSON object.";
+
+    /// <summary>A10-083 (#1508, Task 36): the defaults a package with no <c>options.json</c> is migrated with, said in the bulk publish's record.</summary>
+    public const string Defaults = MigrationSentences.DefaultOptions;
+
+    /// <summary>
+    /// #1508 (Task 36, carried from Task 29's review): the text of an <c>options.json</c> as the script and the bulk publish
+    /// read it: a leading byte-order mark dropped (as a package file's is, part 01 § 2.4), then strict JSON (no member written
+    /// twice). The object, or <c>null</c> and why not: A10-019's sentence for text that is not strict JSON, or
+    /// <see cref="NotAnObject"/>. <see cref="Migration31Options.FromJson"/> reads the object.
+    /// </summary>
+    public static (JsonObject? Json, string? Fault) Parse(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var read = V31.StrictJson.Parse(Migrated.Normalise(text));
+        if (read.Fault is { } fault)
+            return (null, MigrationSentences.FileDoesNotRead(FileName, header: false, fault, read.Detail));
+        return read.Value is JsonObject json ? (json, null) : (null, NotAnObject);
+    }
+}
 
 /// <summary>
 /// #1507 (part 10 § 1.1, D1): what the 30 → 31 migration produced, in the earlier rewriters' shape so that every caller
@@ -49,6 +162,12 @@ public sealed record Migration31Result(
     /// <summary>The hand-edit notices (S10-002, § 1.4), in <see cref="Notices"/>' order.</summary>
     public IReadOnlyList<string> HandEdits { get; init; } = [];
 
+    /// <summary>
+    /// #1508 (Task 36 fix round 1): the file each of <see cref="HandEdits"/> names, in its order (one entry per notice):
+    /// the operator's bulk publish counts a hand edit made only when its file is among the edits it is given.
+    /// </summary>
+    public IReadOnlyList<string> HandEditFiles { get; init; } = [];
+
     /// <summary>The notices that need no edit, by what the migration report lists them as (D9).</summary>
     public MigrationNotes Report { get; init; } = MigrationNotes.None;
 
@@ -65,6 +184,13 @@ public sealed record Migration31Result(
     /// keeps its own rule, so the byte-equivalence comparison reads these to explain the difference.
     /// </summary>
     public IReadOnlyList<string> MacroBodies { get; init; } = [];
+
+    /// <summary>
+    /// #1508 (R14; area 11 Task 32 fix round 1): each macro the migration renamed (§ 1.9), its 31 id to its 30 id, and
+    /// each macro folder's item it renamed, keyed <c>&lt;30 folder id&gt;/&lt;31 item id&gt;</c>, to its 30 item id: 30's
+    /// model wrote a macro's marker with its 30 id, which the byte-equivalence comparison reads.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> MacroIds30 { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -198,6 +324,7 @@ public static class WorkflowPackageMigration30To31
             V31.Migration.Migrate.Checks(migrated);
             V31.Migration.Migrate.Deliverables(migrated);
             V31.Migration.Migrate.Derived(migrated);
+            PastTheInstanceLimit(migrated);
             return migrated.Result(at30.Notices);
         }
 
@@ -212,10 +339,41 @@ public static class WorkflowPackageMigration30To31
     }
 
     /// <summary>
+    /// #1508 (ruled by the owner, B2 of 2026-11-26 and its clarification; R11): publish refuses a package whose worst case
+    /// opens more instances than one job may (A11-001, <see cref="V31.PublishNotes.Refusals"/>), so the migration says it
+    /// first: the migrated package, as written, is checked and counted against the engine's default limits
+    /// (<see cref="V31.Run.RunLimits"/>), and when it passes them, a hand edit on the outermost loop's <c>max</c> on the
+    /// heaviest path (A10-081) carries A11-001's count and limit. No <c>max</c> is written: the owner ruled that none is
+    /// guessed (#1508). A package whose check stops before its nodes are resolved (an earlier hand edit's construct) is not
+    /// counted; its publish counts it once the edits are made.
+    /// </summary>
+    private static void PastTheInstanceLimit(Migrated m)
+    {
+        var upload = m.Files().ToDictionary(f => f.Key, f => System.Text.Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
+        upload["manifest.json"] = System.Text.Encoding.UTF8.GetBytes(Migrated.Json(m.Manifest));
+        var check = V31.SourceCheck.Run(upload, m.Options.Registry);
+        if (check.Parse.Package is not { } package || check.Resolution is not { } resolution)
+            return;
+        if (V31.PublishNotes.PastInstances(package, resolution, m.Options.Limits ?? EngineLimits) is { } past)
+            m.HandEdit(past.Path, "max", MigrationSentences.PastTheInstanceLimit(past.Count, past.Through, past.Limit));
+    }
+
+    /// <summary>
+    /// #1508 (R11): the engine's default limits (<see cref="V31.Run.RunLimits"/>' starting values) as publish measures a
+    /// package against them: the agent calls at once, the items a loop, the agent calls a job and the instances a job.
+    /// The migration counts its package against them, and its snapshot publishes at them.
+    /// </summary>
+    internal static V31.PublishLimits EngineLimits { get; } = Limits(new V31.Run.RunLimits());
+
+    private static V31.PublishLimits Limits(V31.Run.RunLimits run) =>
+        new(run.MaxAgentCalls, run.LoopItems, run.JobAgentCalls, run.JobInstances);
+
+    /// <summary>
     /// #1507 (part 10 § 4; part 07 § 8; D13): the 31 source <paramref name="manifestJson"/> and <paramref name="files"/>
     /// (without <c>manifest.json</c>) with its snapshot test: published in memory with <paramref name="options"/>'
     /// <see cref="Migration31Options.Registry"/> and <see cref="Migration31Options.Toolchain"/>
-    /// (<see cref="V31.CompiledPackage.Publish"/>), run offline on <see cref="V31.Harness.SnapshotTest.Fictional"/>'s request
+    /// (<see cref="V31.CompiledPackage.Publish"/>; #1508, R11: at <see cref="EngineLimits"/>, so a package past the instances
+    /// limit is refused with A11-001), run offline on <see cref="V31.Harness.SnapshotTest.Fictional"/>'s request
     /// (<see cref="V31.Harness.OfflineRun"/>), and written (<see cref="V31.Harness.SnapshotTest.Write"/>): the same files with
     /// <c>tests/migration_snapshot.json</c> (written anew when the source has one) and <c>tests/index.json</c> listing
     /// <c>migration_snapshot</c>. It is what the operator runs once a package's hand edits are made. A source that does
@@ -287,7 +445,9 @@ public static class WorkflowPackageMigration30To31
         try
         {
             var upload = Upload(manifestJson, files);
-            var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain);
+            // #1508 (R11): published as the engine publishes it, at its default limits, so a package past the instances one
+            // job may open (A11-001) gets no snapshot.
+            var (publishRefusals, compiled) = V31.CompiledPackage.Publish(upload, options.Registry, options.Toolchain, options.Limits ?? EngineLimits);
             if (compiled is null)
             {
                 var sentences = publishRefusals.Select(r => r.Sentence).ToList();

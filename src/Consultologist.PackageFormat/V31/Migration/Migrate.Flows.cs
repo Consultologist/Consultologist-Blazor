@@ -113,7 +113,11 @@ internal static partial class Migrate
         foreach (var (id, node) in tree.ById)
         {
             var path = IsCheck(m, node) ? "check." + id : "node." + id;
-            m.NodeReads[id] = new ConversionRead(path, formats[id].DeepClone()) { AlwaysValued = AlwaysValued(tree, id, cases, 0) };
+            m.NodeReads[id] = new ConversionRead(path, formats[id].DeepClone())
+            {
+                AlwaysValued = AlwaysValued(tree, id, cases, 0),
+                Classifier = m.AnswerFormats.ContainsKey(id),
+            };
         }
 
         // The places: a loop's own until and a while's own checks see its item or its pass; every other site its owner's.
@@ -288,8 +292,8 @@ internal static partial class Migrate
     /// becomes <c>input.&lt;id&gt;.value</c>; a classifier's <c>node.&lt;id&gt;.value</c> its <c>.value.value</c>), and the
     /// values of its subject's enum (a classifier's, the values its <c>with</c> gave) that no branch lists. A subject the
     /// converter refuses, or that is no single read (S04-017), is a hand edit, written as 30 wrote it; so is one whose
-    /// values 31 cannot list (A10-028), a classifier's (whose answers 31 does not type, A10-032; its branches are still
-    /// written from 30's values), and one that can be <c>null</c> where the case has no <c>else</c> (A10-029).
+    /// values 31 cannot list (A10-028), and one that can be <c>null</c> where the case has no <c>else</c> (A10-029). A
+    /// classifier's are its answers, the enum of the package format the layout pass wrote for it (R12; A10-032 retired).
     /// </summary>
     private static Dictionary<string, CaseShape> CaseBranches(Migrated m, NodeTree tree)
     {
@@ -313,19 +317,9 @@ internal static partial class Migrate
             var listed = (node.Branches ?? []).SelectMany(b => b.When ?? []).ToHashSet(StringComparer.Ordinal);
             IReadOnlyList<string>? values = null;
             var edited = false;
-            if (WorkflowFlowNodes.CaseNodeSubjectOf(text) is { } subjectNode && tree.ById.TryGetValue(subjectNode, out var classifier)
-                && classifier.With?.GetValueOrDefault("values") is JsonArray given)
-            {
-                // 30's answers give the branches, but 31's classification types value as a plain string (its with is
-                // dropped, A10-030), so the checker refuses the subject (S04-044): a hand edit (A10-032).
-                values = [.. given.Select(v => v is JsonValue s && s.TryGetValue<string>(out var value) ? value : null).OfType<string>()];
-                m.HandEdit(file, "case", MigrationSentences.CaseOnClassifier(subjectNode));
-                edited = true;
-            }
-            else if (type?.Format is { } format && FormatTypes.Shape(format, scope.Formats) == FormatShape.Enum)
-            {
+            // A 30 classifier's answers are its format's enum (R12, Migrate.Layout), so it is listed as any enum is.
+            if (type?.Format is { } format && FormatTypes.Shape(format, scope.Formats) == FormatShape.Enum)
                 values = ExpressionChecker.ValuesOf(format, scope.Formats);
-            }
 
             if (values is not { Count: > 0 })
             {

@@ -137,7 +137,7 @@ public static class SourceExpressions
         foreach (var fact in facts)
         {
             yield return site.Kind == ExpressionSiteKind.Expression
-                ? ExpressionSentences.RunDependentValue(site.ComputedId ?? "", $"run.{fact}", site.Path)
+                ? ExpressionSentences.RunDependentValue(site.ComputedId ?? "", $"run.{fact}", site.Path, site.InChecks)
                 : ExpressionSentences.RunDependentDecision(site, fact);
         }
     }
@@ -227,7 +227,7 @@ public static class SourceExpressions
 
                 if (leaf.Kind == "computed")
                 {
-                    var site = new ExpressionSite(ExpressionSiteKind.Expression, $"Computed node '{leaf.Id}'{suffix}", "expression",
+                    var site = new ExpressionSite(ExpressionSiteKind.Expression, $"{(isCheck ? "Check" : "Computed node")} '{leaf.Id}'{suffix}", "expression",
                         path, leaf.Id, leaf.Header["format"], inChecks);
                     yield return (new SiteContext(site, leaf, function, null), leaf.Header["expression"]);
                 }

@@ -77,7 +77,7 @@ public class MigrateDerivedTests
         const string notice = "Node 'plan' declared reproducible true at 30; false is written, as its reads give it.";
         Assert.Equal([notice], result.Report.Reproducible);
         Assert.Single(result.Notices, n => n == notice);
-        Assert.Empty(result.HandEdits);
+        Assert.Empty(result.HandEdits.Where(e => !MigratedPackagesTests.PastTheInstanceLimit(e))); // #1508 (R11): nested-note's one edit, the instances limit
         V31Contract.AssertSentence(new SourceRefusal("A10-010", notice, ""));
 
         // A claim the derivation agrees with is not listed.

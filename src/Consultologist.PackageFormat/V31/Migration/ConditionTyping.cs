@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Consultologist.PackageFormat.V31.Migration;
@@ -9,6 +12,12 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <item><c>!x</c> is decided by its operand's type first: on a text format it becomes <c>{ "blank": [x] }</c> (§ 2.3,
 /// R1), and the operand is listed; on anything else it stays <c>!</c>, which the checker holds to a boolean
 /// (S03-009).</item>
+/// <item>#1508 (comment 5, item 2): text compared with a literal by <c>===</c> or <c>!==</c> (S03-002 as written) is
+/// membership in a list of that literal, <c>{ "in": [x, ["lit"]] }</c> or its negation, and is listed; with blank text
+/// (<c>""</c> or white space), where 30 read an input's text not given or blank as <c>""</c> and 31 reads it as null or
+/// as given, a text input read whole compared with <c>""</c> is <c>x === null or x in [""]</c> (listed), and any other comparison with
+/// blank text that reads an input is refused (A10-076, a hand edit's reason); a comparison of the <c>size</c> of a list that can be null is written with the null test that
+/// counts a null list 0, as 30 did.</item>
 /// <item>A condition is checked at a site of kind <see cref="ExpressionSiteKind.NodeIf"/>, so it yields a boolean
 /// (S03-025); a value (a <c>let</c>, a <c>case</c> subject) at an <see cref="ExpressionSiteKind.Expression"/> site,
 /// held to its declared format when it has one (S03-026, D25).</item>
@@ -26,6 +35,15 @@ internal static class ConditionTyping
     {
         /// <summary>Each <c>trim(x) == ""</c> written <c>blank(x)</c> whose answer can differ from 30's (<see cref="ConversionResult.TrimBlanks"/>).</summary>
         public IReadOnlyList<BlankConversion> TrimBlanks { get; init; } = [];
+
+        /// <summary>Each text compared with a literal written as <c>in</c> (<see cref="ConversionResult.TextLiterals"/>).</summary>
+        public IReadOnlyList<BlankConversion> TextLiterals { get; init; } = [];
+
+        /// <summary>Each text input read whole compared with <c>""</c>, written with its null test (<see cref="ConversionResult.EmptyComparisons"/>).</summary>
+        public IReadOnlyList<BlankConversion> EmptyComparisons { get; init; } = [];
+
+        /// <summary>What the rewrite refuses, each as its id and sentence (A10-076), before the checker is asked.</summary>
+        public IReadOnlyList<(string Id, string Sentence)> Refusals { get; init; } = [];
     }
 
     /// <summary>
@@ -46,10 +64,15 @@ internal static class ConditionTyping
             ? new ExpressionSite(ExpressionSiteKind.NodeIf, subject, "if", "", null, null)
             : new ExpressionSite(ExpressionSiteKind.Expression, subject, "expression", "", null, declared);
 
-        var blanks = new List<BlankConversion>();
-        var trims = new List<BlankConversion>();
-        logic = Blank(logic, operand, scope, conversion.Formats, nots, blanks, trims);
-        return new Typed(logic, ExpressionChecker.Check(logic, site, scope, conversion.Formats), blanks) { TrimBlanks = trims };
+        var found = new Found(text);
+        logic = Blank(logic, operand, scope, conversion.Formats, nots, found);
+        return new Typed(logic, ExpressionChecker.Check(logic, site, scope, conversion.Formats), found.Blanks)
+        {
+            TrimBlanks = found.Trims,
+            TextLiterals = found.Literals,
+            EmptyComparisons = found.Empties,
+            Refusals = found.Refusals,
+        };
     }
 
     /// <summary>
@@ -120,12 +143,31 @@ internal static class ConditionTyping
         return type.Nullable && !FormatTypes.IsNullable(format, formats) ? printed + " | null" : printed;
     }
 
+    /// <summary>What the rewrite listed: the <c>!x</c>s that became <c>blank</c>, the trims compared with <c>""</c>, the texts compared with a literal.</summary>
+    private sealed class Found(string text)
+    {
+        /// <summary>The expression as the author wrote it, which a refusal quotes.</summary>
+        public string Text { get; } = text;
+
+        public List<BlankConversion> Blanks { get; } = [];
+
+        public List<BlankConversion> Trims { get; } = [];
+
+        public List<BlankConversion> Literals { get; } = [];
+
+        public List<BlankConversion> Empties { get; } = [];
+
+        public List<(string Id, string Sentence)> Refusals { get; } = [];
+    }
+
     /// <summary>
     /// <paramref name="node"/> with every <c>{ "!": [x] }</c> whose <c>x</c> is of a text format written
-    /// <c>{ "blank": [x] }</c>, innermost first; each is added to <paramref name="blanks"/>, with <c>x</c> as written at 30
-    /// (from <paramref name="nots"/>; its printed form when the tree did not say), printed at 31, and its reads.
+    /// <c>{ "blank": [x] }</c>, innermost first; each is added to <paramref name="found"/>, with <c>x</c> as written at 30
+    /// (from <paramref name="nots"/>; its printed form when the tree did not say), printed at 31, and its reads. A trim
+    /// compared with <c>""</c> (<see cref="TrimIsEmpty"/>), a text compared with a literal (<see cref="TextLiteral"/>)
+    /// and a nullable list's size compared (<see cref="NullSafeSize"/>) are rewritten on the way.
     /// </summary>
-    private static JsonNode? Blank(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, IReadOnlyDictionary<JsonObject, string> nots, List<BlankConversion> blanks, List<BlankConversion> trims)
+    private static JsonNode? Blank(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, IReadOnlyDictionary<JsonObject, string> nots, Found found)
     {
         switch (node)
         {
@@ -133,7 +175,7 @@ internal static class ConditionTyping
                 for (var i = 0; i < array.Count; i++)
                 {
                     var element = array[i];
-                    var rewritten = Blank(element, operand, scope, formats, nots, blanks, trims);
+                    var rewritten = Blank(element, operand, scope, formats, nots, found);
                     if (!ReferenceEquals(element, rewritten))
                     {
                         array[i] = rewritten;
@@ -153,7 +195,7 @@ internal static class ConditionTyping
                     foreach (var field in fields.Select(f => f.Key).ToList())
                     {
                         var value = fields[field];
-                        var rewritten = Blank(value, operand, scope, formats, nots, blanks, trims);
+                        var rewritten = Blank(value, operand, scope, formats, nots, found);
                         if (!ReferenceEquals(value, rewritten))
                         {
                             fields[field] = rewritten;
@@ -163,10 +205,20 @@ internal static class ConditionTyping
                     return obj;
                 }
 
-                Blank(operands, operand, scope, formats, nots, blanks, trims);
-                if (TrimIsEmpty(name, operands, operand, scope, formats, trims) is { } blank)
+                Blank(operands, operand, scope, formats, nots, found);
+                if (TrimIsEmpty(name, operands, operand, scope, formats, found.Trims) is { } blank)
                 {
                     return blank;
+                }
+
+                if (TextLiteral(name, operands, operand, scope, formats, found) is { } member)
+                {
+                    return member;
+                }
+
+                if (NullSafeSize(obj, operand, scope, formats) is { } sized)
+                {
+                    return sized;
                 }
 
                 if (name == "!" && operands is JsonArray { Count: 1 } not
@@ -176,7 +228,7 @@ internal static class ConditionTyping
                     var x = not[0];
                     not.RemoveAt(0);
                     var printed = JsonLogicPrinter.Print(x);
-                    blanks.Add(new BlankConversion(nots.GetValueOrDefault(obj, printed), printed, JsonLogicShape.Paths(x)));
+                    found.Blanks.Add(new BlankConversion(nots.GetValueOrDefault(obj, printed), printed, JsonLogicShape.Paths(x)));
                     return new JsonObject { ["blank"] = new JsonArray(x) };
                 }
 
@@ -192,7 +244,7 @@ internal static class ConditionTyping
     /// <c>{ "blank": [x] }</c> or <c>{ "!": [{ "blank": [x] }] }</c>; null for anything else. 30 read a text input not given
     /// as <c>""</c> and a folder item's text is always valued, so those answer as 30 did; an <c>x</c> that can be null
     /// otherwise (a node that did not run, a field of an object input left out), which 30 compared as not empty, is listed
-    /// in <paramref name="trims"/>: an unruled difference, for the owner.
+    /// in <paramref name="trims"/>: an expected difference (#1508, comment 5, item 8), said.
     /// </summary>
     private static JsonNode? TrimIsEmpty(string name, JsonNode? operands, ExpressionSite operand, Scope scope, FormatSet formats, List<BlankConversion> trims)
     {
@@ -220,6 +272,131 @@ internal static class ConditionTyping
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 2): a text <c>x</c> compared by <c>===</c> or <c>!==</c> with a string literal, either side
+    /// (S03-002 as written), is <c>{ "in": [x, ["lit"]] }</c> or <c>{ "!": [{ "in": [x, ["lit"]] }] }</c>, listed in
+    /// <paramref name="found"/>; null for anything else. Membership is exact, as 30's comparison was, and a null <c>x</c> is
+    /// in no list of text, as 30's null equalled no text. Blank text is the exception (Task 30 fix round 1): 30 read an
+    /// input's text not given or blank (white space alone, a field's too) as <c>""</c>, where 31's start leaves out a text
+    /// input absent or blank, so it reads null, and keeps a field as given. A text input read whole compared with
+    /// <c>""</c> is <c>x === null or x in [""]</c> (<c>x !== null and not (x in [""])</c> for <c>!==</c>), the null test
+    /// written as for a nullable list's size (<see cref="NullSafeSize"/>), which answers as 30 did (listed, A10-075); any
+    /// other comparison with blank text that reads an input (<c>lower(input.x) == ""</c>, <c>input.x == " "</c>,
+    /// <c>input.x.y == ""</c>) is refused (A10-076): the migration asks for a hand edit rather than a different answer.
+    /// </summary>
+    private static JsonNode? TextLiteral(string name, JsonNode? operands, ExpressionSite operand, Scope scope, FormatSet formats, Found found)
+    {
+        if (name is not ("===" or "!==") || operands is not JsonArray { Count: 2 } pair)
+        {
+            return null;
+        }
+
+        static bool IsLiteral(JsonNode? node) => node is JsonValue value && value.GetValueKind() == JsonValueKind.String;
+        var (x, literal) = IsLiteral(pair[1]) && !IsLiteral(pair[0]) ? (pair[0], pair[1])
+            : IsLiteral(pair[0]) && !IsLiteral(pair[1]) ? (pair[1], pair[0])
+            : (null, null);
+        if (x is null || ExpressionChecker.Check(x, operand, scope, formats) is not { Refusals.Count: 0, Type.Format: { } format }
+            || FormatTypes.Shape(format, formats) != FormatShape.Text)
+        {
+            return null;
+        }
+
+        var written = JsonLogicPrinter.Print(new JsonObject { [name] = pair.DeepClone() });
+        var reads = JsonLogicShape.Paths(x);
+        var text = literal!.GetValue<string>();
+        if (text.EnumerateRunes().All(Rune.IsWhiteSpace))
+        {
+            if (text.Length == 0 && IsTextInputReadWhole(x))
+            {
+                var inEmpty = new JsonObject { ["in"] = new JsonArray(x.DeepClone(), new JsonArray("")) };
+                JsonNode empty = name == "==="
+                    ? new JsonObject { ["or"] = new JsonArray(new JsonObject { ["==="] = new JsonArray(x.DeepClone(), null) }, inEmpty) }
+                    : new JsonObject
+                    {
+                        ["and"] = new JsonArray(
+                            new JsonObject { ["!=="] = new JsonArray(x.DeepClone(), null) }, new JsonObject { ["!"] = new JsonArray(inEmpty) }),
+                    };
+                found.Empties.Add(new BlankConversion(written, JsonLogicPrinter.Print(empty), reads));
+                return empty;
+            }
+
+            if (reads.Any(IsInputRead))
+            {
+                found.Refusals.Add((BlankTextId, MigrationSentences.ComparedWithBlankText(found.Text, JsonLogicPrinter.Print(x))));
+                return null;
+            }
+        }
+
+        var member = new JsonObject { ["in"] = new JsonArray(x.DeepClone(), new JsonArray(literal.DeepClone())) };
+        JsonNode result = name == "===" ? member : new JsonObject { ["!"] = new JsonArray(member) };
+        found.Literals.Add(new BlankConversion(written, JsonLogicPrinter.Print(result), reads));
+        return result;
+    }
+
+    private const string BlankTextId = "A10-076";
+
+    /// <summary>Whether <paramref name="path"/> reads an input (<c>input.&lt;id&gt;.content</c>, <c>.value</c> or a field of it), whose blank text 30 read as <c>""</c>.</summary>
+    private static bool IsInputRead(string path) => path.Split('.') is ["input", { Length: > 0 }, "content" or "value", ..];
+
+    /// <summary>The comparisons a <c>size</c> may be an operand of, each as it holds for two numbers.</summary>
+    private static readonly Dictionary<string, Func<double, double, bool>> Comparisons = new(StringComparer.Ordinal)
+    {
+        ["==="] = (a, b) => a == b,
+        ["!=="] = (a, b) => a != b,
+        ["<"] = (a, b) => a < b,
+        ["<="] = (a, b) => a <= b,
+        [">"] = (a, b) => a > b,
+        [">="] = (a, b) => a >= b,
+    };
+
+    /// <summary>
+    /// #1508 (comment 5, item 2; revisited in #1533): <paramref name="comparison"/>, a comparison of <c>size(x)</c> for a
+    /// list <c>x</c> that can be null, written so that a null <c>x</c> counts 0, as 30 read an absent list as <c>[]</c>
+    /// (31's <c>size(null)</c> is null). Against a number literal: a comparison that holds at 0 is
+    /// <c>x === null or &lt;comparison&gt;</c>, one that does not <c>x !== null and &lt;comparison&gt;</c>, and
+    /// <c>!= 0</c> is written <c>&gt; 0</c>; against anything else, <c>if x === null then &lt;the comparison with 0&gt; else
+    /// &lt;comparison&gt;</c>. Null for anything else (a <c>size</c> not compared keeps A10-027 alone).
+    /// </summary>
+    private static JsonNode? NullSafeSize(JsonObject comparison, ExpressionSite operand, Scope scope, FormatSet formats)
+    {
+        var (name, operands) = comparison.First();
+        if (!Comparisons.TryGetValue(name, out var holds) || operands is not JsonArray { Count: 2 } pair)
+        {
+            return null;
+        }
+
+        bool NullableList(JsonNode? node) =>
+            node is JsonObject { Count: 1 } call && call["size"] is JsonArray { Count: 1 } sized
+            && ExpressionChecker.Check(sized[0], operand, scope, formats) is { Refusals.Count: 0, Type: { Format: { } format } type }
+            && FormatTypes.Shape(format, formats) == FormatShape.List
+            && (type.Nullable || FormatTypes.IsNullable(format, formats));
+
+        var at = NullableList(pair[0]) ? 0 : NullableList(pair[1]) ? 1 : -1;
+        if (at < 0)
+        {
+            return null;
+        }
+
+        var size = pair[at]!;
+        var list = size["size"]![0]!;
+        JsonObject Null(string op) => new() { [op] = new JsonArray(list.DeepClone(), null) };
+        if (pair[1 - at] is JsonValue literal && literal.GetValueKind() == JsonValueKind.Number
+            && double.TryParse(literal.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var n))
+        {
+            var atZero = at == 0 ? holds(0, n) : holds(n, 0);
+            JsonNode written = name == "!==" && n == 0
+                ? new JsonObject { [">"] = new JsonArray(size.DeepClone(), 0) }
+                : comparison.DeepClone();
+            return atZero
+                ? new JsonObject { ["or"] = new JsonArray(Null("==="), written) }
+                : new JsonObject { ["and"] = new JsonArray(Null("!=="), written) };
+        }
+
+        var zero = (JsonArray)pair.DeepClone();
+        zero[at] = 0;
+        return new JsonObject { ["if"] = new JsonArray(Null("==="), new JsonObject { [name] = zero }, comparison.DeepClone()) };
     }
 
     /// <summary>

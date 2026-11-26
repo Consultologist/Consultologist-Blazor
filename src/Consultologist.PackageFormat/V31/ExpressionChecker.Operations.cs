@@ -328,7 +328,8 @@ public static partial class ExpressionChecker
 
     /// <summary>
     /// <c>in</c>: a list and a needle of its element's family (a literal list's strings, or a literal needle, held to an
-    /// enum's values), or text and a string to find; A04-001 otherwise.
+    /// enum's values), a text needle and a written list of string literals (#1508), or text and a string to find; A04-001
+    /// otherwise.
     /// </summary>
     private static ExpressionType In(Operand needle, Operand haystack, Context c)
     {
@@ -346,6 +347,14 @@ public static partial class ExpressionChecker
                 && dates.All(rule => rule is null || JsonLogicFunctions.Date(rule) is not null))
             {
                 element = Family.Date;
+            }
+
+            // #1508 (comment 5, item 2): text in a written list of string literals is exact membership, the form the
+            // migration gives 30's text == "lit" (text is never compared with a literal by =, S03-002).
+            if (c.FamilyOf(needle) == Family.Text && haystack.Rule is JsonArray texts && texts.Count > 0
+                && texts.All(rule => JsonLogicShape.TextOf(rule) is not null))
+            {
+                return boolean;
             }
             if (c.FamilyOf(needle) != Family.Free && element != Family.Free
                 && (element is not (Family.String or Family.Number or Family.Boolean or Family.Date) || !c.Is(needle, element)))

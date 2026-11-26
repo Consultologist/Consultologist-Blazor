@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Migration;
 using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
 
@@ -13,13 +14,15 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// evaluator (<see cref="ConditionReasons"/>); Task 15 the rules of the byte-equivalence comparison (<see cref="Rules"/>),
 /// each with its id, the ruling or section it rests on, the explanation the report gives, and what it explains.
 /// <para>
-/// A rule explains a difference exactly or not at all. Two kinds: a <b>case</b> rule explains a whole compared text by
-/// where it is and how the two runs ended (a status 30 refused and 31 completed for the two captures R2 names; a text only
-/// 31 has there); a <b>bytes</b> rule undoes one declared difference between the two texts (unescaping 31's escaped plain
-/// text, say). <see cref="Explain"/> takes the first case rule that holds; else it applies the bytes rules in
-/// <see cref="Rules"/>' order, each to the texts the earlier left, again until none changes anything (each at most once),
-/// and the difference is expected only when the texts are then the same, explained by the rules that changed something,
-/// named in <see cref="Rules"/>' order.
+/// Two kinds of rule: a <b>case</b> rule explains a whole compared text by where it is and how the two runs ended (a status
+/// 30 refused and 31 completed for the two captures R2 names; a text only 31 has there); a <b>bytes</b> rule undoes its one
+/// declared difference wherever it finds it between the two texts (unescaping 31's escaped plain text, say), whatever else
+/// differs. #1508 (comment 5, item 5; R19): <see cref="Credit"/> credits rule by rule. It takes the first case rule that
+/// holds; else it applies the bytes rules in <see cref="Rules"/>' order, each to the texts the earlier left, again until
+/// none changes anything (each at most once), and keeps a rule's change only where it brings 31's text nearer 30's (fewer
+/// tokens differ, <see cref="Distance"/>), so a rule is never credited for a change of its own making. Each rule kept is
+/// credited, in <see cref="Rules"/>' order; what differs after them all is the unexplained remainder. A difference is
+/// expected only when a rule is credited and nothing remains (<see cref="Explain"/>).
 /// </para>
 /// </summary>
 public static class ExpectedDifferences
@@ -31,6 +34,7 @@ public static class ExpectedDifferences
     public static IReadOnlyDictionary<string, string> ConditionReasons { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["blank"] = "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given.",
+        ["blank-conversion"] = "#1508, comment 5, item 8 (2026-11-25); part 05 § 7; part 10 § 2.3: strip(x) == \"\" is blank(x), which also holds for a null x (a node that did not run, a field of an object input left out), where 30's comparison did not.",
     };
 
     /// <summary>
@@ -54,7 +58,7 @@ public static class ExpectedDifferences
         ("example-structured-intake", "all-optional-inputs-unset"),
     ];
 
-    /// <summary>The rules, case rules first, then the bytes rules in the order <see cref="Explain"/> applies them.</summary>
+    /// <summary>The rules, in the order <see cref="Credit"/> tries the case rules and applies the bytes rules, and names those it credits.</summary>
     public static IReadOnlyList<Rule> Rules { get; } =
     [
         new("empty-input-list-runs",
@@ -87,17 +91,31 @@ public static class ExpectedDifferences
         {
             Case = c => IsStatus(c, nameof(RunState.Failed), nameof(RunState.Completed)) && AllRefused(c),
         },
-        new("refused-deliverable-withheld",
-            "R4 item 3, ruled by the owner on #1507, 2026-11-21; part 10 § 3.2",
-            "a deliverable its check refused is withheld, not erased: the rest of the job reads it as null, where 30 read its composed text")
+        new("failed-job-dispatch-order",
+            "#1508, comment 5, item 7, #9, ruled by the owner on 2026-11-25; part 10 § 3.2",
+            "both jobs failed at the same reply, which its node's failIfEmpty, or its node's format (onInvalid: fail), refused at both; each sent what its dispatch order reached first, so a text only one side has is the order's")
         {
-            Bytes = Withheld,
+            Case = FailedAlike,
+        },
+        new("flag-becomes-retry",
+            "#1508, comment 5, item 3, ruled by the owner on 2026-11-25 (onInvalid: flag becomes retry); comment 6, item 3; part 05 § 1.2; part 10 §§ 1.2, 3.2",
+            "a node that declared onInvalid: flag kept a reply that did not fit its format at 30, and the job ran on; at 31 the node asks once more with the validation error, then fails, so its prompt ends with the retry's text, the job fails, and a text only 30 has is what 30 ran on the kept reply")
+        {
+            Case = FlagRetried,
+            Bytes = RetryText,
+        },
+        new("reply-never-a-template",
+            "#1508, comment 5, item 7, #5, ruled by the owner on 2026-11-25; part 05 § 1; part 10 § 3.2",
+            "a reply is never rendered as a template at 31, where 30 rendered one that held '{{': 31's text holds the reply as written where 30's holds it rendered, and a job 30 failed because a reply did not render completes")
+        {
+            Case = ReplyNotRendered,
+            Bytes = RenderedReplies,
         },
         new("escaped-plain-text",
-            "part 06 § 6.4; part 10 § 3.2; D8",
-            "plain text read into a Markdown deliverable is escaped; unescaping the values the run read gives 30's bytes")
+            "part 06 § 6.4; part 10 § 3.2; D8; #1508, comment 5, items 7 (#13) and 8 (D23), ruled by the owner on 2026-11-25",
+            "plain text read into a Markdown deliverable is escaped (a computed text value too), and so are plain-text items joined into a Markdown loop's content, which a prompt reads escaped; unescaping the values the run held gives 30's bytes")
         {
-            Bytes = (c, old, now) => c.Kind == ComparedKind.Deliverable ? EscapedReads(c, old, now) : null,
+            Bytes = (c, old, now) => c.Kind == ComparedKind.Deliverable || (c.Kind is ComparedKind.Prompt or ComparedKind.Render && ReadsEscapedText(c)) ? EscapedReads(c, old, now) : null,
         },
         new("item-ids-from-one",
             "ruled by the owner on #1506, 2026-11-21, 2 (item numbers are 1-based everywhere users see them; 30 counted an array input's from 0); D12",
@@ -106,14 +124,14 @@ public static class ExpectedDifferences
             Bytes = ItemIds,
         },
         new("position-names-from-the-loop",
-            "part 04 § 2.7 (decided on #1392: with itemLabel null an item is named by its loop's label and its 1-based position, where 30 named an input loop's item by the input's label); part 10 § 3.2",
-            "an item of a loop over an input's list with no itemLabel is named by the loop's label and its position at 31, where 30 gave it the input's label")
+            "part 04 § 2.7 (decided on #1392: with itemLabel null an item is named by its loop's label and its 1-based position, where 30 named an input loop's item by the input's label); #1508, comment 5, item 4, ruled by the owner on 2026-11-25 (an empty itemLabel field falls back to the position name); part 10 § 3.2",
+            "an item of a loop over an input's list named by its position (no itemLabel, or an empty field) is named by the loop's label and its position at 31, where 30 gave it the input's label")
         {
             Bytes = PositionNames,
         },
         new("sent-format",
-            "part 10 § 1.8 (every property required, an optional one nullable); part 10 § 3.2",
-            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order")
+            "part 10 § 1.8 (every property required, an optional one nullable); R12 and #1508, comment 5, item 7, #3, ruled by the owner on 2026-11-25 (a format's description sent; a classifier's answers sent as its format); part 10 § 3.2",
+            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order, with the descriptions 31 sends where 30's had none; or a classifier's answers, the values 30 listed, sent as its format after them")
         {
             Bytes = SentFormat,
         },
@@ -129,6 +147,31 @@ public static class ExpectedDifferences
         {
             Bytes = MacroTrailingWhitespace,
         },
+        new("input-trailing-whitespace",
+            "#1508, comment 5, item 7, #6, ruled by the owner on 2026-11-25; part 10 § 3.2",
+            "an input's text keeps its trailing white space at 31, where 30 trimmed it: the value as 30 trimmed it stands where 31's text holds it whole")
+        {
+            Bytes = InputTrailingWhitespace,
+        },
+        new("before-after-macro-marker",
+            "#1508, comment 5, item 7, #10, ruled by the owner on 2026-11-25; part 05 § 10; part 10 §§ 1.4, 3.2",
+            "a macro 30's engine placed before or after a node's reply is a marker at 31: the placing prompt holds its instruction, and its body stands where the model wrote the marker, so only the white space between the body and the reply differs, where 30 joined them by a blank line")
+        {
+            Bytes = BeforeAfterMarker,
+        },
+        new("while-no-pass-separator",
+            "the controller's ruling on #1508 (Task 33's review: covered as the owner ruled for a flow that ran nothing, or listed as expected); part 10 §§ 1.2, 3.2",
+            "a while that ran no pass composes as empty text at both, but 30's composer dropped its part with its separator, where 31's template keeps the blank line between it and the source beside it")
+        {
+            Bytes = WhileNoPassSeparator,
+        },
+        new("macro-choice-classifier",
+            "#1508, comment 6, items 1 and 2, ruled by the owner on 2026-11-25 (R13, R14); part 10 §§ 1.2, 1.4, 3.2",
+            "a macro 30's model chose is gated by a judgement node, answered from 30's reply: the node's prompt is 31's alone, and the placing prompt holds the macro's instruction, its \"otherwise\" clause removed, only where the node answered yes")
+        {
+            Case = ClassifierPrompt,
+            Bytes = ChoiceInstruction,
+        },
         new("blank-conversion",
             "R1, ruled by the owner on #1507, 2026-11-20; part 10 §§ 2.3, 3.2",
             "the text is gated by a '!x' converted to blank(x), which held at 31 for an empty or white-space-only text where 30's !x did not, so only 31 has it")
@@ -138,42 +181,150 @@ public static class ExpectedDifferences
     ];
 
     /// <summary>
-    /// Why the difference <paramref name="context"/> describes is expected (each rule that explains it, as
-    /// <see cref="Rule.Said"/>, joined by <c>"; "</c>), or <c>null</c> when no rule explains it exactly.
+    /// #1508 (R19): what the rules credit in one difference: the rules credited, in <see cref="Rules"/>' order, and whether
+    /// a remainder no rule explains is left (<paramref name="Unexplained"/>).
     /// </summary>
-    public static string? Explain(DifferenceContext context)
+    public sealed record Credited(IReadOnlyList<Rule> Rules, bool Unexplained)
+    {
+        /// <summary>The difference is expected: a rule is credited and nothing remains.</summary>
+        public bool Expected => Rules.Count > 0 && !Unexplained;
+
+        /// <summary>Each rule credited, as <see cref="Rule.Said"/>, joined by <c>"; "</c>; null when none is.</summary>
+        public string? Explanation => Rules.Count > 0 ? string.Join("; ", Rules.Select(r => r.Said)) : null;
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 5; R19): the rules that explain part or all of the difference <paramref name="context"/>
+    /// describes, and whether anything is left (the class's remarks say how).
+    /// </summary>
+    public static Credited Credit(DifferenceContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
         foreach (var rule in Rules)
         {
             if (rule.Case?.Invoke(context) == true)
-                return rule.Said;
+                return new Credited([rule], false);
         }
 
         if (context.OldText is not { } old || context.NewText is not { } now || context.Kind == ComparedKind.Status)
-            return null;
+            return new Credited([], true);
 
-        // Each rule undoes its own difference where the texts are otherwise alike, so one may only apply once another has
-        // (an item number inside a prompt whose format also differs): the rules are applied in turn until none changes
-        // anything, each at most once.
+        // Each rule undoes its own difference, so one may only find it once another has (an item number inside a prompt
+        // whose format also differs): the rules are applied in turn until none changes anything, each at most once, and a
+        // change is kept only where it brings the texts nearer.
         var applied = new List<Rule>();
-        for (var changed = true; changed;)
+        var distance = Distance(old, now);
+        for (var changed = true; changed && distance > 0;)
         {
             changed = false;
             foreach (var rule in Rules)
             {
                 if (applied.Contains(rule) || rule.Bytes?.Invoke(context, old, now) is not { } undone || (undone.Old == old && undone.New == now))
                     continue;
-                (old, now) = undone;
+                var nearer = Distance(undone.Old, undone.New);
+                if (nearer >= distance)
+                    continue;
+                (old, now, distance) = (undone.Old, undone.New, nearer);
                 applied.Add(rule);
                 changed = true;
             }
         }
 
-        applied = [.. Rules.Where(applied.Contains)];
+        return new Credited([.. Rules.Where(applied.Contains)], !string.Equals(old, now, StringComparison.Ordinal));
+    }
 
-        return applied.Count > 0 && string.Equals(old, now, StringComparison.Ordinal) ? string.Join("; ", applied.Select(r => r.Said)) : null;
+    /// <summary>
+    /// Why the difference <paramref name="context"/> describes is expected (<see cref="Credited.Explanation"/>), or
+    /// <c>null</c> when it is not: no rule is credited, or a remainder is left (<see cref="Credit"/>).
+    /// </summary>
+    public static string? Explain(DifferenceContext context) => Credit(context) is { Expected: true } credited ? credited.Explanation : null;
+
+    /// <summary>
+    /// #1508 (R13): a prompt only 31 sent, of a macro-choice classifier (<see cref="ChoiceClassifiers"/>), which 30 had no
+    /// node for.
+    /// </summary>
+    private static bool ClassifierPrompt(DifferenceContext c) =>
+        c.Kind == ComparedKind.Prompt && c.OldText is null && c.NewText is not null && c.Key31 is { } key
+        && ChoiceClassifiers.Of(c.Migrated).Any(k => k.Key == EntryOf(key));
+
+    /// <summary>
+    /// #1508 (R13, R14): the prompt of an agent a macro-choice classifier stands before, at an instance where the classifier
+    /// answered (its reply in <see cref="OfflineResult.Outputs"/>): where it answered yes, 31's prompt is 30's with the
+    /// macro's 30 instruction (<c>Y</c>) in place of its 31 instruction (<c>I</c>), where <c>I</c> is <c>Y</c> or <c>Y</c>
+    /// with one "otherwise" clause removed (<see cref="WithoutAnOtherwise"/>); where it answered no, 31's prompt is 30's with
+    /// such a <c>Y</c> taken out (the macro was not offered). Undone, 31's text is 30's there; anything else is not this rule.
+    /// </summary>
+    private static (string Old, string New)? ChoiceInstruction(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind != ComparedKind.Prompt || c.Key31 is not { } key)
+            return null;
+        var entry = EntryOf(key);
+        foreach (var classifier in ChoiceClassifiers.Of(c.Migrated).Where(k => k.Placing == entry))
+        {
+            if (c.Run31.Outputs.GetValueOrDefault(classifier.Key + key[entry.Length..]) is not JsonObject reply
+                || reply["answer"] is not JsonValue answer || !answer.TryGetValue<bool>(out var yes))
+            {
+                continue;
+            }
+
+            var instruction = classifier.Instruction;
+            if (yes)
+            {
+                for (var at = now.IndexOf(instruction, StringComparison.Ordinal); at >= 0 && instruction.Length > 0; at = now.IndexOf(instruction, at + 1, StringComparison.Ordinal))
+                {
+                    var (before, after) = (now[..at], now[(at + instruction.Length)..]);
+                    if (old.Length >= before.Length + after.Length && old.StartsWith(before, StringComparison.Ordinal) && old.EndsWith(after, StringComparison.Ordinal)
+                        && Restores(old[before.Length..(old.Length - after.Length)], instruction))
+                    {
+                        return (old, before + old[before.Length..(old.Length - after.Length)] + after);
+                    }
+                }
+
+                continue;
+            }
+
+            // Not offered: 30's text is 31's with Y inserted at some place p, which the common prefix and suffix bound.
+            var extra = old.Length - now.Length;
+            if (extra <= 0)
+                continue;
+            var prefix = 0;
+            while (prefix < now.Length && old[prefix] == now[prefix])
+                prefix++;
+            var suffix = 0;
+            while (suffix < now.Length && old[old.Length - 1 - suffix] == now[now.Length - 1 - suffix])
+                suffix++;
+            for (var p = Math.Max(0, now.Length - suffix); p <= prefix; p++)
+            {
+                if (Restores(old.Substring(p, extra), instruction))
+                    return (old, now[..p] + old.Substring(p, extra) + now[p..]);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether 31's <paramref name="instruction"/> is 30's <paramref name="written"/>, or it with one "otherwise" clause removed.</summary>
+    private static bool Restores(string written, string instruction) =>
+        written == instruction || WithoutAnOtherwise(written).Contains(instruction, StringComparer.Ordinal);
+
+    /// <summary>
+    /// <paramref name="text"/> with one "otherwise" clause removed, for each one it holds: <c>; otherwise …</c> or
+    /// <c>, otherwise …</c> up to the next full stop (kept), or a sentence <c>Otherwise ….</c> with the space before it.
+    /// </summary>
+    private static IEnumerable<string> WithoutAnOtherwise(string text)
+    {
+        foreach (var word in new[] { "otherwise", "Otherwise" })
+        {
+            for (var at = text.IndexOf(word, StringComparison.Ordinal); at >= 0; at = text.IndexOf(word, at + 1, StringComparison.Ordinal))
+            {
+                var stop = text.IndexOf('.', at);
+                if (word == "otherwise" && at >= 2 && text[at - 1] == ' ' && text[at - 2] is ';' or ',')
+                    yield return text[..(at - 2)] + (stop < 0 ? "" : text[stop..]);
+                else if (word == "Otherwise" && at >= 2 && text[at - 1] == ' ' && text[at - 2] == '.' && stop >= 0)
+                    yield return text[..(at - 1)] + text[(stop + 1)..];
+            }
+        }
     }
 
     private static bool IsStatus(DifferenceContext c, string old, string now) =>
@@ -245,28 +396,6 @@ public static class ExpectedDifferences
     }
 
     /// <summary>
-    /// R4 item 3: a 31 deliverable its check refused (blocked) reads as <c>null</c> in the rest of the job, so 30's text,
-    /// where it held that deliverable's composed text, is 31's with that text left out: 30's text with each such
-    /// deliverable's composed text (31's, kept for the record) taken out. Only a deliverable composed with a text, and only
-    /// one the compared row reads at 31 (<c>deliverable.&lt;id&gt;.content</c> among <see cref="RowReads"/>; final review
-    /// B1): a text equal to the blocked one that a row composes on its own is not withheld, and a row that lost it is
-    /// unexpected. Part 06 § 6.7 lets only checks read a deliverable at 31, so a published package's compared rows never do.
-    /// </summary>
-    private static (string Old, string New)? Withheld(DifferenceContext c, string old, string now)
-    {
-        var reads = RowReads(c);
-        var withheld = old;
-        foreach (var blocked in c.Run31.Deliverables.Where(d => d.State == DeliverableState.Blocked && d.Key != c.Key31
-                     && reads.Any(r => r == d.Key + ".content" || r.StartsWith(d.Key + ".content.", StringComparison.Ordinal))))
-        {
-            if (blocked.Text is { Length: > 0 } text && withheld.Contains(text, StringComparison.Ordinal))
-                withheld = withheld.Replace(text, "", StringComparison.Ordinal);
-        }
-
-        return withheld == old ? null : (withheld, now);
-    }
-
-    /// <summary>
     /// Every path the compared row reads at 31: its plan entry's reads (<see cref="PlanEntry.Reads"/>), and the reads the
     /// compiled document records for each snippet or macro it places (<see cref="PlanEntry.Placements"/>, nested ones
     /// included). Empty for the status, or a key the plan has no entry for.
@@ -328,7 +457,8 @@ public static class ExpectedDifferences
     }
 
     /// <summary>
-    /// Part 06 § 6.4, held to the text that came from a read (Task 15 fix round 1): each place in 31's deliverable text that
+    /// Part 06 § 6.4, held to the text that came from a read (Task 15 fix round 1): each place in 31's deliverable text (or
+    /// a prompt's or rendered node's that reads text escaped before it, <see cref="ReadsEscapedText"/>) that
     /// is the escape (<see cref="MarkdownEscape.Escape(string, bool)"/>, at a line's start or inside one) of a value the run
     /// held (<see cref="RunValues"/>) is put back as that value; every other byte, the template's own text included, is
     /// left as 31 wrote it. Longer values are placed first and no two places overlap, so 30's own backslash inside a value
@@ -368,8 +498,8 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// Every text value the 31 run held that a template may read as plain text: each string or number in the inputs, the
-    /// profile and the run facts it was given, in each reply it served, and each rendered node's text; longest first, then
-    /// ordinal, none empty.
+    /// profile and the run facts it was given, in each reply it served, each rendered node's text and each computed node's
+    /// text (#13); longest first, then ordinal, none empty.
     /// </summary>
     private static List<string> RunValues(DifferenceContext c)
     {
@@ -412,6 +542,13 @@ public static class ExpectedDifferences
             Leaves(output);
         foreach (var render in c.Run31.Renders)
             values.Add(render.Text);
+
+        // #1508 (comment 5, item 7, #13): a computed node's text (a let of text), as the run held it.
+        foreach (var row in c.Run31.Rows.Where(r => r.Kind == PlanKind.Computed))
+        {
+            if (SourceLayout.Text(row.Text?["content"]) is { } content)
+                values.Add(content);
+        }
         values.Remove("");
         return [.. values.OrderByDescending(v => v.Length).ThenBy(v => v, StringComparer.Ordinal)];
     }
@@ -423,8 +560,8 @@ public static class ExpectedDifferences
     /// #1506 ruling 2: in a prompt or a rendered node's text whose nearest loop iterates an input's list, a number that is the
     /// item's number at 31 (<c>n + 1</c>) where 30's text has 30's (<c>n</c>), only where the entry's 31 body writes the
     /// item's id (<c>{{ item.id }}</c>): the changed number stands in 30's text between the body's own text before and after
-    /// that tag on its line (<c>Prior letter </c> and <c>:</c>). The texts are read as runs of digits and of other characters;
-    /// every other run is the same.
+    /// that tag on its line (<c>Prior letter </c> and <c>:</c>). The texts are read as runs of digits and of other characters,
+    /// aligned (<see cref="Aligned"/>); only such a run is put back, every other run is left as 31 wrote it (R19).
     /// </summary>
     private static (string Old, string New)? ItemIds(DifferenceContext c, string old, string now)
     {
@@ -435,26 +572,44 @@ public static class ExpectedDifferences
 
         var a = DigitRuns(old);
         var b = DigitRuns(now);
-        if (a.Count != b.Count)
-            return null;
-        var undone = new StringBuilder(now.Length);
-        var at = 0;
-        for (var i = 0; i < a.Count; i++)
+        return Undo(old, now, a, b, (i, j) =>
         {
             var (digits, x) = a[i];
-            var (_, y) = b[i];
-            if (x == y)
-                undone.Append(y);
-            else if (digits && (x, y) == pair && anchors.Any(anchor =>
-                         old.AsSpan(0, at).EndsWith(anchor.Before, StringComparison.Ordinal)
-                         && old.AsSpan(at + x.Length).StartsWith(anchor.After, StringComparison.Ordinal)))
-                undone.Append(x);
+            var at = a.Take(i).Sum(r => r.Text.Length);
+            return digits && (x, b[j].Text) == pair && anchors.Any(anchor =>
+                old.AsSpan(0, at).EndsWith(anchor.Before, StringComparison.Ordinal)
+                && old.AsSpan(at + x.Length).StartsWith(anchor.After, StringComparison.Ordinal));
+        });
+    }
+
+    /// <summary>
+    /// 31's text <paramref name="now"/> rebuilt from its runs <paramref name="b"/>, each run aligned with 30's run
+    /// (<paramref name="a"/>, of <paramref name="old"/>) that differs from it and that <paramref name="undoes"/> accepts (the
+    /// indexes of the two) written as 30's run; null when none is.
+    /// </summary>
+    private static (string Old, string New)? Undo(
+        string old, string now, List<(bool Kind, string Text)> a, List<(bool Kind, string Text)> b, Func<int, int, bool> undoes)
+    {
+        if (Aligned([.. a.Select(r => r.Text)], [.. b.Select(r => r.Text)]) is not { } pairs)
+            return null;
+        var undone = new StringBuilder(now.Length);
+        var changed = false;
+        foreach (var (i, j) in pairs)
+        {
+            if (j < 0)
+                continue;
+            if (i >= 0 && a[i].Text != b[j].Text && a[i].Kind == b[j].Kind && undoes(i, j))
+            {
+                undone.Append(a[i].Text);
+                changed = true;
+            }
             else
-                return null;
-            at += x.Length;
+            {
+                undone.Append(b[j].Text);
+            }
         }
 
-        return (old, undone.ToString());
+        return changed ? (old, undone.ToString()) : null;
     }
 
     /// <summary>
@@ -462,9 +617,10 @@ public static class ExpectedDifferences
     /// digits, ending its line; a template may place the loop's <c>.content</c> after text on its first line) that a loop over
     /// an input's list with <c>itemLabel: null</c> writes in its <c>.content</c>, every item of it named by its position, where
     /// the loop's label is not the input's, put back as 30 wrote it, <c>## &lt;input label&gt; &lt;n&gt;</c>. The position is
-    /// the same at both (30's position names count from 1 too); nothing else on the line, and no other line, is touched. A loop
-    /// with an <c>itemLabel</c> is not read: its position name is only the fallback for an item whose name is empty, which the
-    /// text alone cannot tell from a name that reads so, so that fallback is left unexplained.
+    /// the same at both (30's position names count from 1 too); nothing else on the line, and no other line, is touched.
+    /// #1508 (comment 5, item 4): a loop with an <c>itemLabel</c> too, whose position name is the fallback for an item whose
+    /// field is empty: an item named by its field has the same name at both, so where 30 wrote the input's label and a
+    /// position, both sides fell back.
     /// </summary>
     private static (string Old, string New)? PositionNames(DifferenceContext c, string old, string now)
     {
@@ -474,7 +630,7 @@ public static class ExpectedDifferences
         var names = new List<(string Loop, string Input)>();
         foreach (var entry in c.Plan.Entries.Values.OrderBy(e => e.Order))
         {
-            if (entry.Kind != PlanKind.For || entry.Json["itemLabel"] is not null || SourceLayout.Text(entry.Json["in"]) is not { } source
+            if (entry.Kind != PlanKind.For || SourceLayout.Text(entry.Json["in"]) is not { } source
                 || !source.StartsWith("input.", StringComparison.Ordinal) || !source.EndsWith(".value", StringComparison.Ordinal))
                 continue;
             var id = source["input.".Length..^".value".Length];
@@ -598,9 +754,11 @@ public static class ExpectedDifferences
     /// Part 10 § 1.8: both prompts end with the custom trailer (<see cref="AgentTurn.CustomTrailer"/>, a line end, a format's
     /// JSON), and 30's format, written as § 1.8 rewrites it (every property listed in <c>required</c>, one 30 did not require
     /// made nullable), is 31's member for member, in canonical JSON's order (<c>required</c> and <c>type</c> lists compared as
-    /// sets). A description, a title, <c>$schema</c> or <c>$id</c> 31 sends and 30 did not is a difference no ruling declares,
-    /// so the text stays unexpected.
+    /// sets). #1508 (comment 5, item 7, #3): a <c>description</c> 31 sends where 30's format had none at that place is set
+    /// aside (<see cref="WithoutNewDescriptions"/>); one that differs from 30's, and a title, <c>$schema</c> or <c>$id</c> 31
+    /// sends and 30 did not, are differences no ruling declares, so the text stays unexpected.
     /// The 31 format is then put back as 30's, so the bytes rules after this one compare the rest.
+    /// #1508 (R12; comment 5, item 7, #3): a classifier's prompt, which 30 ended with its values (<see cref="AnswersSent"/>).
     /// </summary>
     private static (string Old, string New)? SentFormat(DifferenceContext c, string old, string now)
     {
@@ -609,15 +767,79 @@ public static class ExpectedDifferences
         var marker = AgentTurn.CustomTrailer + "\n";
         var at30 = old.LastIndexOf(marker, StringComparison.Ordinal);
         var at31 = now.LastIndexOf(marker, StringComparison.Ordinal);
+        if (at30 < 0 && at31 >= 0)
+            return AnswersSent(old, now, at31, marker);
         if (at30 < 0 || at31 < 0)
             return null;
         var schema30 = old[(at30 + marker.Length)..];
         var schema31 = now[(at31 + marker.Length)..];
         if (StrictJson.Parse(schema30) is not { Fault: null, Value: JsonObject s30 } || StrictJson.Parse(schema31) is not { Fault: null, Value: JsonObject s31 })
             return null;
-        if (CanonicalJson.Write(Shape(As31(s30))) != CanonicalJson.Write(Shape(s31.DeepClone())))
+        var sent = s31.DeepClone();
+        WithoutNewDescriptions(sent, s30);
+        if (CanonicalJson.Write(Shape(As31(s30))) != CanonicalJson.Write(Shape(sent)))
             return null;
         return (old, now[..(at31 + marker.Length)] + schema30);
+    }
+
+    /// <summary>
+    /// #1508 (R12; comment 5, item 7, #3): 30 sent no format to a classifier and ended its prompt with its values
+    /// (<c>Answer with exactly one of: &lt;values&gt;.</c>, kept by the migration); 31 sends its answers' format, bound
+    /// <c>custom</c>, after the custom trailer (<see cref="WorkflowCustomPrompt.Compose"/>). Explained when that format is
+    /// exactly the answers' (<c>{ value: enum }</c>, closed, nothing else but a description, #3: no title or <c>$id</c>) and
+    /// its values are the ones 30's last line lists, in order; the trailer and format are then taken off 31's text.
+    /// </summary>
+    private static (string Old, string New)? AnswersSent(string old, string now, int at31, string marker)
+    {
+        var joint = "\n\n";
+        if (at31 < joint.Length || !now.AsSpan(at31 - joint.Length, joint.Length).SequenceEqual(joint))
+            return null;
+        if (StrictJson.Parse(now[(at31 + marker.Length)..]) is not { Fault: null, Value: JsonObject sent })
+            return null;
+        WithoutNewDescriptions(sent, null);
+        if (sent["properties"] is not JsonObject { } properties || properties["value"] is not JsonObject { } value
+            || value["enum"] is not JsonArray values || values.Any(v => SourceLayout.Text(v) is null))
+            return null;
+        var answers = new JsonObject
+        {
+            ["type"] = "object",
+            ["additionalProperties"] = false,
+            ["required"] = new JsonArray("value"),
+            ["properties"] = new JsonObject { ["value"] = new JsonObject { ["type"] = "string", ["enum"] = values.DeepClone() } },
+        };
+        if (CanonicalJson.Write(answers) != CanonicalJson.Write(sent))
+            return null;
+        var listed = $"Answer with exactly one of: {string.Join(", ", values.Select(SourceLayout.Text))}.";
+        var before = now[..(at31 - joint.Length)];
+        return before.EndsWith(listed, StringComparison.Ordinal) && old.EndsWith(listed, StringComparison.Ordinal) ? (old, before) : null;
+    }
+
+    /// <summary>
+    /// #1508 (comment 5, item 7, #3): <paramref name="sent"/> (31's format) with each <c>description</c> taken out where
+    /// <paramref name="written"/> (30's, read at the same place: a property by its name, <c>items</c>, an arm by its index, a
+    /// definition by its name) has none; only schema positions are read, never a property named <c>description</c>.
+    /// </summary>
+    private static void WithoutNewDescriptions(JsonNode? sent, JsonNode? written)
+    {
+        if (sent is not JsonObject schema)
+            return;
+        var at30 = written as JsonObject;
+        if (schema.ContainsKey("description") && at30?.ContainsKey("description") != true)
+            schema.Remove("description");
+        foreach (var named in new[] { "properties", "$defs" })
+        {
+            foreach (var (name, member) in schema[named] as JsonObject ?? [])
+                WithoutNewDescriptions(member, (at30?[named] as JsonObject)?[name]);
+        }
+
+        WithoutNewDescriptions(schema["items"], at30?["items"]);
+        foreach (var keyword in new[] { "anyOf", "oneOf", "allOf" })
+        {
+            var arms30 = at30?[keyword] as JsonArray;
+            var arms = schema[keyword] as JsonArray ?? [];
+            for (var i = 0; i < arms.Count; i++)
+                WithoutNewDescriptions(arms[i], arms30 is not null && i < arms30.Count ? arms30[i] : null);
+        }
     }
 
     /// <summary>30's format written as part 10 § 1.8 rewrites it: each object's every property required, one 30 did not require nullable.</summary>
@@ -800,7 +1022,7 @@ public static class ExpectedDifferences
     /// macro's body, <c>macros/**</c> in <see cref="Migration31Result.MacroBodies"/>, after its one final line ending), before
     /// 30's run at that place, and it follows that body's own last text: in 30's text the characters before the run end with
     /// the body's last word (its text after its last white space; a body that ends in a tag has no word to find, and explains
-    /// nothing). Every other run, and all the text between, is the same. A snippet written from a macro (D4) is not a macro
+    /// nothing). The runs are aligned (<see cref="Aligned"/>); every other run is left as 31 wrote it (R19). A snippet written from a macro (D4) is not a macro
     /// body at 31: the migration writes it with 30's trimming, so it is never explained here. Only a macro the compared row's
     /// text can hold counts (<see cref="PlacedMacros"/>; final review B4).
     /// </summary>
@@ -812,22 +1034,8 @@ public static class ExpectedDifferences
             return null;
         var a = WhiteSpaceRuns(old);
         var b = WhiteSpaceRuns(now);
-        if (a.Count != b.Count)
-            return null;
-        var undone = new StringBuilder(now.Length);
-        for (var i = 0; i < a.Count; i++)
-        {
-            var (space, x) = a[i];
-            var (_, y) = b[i];
-            if (x == y)
-                undone.Append(y);
-            else if (space && i > 0 && kept.Any(k => y == k.Trailing + x && a[i - 1].Text.EndsWith(k.LastWord, StringComparison.Ordinal)))
-                undone.Append(x);
-            else
-                return null;
-        }
-
-        return (old, undone.ToString());
+        return Undo(old, now, a, b, (i, j) =>
+            a[i].Space && i > 0 && kept.Any(k => b[j].Text == k.Trailing + a[i].Text && a[i - 1].Text.EndsWith(k.LastWord, StringComparison.Ordinal)));
     }
 
     /// <summary>
@@ -924,7 +1132,7 @@ public static class ExpectedDifferences
     /// <summary>
     /// R1, held to the one effect such a decision can have: a text only 31 has (a prompt, a rendered node's text or a
     /// deliverable), whose own gate decided at 31 was exactly <c>blank(x)</c> for a <c>!x</c> the migration converted (an
-    /// A10-008 notice in <see cref="MigrationNotes.BlankConversions"/>; A10-050's <c>trim(x) == ""</c> is unruled and never
+    /// A10-008 notice in <see cref="MigrationNotes.BlankConversions"/>; A10-050's <c>trim(x) == ""</c>, expected as a condition reason (#1508), never
     /// counts), and held while <c>x</c> was not <c>null</c> (its read's hash is not the hash of <c>null</c>): an empty or
     /// white-space-only text, where 30's <c>!x</c> was false, so 30 skipped what 31 ran. The gate is the <c>if</c>
     /// (<c>self</c>) of the text's own row or of a flow around it (its expression's hash that of <c>blank(x)</c> alone). A
@@ -983,5 +1191,502 @@ public static class ExpectedDifferences
         string? pass = hash < 0 || (colon >= 0 && colon < hash) ? null : rowKey[(hash + 1)..(colon < 0 ? rowKey.Length : colon)];
         var items = colon < 0 ? [] : rowKey[(colon + 1)..].Split('/');
         return (pass, items);
+    }
+
+    /// <summary>
+    /// Whether the compared row reads a text the escape is written into before the row reads it: a deliverable's (part 06
+    /// § 6.7 lets a node a check reads read one), or a loop's <c>.content</c>, whose plain-text items are escaped where they
+    /// are joined (D23, signed off by the owner on #1508, comment 5, item 8).
+    /// </summary>
+    private static bool ReadsEscapedText(DifferenceContext c) =>
+        RowReads(c).Any(r => r.StartsWith("deliverable.", StringComparison.Ordinal)
+            || (r.EndsWith(".content", StringComparison.Ordinal) && c.Plan.Entries.TryGetValue(r[..^".content".Length], out var read)
+                && read.Kind is PlanKind.For or PlanKind.While));
+
+    // ---- #1508, comment 5, item 7 (ruled by the owner on 2026-11-25), and the controller's ruling on Task 33 ------------
+
+    /// <summary>
+    /// #9: a text only one side has, in a job that failed at both because the same reply was refused at both: every agent row
+    /// 31 failed is a reply the capture holds under its 30 key, refused alike: by its node's <c>failIfEmpty</c>, the reply
+    /// blank (<see cref="EmptyRefusedAlike"/>), or by its node's format under <c>onInvalid: fail</c> (#1508, comment 6, item 3:
+    /// <see cref="FormatRefusedAlike"/>). Each engine dispatched in its own order, so each sent a text the other's failure came
+    /// before. A text both sides have, or the status, is never explained here.
+    /// </summary>
+    private static bool FailedAlike(DifferenceContext c)
+    {
+        if (c.Kind == ComparedKind.Status || (c.OldText is null) == (c.NewText is null)
+            || SourceLayout.Text(c.Capture30["status"]) != nameof(RunState.Failed) || c.Run31.State != RunState.Failed)
+            return false;
+        var outputs = c.Capture30["outputs"] as JsonObject;
+        var failure = SourceLayout.Text(c.Capture30["failure"]);
+        var failed = c.Run31.Rows.Where(r => r.State == RowState.Failed).ToList();
+        return failed.Count > 0 && failed.All(r => r.Kind == PlanKind.Agent
+            && KeyMap.To30(r.Key, c.Migrated, c.Plan) is { } key30 && outputs?.TryGetPropertyValue(key30, out var reply) == true
+            && (EmptyRefusedAlike(c, r, reply) || FormatRefusedAlike(r, key30, failure)));
+    }
+
+    /// <summary>#9: the node's <c>failIfEmpty</c> refused it at 31, and 30's reply was empty or white space only.</summary>
+    private static bool EmptyRefusedAlike(DifferenceContext c, RunRow row, JsonNode? reply) =>
+        c.Plan.Entries.TryGetValue(row.EntryKey, out var entry) && SourceLayout.Text(entry.Json["failIfEmpty"]) is { } sentence && row.Reason == sentence
+        && SourceLayout.Text(reply) is { } text && text.EnumerateRunes().All(Rune.IsWhiteSpace);
+
+    /// <summary>
+    /// #9, #1508 (comment 5, item 1; comment 6, item 3): the node's format refused its reply at 31 under <c>onInvalid: fail</c>
+    /// (the row's <c>invalid</c> action), and 30's job failed with that node's own format sentence
+    /// (<c>Node '&lt;id&gt;' reply does not conform to format</c>): an answer outside a classifier's values, say.
+    /// </summary>
+    private static bool FormatRefusedAlike(RunRow row, string key30, string? failure) =>
+        SourceLayout.Text(row.Detail["invalid"]?["action"]) == "fail" && failure is not null
+        && SourceLayout.Text(row.Detail["invalid"]?["reason"]) is { } reason && reason.Contains(FormatRefusal, StringComparison.Ordinal)
+        && failure.Contains($"Node '{NodeOf30(key30)}' reply does not conform to format", StringComparison.Ordinal);
+
+    /// <summary>What 31's runner says of a reply its format refused (<c>Node '&lt;id&gt;' gave a reply that isn't &lt;format&gt;</c>), never a marker fault.</summary>
+    private const string FormatRefusal = "' gave a reply that isn't ";
+
+    /// <summary>The text <c>AgentTurn</c> appends, after two newlines, to the prompt of a call that asks again after a reply that did not fit its format.</summary>
+    private const string RetryAsk = "\n\nYour last reply could not be used: it did not fit the required format. Write the reply again.";
+
+    /// <summary>A 30 instance key's node id: the key before its first <c>:</c>.</summary>
+    private static string NodeOf30(string key30) => key30.IndexOf(':', StringComparison.Ordinal) is var colon and >= 0 ? key30[..colon] : key30;
+
+    /// <summary>
+    /// #1508 (comment 5, item 3; comment 6, item 3): 30 completed and 31 failed, at an agent row that asked again
+    /// under <c>onInvalid: retry</c> (its row's <c>invalid</c>: action <c>retry</c>, two attempts) and failed, whose 30 node the
+    /// migration turned from <c>onInvalid: flag</c> (<see cref="MigrationSentences.FlagBecomesRetry"/> among its notices): the
+    /// status and each text only 30 has; the retried prompt's own retry text is <see cref="RetryText"/>'s.
+    /// </summary>
+    private static bool FlagRetried(DifferenceContext c)
+    {
+        var retried = FlagRetriedRows(c);
+        return retried.Count > 0
+            && (IsStatus(c, nameof(RunState.Completed), nameof(RunState.Failed))
+                || (c.Kind != ComparedKind.Status && c.OldText is not null && c.NewText is null));
+    }
+
+    /// <summary>
+    /// #1508 (R19): the retried row's own prompt (<see cref="FlagRetried"/>'s rows) with the retry's text taken off its end, and
+    /// the trailing white space <c>AgentTurn</c> trimmed before it put back as 30's text has it; every other difference is
+    /// left for the rules after this one (31 sends the format's description, say).
+    /// </summary>
+    private static (string Old, string New)? RetryText(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind != ComparedKind.Prompt || !now.EndsWith(RetryAsk, StringComparison.Ordinal) || !FlagRetriedRows(c).Any(r => r.Key == c.Key31))
+            return null;
+        return (old, now[..^RetryAsk.Length] + old[old.TrimEnd().Length..]);
+    }
+
+    /// <summary>
+    /// The agent rows of a job 30 completed and 31 failed that asked again under <c>onInvalid: retry</c> (the row's
+    /// <c>invalid</c>: action <c>retry</c>, two attempts) and failed, each a node the migration turned from <c>onInvalid: flag</c>.
+    /// </summary>
+    private static List<RunRow> FlagRetriedRows(DifferenceContext c) =>
+        SourceLayout.Text(c.Capture30["status"]) != nameof(RunState.Completed) || c.Run31.State != RunState.Failed
+            ? []
+            : [.. c.Run31.Rows.Where(r => r.State == RowState.Failed && r.Kind == PlanKind.Agent
+                && SourceLayout.Text(r.Detail["invalid"]?["action"]) == "retry" && (int?)(r.Detail["invalid"]?["attempts"] as JsonValue) == 2
+                && KeyMap.To30(r.Key, c.Migrated, c.Plan) is { } key30
+                && c.Migrated.Notices.Contains(MigrationSentences.FlagBecomesRetry(NodeOf30(key30)), StringComparer.Ordinal))];
+
+    /// <summary>
+    /// #5: 30 failed the job because a node's reply did not render as a template (<c>Node '&lt;id&gt;' reply failed to
+    /// render</c>), and at 31, where a reply is never a template, that node completed and so did the job: the status, and each
+    /// deliverable only 31 composed (30 left it unsettled at the failure).
+    /// </summary>
+    private static bool ReplyNotRendered(DifferenceContext c)
+    {
+        const string Head = "Node '";
+        const string Tail = "' reply failed to render";
+        if (SourceLayout.Text(c.Capture30["status"]) != nameof(RunState.Failed) || c.Run31.State != RunState.Completed
+            || SourceLayout.Text(c.Capture30["failure"]) is not { } failure)
+            return false;
+        var end = failure.IndexOf(Tail, StringComparison.Ordinal);
+        var at = end < 0 ? -1 : failure.LastIndexOf(Head, end, StringComparison.Ordinal);
+        if (at < 0 || c.Migrated.Keys.GetValueOrDefault(failure[(at + Head.Length)..end]) is not { } key)
+            return false;
+        var rows = c.Run31.Rows.Where(r => r.EntryKey == key).ToList();
+        return rows.Count > 0 && rows.All(r => r.State == RowState.Completed)
+            && (IsStatus(c, nameof(RunState.Failed), nameof(RunState.Completed)) || (c.Kind == ComparedKind.Deliverable && c.OldText is null && c.NewText is not null));
+    }
+
+    /// <summary>
+    /// #5: each text reply the 31 run served that holds <c>{{</c> stands in 31's text as written, where 30's holds it as 30
+    /// rendered it (<see cref="Rendered30"/>, with no variable: a reply that reads one did not render at 30, which
+    /// <see cref="ReplyNotRendered"/> covers). Each place is put back as 30's.
+    /// </summary>
+    private static (string Old, string New)? RenderedReplies(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status)
+            return null;
+        var undone = now;
+        foreach (var reply in c.Run31.Outputs.Values.Select(v => v is JsonValue value && value.TryGetValue<string>(out var text) ? text : null)
+                     .OfType<string>().Where(r => r.Contains("{{", StringComparison.Ordinal)).Distinct(StringComparer.Ordinal).OrderByDescending(r => r.Length))
+        {
+            if (Rendered30(reply) is { } rendered && rendered != reply)
+                undone = undone.Replace(reply, rendered, StringComparison.Ordinal);
+        }
+
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// <paramref name="reply"/> rendered as 30's engine rendered a reply: as a Scriban template in 30's strict context
+    /// (<see cref="PromptTemplateRenderer.RenderingContext"/>), with no variable; null when it does not parse or render.
+    /// </summary>
+    internal static string? Rendered30(string reply)
+    {
+        var template = Scriban.Template.Parse(reply);
+        if (template.HasErrors)
+            return null;
+        try
+        {
+            return template.Render(new PromptTemplateRenderer.RenderingContext());
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// #6: each text value of an input (a string at any depth of the request's inputs) that ends in white space stands in
+    /// 31's text whole, where 30's holds it with its trailing white space trimmed: each place put back as 30's, where that
+    /// brings the texts nearer (a value of white space alone is the empty text at 30, so only the places 30 trimmed count).
+    /// With no request, nothing is explained.
+    /// </summary>
+    private static (string Old, string New)? InputTrailingWhitespace(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status || c.Request is not { } request)
+            return null;
+        var values = new HashSet<string>(StringComparer.Ordinal);
+        void Leaves(JsonNode? node)
+        {
+            switch (node)
+            {
+                case JsonObject members:
+                    foreach (var (_, member) in members)
+                        Leaves(member);
+                    break;
+                case JsonArray items:
+                    foreach (var item in items)
+                        Leaves(item);
+                    break;
+                case JsonValue value when value.TryGetValue<string>(out var text) && text.Length > 0 && text.TrimEnd().Length < text.Length:
+                    values.Add(text);
+                    break;
+            }
+        }
+
+        foreach (var (_, input) in request.Inputs)
+            Leaves(input);
+        var undone = now;
+        foreach (var value in values.OrderByDescending(v => v.Length).ThenBy(v => v, StringComparer.Ordinal))
+            undone = EachNearer(old, undone, value, value.TrimEnd());
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// <paramref name="now"/> with each place of <paramref name="find"/> written as <paramref name="replace"/>, one at a time
+    /// from the start, each kept only where it brings 31's text nearer <paramref name="old"/> (<see cref="Distance"/>).
+    /// </summary>
+    private static string EachNearer(string old, string now, string find, string replace)
+    {
+        var distance = Distance(old, now);
+        for (var at = now.IndexOf(find, StringComparison.Ordinal); at >= 0 && distance > 0; at = now.IndexOf(find, at, StringComparison.Ordinal))
+        {
+            var candidate = now[..at] + replace + now[(at + find.Length)..];
+            var nearer = Distance(old, candidate);
+            if (nearer < distance)
+            {
+                (now, distance) = (candidate, nearer);
+                at += replace.Length;
+            }
+            else
+            {
+                at++;
+            }
+
+            if (at > now.Length)
+                break;
+        }
+
+        return now;
+    }
+
+    /// <summary>
+    /// #10: the macros 30's engine placed before or after a node's reply (<see cref="ByteEquivalence.EnginePlaced"/>) are
+    /// markers at 31. In the prompt of an agent that places one, its instruction (the hand edit's, its lines joined with
+    /// <c>\n</c>) stands where 30's prompt had nothing: each is taken out, and the white space the placements left at the
+    /// prompt's end (the migration placed them there, D3) is 30's. In a text that can hold such a body
+    /// (<see cref="PlacedMacros"/>), each white space run where the texts differ that stands between the body and the
+    /// reply (after the last word of a body placed before, before the first word of one placed after: a word that is a
+    /// tag's is not read) is 30's, the blank line 30's engine joined them by; every other run is left as 31 wrote it.
+    /// </summary>
+    private static (string Old, string New)? BeforeAfterMarker(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status || c.Key31 is not { } key || !c.Plan.Entries.TryGetValue(EntryOf(key), out var row))
+            return null;
+        var placed = ByteEquivalence.EnginePlaced(c.Migrated);
+        if (placed.Count == 0)
+            return null;
+
+        var undone = now;
+        if (c.Kind == ComparedKind.Prompt && row.Placements.Where(p => placed.ContainsKey(p.Site)).Select(p => p.Site).Distinct(StringComparer.Ordinal).ToList() is { Count: > 0 } own)
+        {
+            foreach (var site in own)
+            {
+                if (MacroHeader(c.Migrated, site) is { } header
+                    && string.Join("\n", (header["instruction"] as JsonArray ?? []).Select(l => SourceLayout.Text(l) ?? "")) is { Length: > 0 } instruction)
+                    undone = undone.Replace(instruction, "", StringComparison.Ordinal);
+            }
+
+            undone = undone.TrimEnd() + old[old.TrimEnd().Length..];
+        }
+
+        var words = new List<(string? First, string? Last)>();
+        foreach (var site in PlacedMacros(c).Where(placed.ContainsKey).Order(StringComparer.Ordinal))
+        {
+            if (MacroBody(c.Migrated, site)?.Trim() is not { Length: > 0 } body)
+                continue;
+            var first = body[..(body.IndexOfAny([' ', '\t', '\n', '\r']) is var space and >= 0 ? space : body.Length)];
+            var last = body[(body.LastIndexOfAny([' ', '\t', '\n', '\r']) + 1)..];
+            words.Add(placed[site]
+                ? (null, last.Contains("}}", StringComparison.Ordinal) ? null : last)
+                : (first.Contains("{{", StringComparison.Ordinal) ? null : first, null));
+        }
+
+        if (words.Count > 0)
+        {
+            var a = WhiteSpaceRuns(old);
+            var b = WhiteSpaceRuns(undone);
+            if (Undo(old, undone, a, b, (i, j) => a[i].Space && words.Any(w =>
+                    (w.Last is { } last && i > 0 && a[i - 1].Text.EndsWith(last, StringComparison.Ordinal))
+                    || (w.First is { } first && i + 1 < a.Count && a[i + 1].Text.StartsWith(first, StringComparison.Ordinal)))) is { } around)
+                undone = around.New;
+        }
+
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>The source file of the macro at <paramref name="site"/> (<c>macro.&lt;id&gt;</c>, <c>macro.&lt;folder&gt;.&lt;item&gt;</c>), split, or null.</summary>
+    private static (string Header, string Body)? MacroFile(Migration31Result migrated, string site) =>
+        site.StartsWith("macro.", StringComparison.Ordinal)
+        && migrated.Files.TryGetValue("macros/" + site["macro.".Length..].Replace('.', '/') + ".md", out var file)
+        && FrontMatter.Split(file) is { } split ? (split.Header, split.Body) : null;
+
+    private static JsonObject? MacroHeader(Migration31Result migrated, string site)
+    {
+        if (MacroFile(migrated, site) is not { } file)
+            return null;
+        try
+        {
+            return JsonNode.Parse(file.Header) as JsonObject;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The body of the macro at <paramref name="site"/>, its one final line ending dropped as 31 renders it (R5), or null.</summary>
+    private static string? MacroBody(Migration31Result migrated, string site) =>
+        MacroFile(migrated, site)?.Body is { } body ? (body.EndsWith('\n') ? body[..^1] : body) : null;
+
+    /// <summary>
+    /// The controller's ruling on #1508 (Task 33's review): a deliverable whose template reads a <c>while</c> that ran no pass
+    /// (its row's <c>passes</c> 0) as <c>{{ node.&lt;while&gt;.content }}</c>, with white space alone between that tag and the
+    /// next or the one before (the separator): the while composes as the empty text at both, and 30's composer dropped its
+    /// part with its separator, where 31's template keeps it. 31's text with that separator taken out where the tag stood (at
+    /// the start, at the end, or one of two separators side by side between) is 30's, where that brings the texts nearer.
+    /// </summary>
+    private static (string Old, string New)? WhileNoPassSeparator(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind != ComparedKind.Deliverable || c.Key31 is not { } key || !key.StartsWith("deliverable.", StringComparison.Ordinal)
+            || !c.Migrated.Files.TryGetValue("deliverables/" + key["deliverable.".Length..].Replace('.', '/') + ".md", out var file)
+            || FrontMatter.Split(file)?.Body is not { } body)
+            return null;
+        if (body.EndsWith('\n'))
+            body = body[..^1];
+
+        var undone = now;
+        foreach (var loop in c.Run31.Rows.Where(r => r.Kind == PlanKind.While && r.Key == r.EntryKey
+                     && r.Detail["passes"] is JsonValue passes && passes.TryGetValue<int>(out var count) && count == 0))
+        {
+            var tag = $"{{{{ {loop.Key}.content }}}}";
+            for (var at = body.IndexOf(tag, StringComparison.Ordinal); at >= 0; at = body.IndexOf(tag, at + tag.Length, StringComparison.Ordinal))
+            {
+                var open = body.LastIndexOf("}}", at, StringComparison.Ordinal);
+                var before = body[(open < 0 ? 0 : open + 2)..at];
+                var next = body.IndexOf("{{", at + tag.Length, StringComparison.Ordinal);
+                var after = body[(at + tag.Length)..(next < 0 ? body.Length : next)];
+                bool Separator(string text) => text.Length > 0 && text.All(char.IsWhiteSpace);
+                if (open < 0 && before.Length == 0 && Separator(after) && undone.StartsWith(after, StringComparison.Ordinal))
+                    undone = Nearest(old, undone, undone[after.Length..]);
+                else if (next < 0 && after.Length == 0 && Separator(before) && undone.EndsWith(before, StringComparison.Ordinal))
+                    undone = Nearest(old, undone, undone[..^before.Length]);
+                else if (Separator(before) && Separator(after))
+                    undone = EachNearer(old, undone, before + after, after);
+            }
+        }
+
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary><paramref name="candidate"/> when it is nearer <paramref name="old"/> than <paramref name="now"/> is, else <paramref name="now"/>.</summary>
+    private static string Nearest(string old, string now, string candidate) =>
+        Distance(old, candidate) < Distance(old, now) ? candidate : now;
+
+    // ---- the alignment (#1508, R19) ------------------------------------------------------------------------------------
+
+    /// <summary>The most token edits <see cref="Distance"/> counts exactly, and the most an alignment is made for.</summary>
+    private const int MaxEdits = 20_000;
+
+    /// <summary>The most edits <see cref="Aligned"/> traces (its memory grows with their square).</summary>
+    private const int MaxAligned = 2_000;
+
+    /// <summary>
+    /// How far 31's text <paramref name="now"/> is from 30's <paramref name="old"/>: the tokens (a run of letters and digits,
+    /// a run of white space, any other character alone) to insert and delete to make one the other, the fewest (Myers'
+    /// difference, bounded by <see cref="MaxEdits"/>; past it, every token).
+    /// </summary>
+    internal static int Distance(string old, string now)
+    {
+        if (string.Equals(old, now, StringComparison.Ordinal))
+            return 0;
+        var a = Tokens(old);
+        var b = Tokens(now);
+        return Edits(a, b, MaxEdits) ?? a.Count + b.Count;
+    }
+
+    private static List<string> Tokens(string text)
+    {
+        var tokens = new List<string>();
+        var i = 0;
+        while (i < text.Length)
+        {
+            var start = i;
+            if (char.IsLetterOrDigit(text[i]))
+            {
+                while (i < text.Length && char.IsLetterOrDigit(text[i]))
+                    i++;
+            }
+            else if (char.IsWhiteSpace(text[i]))
+            {
+                while (i < text.Length && char.IsWhiteSpace(text[i]))
+                    i++;
+            }
+            else
+            {
+                i++;
+            }
+
+            tokens.Add(text[start..i]);
+        }
+
+        return tokens;
+    }
+
+    /// <summary>The fewest inserts and deletes between <paramref name="a"/> and <paramref name="b"/> (Myers), or null past <paramref name="bound"/>.</summary>
+    private static int? Edits(IReadOnlyList<string> a, IReadOnlyList<string> b, int bound)
+    {
+        var (n, m) = (a.Count, b.Count);
+        var max = Math.Min(n + m, bound);
+        var v = new int[(2 * max) + 3];
+        var offset = max + 1;
+        for (var d = 0; d <= max; d++)
+        {
+            for (var k = -d; k <= d; k += 2)
+            {
+                var x = k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1]) ? v[offset + k + 1] : v[offset + k - 1] + 1;
+                var y = x - k;
+                while (x < n && y < m && string.Equals(a[x], b[y], StringComparison.Ordinal))
+                    (x, y) = (x + 1, y + 1);
+                v[offset + k] = x;
+                if (x >= n && y >= m)
+                    return d;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The runs of <paramref name="a"/> (30's) and <paramref name="b"/> (31's) aligned, in order: <c>(i, j)</c> for two runs
+    /// that stand at one place, equal or each the other's replacement (a stretch where as many of 30's runs were replaced by
+    /// as many of 31's pairs them in order), <c>(i, -1)</c> for a run 30 alone has and <c>(-1, j)</c> for one 31 alone has.
+    /// Null past <see cref="MaxAligned"/> edits.
+    /// </summary>
+    private static List<(int A, int B)>? Aligned(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    {
+        var (n, m) = (a.Count, b.Count);
+        var max = Math.Min(n + m, MaxAligned);
+        var v = new int[(2 * max) + 3];
+        var offset = max + 1;
+        var trace = new List<int[]>();
+        var found = -1;
+        for (var d = 0; d <= max && found < 0; d++)
+        {
+            trace.Add((int[])v.Clone());
+            for (var k = -d; k <= d; k += 2)
+            {
+                var x = k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1]) ? v[offset + k + 1] : v[offset + k - 1] + 1;
+                var y = x - k;
+                while (x < n && y < m && string.Equals(a[x], b[y], StringComparison.Ordinal))
+                    (x, y) = (x + 1, y + 1);
+                v[offset + k] = x;
+                if (x >= n && y >= m)
+                {
+                    found = d;
+                    break;
+                }
+            }
+        }
+
+        if (found < 0)
+            return null;
+
+        // Back through the trace: each step one insert or delete, then the equal runs before it.
+        var steps = new List<(int A, int B)>();
+        var (px, py) = (n, m);
+        for (var d = found; d > 0; d--)
+        {
+            var prior = trace[d];
+            var k = px - py;
+            var down = k == -d || (k != d && prior[offset + k - 1] < prior[offset + k + 1]);
+            var pk = down ? k + 1 : k - 1;
+            var sx = prior[offset + pk];
+            var sy = sx - pk;
+            var (mx, my) = down ? (sx, sy + 1) : (sx + 1, sy);
+            while (px > mx && py > my)
+                steps.Add((--px, --py));
+            steps.Add(down ? (-1, --py) : (--px, -1));
+            (px, py) = (sx, sy);
+        }
+
+        while (px > 0 && py > 0)
+            steps.Add((--px, --py));
+        steps.Reverse();
+
+        // A stretch of deletes and inserts with as many of each pairs them in order.
+        var pairs = new List<(int A, int B)>();
+        for (var i = 0; i < steps.Count;)
+        {
+            if (steps[i].A >= 0 && steps[i].B >= 0)
+            {
+                pairs.Add(steps[i++]);
+                continue;
+            }
+
+            var start = i;
+            while (i < steps.Count && (steps[i].A < 0 || steps[i].B < 0))
+                i++;
+            var deleted = steps.Skip(start).Take(i - start).Where(s => s.B < 0).Select(s => s.A).ToList();
+            var inserted = steps.Skip(start).Take(i - start).Where(s => s.A < 0).Select(s => s.B).ToList();
+            if (deleted.Count == inserted.Count)
+                pairs.AddRange(deleted.Zip(inserted));
+            else
+                pairs.AddRange(steps.Skip(start).Take(i - start));
+        }
+
+        return pairs;
     }
 }
