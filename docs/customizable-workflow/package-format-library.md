@@ -1591,9 +1591,16 @@ The rules for one read:
   `package` and `engine`. `profile.<field>` is one of part 06 § 10.1's five, else S06-028.
 - `snippet.<id>.content` is text of the snippet's format. A folder item's `snippet.<folder>.<id>.content` is
   `markdown_block`, and its `.value` is typed by the folder's `format`.
+- `part.<id>`, `macro.<id>` and `macro.<folder>.<id>` are placements, judged where they are placed. #1508 (ruling 12):
+  a unit has no members, so any longer path under `part` or `macro` (`macro.<folder>.<id>.x`, a marker
+  `macro.<id>.content` outside its own instruction, `part.<id>.x`) is S05-011, said of the text that reads it, naming
+  the longest part of the path that names a unit. A `for` over a part or a macro is S05-006. Every step of every
+  other head is read too, so no member read passes untyped. What stays untyped: a read under a loop whose own source
+  is refused (said there), a renderer's `value` when its `input` is refused (S02-017), and a whole unit, placed or
+  piped (`{{ macro.x | string.upcase }}` is not a placement and is not refused yet).
 - These are refused:
   - a root the site does not read: S05-020, or S05-021 for `profile.*` in a prompt, a part or a `rendered` node;
-  - an unknown root or member: S05-011;
+  - an unknown root or member, at any step: S05-011;
   - a bare `node.x`, `input.x`, `check.x` or `param.x`: A07-008;
   - a bare `snippet.x`: S05-037;
   - an object or a list written directly: A07-007;

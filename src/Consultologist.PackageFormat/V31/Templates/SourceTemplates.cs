@@ -448,6 +448,9 @@ public static partial class SourceTemplates
             var typed = Typed(source, line, Scope(start, depth));
             if (typed.Item1 is { Format: { } format } && FormatTypes.Shape(format, formats) != FormatShape.List)
                 return (null, DialectSentences.ForOverNotAList(host.Subject, source, line, host.Path));
+            // #1508 (ruling 12): a part or a macro is text placed, never a list, so its variable reads nothing.
+            if (typed is (null, null) && IsUnit(source))
+                return (null, DialectSentences.ForOverNotAList(host.Subject, source, line, host.Path));
             return typed;
         }
 
@@ -459,7 +462,9 @@ public static partial class SourceTemplates
         private (TypedRead?, SourceRefusal?) Typed(string path, int line, List<ForVariable> scope)
         {
             var typed = typing.Type(path, line, scope);
-            if (unavailable is not null && typed.Refusal is { } refusal && !OfTheText.Contains(refusal.Id))
+            // #1508 (ruling 12): a member of a part or a macro is not there whatever the place, so it is said of the text.
+            if (unavailable is not null && typed.Refusal is { } refusal && !OfTheText.Contains(refusal.Id)
+                && !(refusal.Id == "S05-011" && IsUnit(path) && scope.All(v => v.Name != path.Split('.')[0])))
             {
                 if (!unavailable.Contains(path, StringComparer.Ordinal))
                     unavailable.Add(path);
@@ -468,6 +473,9 @@ public static partial class SourceTemplates
 
             return typed;
         }
+
+        /// <summary>Whether <paramref name="path"/> is rooted at <c>part</c> or <c>macro</c>.</summary>
+        private static bool IsUnit(string path) => path.Split('.')[0] is "part" or "macro";
 
         /// <summary>The refusal a read noted as unavailable stands for: never said itself (<see cref="Record"/> drops it).</summary>
         private static readonly SourceRefusal Unavailable = new("S05-022", string.Empty, string.Empty);

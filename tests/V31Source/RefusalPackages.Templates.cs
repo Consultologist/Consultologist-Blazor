@@ -128,11 +128,14 @@ internal static partial class RefusalPackages
 
     private static IEnumerable<RefusalCase> TemplateReads()
     {
+        // #1508 (ruled by the owner, ruling 12 of 2026-11-25): every step of a read is checked, beyond the first id, so the
+        // case is the ruling's own, a member read past a macro folder's item.
         yield return new RefusalCase("S05-011",
-            "A template reads what is there (chapter 5 § 5.3.1). The note writes the plan. Invalid: it reads "
-            + "node.plan.value.sections, which a plaintext does not have. Valid: node.plan.content.",
-            Minimal(),
-            Minimal().Edit(Note, "{{ node.plan.content }}", "{{ node.plan.value.sections }}"));
+            "A template reads what is there, at every step (chapter 5 § 5.3.1). The agent closing places the macro hpi of the "
+            + "folder section_notes. Invalid: it reads macro.section_notes.hpi.anything, which the macro does not have. "
+            + "Valid: it places macro.section_notes.hpi.",
+            SectionNotes(),
+            SectionNotes().Edit("nodes/closing.md", "{{~ macro.section_notes.hpi }}", "{{ macro.section_notes.hpi.anything }}"));
 
         yield return new RefusalCase("S05-020",
             "A template reads only its site's roots (chapter 5 § 5.3.1). The plan's prompt writes the draft. Invalid: it reads "
@@ -652,6 +655,17 @@ internal static partial class RefusalPackages
             .Edit("snippets/index.json", "\"items\": []", "\"items\": [\"closer\"]")
             .With("snippets/closer.md", Md("{ \"label\": \"Closer\", \"description\": null, \"if\": null, \"format\": \"plaintext\" }",
                 "Thank Dr A. Sample.\n"));
+
+    /// <summary>The macro folder <c>section_notes</c> holding <c>hpi</c>, and the agent <c>closing</c>, which places it.</summary>
+    private static Dictionary<string, byte[]> SectionNotes() =>
+        MinimalListing("closing")
+            .Edit("macros/index.json", "\"items\": []", "\"items\": [\"section_notes\"]")
+            .With("macros/section_notes/index.json", SourceFixture.Index(["hpi"], extra: ", \"if\": null"))
+            .With("macros/section_notes/hpi.md", Md(
+                "{ \"label\": \"History\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place the history's closing line alone:\", \"{{~ macro.section_notes.hpi.content }}\"] }",
+                "History taken from Margaret Okafor and her daughter.\n"))
+            .With("nodes/closing.md", Agent("Writing the closing", Plain, "Write the closing line of the history.\n{{~ macro.section_notes.hpi }}\n"));
 
     /// <summary>The macros <c>follow_up</c> and <c>recall</c> (unplaced), and the agent <c>closing</c>, which places follow_up.</summary>
     private static Dictionary<string, byte[]> FollowUp() =>

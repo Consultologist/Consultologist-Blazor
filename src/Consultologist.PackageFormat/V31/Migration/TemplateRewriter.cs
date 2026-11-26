@@ -679,8 +679,8 @@ internal static class TemplateRewriter
                         case "content":
                             // D4: a folder macro never becomes a snippet, so its fixed-text read has no 31 form: written
                             // macro.<folder>.<id>_fixed_text, an item the folder lacks, which 31 refuses (S05-011), with a
-                            // hand edit. (A member after a folder item, macro.<folder>.<id>.fixed_text, is not checked by
-                            // 31's reads, so it would pass.)
+                            // hand edit. (#1508, ruling 12: a member after a folder item, macro.<folder>.<id>.fixed_text, is
+                            // refused too now; the written form stays, so the migrated bytes do not move.)
                             var unread = $"{id}_{FixedText}";
                             while (items.Any(i => i.Id == unread))
                                 unread += "_" + FixedText;
@@ -918,8 +918,8 @@ internal static class TemplateRewriter
                         return new Written("snippet", null, null, false);
                     }
 
-                    // D3: no 31 form, so it is written macro.<id>.fixed_text, which 31 refuses (S05-011) until the edit is made;
-                    // left as macro.<id>.content it would pass as a read.
+                    // D3: no 31 form, so it is written macro.<id>.fixed_text, which 31 refuses (S05-011) until the edit is made
+                    // (#1508, ruling 12: macro.<id>.content is refused too now; the written form stays, so the bytes do not move).
                     sink.Add(End(steps[^2].Token!), End(steps[^1].Token!), "." + FixedText);
                     var both = m.Walk30.Templates.Any(t => t.References.MacroPrompts.Contains(fixedText));
                     sink.Say(Start(whole), line => both ? MigrationSentences.ReadBothWays(fixedText) : MigrationSentences.ReadAsFixedText(fixedText, line));

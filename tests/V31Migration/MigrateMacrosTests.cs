@@ -330,14 +330,15 @@ public class MigrateMacrosTests
             "macro 'new_visit_note' is read as fixed text at line 1, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.");
         var written = LineWith(MigrateNodesTests.Md(echoes, "snippets/visit_echo.md").Body, "fixed_text");
         Assert.Contains(RefusalsReading("new_visit_note", written, inSnippet: true), r => r.Id == "S05-011");
-        Assert.Empty(RefusalsReading("new_visit_note", written.Replace("fixed_text", "content", StringComparison.Ordinal), inSnippet: true)); // 30's read would pass
+        // #1508 (ruling 12): 30's read, a macro's marker outside its instruction, is refused too.
+        Assert.Contains(RefusalsReading("new_visit_note", written.Replace("fixed_text", "content", StringComparison.Ordinal), inSnippet: true), r => r.Id == "S05-011");
     }
 
     [Fact]
     public void AMacroReadBothWays_IsAHandEdit()
     {
         // house_style is placed (style.md reads its .prompt) and now read as .content too: A10-004 at the read, written
-        // macro.<id>.fixed_text, which 31 refuses (30's macro.<id>.content would pass as a read).
+        // macro.<id>.fixed_text, which 31 refuses (#1508, ruling 12: as it refuses 30's macro.<id>.content).
         var both = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["prompts/summary.md"] += "{{ macro.house_style.content }}\n");
         var bothBody = MigrateNodesTests.Md(both, "nodes/summary.md").Body;
         Assert.Contains("\n{{ macro.house_style.fixed_text }}\n", bothBody, StringComparison.Ordinal);
@@ -345,7 +346,7 @@ public class MigrateMacrosTests
             "macro 'house_style' is read both as fixed text and as an instruction; split it into a snippet and a macro.");
         Assert.True(both.Files.ContainsKey("macros/house_style.md"));
         Assert.Contains(RefusalsReading("house_style", "{{ macro.house_style.fixed_text }}", inSnippet: false), r => r.Id == "S05-011");
-        Assert.Empty(RefusalsReading("house_style", "{{ macro.house_style.content }}", inSnippet: false));
+        Assert.Contains(RefusalsReading("house_style", "{{ macro.house_style.content }}", inSnippet: false), r => r.Id == "S05-011");
 
         // A folder's macro is never a snippet: an unrolled .content read of it is a hand edit, A10-004 beside its .prompt.
         var folder = MigrateNodesTests.Migrated("example-macros", _ => { }, files =>
@@ -356,7 +357,8 @@ public class MigrateMacrosTests
             "macro 'notes/safety_net' is read both as fixed text and as an instruction; split it into a snippet and a macro.");
         Assert.Contains(RefusalsReading("notes/red_flags", "{{ macro.notes.red_flags_fixed_text }}", inSnippet: false), r => r.Id == "S05-011");
         Assert.Contains(RefusalsReading("notes/red_flags", "{{ macro.notes.red_flags_fixed_text }}", inSnippet: true), r => r.Id == "S05-011");
-        Assert.Empty(RefusalsReading("notes/red_flags", "{{ macro.notes.red_flags.fixed_text }}", inSnippet: false)); // why not a member
+        // #1508 (ruling 12): a member past the item is refused too.
+        Assert.Contains(RefusalsReading("notes/red_flags", "{{ macro.notes.red_flags.fixed_text }}", inSnippet: false), r => r.Id == "S05-011");
 
         // Alone in its loop, a folder macro's .content read is A10-045 (a folder's item is never fixed text at 31).
         var alone = MigrateNodesTests.Migrated("example-macros", _ => { }, files =>

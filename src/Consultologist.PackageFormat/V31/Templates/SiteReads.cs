@@ -174,7 +174,7 @@ internal sealed class PathTyping
         {
             // A renderer named outside a pipe (`{{ renderer.x }}`, or as a pipe's argument): only the pipe calls one.
             "renderer" => Refuse(DialectSentences.CallsRenderer(host.Subject, string.Join('.', s.Skip(1)), "value", line, host.Path)),
-            "part" or "macro" => (null, null),
+            "part" or "macro" => Unit(written, line, s),
             "snippet" => Snippet(written, line, s),
             "profile" => Profile(written, line, s),
             _ => Resolved(written, line, s),
@@ -234,6 +234,44 @@ internal sealed class PathTyping
             default:
                 return (null, null);
         }
+    }
+
+    /// <summary>
+    /// #1508 (ruled by the owner, ruling 12 of 2026-11-25): <c>part.&lt;id&gt;</c>, <c>macro.&lt;id&gt;</c> and
+    /// <c>macro.&lt;folder&gt;.&lt;id&gt;</c> are placements, judged where they are placed (null with no refusal; one that
+    /// names no unit is said there). A unit has no members, so any longer path is S05-011 (strict variables), naming the
+    /// longest part of it that names a unit (<c>part.brief</c>, <c>macro.follow_up</c>, <c>macro.notes.hpi</c>,
+    /// <c>macro.notes</c>), else the root (<c>part.*</c>, <c>macro.*</c>). A macro's marker outside its own instruction
+    /// is such a path (its instruction's are the macro's to judge, <c>BodyCheck.MacroPath</c>).
+    /// </summary>
+    private (TypedRead?, SourceRefusal?) Unit(string written, int line, string[] s)
+    {
+        string what;
+        if (s[0] == "part")
+        {
+            if (s.Length == 2)
+                return (null, null);
+            var declared = host.Declaration is SourceLeaf { Header: var header } && header["parts"] is JsonObject parts && parts.ContainsKey(s[1]);
+            what = declared ? $"part.{s[1]}" : SiteReads.AsWritten("part");
+        }
+        else
+        {
+            var entry = host.Function?.Definitions.Macros.Items.FirstOrDefault(e => e.Id == s[1])
+                ?? package.Definitions.Macros.Items.FirstOrDefault(e => e.Id == s[1]);
+            var item = entry is SourceTextFolder folder && s.Length > 2 && folder.Items.Any(i => i.Id == s[2]);
+            if ((s.Length == 2 && entry is SourceSingleText) || (s.Length == 3 && item))
+                return (null, null);
+            // A placement's form that names no macro is said as the placement says it (Context.PlaceMacro), so once.
+            var placement = s.Length == 2 || (s.Length == 3 && s[2] != "content");
+            what = (placement, entry) switch
+            {
+                (true, _) or (_, null) => SiteReads.AsWritten("macro"),
+                (_, SourceTextFolder) when item => $"macro.{s[1]}.{s[2]}",
+                _ => $"macro.{s[1]}",
+            };
+        }
+
+        return Refuse(DialectSentences.ReadsWhatIsNotThere(host.Subject, written, line, what, host.Path));
     }
 
     /// <summary><c>profile.&lt;field&gt;</c>, one of part 06 § 10.1's five (else S06-028), typed by its format.</summary>
