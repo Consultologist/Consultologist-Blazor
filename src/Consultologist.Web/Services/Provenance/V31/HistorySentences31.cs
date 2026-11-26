@@ -11,6 +11,10 @@ public static class HistorySentences31
     /// <summary>S09-019: a job whose deliverables are being sent.</summary>
     public const string Delivering = "Delivering…";
 
+    /// <summary>One vocabulary (R6): a job's status as shown, its stored word, but <c>delivering</c> reads <see cref="Delivering"/>.</summary>
+    public static string StatusText(string status) =>
+        string.Equals(status, JobLiveness31.DeliveringStatus, StringComparison.Ordinal) ? Delivering : status;
+
     /// <summary>R1: the heading over a blocked deliverable's text.</summary>
     public const string RefusedHeading = "Refused, not delivered";
 

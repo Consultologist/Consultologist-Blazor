@@ -9,8 +9,14 @@ public static class JobLiveness31
 {
     public const int StoppedAfterMinutes = 60;
 
+    /// <summary>The status a 31 job holds while it delivers (part 09 § 3.8); not terminal.</summary>
+    public const string DeliveringStatus = "delivering";
+
+    /// <summary>The terminal statuses (part 08 § 1.2: a sealed record's <c>status</c>): Completed, Failed and Cancelled.</summary>
+    public static bool IsTerminal(string? status) => status is "Completed" or "Failed" or "Cancelled";
+
     public static bool IsStopped(string? status, DateTimeOffset? startedAtUtc, DateTimeOffset now) =>
-        status is not ("Completed" or "Failed" or "Cancelled")
+        !IsTerminal(status)
         && startedAtUtc is { } started
         && now - started > TimeSpan.FromMinutes(StoppedAfterMinutes);
 }

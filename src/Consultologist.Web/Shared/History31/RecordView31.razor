@@ -103,7 +103,7 @@
     private string? _verifyError;
     private RecordCheckResult? _check;
 
-    private bool Terminal => Detail.Status is "Completed" or "Failed" or "Cancelled";
+    private bool Terminal => JobLiveness31.IsTerminal(Detail.Status);
 
     private bool Stopped => JobLiveness31.IsStopped(Detail.Status, Detail.StartedAtUtc, Clock.GetUtcNow());
 
@@ -141,8 +141,9 @@
     }
 
     /// <summary>
-    /// The record once, then each deliverable's text through <see cref="Texts"/> (null once dropped), checked by
-    /// <see cref="RecordCheck31.Check"/>. What cannot be read is said with A12-005, and nothing is checked.
+    /// The record once, then the text of each deliverable the record holds through <see cref="Texts"/> (null only when the
+    /// route says it was dropped), checked by <see cref="RecordCheck31.Check"/>. What cannot be read is said with A12-005,
+    /// and nothing is checked.
     /// </summary>
     private async Task VerifyAsync()
     {
@@ -171,8 +172,9 @@
                 return;
             }
 
+            // the deliverables the downloaded record holds, not the rows listed: the check walks the record's own
             var texts = new Dictionary<string, string?>(StringComparer.Ordinal);
-            foreach (var deliverable in Record.Deliverables)
+            foreach (var deliverable in DeliverablesOf(bytes))
             {
                 RecordRowText? row;
                 try
@@ -188,13 +190,15 @@
                     row = null;
                 }
 
-                if (row is null)
+                // dropped only when the route says so; a composed text the route does not give was not read
+                var text = row is { TextDeleted: true } ? null : RowText31.Content(row);
+                if (row is null || (!row.TextDeleted && text is null && deliverable.Composed))
                 {
-                    _verifyError = HistorySentences31.RecordNotChecked($"the text of '{LabelOf(deliverable)}'");
+                    _verifyError = HistorySentences31.RecordNotChecked($"the text of '{deliverable.Label}'");
                     return;
                 }
 
-                texts[deliverable.Key] = RowText31.Content(row);
+                texts[deliverable.Key] = text;
             }
 
             _check = RecordCheck31.Check(Detail.RecordHash, bytes, texts);
@@ -209,6 +213,35 @@
         }
     }
 
-    private static string LabelOf(Row31 deliverable) =>
-        deliverable.Text("label") is { Length: > 0 } label ? label : deliverable.Key;
+    private sealed record RecordDeliverable(string Key, string Label, bool Composed);
+
+    /// <summary>
+    /// Each deliverable the sealed record holds: its key, its label (the key when it has none) and whether it was composed
+    /// (a <c>composedHash</c>). None when the bytes are not a record with a deliverables array; the check says so itself.
+    /// </summary>
+    private static IReadOnlyList<RecordDeliverable> DeliverablesOf(byte[] bytes)
+    {
+        try
+        {
+            if (System.Text.Json.Nodes.JsonNode.Parse(bytes) is not System.Text.Json.Nodes.JsonObject { } root
+                || root["deliverables"] is not System.Text.Json.Nodes.JsonArray deliverables)
+            {
+                return [];
+            }
+
+            return deliverables
+                .OfType<System.Text.Json.Nodes.JsonObject>()
+                .Select(row => (Key: Str(row["key"]), Label: Str(row["label"]), Composed: Str(row["composedHash"]) is not null))
+                .Where(row => row.Key is { Length: > 0 })
+                .Select(row => new RecordDeliverable(row.Key!, row.Label is { Length: > 0 } label ? label : row.Key!, row.Composed))
+                .ToList();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static string? Str(System.Text.Json.Nodes.JsonNode? node) =>
+        node is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 }

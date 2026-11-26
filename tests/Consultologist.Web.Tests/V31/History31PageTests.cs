@@ -62,18 +62,29 @@ public class History31PageTests : ClientRenderTestContext
         CompletedAtUtc = status is "Completed" or "Failed" or "Cancelled" ? Now.AddMinutes(-10) : null,
     };
 
-    private void With31(ConsultGenerationJobResponse header, IReadOnlyList<RecordRowRef>? rows = null)
+    private static AccountJobSummaryResponse Summary(ConsultGenerationJobResponse header) =>
+        new(header.JobId, header.Status, header.CreatedAtUtc ?? Now, header.StartedAtUtc,
+            header.CompletedAtUtc, TotalBlockCount: 6, CompletedBlockCount: 6, FailedBlockCount: 0);
+
+    private void With31(ConsultGenerationJobResponse header, IReadOnlyList<RecordRowRef>? rows = null, params ConsultGenerationJobResponse[] others)
     {
         AccountService.GetJobsAsync(Arg.Any<int>(), Arg.Any<string?>()).Returns(new AccountJobsResponse(
-            new[]
-            {
-                new AccountJobSummaryResponse(header.JobId, header.Status, header.CreatedAtUtc ?? Now, header.StartedAtUtc,
-                    header.CompletedAtUtc, TotalBlockCount: 6, CompletedBlockCount: 6, FailedBlockCount: 0),
-            },
+            new[] { Summary(header) }.Concat(others.Select(Summary)).ToList(),
             null));
         AIService.GetConsultGenerationJobAsync(header.JobId).Returns(header);
         AIService.GetJobRowsAsync(header.JobId).Returns(rows ?? Record31Fixtures.Job().Rows);
+        foreach (var other in others)
+        {
+            AIService.GetConsultGenerationJobAsync(other.JobId).Returns(other);
+        }
     }
+
+    private int FetchesOf(string jobId) =>
+        AIService.ReceivedCalls().Count(call =>
+            call.GetMethodInfo().Name == nameof(IAIEndpointService.GetConsultGenerationJobAsync) && Equals(call.GetArguments()[0], jobId));
+
+    private int RowListings() =>
+        AIService.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IAIEndpointService.GetJobRowsAsync));
 
     private IRenderedComponent<History> Open(TimeSpan? fastPoll = null) =>
         Render<History>(parameters =>
@@ -97,10 +108,81 @@ public class History31PageTests : ClientRenderTestContext
 
         var page = Open();
 
-        var package = page.Find(".history31-package");
-        Assert.Contains("test/general@v2026.12.1", package.TextContent);
-        Assert.Equal("sha256:9b41", package.QuerySelector(".history31-resolve-hash")!.TextContent.Trim());
-        Assert.Equal("sha256:07c2", package.QuerySelector(".history31-lock-hash")!.TextContent.Trim());
+        // the package's own chip, then its resolve and lock hashes beside it; the package is said once
+        var chips = page.FindAll(".provenance-chips > span");
+        Assert.Contains("test/general@v2026.12.1", chips[0].TextContent);
+        Assert.Contains("history31-resolve-hash", chips[1].ClassName);
+        Assert.Equal("sha256:9b41", chips[1].QuerySelector("code")!.TextContent.Trim());
+        Assert.Contains("history31-lock-hash", chips[2].ClassName);
+        Assert.Equal("sha256:07c2", chips[2].QuerySelector("code")!.TextContent.Trim());
+        var panel = page.Find(".job-detail-panel").TextContent;
+        Assert.Equal(1, panel.Split("test/general@v2026.12.1").Length - 1);
+    }
+
+    /// <summary>A 31 job, with every line the two storage families share given a value.</summary>
+    private void WithSharedLines()
+    {
+        With31(Header() with
+        {
+            TextDroppedAtUtc = Now.AddDays(-1),
+            InputsDroppedAtUtc = Now.AddDays(-1),
+            PackageTags = ["oncology", "Breast"],
+            ProvenanceRef = "provenance@v2026.11.1",
+            EngineRelease = "v2026.11.9",
+            EffectiveInputHash = "sha256:e1",
+            EffectiveInputHashVersion = 7,
+            Nodes = [new ConsultGenerationNodeDescriptor("plan", "Plan")],
+            AgentVersions = new Dictionary<string, string> { ["text"] = "47" },
+        });
+        WorkflowService.GetLineageAsync("test/general@v2026.12.1").Returns(new[] { "test/general@v2026.12.1", "general@v2026.11.4" });
+    }
+
+    [Theory]
+    [InlineData(".provenance-text-deleted", "the produced text was deleted under the retention policy")]
+    [InlineData(".provenance-inputs-deleted", "the held inputs were deleted under the retention policy")]
+    [InlineData(".provenance-tags", "oncology · Breast")]
+    [InlineData(".provenance-list dd.hash-text", "general@v2026.11.4")]
+    [InlineData(".provenance-agents", "text")]
+    [InlineData(".provenance-contract a", "provenance@v2026.11.1")]
+    [InlineData(".provenance-engine a", "v2026.11.9")]
+    [InlineData(".provenance-host .muted-text", "not recorded")]
+    public void A31Job_ShowsTheLinesBothStorageFamiliesShare(string selector, string expected)
+    {
+        WithSharedLines();
+
+        var page = Open();
+
+        Assert.Contains(page.FindAll(selector), element => element.TextContent.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A31Job_LinksItsStorageVersion_AndItsInputHashDefinition()
+    {
+        WithSharedLines();
+
+        var page = Open();
+
+        var refs = page.FindAll(".provenance-list a.provenance-ref").Select(a => (a.TextContent.Trim(), a.GetAttribute("href"))).ToList();
+        Assert.Contains(("v12", "https://github.com/Consultologist/consultologist-provenance/releases/tag/v2026.11.1"), refs);
+        Assert.Contains(("v7", "https://github.com/Consultologist/consultologist-provenance/releases/tag/v2026.11.1"), refs);
+        Assert.Contains("sha256:e1", page.Find(".provenance-list").TextContent);
+    }
+
+    [Fact]
+    public void A31Job_HasNoFiveToThirtyOnlyLines()
+    {
+        With31(Header() with
+        {
+            WorkflowOutputHash = "bbbb",
+            InputOrigins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>> { ["referral"] = [new ConsultInputOrigin("document")] },
+        });
+
+        var page = Open();
+
+        Assert.Empty(page.FindAll(".provenance-verify"));
+        Assert.Empty(page.FindAll(".provenance-list__nested"));
+        Assert.DoesNotContain("Output hash", page.Find(".provenance-list").TextContent);
+        Assert.Empty(page.FindAll(".node-grid"));
     }
 
     [Fact]
@@ -147,7 +229,7 @@ public class History31PageTests : ClientRenderTestContext
         var page = Open();
 
         Assert.Empty(page.FindAll(".history31-migrated"));
-        Assert.NotEmpty(page.FindAll(".history31-package"));
+        Assert.NotEmpty(page.FindAll(".history31-header"));
     }
 
     // ----- banners and sections (§§ 6.3, 6.4) -----
@@ -173,7 +255,7 @@ public class History31PageTests : ClientRenderTestContext
 
         var markup = page.Find(".history31").InnerHtml;
         Assert.True(markup.IndexOf("history31-banner", StringComparison.Ordinal) < markup.IndexOf("history31-inputs", StringComparison.Ordinal));
-        Assert.True(markup.IndexOf("history31-package", StringComparison.Ordinal) < markup.IndexOf("history31-banner", StringComparison.Ordinal));
+        Assert.True(markup.IndexOf("history31-header", StringComparison.Ordinal) < markup.IndexOf("history31-banner", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -225,19 +307,23 @@ public class History31PageTests : ClientRenderTestContext
     [Fact]
     public void AStoppedJob_SaysA12001_IsNotPolledFast_AndOffersNoDownload()
     {
-        // started two hours before the page's clock, still Running: its orchestration died (D9)
-        With31(Header("Running") with { StartedAtUtc = Now.AddHours(-2) });
+        // started two hours before the page's clock, still Running: its orchestration died (D9). Beside it, a 31 job
+        // running within the cap keeps the poll at the fast rate; the stopped one is not fetched again at that rate.
+        const string runningId = "77bb77bb77bb77bb77bb77bb77bb77bb";
+        With31(Header("Running") with { StartedAtUtc = Now.AddHours(-2) }, null,
+            Header("Running") with { JobId = runningId, StartedAtUtc = Now.AddMinutes(-5) });
 
         var page = Open(TimeSpan.FromMilliseconds(20));
 
-        Assert.Equal("Stopped", page.Find(".job-status-badge").TextContent.Trim());
-        Assert.Equal(HistorySentences31.Stopped, page.Find(".job-status-note").TextContent.Trim());
+        var stoppedRow = page.FindAll("tr").Single(row => row.TextContent.Contains("31aa31aa", StringComparison.Ordinal));
+        Assert.Equal("Stopped", stoppedRow.QuerySelector(".job-status-badge")!.TextContent.Trim());
+        Assert.Equal(HistorySentences31.Stopped, stoppedRow.QuerySelector(".job-status-note")!.TextContent.Trim());
         Assert.Equal("Stopped", page.Find(".history31-status").TextContent.Trim());
         Assert.Equal(HistorySentences31.Stopped, page.Find(".history31-stopped").TextContent.Trim());
         Assert.Empty(page.FindAll(".history31-download"));
         Assert.Empty(page.FindAll(".history31-verify"));
-        Thread.Sleep(200);
-        Assert.Equal(1, JobFetches());
+        page.WaitForAssertion(() => Assert.True(FetchesOf(runningId) >= 4), Settle);
+        Assert.Equal(1, FetchesOf(JobId));
     }
 
     [Fact]
@@ -310,6 +396,7 @@ public class History31PageTests : ClientRenderTestContext
             ["deliverables"] = new JsonArray(new JsonObject
             {
                 ["key"] = LetterKey,
+                ["label"] = "Patient letter",
                 ["state"] = "released",
                 ["composedHash"] = CanonicalJson.HashText(LetterText),
                 ["substitutions"] = new JsonArray(new JsonObject
@@ -410,6 +497,53 @@ public class History31PageTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".history31-check-line"));
     }
 
+    [Fact]
+    public void Verify_WhenTheRowsCannotBeListed_StillChecksEachDeliverableOfTheRecord()
+    {
+        WithSealedJob();
+        AIService.GetJobRowsAsync(JobId)
+            .ThrowsAsync(new ConsultGenerationRefusedException(HttpStatusCode.InternalServerError, "The record isn't available yet. Try again."));
+
+        var page = Open();
+        page.Find("fluent-button.history31-verify").Click();
+
+        page.WaitForAssertion(() => Assert.Equal(
+            new[] { ("recordHash", "true"), ($"deliverables[{LetterKey}].composedHash", "true"), ($"deliverables[{LetterKey}].replay", "true") },
+            Lines(page)));
+        AIService.Received(1).GetJobRowAsync(JobId, LetterKey);
+    }
+
+    [Fact]
+    public void Verify_WhenADeliverablesRowCannotBeFetched_SaysA12005_AndIsNotAPass()
+    {
+        // the row route answers 404 for a deliverable the record holds
+        WithSealedJob();
+        AIService.GetJobRowAsync(JobId, LetterKey).Returns((RecordRowText?)null);
+
+        var page = Open();
+        page.Find("fluent-button.history31-verify").Click();
+
+        page.WaitForAssertion(() => Assert.Equal(
+            HistorySentences31.RecordNotChecked("the text of 'Patient letter'"), page.Find(".history31-verify-error").TextContent.Trim()));
+        Assert.Empty(page.FindAll(".history31-verified--ok"));
+    }
+
+    [Fact]
+    public void Verify_SaysTextDeleted_OnlyWhenTheRowSaysSo()
+    {
+        // the row is there and not dropped, but offers no text: that is a text not read, never a text deleted
+        WithSealedJob();
+        AIService.GetJobRowAsync(JobId, LetterKey).Returns(new RecordRowText(LetterKey, "deliverable", LetterRow, null, false));
+
+        var page = Open();
+        page.Find("fluent-button.history31-verify").Click();
+
+        page.WaitForAssertion(() => Assert.Equal(
+            HistorySentences31.RecordNotChecked("the text of 'Patient letter'"), page.Find(".history31-verify-error").TextContent.Trim()));
+        Assert.DoesNotContain(RecordCheck31.TextDeleted, page.Markup);
+        Assert.Empty(page.FindAll(".history31-verified--ok"));
+    }
+
     // ----- rerun, the rows' listing, and the 5–30 page -----
 
     [Fact]
@@ -461,6 +595,21 @@ public class History31PageTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ARunningJob_IsListedAgain_OnlyWhenItsRowCountMoves()
+    {
+        // the load and three polls at 5 rows, then 7 rows from the fifth answer on: one listing, then one more
+        var at5 = Header("Running") with { StartedAtUtc = Now.AddMinutes(-5), Rows = 5 };
+        var at7 = at5 with { Rows = 7 };
+        With31(at5);
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(at5, at5, at5, at5, at7);
+
+        var page = Open(TimeSpan.FromMilliseconds(20));
+
+        page.WaitForAssertion(() => Assert.True(FetchesOf(JobId) >= 8), Settle);
+        Assert.Equal(2, RowListings());
+    }
+
+    [Fact]
     public void A30Job_RendersExactlyAsBefore()
     {
         With31(Header() with { SchemaVersion = 11, PackageSpecVersion = 30, ResolveHash = null, LockHash = null, Limits = null, WorkflowOutputHash = "bbbb" });
@@ -483,7 +632,7 @@ public class History31PageTests : ClientRenderTestContext
 
         var page = Open();
 
-        Assert.NotEmpty(page.FindAll(".history31-package"));
+        Assert.NotEmpty(page.FindAll(".history31-header"));
         Assert.Equal("The record isn't available yet. Try again.", page.Find(".history31-rows-error").TextContent.Trim());
         Assert.Empty(page.FindAll(".history31-section"));
         Assert.Empty(page.FindAll(".history31-banner"));

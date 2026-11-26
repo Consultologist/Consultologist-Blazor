@@ -93,6 +93,27 @@
 	color: var(--consultologist-text-muted);
 }
 
+/* #1509 (R7): a 31 job sending its deliverables — still in flight, like running. */
+.job-status-badge--delivering {
+	background: var(--consultologist-accent-soft);
+	color: var(--consultologist-accent);
+}
+
+/* #1509 (D9): a 31 job whose orchestration stopped before it finished — an error state. */
+.job-status-badge--stopped {
+	background: color-mix(in srgb, var(--consultologist-error) 14%, transparent);
+	color: var(--consultologist-error);
+}
+
+/* #1509 (D9): A12-001 beside the Stopped badge. */
+.job-status-note {
+	display: block;
+	margin-top: 0.25rem;
+	font-size: 0.8rem;
+	color: var(--consultologist-text-muted);
+	white-space: normal;
+}
+
 /* #820: the cancel-run action now renders through the shared ConfirmButton, a
    child component that carries no History scope attribute, so reach it (and the
    sibling reset/done/move buttons) with ::deep from the row's meta container. */

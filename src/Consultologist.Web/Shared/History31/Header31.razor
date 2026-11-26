@@ -3,25 +3,21 @@
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Provenance.V31
 @*
-    #1509 (Task 16; part 09 § 6.2, part 08 § 3): a storage 12 job's header. As today (the package, the contract, the engine,
-    the host, the input hash), plus the resolve and lock hashes beside the package, the operator's migration line (S09-004,
-    linking to the Editor, D10), the ten limits by their names, the versions that ran, the signature block by id, and the
-    record's hash. The status is the stored word, but "delivering" reads "Delivering…" (S09-019), and a job that is not
-    terminal long after it began reads "Stopped" with A12-001 (D9). Every value is the header's own.
+    #1509 (Task 16; part 09 § 6.2, part 08 § 3): what a storage 12 job's header holds beyond the lines both storage families
+    share (the page's chips, with the resolve and lock hashes beside the package, and its Provenance list): the operator's
+    migration line (S09-004, linking to the Editor, D10), the status, the times, the link to a rerun's source (D8), the
+    record's hash, the signature block by id, the tokens, the ten limits by their names and the versions that ran. The status
+    is the stored word, but "delivering" reads "Delivering…" (S09-019), and a job that is not terminal long after it began
+    reads "Stopped" with A12-001 (D9). Every value is the header's own.
 *@
 <div class="history31-header">
     <dl class="history31-header__list">
-        <dt>Package</dt>
-        <dd class="history31-package">
-            <span class="history31-package__ref">@(Detail.PackageTitle is { Length: > 0 } title && Detail.WorkflowPackage != null ? $"{title} · {Detail.WorkflowPackage}" : Detail.WorkflowPackage ?? "—")</span>
-            <span class="history31-hash-label">resolve</span> <code class="hash-text history31-resolve-hash">@(Detail.ResolveHash ?? "—")</code>
-            <span class="history31-hash-label">lock</span> <code class="hash-text history31-lock-hash">@(Detail.LockHash ?? "—")</code>
-            @if (Content?.MigratedFrom is { Length: > 0 } oldVersion)
-            {
-                @* D10: the Editor's 31 view of this version shows the report's compared texts and hand edits *@
-                <a class="history31-migrated" href="/editor">@HistorySentences31.MigratedFrom(oldVersion)</a>
-            }
-        </dd>
+        @if (Content?.MigratedFrom is { Length: > 0 } oldVersion)
+        {
+            @* D10: the Editor's 31 view of this version shows the report's compared texts and hand edits *@
+            <dt>Version</dt>
+            <dd><a class="history31-migrated" href="/editor">@HistorySentences31.MigratedFrom(oldVersion)</a></dd>
+        }
 
         <dt>Status</dt>
         <dd>
@@ -50,43 +46,14 @@
             <dd><a class="history31-rerun-of" href="/history/@source">@(source.Length > 8 ? source[..8] + "…" : source)</a></dd>
         }
 
-        <dt>Record</dt>
-        <dd class="history31-record">
-            <span>storage @(Detail.SchemaVersion?.ToString(CultureInfo.InvariantCulture) ?? "—")</span>
-            · <span class="history31-hash-label">recordHash</span> <code class="hash-text history31-record-hash">@(Detail.RecordHash ?? "—")</code>
-        </dd>
-
-        <dt>Input hash</dt>
-        <dd class="hash-text">@(Detail.EffectiveInputHash ?? "—")@(Detail.EffectiveInputHashVersion is { } inputHashVersion ? $" (definition {inputHashVersion})" : "")</dd>
-
-        @if (Detail.HeldInputs is { Count: > 0 } heldInputs)
-        {
-            <dt>Inputs (held)</dt>
-            <dd class="provenance-held-inputs">
-                @foreach (var held in heldInputs)
-                {
-                    <details class="held-input">
-                        <summary><code>@held.Key</code>@(held.Value.Length == 0 ? " — (empty)" : "")</summary>
-                        @if (held.Value.Length > 0)
-                        {
-                            <pre class="held-input__value">@held.Value</pre>
-                        }
-                    </details>
-                }
-            </dd>
-        }
+        <dt>Record hash</dt>
+        <dd><code class="hash-text history31-record-hash">@(Detail.RecordHash ?? "—")</code></dd>
 
         @if (Detail.SignatureBlockId is { Length: > 0 } signature)
         {
             <dt>Signature</dt>
             <dd class="history31-signature"><code>@signature</code>@(Detail.SignatureChosen is { Length: > 0 } chosen ? $" ({chosen})" : "")</dd>
         }
-
-        <dt>Contract</dt>
-        <dd>@(Detail.ProvenanceRef ?? "—")</dd>
-
-        <dt>Engine</dt>
-        <dd>@(Detail.EngineRelease is { Length: > 0 } release ? release : Detail.EngineCommit is { Length: >= 7 } commit ? commit[..7] : "—")@(Detail.ApiHost is { Length: > 0 } host ? $" · {host}" : "")</dd>
 
         @if (Detail.Tokens is { } tokens)
         {
@@ -112,7 +79,7 @@
             <dt>Versions that ran</dt>
             <dd>
                 <details class="history31-versions">
-                    <summary>@Flatten(versionsRan).Count() versions</summary>
+                    <summary>@VersionsCount(versionsRan)</summary>
                     <ul>
                         @foreach (var (path, value) in Flatten(versionsRan))
                         {
@@ -148,9 +115,10 @@
         "deliveryAttempts", "loopItems", "jobAgentCalls", "jobInstances", "renderSteps",
     ];
 
-    private string StatusText => Stopped
-        ? "Stopped"
-        : string.Equals(Detail.Status, "delivering", StringComparison.Ordinal) ? HistorySentences31.Delivering : Detail.Status;
+    private string StatusText => Stopped ? "Stopped" : HistorySentences31.StatusText(Detail.Status);
+
+    private static string VersionsCount(JsonObject versionsRan) =>
+        Flatten(versionsRan).Count() is var count && count == 1 ? "1 version" : $"{count} versions";
 
     private static string When(DateTimeOffset? at) =>
         at is { } value ? value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture) : "—";

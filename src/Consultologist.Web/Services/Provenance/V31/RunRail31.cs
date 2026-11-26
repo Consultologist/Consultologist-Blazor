@@ -28,7 +28,7 @@ public sealed record RailChild31(string Key, string Label, string? Status);
 public static class RunRail31
 {
     /// <summary>S09-019: the one status shown in words other than its stored word.</summary>
-    public const string Delivering = "Delivering…";
+    public const string Delivering = HistorySentences31.Delivering;
 
     public static IReadOnlyList<RailBlock31> Build(
         IReadOnlyList<WorkflowPackageBlockResponse> blocks, IReadOnlyCollection<RowFinished> finished, string? currentKey)
@@ -67,8 +67,7 @@ public static class RunRail31
     }
 
     /// <summary>The job's status as shown: the stored word, but <c>delivering</c> reads "Delivering…" (S09-019).</summary>
-    public static string StatusText(string status) =>
-        string.Equals(status, "delivering", StringComparison.Ordinal) ? Delivering : status;
+    public static string StatusText(string status) => HistorySentences31.StatusText(status);
 
     /// <summary>
     /// A listed row's status as <c>row-finished</c> carries it: a deliverable's <c>state</c>, a delivery's <c>result</c>,

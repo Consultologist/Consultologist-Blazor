@@ -55,4 +55,12 @@ public class HistorySentences31Tests
     [Fact]
     public void ComputedFromModelText_ListsTheReads() =>
         Assert.Equal("computed from model text: node.draft", HistorySentences31.ComputedFromModelText(["node.draft"]));
+
+    [Theory]
+    [InlineData("delivering", "Delivering…")]
+    [InlineData("Completed", "Completed")]
+    [InlineData("Waiting for an update to finish", "Waiting for an update to finish")]
+    [InlineData("Delivering", "Delivering")]
+    public void AStatus_IsItsStoredWord_ButDelivering(string stored, string shown) =>
+        Assert.Equal(shown, HistorySentences31.StatusText(stored));
 }

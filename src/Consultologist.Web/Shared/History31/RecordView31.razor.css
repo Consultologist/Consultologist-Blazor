@@ -19,15 +19,6 @@
     overflow-wrap: anywhere;
 }
 
-.history31 ::deep .history31-hash-label {
-    color: var(--neutral-foreground-hint, #616161);
-    margin-left: 0.5rem;
-}
-
-.history31 ::deep .history31-migrated {
-    display: block;
-}
-
 .history31 ::deep .history31-stopped {
     display: block;
     color: var(--error, #b00020);

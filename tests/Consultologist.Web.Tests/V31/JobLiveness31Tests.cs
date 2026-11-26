@@ -32,4 +32,15 @@ public class JobLiveness31Tests
 
     [Fact]
     public void TheLimit_IsSixtyMinutes() => Assert.Equal(60, JobLiveness31.StoppedAfterMinutes);
+
+    [Theory]
+    [InlineData("Completed", true)]
+    [InlineData("Failed", true)]
+    [InlineData("Cancelled", true)]
+    [InlineData("Running", false)]
+    [InlineData("delivering", false)]
+    [InlineData("Waiting for an update to finish", false)]
+    [InlineData(null, false)]
+    public void TheTerminalStatuses_AreCompletedFailedAndCancelled(string? status, bool terminal) =>
+        Assert.Equal(terminal, JobLiveness31.IsTerminal(status));
 }

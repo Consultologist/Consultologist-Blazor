@@ -129,7 +129,7 @@
                             else
                             {
                                 <span class="job-status-badge job-status-badge--@context.Status.ToLowerInvariant()">
-                                    @(context.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(context.FailedAtStart, context.DecisionFailureKind) ?? StatusWord(context.Status))
+                                    @(context.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(context.FailedAtStart, context.DecisionFailureKind) ?? HistorySentences31.StatusText(context.Status))
                                 </span>
                             }
                             @if (context.Source == "email")
@@ -270,6 +270,15 @@
                                                     ? $"{packageTitle} · {detail.WorkflowPackage}"
                                                     : detail.WorkflowPackage ?? "—")
                                             </span>
+                                            @* #1509 (part 09 § 6.2): a 31 job's resolve and lock hashes, beside the package (null below 31). *@
+                                            @if (detail.ResolveHash is { Length: > 0 } resolveHash)
+                                            {
+                                                <span class="provenance-chip history31-resolve-hash" title="The SHA-256 of the resolve.json this job ran">resolve <code>@resolveHash</code></span>
+                                            }
+                                            @if (detail.LockHash is { Length: > 0 } lockHash)
+                                            {
+                                                <span class="provenance-chip history31-lock-hash" title="The SHA-256 of the lock.json this job ran">lock <code>@lockHash</code></span>
+                                            }
                                             <span class="provenance-chip" title="Output-contract catalog version this job ran under">
                                                 @(detail.CatalogRef ?? "catalog —")
                                             </span>
@@ -394,23 +403,6 @@
                                             </div>
                                         }
 
-                                        @* #1509 (Task 16; part 09 § 6.1): a storage 12 job is drawn from its record, in place of
-                                           the 5–30 provenance list, the rerun comparison (D8) and the node grid. *@
-                                        @if (IsStorage12(detail))
-                                        {
-                                            @if (_records.TryGetValue(detail.JobId, out var record31) && _rowTexts.TryGetValue(detail.JobId, out var texts31))
-                                            {
-                                                <RecordView31 Detail="@detail" Record="@record31" Texts="@texts31"
-                                                              Content="@_contents.GetValueOrDefault(detail.JobId)"
-                                                              RowsError="@_recordErrors.GetValueOrDefault(detail.JobId)" />
-                                            }
-                                            else
-                                            {
-                                                <SkeletonText Lines="4" />
-                                            }
-                                        }
-                                        else
-                                        {
                                         <details class="job-detail-section">
                                             <summary class="muted-text">Provenance</summary>
                                             @* #402: recompute the deliverable hashes from the texts this
@@ -418,7 +410,7 @@
                                                the inputs and the per-node hashes need the rendered prompts;
                                                a record carries neither, so those are the script's
                                                (scripts/verify-job-hashes.cs), not this button's. *@
-                                            @if (detail.WorkflowOutputHash != null)
+                                            @if (detail.WorkflowOutputHash != null && !IsStorage12(detail))
                                             {
                                                 <div class="provenance-verify">
                                                     @* #685: what a match actually proves, in plain language. *@
@@ -450,13 +442,14 @@
                                                    it — the version to read every number below by. *@
                                                 @* v10 (#496): the boundary — when the fire set was decided, and what
                                                    the classifiers answered (declared values, printable). *@
-                                                @if (detail.Classifications is { Count: > 0 } || (detail.Deciding == true && detail.DecidedAtUtc != null))
+                                                @* #1509: the lines below guarded by !IsStorage12 are 5–30's own; a 31 job's record says them in its sections. *@
+                                                @if (!IsStorage12(detail) && (detail.Classifications is { Count: > 0 } || (detail.Deciding == true && detail.DecidedAtUtc != null)))
                                                 {
                                                     <dt>Decided</dt>
                                                     <dd class="provenance-decided">@(detail.DecidedAtUtc is { } decidedAt ? FormatDate(decidedAt) : "at start")@(detail.Classifications is { Count: > 0 } ? " — " + DecisionState.Describe(detail.Classifications) : "")</dd>
                                                 }
                                                 @* #486: the completion email, as the record has it. *@
-                                                @if (DeliveryState.Describe(detail.DeliveryOutcome, detail.DeliveryDocumentAttached) is { } deliveryText)
+                                                @if (!IsStorage12(detail) && DeliveryState.Describe(detail.DeliveryOutcome, detail.DeliveryDocumentAttached) is { } deliveryText)
                                                 {
                                                     <dt>Delivered</dt>
                                                     <dd class="provenance-delivery">@(detail.DeliveredAtUtc is { } deliveredAt ? FormatDate(deliveredAt) + " — " : "")@deliveryText</dd>
@@ -525,7 +518,7 @@
                                                    the server read from a document appear — an absent
                                                    entry means nothing was recorded, not that the
                                                    input was typed. *@
-                                                @foreach (var origin in detail.InputOrigins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
+                                                @foreach (var origin in IsStorage12(detail) ? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>() : detail.InputOrigins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
                                                 {
                                                     <dt class="provenance-list__nested">@origin.Key</dt>
                                                     <dd>
@@ -566,6 +559,8 @@
                                                         }
                                                     </dd>
                                                 }
+                                                @if (!IsStorage12(detail))
+                                                {
                                                 @if (detail.WorkflowOutputHash != null)
                                                 {
                                                     <dt>Output hash (@VersionRef(detail, detail.WorkflowOutputHashVersion, "hash-definitions.md", "workflow-output definition"))</dt>
@@ -637,6 +632,7 @@
                                                     <dt class="provenance-list__nested">@choice.Key</dt>
                                                     <dd class="macro-choice-row">@(choice.Value.Value ? "appended" : "omitted") — @(choice.Value.Origin == "chosen" ? "chosen for this run" : "the package's default")</dd>
                                                 }
+                                                }
                                                 @* #453: the package's tags as they were at the pinned
                                                    version — stamped on the record, shown for finding it. *@
                                                 @if (detail.PackageTags is { Count: > 0 } packageTags)
@@ -658,7 +654,7 @@
                                                 }
                                                 @* #933: each unattested node with its schema hash and the content-addressed
                                                    agent — the custom tier's provenance (#760), beside the attested agents. *@
-                                                @if (UnattestedNodes.Of(detail) is { Count: > 0 } unattestedRows)
+                                                @if (!IsStorage12(detail) && UnattestedNodes.Of(detail) is { Count: > 0 } unattestedRows)
                                                 {
                                                     @if (unattestedRows.Values.Where(e => e.Kind == UnattestedNodes.UnattestedKind).ToList() is { Count: > 0 } unattestedOnly)
                                                     {
@@ -687,6 +683,23 @@
                                             </dl>
                                         </details>
 
+                                        @* #1509 (Task 16; part 09 § 6.1): a storage 12 job is drawn from its record below the lines
+                                           both storage families share, in place of the rerun comparison (D8) and the node grid. *@
+                                        @if (IsStorage12(detail))
+                                        {
+                                            @if (_records.TryGetValue(detail.JobId, out var record31) && _rowTexts.TryGetValue(detail.JobId, out var texts31))
+                                            {
+                                                <RecordView31 Detail="@detail" Record="@record31" Texts="@texts31"
+                                                              Content="@_contents.GetValueOrDefault(detail.JobId)"
+                                                              RowsError="@_recordErrors.GetValueOrDefault(detail.JobId)" />
+                                            }
+                                            else
+                                            {
+                                                <SkeletonText Lines="4" />
+                                            }
+                                        }
+                                        else
+                                        {
                                         @* #549: this record replays another — the per-stage table
                                            against the source. #582: the record's own stamped
                                            verdict renders above it; the table still guards over
@@ -1282,7 +1295,7 @@
     // #202: Cancelled belongs here or the poll loop never stops on a cancelled
     // row, and #367's link keeps offering to "watch live" a run that will not
     // happen.
-    private static bool IsTerminal(string status) => status is "Completed" or "Failed" or "Cancelled";
+    private static bool IsTerminal(string status) => JobLiveness31.IsTerminal(status);
 
     // #1326: a row the server answered 404 for — named "Not found", never polled again.
     private readonly HashSet<string> _goneJobIds = new(StringComparer.Ordinal);
@@ -1511,8 +1524,8 @@
                 }
 
                 // #1509 (R7, D9): a 31 job delivering is followed as closely; a 31 job shown as stopped is not.
-                var fastCadence = active.Any(job => job.Status is "Queued" or "Running" or ConsultDelivering && !IsStopped31(job));
-                await Task.Delay(fastCadence ? FastPollInterval : TimeSpan.FromSeconds(60), cts.Token);
+                var fastCadence = active.Any(job => job.Status is "Queued" or "Running" or JobLiveness31.DeliveringStatus && !IsStopped31(job));
+                await Task.Delay(fastCadence ? FastPollInterval : SlowPollInterval, cts.Token);
 
                 if (jobsLoading)
                 {
@@ -1521,8 +1534,15 @@
 
                 foreach (var job in active)
                 {
+                    // #1509 (D9): a stopped 31 job is asked at the slow rate only, whatever else keeps the poll fast
+                    if (fastCadence && IsStopped31(job) && Clock.GetUtcNow() - _lastPolled.GetValueOrDefault(job.JobId) < SlowPollInterval)
+                    {
+                        continue;
+                    }
+
                     try
                     {
+                        _lastPolled[job.JobId] = Clock.GetUtcNow();
                         var detail = await AIService.GetConsultGenerationJobAsync(job.JobId);
                         var index = jobs.FindIndex(row => row.JobId == job.JobId);
 
@@ -1949,8 +1969,11 @@
 
     // ----- #1509 (Task 16): a storage 12 job's record -----
 
-    /// <summary>The status a 31 job holds while it delivers (part 09 § 3.8); shown as "Delivering…" (S09-019).</summary>
-    private const string ConsultDelivering = "delivering";
+    /// <summary>How often a job no row keeps fast is re-read (a Scheduled one, a stopped 31 one).</summary>
+    private static readonly TimeSpan SlowPollInterval = TimeSpan.FromSeconds(60);
+
+    // When each job was last fetched, by the page's clock; a stopped 31 job is not asked again sooner than the slow rate.
+    private readonly Dictionary<string, DateTimeOffset> _lastPolled = new(StringComparer.Ordinal);
 
     // The rows of each loaded 31 job as listed, the record sorted from them, the job's Rows count at that listing, the
     // per-view row fetches, the listing's failure in the route's words, and the job's package content (for D10's line).
@@ -1966,10 +1989,6 @@
 
     private static bool IsStorage12(ConsultGenerationJobResponse detail) => detail.SchemaVersion >= 12;
 
-    /// <summary>One vocabulary (R6): the stored word, but "delivering" reads "Delivering…".</summary>
-    private static string StatusWord(string status) =>
-        string.Equals(status, ConsultDelivering, StringComparison.Ordinal) ? HistorySentences31.Delivering : status;
-
     private bool IsStopped31(AccountJobSummaryResponse job) =>
         _storage12.Contains(job.JobId) && JobLiveness31.IsStopped(job.Status, job.StartedAtUtc, Clock.GetUtcNow());
 
@@ -1977,6 +1996,7 @@
     private async Task LoadRecord31Async(ConsultGenerationJobResponse detail)
     {
         _storage12.Add(detail.JobId);
+        _lastPolled[detail.JobId] = Clock.GetUtcNow();
         _rowTexts[detail.JobId] = new RowText31(AIService, detail.JobId);
         await ListRows31Async(detail);
 
