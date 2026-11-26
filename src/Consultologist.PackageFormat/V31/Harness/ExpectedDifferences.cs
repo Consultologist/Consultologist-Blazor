@@ -99,9 +99,10 @@ public static class ExpectedDifferences
         },
         new("flag-becomes-retry",
             "#1508, comment 5, item 3, ruled by the owner on 2026-11-25 (onInvalid: flag becomes retry); comment 6, item 3; part 05 § 1.2; part 10 §§ 1.2, 3.2",
-            "a node that declared onInvalid: flag kept a reply that did not fit its format at 30, and the job ran on; at 31 the node asks once more with the validation error, then fails, so its prompt is the retry's, the job fails, and a text only 30 has is what 30 ran on the kept reply")
+            "a node that declared onInvalid: flag kept a reply that did not fit its format at 30, and the job ran on; at 31 the node asks once more with the validation error, then fails, so its prompt ends with the retry's text, the job fails, and a text only 30 has is what 30 ran on the kept reply")
         {
             Case = FlagRetried,
+            Bytes = RetryText,
         },
         new("reply-never-a-template",
             "#1508, comment 5, item 7, #5, ruled by the owner on 2026-11-25; part 05 § 1; part 10 § 3.2",
@@ -1236,7 +1237,14 @@ public static class ExpectedDifferences
     /// </summary>
     private static bool FormatRefusedAlike(RunRow row, string key30, string? failure) =>
         SourceLayout.Text(row.Detail["invalid"]?["action"]) == "fail" && failure is not null
+        && SourceLayout.Text(row.Detail["invalid"]?["reason"]) is { } reason && reason.Contains(FormatRefusal, StringComparison.Ordinal)
         && failure.Contains($"Node '{NodeOf30(key30)}' reply does not conform to format", StringComparison.Ordinal);
+
+    /// <summary>What 31's runner says of a reply its format refused (<c>Node '&lt;id&gt;' gave a reply that isn't &lt;format&gt;</c>), never a marker fault.</summary>
+    private const string FormatRefusal = "' gave a reply that isn't ";
+
+    /// <summary>The text <c>AgentTurn</c> appends, after two newlines, to the prompt of a call that asks again after a reply that did not fit its format.</summary>
+    private const string RetryAsk = "\n\nYour last reply could not be used: it did not fit the required format. Write the reply again.";
 
     /// <summary>A 30 instance key's node id: the key before its first <c>:</c>.</summary>
     private static string NodeOf30(string key30) => key30.IndexOf(':', StringComparison.Ordinal) is var colon and >= 0 ? key30[..colon] : key30;
@@ -1245,21 +1253,39 @@ public static class ExpectedDifferences
     /// #1508 (comment 5, item 3; comment 6, item 3): 30 completed and 31 failed, at an agent row that asked again
     /// under <c>onInvalid: retry</c> (its row's <c>invalid</c>: action <c>retry</c>, two attempts) and failed, whose 30 node the
     /// migration turned from <c>onInvalid: flag</c> (<see cref="MigrationSentences.FlagBecomesRetry"/> among its notices): the
-    /// status, that row's own prompt (31's is the retry's, with the validation error), and each text only 30 has.
+    /// status and each text only 30 has; the retried prompt's own retry text is <see cref="RetryText"/>'s.
     /// </summary>
     private static bool FlagRetried(DifferenceContext c)
     {
-        if (SourceLayout.Text(c.Capture30["status"]) != nameof(RunState.Completed) || c.Run31.State != RunState.Failed)
-            return false;
-        var retried = c.Run31.Rows.Where(r => r.State == RowState.Failed && r.Kind == PlanKind.Agent
-            && SourceLayout.Text(r.Detail["invalid"]?["action"]) == "retry" && (int?)(r.Detail["invalid"]?["attempts"] as JsonValue) == 2
-            && KeyMap.To30(r.Key, c.Migrated, c.Plan) is { } key30
-            && c.Migrated.Notices.Contains(MigrationSentences.FlagBecomesRetry(NodeOf30(key30)), StringComparer.Ordinal)).ToList();
+        var retried = FlagRetriedRows(c);
         return retried.Count > 0
             && (IsStatus(c, nameof(RunState.Completed), nameof(RunState.Failed))
-                || (c.Kind == ComparedKind.Prompt && c.OldText is not null && c.NewText is not null && retried.Any(r => r.Key == c.Key31))
                 || (c.Kind != ComparedKind.Status && c.OldText is not null && c.NewText is null));
     }
+
+    /// <summary>
+    /// #1508 (R19): the retried row's own prompt (<see cref="FlagRetried"/>'s rows) with the retry's text taken off its end, and
+    /// the trailing white space <c>AgentTurn</c> trimmed before it put back as 30's text has it; every other difference is
+    /// left for the rules after this one (31 sends the format's description, say).
+    /// </summary>
+    private static (string Old, string New)? RetryText(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind != ComparedKind.Prompt || !now.EndsWith(RetryAsk, StringComparison.Ordinal) || !FlagRetriedRows(c).Any(r => r.Key == c.Key31))
+            return null;
+        return (old, now[..^RetryAsk.Length] + old[old.TrimEnd().Length..]);
+    }
+
+    /// <summary>
+    /// The agent rows of a job 30 completed and 31 failed that asked again under <c>onInvalid: retry</c> (the row's
+    /// <c>invalid</c>: action <c>retry</c>, two attempts) and failed, each a node the migration turned from <c>onInvalid: flag</c>.
+    /// </summary>
+    private static List<RunRow> FlagRetriedRows(DifferenceContext c) =>
+        SourceLayout.Text(c.Capture30["status"]) != nameof(RunState.Completed) || c.Run31.State != RunState.Failed
+            ? []
+            : [.. c.Run31.Rows.Where(r => r.State == RowState.Failed && r.Kind == PlanKind.Agent
+                && SourceLayout.Text(r.Detail["invalid"]?["action"]) == "retry" && (int?)(r.Detail["invalid"]?["attempts"] as JsonValue) == 2
+                && KeyMap.To30(r.Key, c.Migrated, c.Plan) is { } key30
+                && c.Migrated.Notices.Contains(MigrationSentences.FlagBecomesRetry(NodeOf30(key30)), StringComparer.Ordinal))];
 
     /// <summary>
     /// #5: 30 failed the job because a node's reply did not render as a template (<c>Node '&lt;id&gt;' reply failed to

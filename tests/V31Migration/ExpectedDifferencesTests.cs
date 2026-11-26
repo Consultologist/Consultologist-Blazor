@@ -484,7 +484,8 @@ public class ExpectedDifferencesTests
         // fail) and 31's enum refuses too; 30 stopped there, 31 had sent the problem prompts beside it.
         var capture = Capture("Failed", "Is the referral routine? failed: Node 'triage' reply does not conform to format 'classification' (onInvalid: fail): Classifier 'triage' answered outside its values.");
         capture["outputs"]!["triage"] = JsonNode.Parse("""{ "value": "soon" }""");
-        JsonObject Invalid(string action) => new() { ["invalid"] = new JsonObject { ["reason"] = "Node 'triage' gave a reply that isn't triage_answer.", ["action"] = action, ["attempts"] = 1 } };
+        JsonObject Invalid(string action, string reason = "Node 'triage' gave a reply that isn't triage_answer.") =>
+            new() { ["invalid"] = new JsonObject { ["reason"] = reason, ["action"] = action, ["attempts"] = 1 } };
         var failed = Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "Node 'triage' gave a reply that isn't triage_answer.", Invalid("fail"))]);
         DifferenceContext Outside(OfflineResult run, JsonObject captured, string? old = null) =>
             Context(ComparedKind.Prompt, old, "Write one paragraph.", "edge-answer-outside-set", "answer-outside-set", captured, run, key30: "problem_draft:0", key31: "node.problem_loop.problem_draft:1");
@@ -493,6 +494,8 @@ public class ExpectedDifferencesTests
         // Near: a text both sides have; 31's row failed another way (no invalid reply); 30 failed on another node; 30 holds no reply.
         Assert.Null(ExpectedDifferences.Explain(Outside(failed, capture, old: "Write one paragraph!")));
         Assert.Null(ExpectedDifferences.Explain(Outside(Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "The call could not be made.")]), capture)));
+        // Nor a reply 31 refused for its markers (S05-053's short form), not its format.
+        Assert.Null(ExpectedDifferences.Explain(Outside(Run(RunState.Failed, rows: [Row("node.triage", PlanKind.Agent, RowState.Failed, "x", Invalid("fail", "macro follow_up: missing"))]), capture)));
         var other = (JsonObject)capture.DeepClone();
         other["failure"] = "Drafting a problem failed: Node 'problem_draft' reply does not conform to format 'prose' (onInvalid: fail).";
         Assert.Null(ExpectedDifferences.Explain(Outside(failed, other)));
@@ -514,7 +517,13 @@ public class ExpectedDifferencesTests
             Context(kind, old, now, "edge-flag", "reply-does-not-fit", captured ?? capture, run, migrated, key30, key31);
 
         Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Status, "Completed", "Failed", null, null, Failed())));
-        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Prompt, "Summarise.", "Summarise.\n\nYour last reply could not be used.", "summary", "node.summary", Failed())));
+        // The retried prompt: only the retry's text is this rule's (R19), so a difference beside it is left to the other rules.
+        const string Retry = "\n\nYour last reply could not be used: it did not fit the required format. Write the reply again.";
+        Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Prompt, "Summarise.\n", "Summarise." + Retry, "summary", "node.summary", Failed())));
+        var beside = ExpectedDifferences.Credit(Flag(ComparedKind.Prompt, "Summarise.\n", "Summarise!" + Retry, "summary", "node.summary", Failed()));
+        Assert.Equal(["flag-becomes-retry"], beside.Rules.Select(r => r.Id));
+        Assert.True(beside.Unexplained);
+        Assert.Null(ExpectedDifferences.Explain(Flag(ComparedKind.Prompt, "Summarise.\n", "Summarise.\n\nAgain.", "summary", "node.summary", Failed())));
         Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Prompt, "Write one paragraph.", null, "problem_draft:0", "node.problem_loop.problem_draft:1", Failed())));
         Assert.StartsWith("flag-becomes-retry: ", Explain(Flag(ComparedKind.Deliverable, "## Problem list 1", null, null, "deliverable.note", Failed())));
 
