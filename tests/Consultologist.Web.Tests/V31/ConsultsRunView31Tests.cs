@@ -252,6 +252,131 @@ public class ConsultsRunView31Tests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".run31-deliverable .note-preview"));
     }
 
+    private const string NotAvailable = "The record isn't available yet. Try again.";
+
+    private static RecordRowText NoText() =>
+        new("deliverable.note", "deliverable", Json("""{"key":"deliverable.note","label":"Note","state":"released","composedHash":"sha256:1"}"""), null, false);
+
+    [Fact]
+    public void ADeliverableRowNotFound_SaysSo_AndIsAskedAgainOnDone()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns((RecordRowText?)null, Released(NoteText));
+        Stream(RowFinished("deliverable.note", "deliverable", "released"), Done(Job31("Completed")));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Contains(NoteText, page.Find(".run31-deliverable[data-key='deliverable.note']").TextContent), Settle);
+        AIService.Received(2).GetJobRowAsync(JobId, "deliverable.note");
+    }
+
+    [Fact]
+    public void ADeliverableRowNotFound_IsSaidInTheRoutesWords_NotLeftLoading()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns((RecordRowText?)null);
+        Stream(RowFinished("deliverable.note", "deliverable", "released"));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Equal(NotAvailable, page.Find(".run31-deliverable__error").TextContent.Trim()), Settle);
+        Assert.DoesNotContain("Loading", page.Find(".run31-deliverable[data-key='deliverable.note']").TextContent);
+    }
+
+    [Fact]
+    public void AFetchThatThrows_SaysTheRoutesSentence()
+    {
+        const string routeSaid = "Consult generation job was not found.";
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        AIService.GetJobRowAsync(JobId, "deliverable.note")
+            .Returns(Task.FromException<RecordRowText?>(new ConsultGenerationRefusedException(System.Net.HttpStatusCode.InternalServerError, routeSaid)));
+        Stream(RowFinished("deliverable.note", "deliverable", "released"));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Equal(routeSaid, page.Find(".run31-deliverable__error").TextContent.Trim()), Settle);
+    }
+
+    [Fact]
+    public void AFetchThatThrows_IsAskedAgainOnDone()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        var calls = 0;
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns(_ => ++calls == 1
+            ? Task.FromException<RecordRowText?>(new HttpRequestException("Azure Function call failed: BadGateway"))
+            : Task.FromResult<RecordRowText?>(Released(NoteText)));
+        Stream(RowFinished("deliverable.note", "deliverable", "released"), Done(Job31("Completed")));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Contains(NoteText, page.Find(".run31-deliverable[data-key='deliverable.note']").TextContent), Settle);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public void TextNotYetWritten_IsFetchedAgainOnDone()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns(NoText(), Released(NoteText));
+        Stream(RowFinished("deliverable.note", "deliverable", "released"), Done(Job31("Completed")));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Contains(NoteText, page.Find(".run31-deliverable[data-key='deliverable.note']").TextContent), Settle);
+        AIService.Received(2).GetJobRowAsync(JobId, "deliverable.note");
+    }
+
+    [Fact]
+    public void AReleasedDeliverable_CanBeCopied()
+    {
+        Pin31();
+        JSInterop.SetupVoid("navigator.clipboard.writeText", _ => true).SetVoidResult();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Completed"));
+        AIService.GetJobRowsAsync(JobId).Returns([Listed("deliverable.note", "deliverable", """{"key":"deliverable.note","state":"released"}""")]);
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns(Released(NoteText));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Equal("Copy note", page.Find(".run31-deliverable[data-key='deliverable.note'] fluent-button.run31-copy").TextContent.Trim()), Settle);
+        page.Find("fluent-button.run31-copy").Click();
+
+        Assert.Equal(NoteText, JSInterop.Invocations["navigator.clipboard.writeText"].Last().Arguments[0] as string);
+        page.WaitForAssertion(() => Assert.Equal("Copied ✓", page.Find("fluent-button.run31-copy").TextContent.Trim()), Settle);
+    }
+
+    [Fact]
+    public void NoCopy_ForAnyOtherState()
+    {
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Completed"));
+        AIService.GetJobRowsAsync(JobId).Returns(
+        [
+            Listed("deliverable.a", "deliverable", """{"state":"blocked"}"""),
+            Listed("deliverable.b", "deliverable", """{"state":"held"}"""),
+            Listed("deliverable.c", "deliverable", """{"state":"failed"}"""),
+            Listed("deliverable.d", "deliverable", """{"state":"skipped"}"""),
+            Listed("deliverable.e", "deliverable", """{"state":"released"}"""),
+        ]);
+        AIService.GetJobRowAsync(JobId, Arg.Any<string>()).Returns(Released(NoteText));
+        AIService.GetJobRowAsync(JobId, "deliverable.e").Returns(new RecordRowText(
+            "deliverable.e", "deliverable", Json("""{"state":"released","composedHash":"sha256:9f2c"}"""), null, true));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Equal(5, page.FindAll(".run31-deliverable").Count);
+            Assert.NotEmpty(page.FindAll(".run31-deliverable[data-key='deliverable.e'] .run31-deliverable__deleted"));
+        }, Settle);
+        Assert.Empty(page.FindAll(".run31-copy"));
+        Assert.DoesNotContain(NoteText, page.Markup);
+    }
+
     [Fact]
     public void A30Job_UsesTodaysRunView()
     {

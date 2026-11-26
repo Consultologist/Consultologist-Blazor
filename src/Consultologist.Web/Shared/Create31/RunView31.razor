@@ -30,13 +30,16 @@
                 }
                 else if (string.Equals(deliverable.Status, "released", StringComparison.Ordinal))
                 {
-                    @if (TextErrors.GetValueOrDefault(deliverable.Key) is { } failure)
+                    @if (fetched is null)
                     {
-                        <p class="run31-deliverable__error">@failure</p>
-                    }
-                    else if (fetched is null)
-                    {
-                        <LoadingState>Loading&hellip;</LoadingState>
+                        @if (TextErrors.GetValueOrDefault(deliverable.Key) is { } failure)
+                        {
+                            <p class="run31-deliverable__error">@failure</p>
+                        }
+                        else
+                        {
+                            <LoadingState>Loading&hellip;</LoadingState>
+                        }
                     }
                     else if (fetched.TextDeleted)
                     {
@@ -48,6 +51,12 @@
                     }
                     else if (Content(fetched) is { } content)
                     {
+                        @* the 5–30 view's Copy note, for a released text only *@
+                        <div class="result-header__actions">
+                            <FluentButton Appearance="Appearance.Accent" Class="run31-copy" @onclick="() => OnCopy.InvokeAsync(deliverable.Key)">
+                                @CopyLabel(deliverable.Key)
+                            </FluentButton>
+                        </div>
                         @if (string.Equals(Member(fetched.Row, "format"), "markdown_block", StringComparison.Ordinal))
                         {
                             <article class="note-preview generated-note">@((MarkupString)MarkdownPreview.Render(content))</article>
@@ -140,6 +149,12 @@
     /// <summary>A released deliverable whose row could not be fetched, by key: the sentence the route answered.</summary>
     [Parameter] public IReadOnlyDictionary<string, string> TextErrors { get; set; } = new Dictionary<string, string>();
 
+    /// <summary>The Copy button's label for a deliverable key ("Copy note", or the page's transient feedback).</summary>
+    [Parameter] public Func<string, string> CopyLabel { get; set; } = _ => "Copy note";
+
+    /// <summary>Copies the released deliverable with this key; the page owns the clipboard call and its feedback.</summary>
+    [Parameter] public EventCallback<string> OnCopy { get; set; }
+
     [Parameter] public bool InFlight { get; set; }
 
     [Parameter] public string Heading { get; set; } = "Documents";
@@ -148,7 +163,7 @@
 
     private IReadOnlyList<RowFinished> Deliverables => Finished
         .Where(row => string.Equals(row.Section, "deliverable", StringComparison.Ordinal))
-        .OrderBy(row => row.Key, StringComparer.Ordinal)
+        .OrderBy(row => row.Key, RowKeyOrder31.Instance)
         .ToList();
 
     private string LabelOf(string key, RecordRowText? fetched) =>

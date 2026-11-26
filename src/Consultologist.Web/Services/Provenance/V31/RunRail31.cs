@@ -22,7 +22,7 @@ public sealed record RailChild31(string Key, string Label, string? Status);
 /// <summary>
 /// #1509 (Task 12, D15; part 09 § 4.2): the Create page's rail for a 31 job. The blocks are the package's <c>Blocks</c>,
 /// the top-level node keys (<c>node.plan</c>); each takes the stored status of its own row, and the rows keyed under it
-/// (<c>&lt;block&gt;.</c>, <c>&lt;block&gt;:</c> or <c>&lt;block&gt;#</c>) appear under it in key order. Check, deliverable and
+/// (<c>&lt;block&gt;.</c>, <c>&lt;block&gt;:</c> or <c>&lt;block&gt;#</c>) appear under it in key order as a person counts (<see cref="RowKeyOrder31"/>). Check, deliverable and
 /// delivery rows are never rail rows. Every status is the stored word (one vocabulary). Pure.
 /// </summary>
 public static class RunRail31
@@ -41,7 +41,7 @@ public static class RunRail31
         {
             string? status = null;
             var children = new List<RailChild31>();
-            foreach (var row in finished.OrderBy(row => row.Key, StringComparer.Ordinal))
+            foreach (var row in finished.OrderBy(row => row.Key, RowKeyOrder31.Instance))
             {
                 if (!string.Equals(row.Section, "node", StringComparison.Ordinal))
                 {

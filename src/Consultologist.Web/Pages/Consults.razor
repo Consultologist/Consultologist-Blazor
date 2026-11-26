@@ -843,6 +843,8 @@
                                    RowStates="latestRunResponse?.RowStates"
                                    Texts="deliverableRows31"
                                    TextErrors="deliverableErrors31"
+                                   CopyLabel="CopyLabel31"
+                                   OnCopy="CopyDeliverable31Async"
                                    InFlight="RunInFlight"
                                    Heading="@RunHeading" />
                     }
@@ -2027,7 +2029,7 @@
   private Dictionary<string, Consultologist.Web.Services.Provenance.V31.RowFinished> rowsFinished31 = new(StringComparer.Ordinal);
   private Dictionary<string, RecordRowText> deliverableRows31 = new(StringComparer.Ordinal);
   private Dictionary<string, string> deliverableErrors31 = new(StringComparer.Ordinal);
-  private HashSet<string> deliverablesAsked31 = new(StringComparer.Ordinal);
+  private Dictionary<string, Task> deliverableFetches31 = new(StringComparer.Ordinal);
 
   private void ResetRun31()
   {
@@ -2039,7 +2041,8 @@
     rowsFinished31 = new(StringComparer.Ordinal);
     deliverableRows31 = new(StringComparer.Ordinal);
     deliverableErrors31 = new(StringComparer.Ordinal);
-    deliverablesAsked31 = new(StringComparer.Ordinal);
+    deliverableFetches31 = new(StringComparer.Ordinal);
+    copiedKey31 = null;
   }
 
   /// <summary>One stored row, as row-finished announces it or the listing holds it; a decision is never a rail row.</summary>
@@ -2084,36 +2087,97 @@
   }
 
   /// <summary>
-  /// Each released deliverable's row and text, by its key, once. A blocked deliverable is never fetched: its text is
-  /// History's to show (R1), and the run view links there.
+  /// The Api's sentence for a record or row it cannot give yet (<c>RecordRoutes.NotAvailable</c>), said for a released
+  /// deliverable whose row was not found, whose text is not written yet, or whose fetch failed without the route's words.
   /// </summary>
-  private async Task FetchReleasedDeliverables31Async(string jobId)
+  private const string RowNotAvailable31 = "The record isn't available yet. Try again.";
+
+  /// <summary>
+  /// Starts a fetch of each released deliverable's row and text that is not yet held (its text, or its drop) and not in
+  /// flight; never awaited here, so the SSE handler is not held up. Each renders when it lands. A blocked deliverable is
+  /// never fetched: its text is History's to show (R1), and the run view links there.
+  /// </summary>
+  private void StartDeliverableFetches31(string jobId)
   {
-    var released = rowsFinished31.Values
-      .Where(row => row.Section == "deliverable" && row.Status == "released" && !deliverablesAsked31.Contains(row.Key))
+    var pending = rowsFinished31.Values
+      .Where(row => row.Section == "deliverable" && row.Status == "released"
+        && !deliverableRows31.ContainsKey(row.Key)
+        && !(deliverableFetches31.TryGetValue(row.Key, out var inFlight) && !inFlight.IsCompleted))
       .Select(row => row.Key)
       .ToList();
 
-    foreach (var key in released)
+    foreach (var key in pending)
     {
-      deliverablesAsked31.Add(key);
-      try
+      deliverableFetches31[key] = FetchDeliverable31Async(jobId, key);
+    }
+  }
+
+  /// <summary>
+  /// On a listing, a poll and <c>done</c>: waits for the fetches in flight, then asks again for any released deliverable
+  /// still without its text (not found, not yet written, or failed).
+  /// </summary>
+  private async Task FetchReleasedDeliverables31Async(string jobId)
+  {
+    await Task.WhenAll(deliverableFetches31.Values.ToList());
+    StartDeliverableFetches31(jobId);
+    await Task.WhenAll(deliverableFetches31.Values.ToList());
+  }
+
+  private async Task FetchDeliverable31Async(string jobId, string key)
+  {
+    try
+    {
+      var fetched = await AIService.GetJobRowAsync(jobId, key);
+      if (fetched is { TextDeleted: true } || (fetched is not null && Content31(fetched) is not null))
       {
-        if (await AIService.GetJobRowAsync(jobId, key) is { } fetched)
-        {
-          deliverableRows31[key] = fetched;
-        }
+        deliverableRows31[key] = fetched;
+        deliverableErrors31.Remove(key);
       }
-      catch (AccessTokenNotAvailableException exception)
+      else
       {
-        exception.Redirect();
-        return;
-      }
-      catch (Exception ex)
-      {
-        deliverableErrors31[key] = ex.Message;
+        deliverableErrors31[key] = RowNotAvailable31;
       }
     }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+      return;
+    }
+    catch (ConsultGenerationRefusedException refusal)
+    {
+      deliverableErrors31[key] = refusal.Message;
+    }
+    catch (Exception)
+    {
+      deliverableErrors31[key] = RowNotAvailable31;
+    }
+
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private static string? Content31(RecordRowText row) =>
+    row.Text is { ValueKind: JsonValueKind.Object } text
+      && text.TryGetProperty("content", out var content)
+      && content.ValueKind == JsonValueKind.String
+        ? content.GetString()
+        : null;
+
+  // The deliverable whose Copy was pressed last; its button carries the shared feedback (#768's words).
+  private string? copiedKey31;
+
+  private string CopyLabel31(string key) =>
+    key == copiedKey31 && copyFeedbackTarget == CopyTarget.Document && copyFeedback is not null ? copyFeedback : "Copy note";
+
+  /// <summary>Copies a released deliverable's text, as the 5–30 view's Copy note does; only a held text is offered.</summary>
+  private Task CopyDeliverable31Async(string key)
+  {
+    if (deliverableRows31.GetValueOrDefault(key) is not { TextDeleted: false } row || Content31(row) is not { } text)
+    {
+      return Task.CompletedTask;
+    }
+
+    copiedKey31 = key;
+    return CopyTextAsync(text, CopyTarget.Document);
   }
 
   [Parameter]
@@ -2968,6 +3032,11 @@
         {
           await LoadRows31Async(jobId);
         }
+        else if (IsRun31)
+        {
+          // a deliverable still without its text (not found, not yet written, failed) is asked again
+          await FetchReleasedDeliverables31Async(jobId);
+        }
 
         await InvokeAsync(StateHasChanged);
 
@@ -3041,7 +3110,7 @@
             currentKey31 = row.Key;
             if (lastAppliedJobId is { } rowJobId)
             {
-              await FetchReleasedDeliverables31Async(rowJobId);
+              StartDeliverableFetches31(rowJobId);
             }
           }
           break;
@@ -3149,6 +3218,13 @@
               final.FailedBlockCount);
 
             ApplyConsultGenerationJobResponse(final, GetActiveBlockSnapshots());
+
+            // #1509 (Task 12): the rows are listed once more, catching up a lost event, and a deliverable still
+            // without its text is asked again.
+            if (IsRun31)
+            {
+              await LoadRows31Async(final.JobId);
+            }
           }
 
           runTerminalStatus = final?.Status ?? "Completed";

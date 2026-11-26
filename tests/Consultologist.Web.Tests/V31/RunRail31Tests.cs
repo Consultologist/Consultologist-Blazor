@@ -43,22 +43,24 @@ public class RunRail31Tests
                 Node("node.sections.paragraphs.draft_paragraph:1/2", "Failed"),
                 Node("node.refine.judge#1", "Completed"),
                 Node("node.refine.sections#2:3", "Completed"),
+                Node("node.sections.paragraphs.draft_paragraph:10", "Completed"),
+                Node("node.sections.paragraphs.draft_paragraph:2/10", "Completed"),
+                Node("node.sections.paragraphs.draft_paragraph:9", "Completed"),
+                Node("node.sections.paragraphs.draft_paragraph:2/9", "Completed"),
+                Node("node.refine.judge#10", "Completed"),
+                Node("node.refine.judge#9", "Completed"),
             ],
             currentKey: null);
 
+        // key order as a person counts: the path's segments and the pass numbers compare as numbers
         var sections = rail.Single(block => block.Key == "node.sections");
-        Assert.Equal(
-            [
-                new RailChild31("node.sections.paragraphs.draft_paragraph:1/2", "1/2", "Failed"),
-                new RailChild31("node.sections.paragraphs.draft_paragraph:2/1", "2/1", "Completed"),
-            ],
-            sections.Children);
+        Assert.Equal(["1/2", "2/1", "2/9", "2/10", "9", "10"], sections.Children.Select(child => child.Label));
+        Assert.Equal(new RailChild31("node.sections.paragraphs.draft_paragraph:1/2", "1/2", "Failed"), sections.Children[0]);
         Assert.Null(sections.Status);
 
         var refine = rail.Single(block => block.Key == "node.refine");
-        // key order (ordinal, as the Rows listing gives it): judge#1, judge#3, then sections#2:3
-        Assert.Equal(["#1", "#3", "#2:3"], refine.Children.Select(child => child.Label));
-        Assert.Equal(["Completed", "NotRun", "Completed"], refine.Children.Select(child => child.Status));
+        Assert.Equal(["#1", "#3", "#9", "#10", "#2:3"], refine.Children.Select(child => child.Label));
+        Assert.Equal(["Completed", "NotRun", "Completed", "Completed", "Completed"], refine.Children.Select(child => child.Status));
         Assert.Empty(rail.Single(block => block.Key == "node.plan").Children);
     }
 
