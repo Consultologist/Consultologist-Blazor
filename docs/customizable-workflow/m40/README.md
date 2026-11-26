@@ -6,7 +6,8 @@ done **while Milestone 39 is being built**, and reconciled with what M39 actuall
 anything else.
 
 **Status (2026-11-21): set up, nothing planned yet.** Branch `m40-planning`, from `main` at
-`3b0e707a`, in its own clone (`~/Projects/Consultologist/app/M40`).
+`3b0e707a`, in its own clone (`~/Projects/Consultologist/app/M40`). Where the planning stands at the
+end of each session, and what the next one does first: [`SESSION-LOG.md`](SESSION-LOG.md).
 
 ## Scope
 
