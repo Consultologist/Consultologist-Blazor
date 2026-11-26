@@ -15,12 +15,14 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// </summary>
 public class MigrateLayoutTests
 {
-    /// <summary>The packages of the fixtures: area 01's vendored packages and its composer fixtures, and (#1508) the six edge cases.</summary>
+    /// <summary>The packages of the fixtures: area 01's vendored packages and its composer fixtures, and (#1508, Task 35) the edge-case packages.</summary>
     public static TheoryData<string> Packages() => new(
         "example-classifier-scope", "example-conditional-documents", "example-conditional-sections", "example-macros",
         "example-macros-warnings", "example-nested-note", "example-prior-letters", "example-problem-list",
         "example-structured-intake", "example-two-documents", "example-v12-constructs", "general", "test/general",
-        "composer-gates", "composer-macros", "composer-sources");
+        "composer-gates", "composer-macros", "composer-sources",
+        "edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace",
+        "edge-unset-object");
 
     private static readonly string[] Folders =
         ["nodes", "checks", "functions", "renderers", "snippets", "macros", "formats", "deliverables", "tests"];

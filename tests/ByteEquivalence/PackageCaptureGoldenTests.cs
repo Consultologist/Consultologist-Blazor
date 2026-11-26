@@ -77,10 +77,11 @@ public class PackageCaptureGoldenTests
 
     /// <summary>
     /// #1508 (area 11, Task 35; comment 6 item 3, ruled by the owner): one small package per edge case the review of area 10
-    /// found, each migrated and run offline with its capture's replies pinned (<c>EdgeCasePackagesTests</c>).
+    /// found, each migrated and run offline with its capture's replies pinned (<c>EdgeCasePackagesTests</c>); and (fix round 1)
+    /// <c>edge-unruled-whitespace</c>, which shows two differences no ruling covers.
     /// </summary>
     private static readonly string[] EdgeCasePackages =
-        ["edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unset-object"];
+        ["edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
 
     /// <summary>Every package under <c>fixture-packages/</c>.</summary>
     public static TheoryData<string> FixturePackages()
@@ -96,7 +97,7 @@ public class PackageCaptureGoldenTests
     }
 
     [Fact]
-    public void TheFixturePackages_AreTheThreeComposerPackages_AndTheSixEdgeCases()
+    public void TheFixturePackages_AreTheThreeComposerPackages_AndTheEdgeCases()
     {
         Assert.Equal([.. ComposerPackages, .. EdgeCasePackages], ByteEquivalenceFixtures.FixturePackages);
     }

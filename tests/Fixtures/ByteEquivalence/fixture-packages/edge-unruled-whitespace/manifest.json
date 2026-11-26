@@ -1,0 +1,88 @@
+{
+  "name": "edge-unruled-whitespace",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Edge case: white space 31 places otherwise",
+  "description": "An edge-case fixture (#1508, Task 35 fix round 1): two differences no ruling covers, shown rather than avoided. The letter's reply writes the marker of follow_up, a macro the model chose, whose body ends with a line ending; the problems deliverable prepends clinic_line, whose read of the unset clinic ends its line. Each problem paragraph has problem_close placed after it by the engine, its body ending in more white space than one line ending. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    },
+    {
+      "id": "clinic",
+      "label": "Clinic",
+      "required": false
+    }
+  ],
+  "macros": [
+    "follow_up",
+    "clinic_line",
+    "problem_close"
+  ],
+  "nodes": [
+    {
+      "id": "problem_loop",
+      "label": "Problem list",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose",
+      "macros": [
+        {
+          "id": "problem_close",
+          "at": "after"
+        }
+      ]
+    },
+    {
+      "id": "letter",
+      "label": "Drafting the letter",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "letter",
+      "label": "Clinic letter",
+      "sources": [
+        "node.letter"
+      ]
+    },
+    {
+      "id": "problems",
+      "label": "Problems",
+      "sources": [
+        "node.problem_loop"
+      ],
+      "macros": [
+        {
+          "id": "clinic_line",
+          "at": "prepend"
+        }
+      ]
+    }
+  ]
+}

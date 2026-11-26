@@ -1,0 +1,43 @@
+{
+  "description": [
+    "edge-unruled-whitespace, default (#1508, Task 35 fix round 1): the 30 capture's replies under their 31 keys,",
+    "each problem paragraph with problem_close's marker on its last line, where 30's engine placed it. follow_up_applies",
+    "answers yes. Expected are 31's texts: one line ending fewer after follow_up's body, and Seen at:'s trailing space and",
+    "problem_close's white space kept, where 30 trimmed them."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin; follow-up booked in three months. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "clinic": null
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.follow_up_applies": {
+      "answer": true,
+      "reason": "Answered from the 30 capture: whether the reply placed the macro."
+    },
+    "node.letter": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\n{{ macro.follow_up.content }}\nYours sincerely, Dr A. Sample",
+    "node.problem_loop.problem_draft:1": "Diabetes paragraph: HbA1c 71 mmol/mol.\n{{~ macro.problem_close.content }}",
+    "node.problem_loop.problem_draft:2": "Medication paragraph: metformin continued.\n{{~ macro.problem_close.content }}"
+  },
+  "expect": {
+    "ran": [
+      "node.follow_up_applies",
+      "node.letter"
+    ],
+    "deliverables": {
+      "deliverable.letter": {
+        "state": "released",
+        "text": "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\nA follow-up visit is booked in three months.\nYours sincerely, Dr A. Sample"
+      },
+      "deliverable.problems": {
+        "state": "released",
+        "text": "Seen at: \n\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\nReviewed today (fictional).\n\n\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\nReviewed today (fictional).\n\n"
+      }
+    }
+  }
+}

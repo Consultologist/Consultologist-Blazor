@@ -1,7 +1,9 @@
 {
   "description": [
     "Three problems and the loop's max 2: the first two run and the third does not. note is",
-    "composed with a heading and a block for each of the two items that ran, and none for the third."
+    "composed with a heading and a block for each of the two items that ran, and none for the third.",
+    "problem_lines' template loops over the loop and writes a line for every item it gives, the third",
+    "(not run, empty) too; problem_list is composed from it."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin, and a blood pressure of 148/92. (Fictional.)",

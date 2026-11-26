@@ -11,7 +11,7 @@ namespace Consultologist.Api.Tests.V31Migration;
 
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.4; the invariant of the plan's Global Constraints): the sixteen packages
-/// (area 01's thirteen vendored and its three composer fixtures), and (#1508, Task 35) the six edge-case fixtures, through the migration and the 31 checker. With no
+/// (area 01's thirteen vendored and its three composer fixtures), and (#1508, Task 35) the seven edge-case fixtures, through the migration and the 31 checker. With no
 /// hand-edit notice, <see cref="CompiledPackage.Publish"/> refuses nothing; with one, it refuses something. Each migrated
 /// package is frozen under <c>migrated/&lt;package&gt;/</c> with its <c>notices.json</c> (<c>{ "notices", "handEdits",
 /// "refusals" }</c>); the migration gives the same bytes twice and never writes an unknown member. With
@@ -24,7 +24,7 @@ public class MigratedPackagesTests
 
     private static readonly ConcurrentDictionary<string, Migration31Result> Cache = new(StringComparer.Ordinal);
 
-    /// <summary>The twenty-two packages: the vendored ones in the index's order, then the fixture packages.</summary>
+    /// <summary>The twenty-three packages: the vendored ones in the index's order, then the fixture packages.</summary>
     public static TheoryData<string> Packages() => new(Names);
 
     internal static IEnumerable<string> Names =>
@@ -78,11 +78,11 @@ public class MigratedPackagesTests
         + "\nHand edits:\n" + string.Join("\n", result.HandEdits.Select(e => "  " + e));
 
     [Fact]
-    public void TheTwentyTwoPackages_AreRun()
+    public void TheTwentyThreePackages_AreRun()
     {
-        // #1508 (Task 35): the sixteen and the six edge-case packages (EdgeCasePackagesTests).
-        Assert.Equal(22, Packages().Count);
-        Assert.Equal(22, PackagesWithoutHandEdits().Count + PackagesWithHandEdits().Count);
+        // #1508 (Task 35): the sixteen and the seven edge-case packages (EdgeCasePackagesTests).
+        Assert.Equal(23, Packages().Count);
+        Assert.Equal(23, PackagesWithoutHandEdits().Count + PackagesWithHandEdits().Count);
     }
 
     [Theory]

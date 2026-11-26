@@ -106,9 +106,10 @@ bare `deliverable.<id>` is refused at publish; `cover_note` gates the read on th
 
 ### The edge-case packages (#1508)
 
-Six more hand-written 30 packages (`v2026.11.1`, fictional text), added by area 11 (#1508, Task 35) as the owner ruled
+Seven more hand-written 30 packages (`v2026.11.1`, fictional text), added by area 11 (#1508, Task 35) as the owner ruled
 ([comment 6, item 3](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), and
-comment 7, "Edge-case packages"): one per case the review of area 10 found, each two or three nodes over a loop (30's
+comment 7, "Edge-case packages"): one per case the review of area 10 found, and one for the differences that
+shaping those six would have hidden (the controller's ruling, fix round 1), each two or three nodes over a loop (30's
 validator requires one), captured like the composer packages. Each shows 30's output after the migration, and the warning
 or refusal a new 31 package gets without the migration's explicit thing (`tests/V31Migration/EdgeCasePackagesTests.cs`).
 
@@ -116,16 +117,19 @@ or refusal a new 31 package gets without the migration's explicit thing (`tests/
 |---|---|---|
 | `edge-missing-marker` | `reply-leaves-macro-out`, `reply-holds-macro` | the letter's prompt offers `follow_up`, which 30's model chose (its instruction says "otherwise nothing"); the reply leaves it out, or writes its marker. The macro's body has no final line ending, as 30 wrote a marker's body whole and 31 drops one |
 | `edge-no-branch` | `plan-left-out`, `plan-included` | the deliverable `plan` reads only the `if` `plan_gate`, which takes no branch unless `include_plan` is true; 30 skips the deliverable |
-| `edge-items-not-run` | `third-problem-not-run` | the loop has `max: 2` and three problems; the note, composed from the loop, has a block for the two that ran |
+| `edge-items-not-run` | `third-problem-not-run` | the loop has `max: 2` and three problems; the note, composed from the loop, has a block for the two that ran; `problem_list` reads the rendered node `problem_lines`, whose template loop writes a line per item, the item not run too (30's text), which R16's state guard leaves out at 31 (unruled, for the owner) |
 | `edge-unset-object` | `intake-unset` | the optional object input `intake`, unset; its `reason` is read by the problem prompt and by the note's prepended macro `intake_line` (a snippet at 31) |
 | `edge-answer-outside-set` | `answer-outside-set`, `answer-in-set` | the classifier `triage` (`routine`, `urgent`) answers `soon`: 30 refuses the reply (`onInvalid: fail`) and fails the job |
 | `edge-flag` | `reply-does-not-fit` | `summary` declares `onInvalid: flag` and its reply does not fit its format (`line` a number): 30 keeps it and runs on |
+| `edge-unruled-whitespace` | `default` | two differences no ruling covers, shown: the letter's reply places `follow_up` (a macro the model chose) whose body ends with a line ending, which 31 drops; the problems deliverable prepends `clinic_line`, `Seen at: {{ input.clinic }}` with the clinic unset, which 30 trimmed and 31's snippet keeps. Each paragraph is followed by `problem_close`, placed `after` by 30's engine, its body ending in two extra line endings (`macro-trailing-whitespace`'s hit) |
 
 `edge-tests/<package>.json` is each package's pinned test: an in-package test (part 07 § 8) of the edge scenario's
 capture, its replies under their 31 keys as the comparison replays them (`EdgeCasePackagesTests` holds the file to
-`ByteEquivalence.RequestFor`), and 30's deliverable text as its `expect`. It is not in `migrated/`: the tests add it to
+`ByteEquivalence.RequestFor`), and 31's deliverable text as its `expect` (30's, but at the sites `EdgeCasePackagesTests.Unruled` lists, each a
+difference no ruling covers, left `expected: false` with its reason). `edge-unruled-whitespace`'s replies hold
+`problem_close`'s marker, which the comparison writes into the captured reply. It is not in `migrated/`: the tests add it to
 the migrated package as `tests/edge.json` and publish it offline with `PackagePublish.CheckAsync`. Two of them pin the
-reply 31 refuses as a stub (S07-009): `edge-answer-outside-set`'s (its problem stubs are `answer-in-set`'s, since 30's job
+reply 31 refuses as a stub (S07-009, D6; their `expect` is `{}`): `edge-answer-outside-set`'s (its problem stubs are `answer-in-set`'s, since 30's job
 stopped at `triage`) and `edge-flag`'s.
 
 ## `scenarios/` and `captures/`
@@ -290,8 +294,8 @@ Scriban templates must equal once they are gone.
 
 ## `migrated/`
 
-`migrated/<package>/` is the migrated 31 source of each of the twenty-two packages (the thirteen vendored ones, the
-three composer packages and (#1508) the six edge-case packages; `test/general` at `migrated/test/general/`), as
+`migrated/<package>/` is the migrated 31 source of each of the twenty-three packages (the thirteen vendored ones, the
+three composer packages and (#1508) the seven edge-case packages; `test/general` at `migrated/test/general/`), as
 `WorkflowPackageMigration30To31.Migrate` writes it with the package's hand choices (`tests/V31Migration/ExampleChoices.cs`:
 `parts` renamed `sections` in `example-nested-note`; `whenEmpty` `fail` for its `note` and `hold` for
 `test/general`'s `consult`; `test/general`'s snippet folder `standards` typed `standard_section`). Each folder holds
@@ -349,7 +353,7 @@ included, must be named in backticks somewhere in its README. The edited package
 (`TheEditedPackage_Publishes`) and get its snapshot test from `WorkflowPackageMigration30To31.Snapshot`
 (`TheEditedPackage_GetsItsSnapshot`); the snapshot is not stored here.
 
-Eight of the eleven packages are edited (#1508: `edge-missing-marker` among them). `example-macros` and
+Nine of the twelve packages are edited (#1508: `edge-missing-marker` and `edge-unruled-whitespace` among them). `example-macros` and
 `example-macros-warnings` are not (`HandEditsTests.NotEdited`, with the reason): some of their 30 instructions are
 templates whose 31 form needs a choice the notices do not settle; nor is `example-nested-note`, whose one edit is a
 `max` the owner ruled is not guessed (it is compared as migrated). Their folders hold only a README, each notice followed by a `Not made:` line, and
@@ -360,7 +364,7 @@ spec's own examples make it, changing the fewest files (the plan's D28).
 
 `reports/<package>.json` is `migration-report.json` (part 10 § 3.2, `MigrationReport.ToJson`, canonical JSON) for each
 package that is compared, over all its scenarios in ordinal order: the eleven with no hand edit
-(`ByteEquivalenceTests.TheReport_IsTheGolden`) and the eight edited ones and `example-nested-note`, compared on their edited files with the
+(`ByteEquivalenceTests.TheReport_IsTheGolden`) and the nine edited ones and `example-nested-note`, compared on their edited files with the
 migration's keys and notices (`HandEditsTests.TheReport_IsTheGolden`). `handEdits` is the migration's hand-edit
 notices (so an edited package's report still lists them), `notices` every other notice, then A10-063 for a package
 with more than one deliverable, then the worst-case note when it is said; `texts` one entry per compared text, with

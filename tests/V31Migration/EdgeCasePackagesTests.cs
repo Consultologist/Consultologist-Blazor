@@ -32,11 +32,29 @@ public class EdgeCasePackagesTests
         ["edge-items-not-run"] = "third-problem-not-run",
         ["edge-missing-marker"] = "reply-leaves-macro-out",
         ["edge-no-branch"] = "plan-left-out",
+        ["edge-unruled-whitespace"] = "default",
         ["edge-unset-object"] = "intake-unset",
     };
 
-    /// <summary>The four whose migrated package publishes with its pinned test: the other two pin a reply 31 refuses.</summary>
-    private static readonly string[] Publishing = ["edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unset-object"];
+    /// <summary>The five whose migrated package publishes with its pinned test: the other two pin a reply 31 refuses (D6).</summary>
+    private static readonly string[] Publishing = ["edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
+
+    private const string Q4 = "Q4's guard differs from 30's template loop past max; for the owner, #1508.";
+
+    /// <summary>
+    /// #1508 (Task 35 fix round 1, the controller's ruling): the compared texts that differ from 30's with no ruling, shown, not
+    /// avoided, each by site with its reason; no rule explains them, and every other text of the edge packages is equal or
+    /// explained.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string> Unruled = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["edge-items-not-run/third-problem-not-run#renders/node.problem_lines"] = Q4,
+        ["edge-items-not-run/third-problem-not-run#deliverables/deliverable.problem_list"] = Q4,
+        ["edge-unruled-whitespace/default#deliverables/deliverable.letter"] =
+            "a macro the model chose loses one line ending at 31 when its body ends in one (31 drops a body's final line ending), where 30 wrote the body whole; for the owner, #1508.",
+        ["edge-unruled-whitespace/default#deliverables/deliverable.problems"] =
+            "an empty read at a line's end leaves a trailing space that 31's snippet keeps and 30's macro trimmed; for the owner, #1508.",
+    };
 
     /// <summary>The folder of the pinned tests, beside <c>scenarios/</c> and <c>captures/</c>.</summary>
     private const string TestsFolder = "edge-tests";
@@ -49,7 +67,7 @@ public class EdgeCasePackagesTests
     public static TheoryData<string> PublishingPackages() => new(Publishing);
 
     [Fact]
-    public void TheSixEdgePackages_AreFixturePackages_EachWithItsCaptureAndPinnedTest()
+    public void TheEdgePackages_AreFixturePackages_EachWithItsCaptureAndPinnedTest()
     {
         Assert.Equal(EdgeScenario.Keys, ByteEquivalenceFixtures.FixturePackages.Where(p => p.StartsWith("edge-", StringComparison.Ordinal)));
         Assert.All(EdgeScenario, edge =>
@@ -77,6 +95,14 @@ public class EdgeCasePackagesTests
             replayed = new Dictionary<string, JsonNode?>(inSet.Where(o => o.Key != "node.triage"), StringComparer.Ordinal) { ["node.triage"] = replayed["node.triage"] };
         }
 
+        // edge-unruled-whitespace's problem_close was placed after each reply by 30's engine: the comparison writes its marker
+        // into the captured reply (OfflineStubs.WithEngineMarkers); a test's reply is used as written, so it holds the marker.
+        if (package == "edge-unruled-whitespace")
+        {
+            foreach (var key in replayed.Keys.Where(k => k.StartsWith("node.problem_loop.problem_draft:", StringComparison.Ordinal)).ToList())
+                replayed[key] = (string)replayed[key]! + "\n{{~ macro.problem_close.content }}";
+        }
+
         Assert.Equal(replayed.Keys.Order(StringComparer.Ordinal), test["outputs"]!.AsObject().Select(o => o.Key));
         Assert.All(replayed, o => Assert.True(JsonNode.DeepEquals(o.Value, test["outputs"]![o.Key]), o.Key));
         var inputs = EquivalenceFixture.Scenario(package, EdgeScenario[package])["inputs"]!.AsObject();
@@ -89,7 +115,8 @@ public class EdgeCasePackagesTests
     public async Task TheMigratedPackage_PublishesWithItsPinnedTest_AndGives30sOutput(string package)
     {
         // Steps 0 to 3 at the engine's limits: the check, the compiler, and the package's tests run offline on their stubs,
-        // none generated. Each pinned test's expect holds 30's deliverable text, read from the capture.
+        // none generated. Each pinned test's expect holds 31's deliverable text: 30's, read from the capture, but where the
+        // comparison found a difference no ruling covers (Unruled), where it is the comparison run's and differs from 30's.
         var outcome = await PackagePublish.CheckAsync(Upload(Edged(package)), Options());
 
         Assert.True(outcome.Report.Refusals.Count == 0, Said(outcome.Report.Refusals));
@@ -98,15 +125,21 @@ public class EdgeCasePackagesTests
         Assert.Contains(outcome.Report.Tests, t => t.Id == "edge");
         Assert.DoesNotContain(outcome.Report.Warnings, w => w.Id is "A11-010" or "A11-011" or "S07-014");
 
-        var capture = EquivalenceFixture.Capture(package, EdgeScenario[package]);
+        var (capture, run, _) = await EquivalenceFixture.Compared(package, EdgeScenario[package]);
         var expected = Test(package)["expect"]!["deliverables"]!.AsObject();
         foreach (var row in capture["deliverables"]!.AsArray().OfType<JsonObject>())
         {
-            var wanted = expected["deliverable." + (string)row["id"]!]!;
-            if ((string?)row["state"] == "composed")
-                Assert.Equal(((string)wanted["state"]!, (string?)row["text"]), ("released", (string?)wanted["text"]));
-            else
+            var key = "deliverable." + (string)row["id"]!;
+            var wanted = expected[key]!;
+            if ((string?)row["state"] != "composed")
                 Assert.Equal(("skipped", "skipped"), ((string)row["state"]!, (string)wanted["state"]!));
+            else if (Unruled.ContainsKey($"{package}/{EdgeScenario[package]}#deliverables/{key}"))
+            {
+                Assert.Equal(("released", run.Deliverables.Single(d => d.Key == key).Text), ((string)wanted["state"]!, (string?)wanted["text"]));
+                Assert.NotEqual((string?)row["text"], (string?)wanted["text"]);
+            }
+            else
+                Assert.Equal(("released", (string?)row["text"]), ((string)wanted["state"]!, (string?)wanted["text"]));
         }
     }
 
@@ -114,13 +147,16 @@ public class EdgeCasePackagesTests
     [MemberData(nameof(Packages))]
     public async Task TheReport_HasNoUnexplainedText(string package)
     {
-        // R19: every text that differs from 30's is credited to a rule with nothing left; for the two the owner accepted, the
-        // rule named for it (below).
+        // R19: every text that differs from 30's is credited to a rule with nothing left (for the two the owner accepted, the
+        // rule named for it, below), but the sites Unruled lists, which stay expected: false, each with a remainder.
         var report = await EquivalenceFixture.Report(package);
         var counts = JsonNode.Parse(report.ToJson())!["counts"]!;
+        var unruled = report.Texts.Where(t => Unruled.ContainsKey(t.Site)).ToList();
 
-        Assert.Equal((0, 0), ((int)counts["partlyExplained"]!, (int)counts["unexplained"]!));
-        Assert.All(report.Texts, t => Assert.True(t.Equal || t.Expected, t.Site));
+        Assert.Equal(Unruled.Keys.Count(k => k.StartsWith(package + "/", StringComparison.Ordinal)), unruled.Count);
+        Assert.All(unruled, t => Assert.Equal((false, false, true), (t.Equal, t.Expected, t.Unexplained)));
+        Assert.Equal(unruled.Count, (int)counts["partlyExplained"]! + (int)counts["unexplained"]!);
+        Assert.All(report.Texts.Where(t => !Unruled.ContainsKey(t.Site)), t => Assert.True(t.Equal || t.Expected, t.Site));
     }
 
     [Theory]
@@ -129,8 +165,9 @@ public class EdgeCasePackagesTests
     [InlineData("edge-unset-object")]
     public async Task TheMigratedPackage_IsByteForByte30s(string package)
     {
-        // The three Q3 to Q5 cases: the migration's if, the loop's .content and the object guard give 30's bytes, every text equal.
-        Assert.All((await EquivalenceFixture.Report(package)).Texts, t => Assert.True(t.Equal, t.Site));
+        // The three Q3 to Q5 cases: the migration's if, the loop's .content and the object guard give 30's bytes, every text
+        // equal but edge-items-not-run's template loop, Q4's difference (Unruled).
+        Assert.All((await EquivalenceFixture.Report(package)).Texts.Where(t => !Unruled.ContainsKey(t.Site)), t => Assert.True(t.Equal, t.Site));
     }
 
     // ---- edge-missing-marker -------------------------------------------------------------------------------------
@@ -214,6 +251,16 @@ public class EdgeCasePackagesTests
         var run = await StrictRun(Upload(Edged("edge-items-not-run")));
         Assert.Equal((RowState.NotRun, "not run: beyond max 2"), run.Rows.Where(r => r.Key == "node.problem_loop:3").Select(r => (r.State, r.Reason)).Single());
 
+        // problem_lines, a 30 template loop that names each item's problem, keeps .items and is guarded on each item's state
+        // (R16), so 31 writes no line for the item not run, where 30's template wrote "- <problem>: " for it: Q4's difference,
+        // for the owner (Unruled).
+        Assert.Contains("{{ for e in node.problem_loop.items }}{{ if e.state == \"completed\" }}- {{ e.item.value }}: {{ e.content }}\n{{ else }}{{ end }}{{ end }}",
+            EquivalenceFixture.Migrated("edge-items-not-run").Files["nodes/problem_lines.md"], StringComparison.Ordinal);
+        var (capture, compared, _) = await EquivalenceFixture.Compared("edge-items-not-run", "third-problem-not-run");
+        var lines30 = (string)capture["renders"]!.AsArray().Single(r => (string?)r!["key"] == "problem_lines")!["text"]!;
+        Assert.Equal(lines30.Replace("- Blood pressure of 148/92 (fictional): \n", "", StringComparison.Ordinal), compared.Renders.Single(r => r.Key == "node.problem_lines").Text);
+        Assert.Contains("Blood pressure", lines30, StringComparison.Ordinal);
+
         var files = Upload(Edged("edge-items-not-run"));
         Edit(files, "deliverables/note.md", "{{ node.problem_loop.content }}", "{{ for e in node.problem_loop.items }}## {{ e.label }}\n\n{{ e.content }}\n\n{{ end }}");
         var outcome = await PackagePublish.CheckAsync(files, Options());
@@ -221,12 +268,42 @@ public class EdgeCasePackagesTests
         var warning = Assert.Single(outcome.Report.Warnings, w => w.Id == "A11-011");
         Assert.Equal(("deliverables/note.md", ResolveSentences.FixedTextForEveryItem("note", "node.problem_loop", 1, "deliverables/note.md").Sentence), (warning.Path, warning.Sentence));
         V31Contract.AssertSentence(warning);
-        var note = (await StrictRun(files)).Deliverables.Single();
+        var note = (await StrictRun(files)).Deliverables.Single(d => d.Key == "deliverable.note");
         Assert.Contains("## Problem list 3", note.Text, StringComparison.Ordinal);
 
         // Guarded on state, as the migration guards a template loop that needs .items, nothing is warned.
         Edit(files, "deliverables/note.md", "## {{ e.label }}\n\n{{ e.content }}\n\n", "{{ if e.state == \"completed\" }}## {{ e.label }}\n\n{{ e.content }}\n\n{{ else }}{{ end }}");
         Assert.DoesNotContain((await PackagePublish.CheckAsync(files, Options())).Report.Warnings, w => w.Id == "A11-011");
+    }
+
+    // ---- edge-unruled-whitespace ---------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TwoWhiteSpaceDifferences_NoRulingCovers_AreShown_AndAnAfterMacrosWhiteSpace_IsR5s()
+    {
+        // #1508 (Task 35 fix round 1): shown, not avoided. (a) follow_up, a macro the model chose, ends its body with a line
+        // ending: 30 wrote the body whole where the reply's marker stood, 31 drops one final line ending, so the letter has one
+        // line ending fewer. (b) clinic_line, a deliverable's macro at 30 and a snippet at 31, ends its line with a read of the
+        // unset clinic: 30 trimmed the rendered macro, 31's snippet keeps "Seen at: ". Neither is expected.
+        var (capture, run, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
+        string At30(string id) => (string)capture["deliverables"]!.AsArray().Single(d => (string?)d!["id"] == id)!["text"]!;
+        string At31(string key) => run.Deliverables.Single(d => d.Key == key).Text!;
+
+        Assert.Equal(At30("letter").Replace("three months.\n\n", "three months.\n", StringComparison.Ordinal), At31("deliverable.letter"));
+        Assert.StartsWith("Seen at:\n\n", At30("problems"), StringComparison.Ordinal);
+        Assert.StartsWith("Seen at: \n\n", At31("deliverable.problems"), StringComparison.Ordinal);
+        Assert.Empty(texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.letter", StringComparison.Ordinal)).Rules);
+
+        // problem_close, placed after each paragraph by 30's engine, ends its body in more white space than one line ending:
+        // 30 trimmed it all, 31 keeps all but one line ending (R5). The comparison writes its marker into the captured reply,
+        // and macro-trailing-whitespace explains the letter's prompt with nothing left; in the problems deliverable it is
+        // credited beside (b)'s remainder.
+        var letter = texts.Single(t => t.Site.EndsWith("#prompts/node.letter", StringComparison.Ordinal));
+        Assert.Contains("macro-trailing-whitespace", letter.Rules);
+        Assert.True(letter.Expected);
+        var problems = texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.problems", StringComparison.Ordinal));
+        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker"], problems.Rules);
+        Assert.True(problems.Unexplained);
     }
 
     // ---- edge-unset-object ---------------------------------------------------------------------------------------
@@ -276,6 +353,9 @@ public class EdgeCasePackagesTests
         Assert.Equal(PackagePublishSentences.StubInvalid("edge", "node.triage", "triage_answer", "/value enum", TestFile).Sentence, refused.Sentence);
         Assert.DoesNotContain("soon", refused.Sentence, StringComparison.Ordinal);
         V31Contract.AssertSentence(refused);
+        // D6: the stub is refused before any expectation is read, so the pinned test's expect states nothing 31 does not
+        // produce; the node's failed state is the comparison run's, above.
+        Assert.Empty(Test("edge-answer-outside-set")["expect"]!.AsObject());
     }
 
     // ---- edge-flag -----------------------------------------------------------------------------------------------
@@ -293,12 +373,16 @@ public class EdgeCasePackagesTests
         Assert.Equal(("Completed", RunState.Failed), ((string?)capture["status"], run.State));
         var summary = run.Rows.Single(r => r.Key == "node.summary");
         Assert.Equal((RowState.Failed, "retry", 2), (summary.State, (string?)summary.Detail["invalid"]!["action"], (int)summary.Detail["invalid"]!["attempts"]!));
-        Assert.All(texts.Where(t => !t.Equal), t => Assert.Equal(["flag-becomes-retry"], t.Rules));
+        // Each text that differs is credited to it; the retried prompt's description, which 31 sends, is sent-format's (R19).
+        Assert.All(texts.Where(t => !t.Equal), t => Assert.Equal("flag-becomes-retry", t.Rules[0]));
+        Assert.Equal(["flag-becomes-retry", "sent-format"], texts.Single(t => t.Site.EndsWith("#prompts/node.summary", StringComparison.Ordinal)).Rules);
         Assert.Contains(texts, t => t.Site.EndsWith("#prompts/node.summary", StringComparison.Ordinal) && !t.Equal);
 
-        // As a test's stub the reply is refused at publish (S07-009): 31 never keeps a reply that does not fit.
+        // As a test's stub the reply is refused at publish (S07-009, D6) before any expectation is read, so the pinned test's
+        // expect is {}: the node's retried and failed state above is the comparison run's.
         var refused = Assert.Single((await PackagePublish.CheckAsync(Upload(Edged("edge-flag")), Options())).Report.Refusals);
         Assert.Equal(PackagePublishSentences.StubInvalid("edge", "node.summary", "summary", "/line type", TestFile).Sentence, refused.Sentence);
+        Assert.Empty(Test("edge-flag")["expect"]!.AsObject());
 
         // The new package that writes 30's flag: refused at the reader (A11-014), as 31 has only fail and retry, before any test runs.
         var files = Upload(Edged("edge-flag"));

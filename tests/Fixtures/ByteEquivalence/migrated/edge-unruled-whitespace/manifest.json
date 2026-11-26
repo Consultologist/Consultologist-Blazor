@@ -1,0 +1,41 @@
+{
+  "name": "edge-unruled-whitespace",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Edge case: white space 31 places otherwise",
+  "description": [
+    "An edge-case fixture (#1508, Task 35 fix round 1): two differences no ruling covers, shown rather than avoided. The letter's reply writes the marker of follow_up, a macro the model chose, whose body ends with a line ending; the problems deliverable prepends clinic_line, whose read of the unset clinic ends its line. Each problem paragraph has problem_close placed after it by the engine, its body ending in more white space than one line ending. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "problems": {
+      "label": "Problem list",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "clinic": {
+      "label": "Clinic",
+      "description": null,
+      "format": "markdown_block",
+      "required": false,
+      "channel": null
+    }
+  }
+}

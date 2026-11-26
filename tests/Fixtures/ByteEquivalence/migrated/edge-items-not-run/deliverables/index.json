@@ -1,7 +1,8 @@
 {
   "description": null,
   "items": [
-    "note"
+    "note",
+    "problem_list"
   ],
   "delivery": [
     "pdf"

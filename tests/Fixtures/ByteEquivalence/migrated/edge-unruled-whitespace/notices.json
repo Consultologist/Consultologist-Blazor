@@ -1,0 +1,13 @@
+{
+  "notices": [
+    "Hand edit needed in macros/problem_close.md, instruction: macro 'problem_close' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in nodes/follow_up_applies.md, body: node 'follow_up_applies' decides whether macro 'follow_up' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
+    "nodes/follow_up_applies.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "No snapshot test was written: hand edits remain."
+  ],
+  "handEdits": [
+    "Hand edit needed in macros/problem_close.md, instruction: macro 'problem_close' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
+    "Hand edit needed in nodes/follow_up_applies.md, body: node 'follow_up_applies' decides whether macro 'follow_up' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction."
+  ],
+  "refusals": []
+}

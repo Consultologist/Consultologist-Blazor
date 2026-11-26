@@ -392,7 +392,6 @@ public class ByteEquivalenceTests
     {
         ["required-blank-refused"] = "no compared capture's 31 start refuses a required text input supplied blank.",
         ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
-        ["macro-trailing-whitespace"] = "no compared package has a macro body ending in more white space than one line ending, so no compared text can show the difference.",
         ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
     };
 
@@ -400,8 +399,7 @@ public class ByteEquivalenceTests
     public async Task EveryRule_HasAGoldenHit_OrANamedReason()
     {
         // #1508 (comment 5, item 5; R19): crediting each rule on its own gives sent-format its hits beside the differences no
-        // rule explains; a rule with none says why. macro-trailing-whitespace has none: no compared package's macro body
-        // ends in more white space than 31 drops, so only its unit test backs it.
+        // rule explains; a rule with none says why.
         var hits = new HashSet<string>(StringComparer.Ordinal);
         var reports = Path.Combine(ByteEquivalenceFixtures.Root, GoldenFolder);
         var packages = Directory.EnumerateFiles(reports, "*.json", SearchOption.AllDirectories)
@@ -416,6 +414,9 @@ public class ByteEquivalenceTests
         Assert.All(ExpectedDifferences.Rules, rule => Assert.True(hits.Contains(rule.Id) ^ RulesWithoutAHit.ContainsKey(rule.Id),
             hits.Contains(rule.Id) ? $"{rule.Id} has a golden hit and a reason." : $"{rule.Id} has no golden hit and no reason."));
         Assert.Contains("sent-format", hits);
+        // #1508 (Task 35 fix round 1): edge-unruled-whitespace's problem_close, placed after each paragraph by 30's engine,
+        // ends its body in more white space than one line ending.
+        Assert.Contains("macro-trailing-whitespace", hits);
         Assert.All(RulesWithoutAHit.Keys, id => Assert.Contains(id, ExpectedDifferences.Rules.Select(r => r.Id)));
     }
 

@@ -1,8 +1,9 @@
 {
   "description": [
     "edge-items-not-run, scenario third-problem-not-run (#1508, comment 6 item 3; comment 7 Q4): the 30 capture's",
-    "replies under their 31 keys. The loop has three items and max 2, so the third is not run, and the note, composed from",
-    "the loop, writes a heading for the two that ran: 30's text."
+    "replies under their 31 keys. The loop has three items and max 2, so the third is not run. The note, composed from",
+    "the loop, writes a heading for the two that ran: 30's text. problem_lines loops over .items guarded on state (R16), so",
+    "it writes no line for the third, where 30's template wrote one: problem_list is 31's text, which differs from 30's."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin, and a blood pressure of 148/92. (Fictional.)",
@@ -31,6 +32,10 @@
       "deliverable.note": {
         "state": "released",
         "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+      },
+      "deliverable.problem_list": {
+        "state": "released",
+        "text": "\\- Type 2 diabetes with an HbA1c of 71 mmol\\/mol \\(fictional\\)\\: Diabetes paragraph\\: HbA1c 71 mmol\\/mol\\.\n\\- Metformin 1 g twice daily\\, continued \\(fictional\\)\\: Medication paragraph\\: metformin continued\\.\n"
       }
     }
   }

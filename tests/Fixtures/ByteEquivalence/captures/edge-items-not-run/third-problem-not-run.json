@@ -20,7 +20,13 @@
       "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin, and a blood pressure of 148/92. (Fictional.)\n"
     }
   ],
-  "renders": [],
+  "renders": [
+    {
+      "key": "problem_lines",
+      "hash": "sha256:ab81e2715054940c01b126c03df145597077f135b5b23308f39fc21a92304d54",
+      "text": "- Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional): Diabetes paragraph: HbA1c 71 mmol/mol.\n- Metformin 1 g twice daily, continued (fictional): Medication paragraph: metformin continued.\n- Blood pressure of 148/92 (fictional): \n"
+    }
+  ],
   "deliverables": [
     {
       "id": "note",
@@ -28,6 +34,13 @@
       "reason": null,
       "hash": "sha256:afc6525340b0861b6b43777b3e8752fd333bdb46dafc4f69a55375a162117691",
       "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+    },
+    {
+      "id": "problem_list",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:0252e642218ca2e66b432b7ed0c1714f4767663f8af625b1421328e61bf92b17",
+      "text": "- Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional): Diabetes paragraph: HbA1c 71 mmol/mol.\n- Metformin 1 g twice daily, continued (fictional): Medication paragraph: metformin continued.\n- Blood pressure of 148/92 (fictional):"
     }
   ]
 }
