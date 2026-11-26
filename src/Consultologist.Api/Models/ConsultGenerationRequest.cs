@@ -508,7 +508,11 @@ public record ConsultGenerationJobResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     int? Decisions = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? CurrentKey = null);
+    string? CurrentKey = null,
+    // #1509 (Task 17; part 08 § 3, § 3.1): a 31 job's header `inputs`, as the record writes them: each input's id, origin and
+    // hash, and the extraction members of a document-filled one (or its elements). Never a value. Omitted below storage 12.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    System.Text.Json.Nodes.JsonArray? Inputs = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

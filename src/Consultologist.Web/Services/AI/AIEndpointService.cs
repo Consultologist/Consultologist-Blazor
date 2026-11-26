@@ -840,7 +840,9 @@ public record ConsultGenerationJobResponse(
     int? Rows = null,
     IReadOnlyDictionary<string, int>? RowStates = null,
     int? Decisions = null,
-    string? CurrentKey = null);
+    string? CurrentKey = null,
+    // #1509 (Task 17): mirrors the Api's Inputs — the header's `inputs` (id, origin, hash, extraction members, elements).
+    System.Text.Json.Nodes.JsonArray? Inputs = null);
 
 /// <summary>
 /// Mirrors Consultologist.Api.Jobs.ConsultLoopInstanceRow (v30 #1341/#1342, record storage 11):

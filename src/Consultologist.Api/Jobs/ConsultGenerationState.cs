@@ -2983,7 +2983,8 @@ public sealed class ConsultGenerationJobState
             Rows: v31 ? V31Progress?.Rows : null,
             RowStates: v31 && V31Progress != null ? new Dictionary<string, int>(V31Progress.States, StringComparer.Ordinal) : null,
             Decisions: v31 ? V31Progress?.Decisions : null,
-            CurrentKey: v31 ? V31Progress?.CurrentKey : null);
+            CurrentKey: v31 ? V31Progress?.CurrentKey : null,
+            Inputs: v31 ? RecordInputs() : null);
     }
 }
 
