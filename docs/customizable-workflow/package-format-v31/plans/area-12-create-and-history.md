@@ -416,6 +416,542 @@ Rules: top-level rows in the order of their first `startedAtUtc`, never-started 
 - [ ] **Step 3: Run** `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`; pass.
 - [ ] **Step 4: Commit** `Docs (#1509): the pages at specVersion 31`; push both repos.
 
+## Part F: the fix-first group (#1508's rulings, items 1 to 9)
+
+**Read first:** the owner's two comments of 2026-11-26: the rulings,
+[#1508 comment 7199237966](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7199237966)
+(`gh api repos/Consultologist/Consultologist-Blazor/issues/comments/7199237966 --jq .body`; items 1 to 9 are built here,
+10 and 11 need no change), and how they are built here,
+comment 7199238400 (`gh api repos/Consultologist/Consultologist-Blazor/issues/comments/7199238400 --jq .body`).
+They cite PR #1535's *For the owner to rule or see* (§ 1: PR #1532's unexpected differences 1, 2 and 4; § 3: the
+edge-case sites; § 4: items 4.3 and 4.13) and R15 (area 11's plan, `plans/area-11-registry-and-publish.md`, Part F's
+decisions table). **The principle:** 31 stays strict; the migration writes the explicit thing that gives 30's output;
+new packages are told at publish. Nothing here changes Create or History, and no Part A to E task waits on it.
+
+**Constraints special to this part** (the Global Constraints above hold too):
+
+- **Code map** (under `src/Consultologist.PackageFormat/`, `PF` = `…/V31`): `PF/Migration/` (`Migrate.Nodes.cs`,
+  `Migrate.Flows.cs`, `Migrate.Deliverables.cs`, `Migrated.cs`, `ConditionTyping.cs`, `MigrationSentences.cs`,
+  `TemplateRewriter.cs`), `WorkflowPackageMigration30To31.cs` (`Migration31Options`, `WithSnapshot`), `PF/Harness/`
+  (`ExpectedDifferences.cs`, `ByteEquivalence.cs`, `MigrationReport.cs`), `PF/Publish/PackagePublish.cs`; the Api's
+  `src/Consultologist.Api/V31/` (`V31PackagePublisher.cs`, `MigratePackage.cs`, `OutstandingHandEdits.cs`,
+  `EngineLimitSettings.cs`). Tests `tests/V31Migration/`, `tests/V31Publish/`, `tests/V31Engine/`; fixtures
+  `tests/Fixtures/ByteEquivalence/`. Line numbers are as of `821c9139`.
+- **Goldens are regenerated once, in F10 only.** From F1 to F9 these golden tests are expected red and are left red:
+  `MigratedPackagesTests.TheMigratedSource_IsTheGolden`, `ByteEquivalenceTests.TheReport_IsTheGolden`,
+  `HandEditsTests.TheReport_IsTheGolden`, `ConditionConverterTests.TheGolden_IsWhatTheConverterGives`,
+  `ConditionEquivalenceTests.TheGolden_IsWhatTheRunGives`, `MigrationVectorsTests.ThePinnedVectors_AreWhatMigrateGives`.
+  Every other test stays green after every task. Each task's report names which of these six it turned red. No task
+  before F10 sets `GOLDEN_UPDATE_V31` or `CONFORMANCE_EXPORT_V31`.
+- **Hand-maintained fixtures are not goldens** and are updated in the task whose change moves them:
+  `tests/Fixtures/ByteEquivalence/hand-edits/**` (whole files laid over `migrated/` by `MigrationFixture.Edited`) and
+  `tests/Fixtures/ByteEquivalence/edge-tests/*.json` (the edge packages' pinned tests, whose `expect` holds 31's text where
+  it differs from 30's). Area 01's `vendored/`, `fixture-packages/`, `scenarios/`, `captures/` and
+  `conditions/expressions.json`, `conditions/vectors.json` never change.
+- **Commands.** Focused, while a test is written and made to pass:
+  `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31Migration.<TestClass>"`.
+  Before each commit, the V31 suite less the six golden tests (call this **the V31 run**):
+  `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31&FullyQualifiedName!~TheMigratedSource_IsTheGolden&FullyQualifiedName!~TheReport_IsTheGolden&FullyQualifiedName!~TheGolden_IsWhat&FullyQualifiedName!~ThePinnedVectors_AreWhatMigrateGives"`.
+  F9 and F10 also run `dotnet build Consultologist.sln` and
+  `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`.
+- **31 stays off in production:** nothing here touches `WorkflowPackageValidator.AcceptedSpecVersions`,
+  `WorkflowPackageStore.SupportedSpecVersions` or `SpecVersionAdmission`; every Api path changed (F9) is already behind it.
+- **Spec text is corrected in the task that changes behaviour:** part 10 (`10-migration-and-tools.md` §§ 1.2, 1.4, 2.2,
+  3.2), part 03 § 4.2 where F8 says, and the content repo's twin chapters (`~/Projects/consultologist-package-format`,
+  branch `m39-build`: `package-format-v31.md` chapter 10, §§ 10.1, 10.9, 10.11, and chapter 3 § 3.4.2 for F8). **A10
+  sentences live in three places:** `PF/Migration/MigrationSentences.cs`, `tests/V31Source/V31Contract.cs`
+  (`MigrationAreaSentences`, l.255) and the content repo's `v31/conformance/README.md` (the A10 table, rows l.1047 to
+  l.1067). `refusal-sentences.md` holds no A10 row (only S10-002, l.457), so none is added there. New ids, in build order:
+  **A10-085** (F6), **A10-086** (F8), **A10-087** (F1); a task that needs another takes the next.
+- **The content repo:** each task that edits it commits on `m39-build` (subject `Format spec (Consultologist-Blazor#1509): …`),
+  runs `python3 scripts/check-v31.py` there, and pushes; the pin `external/consultologist-package-format` moves **once**, in
+  F10, after the vectors are re-exported (F-D18).
+- **Commits:** `PackageFormat (#1509): …`, `Api (#1509): …`, `Tests (#1509): …`, `Docs (#1509): …`, each ending as the Global
+  Constraints say. Every commit body that touches a hand-maintained fixture names the file.
+
+### Decisions Part F takes
+
+| # | Where | Choice | Why |
+|---|---|---|---|
+| F-D1 | item 1, "gives each such node or loop the `if`" | The `if` is written on **each leaf** (agent, rendered, computed, call) of the node's subtree: a leaf itself, or every leaf in a `for` or an `if`/`case` flow's bodies, joined by `and` after a leaf's own `if` (null for every 30 leaf). No wrapping flow is written. | A 31 `for` has no `if` member (part 04 § 2.1: exactly sixteen members); a wrapping `if` flow would move every rooted key under it (`Migrated.Keys`, the comparison's `KeyMap`) and the hand-edit files laid over by path (`hand-edits/example-structured-intake/nodes/sections_senior_review_section/…`). Every 31 leaf has `if` (`SourceShapes.NodeAgent` … `NodeCall`). |
+| F-D2 | item 1, "only an unreleased deliverable needs" | A top-level 30 node `T` (not a check, not a classifier) is gated when it lies outside **K** and some deliverable with a converted 30 condition reaches it. K = what 30 ran whatever the deliverables: the closure (30's edges, `WorkflowNodeClosure.Reachable`) of every classifier (format `classification`), of every node a deliverable's condition reads, of every top-level `if`/`case` flow's decision reads (`m.Walk30.EdgesOf(flow)`), and of the roots of every deliverable with no condition or a condition the converter refused. A deliverable's roots are its `sources`, the node reads of its placed macros (`m.Walk30.MacroEdges`) and its check's node, as `ConsultGenerationJobStarter.DecideFireSet` (l.1332–1540) roots them. The gate is the reaching deliverables' converted conditions, in 30's deliverable order, one alone or joined by `or`. | It is 30's prune (`DecideFireSet`: only the firing deliverables' closure runs, classifiers and gating reads always), stated statically; a deliverable whose condition is a hand edit gates nothing, since nothing is joined to a condition not yet written (as R15 does, `WhenASourceRan`). |
+| F-D3 | item 1 | A subtree that holds a `while` is not gated. | A gated body would leave a `while`'s condition reading skipped nodes and running passes to `max`; no fixture has the case (the 45 prompts are all `for` bodies). Recorded for the PR. |
+| F-D4 | item 1 and R15 | `ConversionRead.AlwaysValued` (what the checker and the template rewriter see, so R17's guards are written) counts a gated leaf as not always valued; R15's `WhenASourceRan` judges a source by **30's** always-valued, ignoring gates (`Migrated.AlwaysValued30`). | A gated source runs whenever its deliverable applies (the deliverable is among those whose `or` gates it), so R15's `.state` term would be redundant; the checker, which sees the leaf's `if`, must still see the leaf as nullable or A11-009 refuses unguarded member reads of it. |
+| F-D5 | item 1 | The `<macro>_applies` classifier nodes R13 writes (`Migrate.Nodes.ChoiceClassifiers`) are not gated. | Their prompt is 31's alone and already credited by `macro-choice-classifier`; gating it is no 30 output. |
+| F-D6 | item 1 | A notice per gated leaf file, A10-087: *"\<file\>, if: written so that the node runs only when deliverable \<ids, joined by " or "\> applies, as 30 ran only what an applicable deliverable needed."* | Every `if` the migration invents is said (A10-079's precedent). |
+| F-D7 | item 2 | Only an input whose own 31 format is `"date"`, read whole as a template output (`{{ input.x }}` → `{{ input.x.value \| date.to_string "%d %b %Y" }}`), in every template the rewriter writes (prompts, rendered nodes, parts, snippets, macro bodies, deliverables). A read already piped, a read inside an `if` test or an expression, and a date field of an object input are left as today. No notice. | The ruling's words, "a date input written whole"; the fixtures' differences are exactly these reads (`example-conditional-documents`' section prompts, `example-v12-constructs`' `patient_header`). |
+| F-D8 | item 3 | `\| string.strip` is written on **each source piece** of a deliverable's composition (`{{ node.<id>.content \| string.strip }}`), never on a snippet piece (a 30 macro placed bare) and never on the whole. | 30's composer trimmed each source at both ends (`awkward-texts`: `closing`'s reply `"\n\nClosing line…\n\n\n"` composed trimmed, the empty `opening` still taking its separator); a macro body keeps R5's rule (`macro-trailing-whitespace`), and item 5 keeps the empty-read trailing space as an expected rule, which stripping a snippet would erase. See **Blocks** for a loop's items. |
+| F-D9 | items 4, 5 | Three new **bytes** rules in `ExpectedDifferences.Rules`, general (no package named): `loop-item-not-run` (item 4), `chosen-macro-final-line-ending` and `empty-read-trailing-space` (item 5). | The ruling makes them expected differences; a rule keyed to the edge packages would explain nothing in an account package's report. |
+| F-D10 | item 6 | The trim is part 03 § 5.2's `trim` (the only trimming operation JSON Logic has at 31; `string.strip` is a template built-in), written on **every text read rooted at an input** inside the compared operand: `{ "in": [ { "trim": [ <read> ] }, ["lit"] ] }`, the trim wrapped around the read itself where the operand is an operation over it (`lower(trim(input.x))`). A literal whose first character is white space is a hand edit (A10-085). | 30 trimmed every text scalar of an input at its end (`ConsultGenerationJobStarter.NormalizeValue`, `CanonicalText.Normalize` = `TrimEnd`), fields and elements too; a node's text was not trimmed, so a node read gets no `trim`. `trim` also drops **leading** white space, which 30 kept: an input with leading white space now matches where 30's did not. No 31 operation trims one end only, so that remainder is said in A10-074 and listed for the owner; a literal that starts with white space could match at 30 and never matches a trimmed text, so it is the "no trim fits" case S10-002 names. |
+| F-D11 | item 7 | A10-064 keeps its id with corrected words; the dropped line is credited under the existing rule `sent-format` (widened), not a new rule. | One difference (30's answer line against 31's format instruction) that `sent-format`'s `AnswersSent` already isolates; no new golden-hit obligation. |
+| F-D12 | item 8, "where `state` is not readable" | The term for each source is chosen by **asking the deliverable-`if` typing**: `<read>.state === "completed"` when it types there, else `<read>.value !== null`, else none (the source is then one "the migration does not read"). The migration's typing scope (`ConditionTyping.Scope`) learns `.state` as `ScopeTree.Member` types it (l.316). Part 03 § 4.2's deliverable-`if` row (and the twin § 3.4.2) is corrected to list `.state`. | `ExpressionChecker.Rule` (l.217–241) refuses only `.content` and `check.*` at a deliverable `if`, so `.state` is readable for every visible node, as area 11 already writes it; part 03's row says `.value` only. The fallback is built and unit-tested through its seam but no source the migration writes today reaches it (said in the PR). |
+| F-D13 | item 8, "a hand edit (S10-002)" | A hand edit on the deliverable's `if` when at least one source has no term (not in `Migrated.NodeReads`, or read where neither term types, as a `check.` read) **and** no source is known to always run (30's always-valued, or a `while`); its reason A10-086 names the unread sources and, for the others, the term R15 would join. Otherwise as today. | "So nothing is released empty without a notice": a deliverable with a source that always runs is never empty. |
+| F-D14 | item 9 | `PublishOptions` and `Migration31Options` gain a trailing `RunLimits? RunLimits = null` (null: the spec's starting values, as now). The publisher, the bulk publish and the weekly summary pass `EngineLimitSettings.Limits`/`.PublishLimits`. The two CI scripts and `scripts/migrate-workflow-package.cs` keep the starting values. | The three places the ruling names; the scripts run with no deployment (`registry-operations.md` l.405–410 says so). |
+| F-D15 | goldens | Golden tests are red from F1 to F9 (the six named above). | The ruling: regenerate once, after all nine. |
+| F-D16 | commits | Subjects carry `#1509` (this area's issue), though the rulings are on #1508. | The second comment assigns the work to this area's branch. |
+| F-D17 | edge pinned tests (F4, F5) | `EdgeCasePackagesTests.TheMigratedPackage_PublishesWithItsPinnedTest_AndGives30sOutput` decides by the comparison's `Equal` (a credited but unequal site expects 31's text), no longer by `Unruled`; `Unruled` is deleted when F5 empties it. | After F4 and F5 those sites are expected, not unruled, and their texts still differ. |
+| F-D18 | content repo pin | Moved once, in F10. | The vectors are stale from F1 to F9 whatever the pin. |
+
+### Blocks
+
+- **Item 3 for a loop's items** (part only; the rest of item 3 is built). The ruling: *"the migration writes `| string.strip`
+  on each part 30 trimmed, not once at the top level, so only those deliverables change."* 30 also trimmed **each item**
+  of a loop it composed (`composer-sources` `awkward-texts`: reply `"   Examination paragraph, indented."` composed as
+  `"Examination paragraph, indented."`, and `"History paragraph.\n\n"` trimmed), but at 31 a `for`'s `.content` is the
+  engine's standard rendering of its items (`PlanRunner.Loops.SettleLoopAsync`, l.612–631; part 05 § 5.3): no template
+  site exists where a pipe can stand on an item. So after F3 these stay unexplained: the `opening`, `closing`,
+  `draft_plan` and `plain_line` prompts (each reads `node.topic_loop.content`), the deliverables `topics` and
+  `topics_then_opening` inside their loop part, and `tally`'s count (80 against 85). Building them needs the owner to choose
+  between (a) accepting them as expected (a rule, say `loop-items-trimmed`), or (b) the migration making each composed
+  loop's `ret` a new `rendered` node whose body is `{{ node.<ret>.content | string.strip }}` (a structural change, a new
+  31-only render per item, and new keys). F3 builds the source pieces only; F10 lists these sites for the PR's
+  *For the owner*.
+
+### Order
+
+Run **F9, F7, F2, F6, F8, F3, F1, F4, F5, F10.** Shared files: `Migrate.Deliverables.cs` (F8 `WhenASourceRan`, F3
+`Composition`, F1 `Deliverables` and `WhenASourceRan`'s always-valued test: F8 before F1, so F1 builds on F8's loop);
+`ConditionTyping.cs` (F6 `TextLiteral`, F8 `Scope.Node` and a new reader: F6 first); `Migrate.Nodes.cs` (F7 `WriteNode`'s
+trailer, F1 `Nodes` and `WriteNode`'s `if`: F7 first); `ExpectedDifferences.cs` (F7 `AnswersSent`, F4 and F5 new rules);
+`EdgeCasePackagesTests.cs` (F4, then F5 deletes `Unruled`); `MigrationSentences.cs`, `V31Contract.cs` and the conformance
+README (F7, F6, F8, F1, in that order, so the ids fall as stated). F4 and F5 come after F1 to F3, whose texts their rules
+are tested on. F9 touches only the limits and can go first.
+
+---
+
+### Task F1: A node only an unreleased deliverable needs runs only when one applies (item 1)
+
+**Files:** Modify `PF/Migration/Migrate.Nodes.cs` (`Nodes`, l.20–43: after the first `AlwaysValued` loop at l.33–34;
+`WriteNode`, the leaf header's `["if"] = null`, l.71), `PF/Migration/Migrate.Flows.cs` (`AlwaysValued`, l.223–238: the
+leaf arm `_ => true`), `PF/Migration/Migrated.cs` (beside `NodeReads`, l.156), `PF/Migration/Migrate.Deliverables.cs`
+(`WhenASourceRan`, l.76: `read.AlwaysValued`), `PF/Migration/MigrationSentences.cs`, `tests/V31Source/V31Contract.cs`
+(`MigrationAreaSentences`); fixture `tests/Fixtures/ByteEquivalence/hand-edits/example-structured-intake/nodes/sections_senior_review_section/senior_review_section.md`
+(and any other `hand-edits/*/nodes/**` file whose migrated counterpart gains an `if`); Tests
+`tests/V31Migration/MigrateNodesTests.cs`, `MigrateDeliverablesTests.cs`, `HandEditsTests.cs`; docs part 10 § 1.2, twin § 10.1,
+conformance README.
+
+**Interfaces — Produces:**
+- `Migrated.DeliverableGates`: `Dictionary<string, JsonNode>` (30 leaf id → its gate, canonical JSON Logic), filled in the
+  nodes pass before any node is written.
+- `Migrated.AlwaysValued30`: `HashSet<string>` (30 node ids always valued ignoring gates: `AlwaysValued` as today).
+- `Migrate.AlwaysValued(NodeTree tree, string id, Dictionary<string, CaseShape> cases, int depth, IReadOnlySet<string> gated)`:
+  the leaf arm becomes `_ => !gated.Contains(id)`.
+- `private static void DeliverableGates(Migrated m, NodeTree tree)` in `Migrate.Nodes.cs` (or a new `Migrate.Gates.cs` partial).
+- `MigrationSentences.RunsOnlyWhen(string file, IReadOnlyList<string> deliverables)` → A10-087 (F-D6's words).
+
+**Consumes:** `WorkflowNodeClosure.Edges(IReadOnlyList<WorkflowNodeSpec>, IReadOnlyDictionary<string, IReadOnlySet<string>>?)`,
+`WorkflowNodeClosure.Reachable(IEnumerable<string>, IReadOnlyDictionary<string, HashSet<string>>)`, `m.Walk30.Edges`,
+`m.Walk30.EdgesOf(string)`, `m.Walk30.MacroEdges(string)`, `NodeTree.Children(WorkflowNodeSpec)`,
+`WorkflowConditionConverter.FromScriban(text, m.Scope((string?)null), ConversionKind.Condition)`, `JsonLogicShape.Paths(JsonNode?)`.
+
+- [ ] **Step 1: Failing tests** (`MigrateNodesTests` unless named).
+  - `ANodeOnlyAConditionalDeliverableNeeds_GetsItsIf`: in `example-structured-intake`,
+    `nodes/sections_senior_review_section/senior_review_section.md`'s header `if` equals `deliverables/senior_review.md`'s
+    `if` (`{">=":[{"var":"input.patient.value.age"},65]}`), and `long_stay_section`'s and `index_note`'s equal their
+    deliverables'; each loop's `index.json` is unchanged (sixteen members, no `if`); the A10-087 notice once per gated
+    file, word for word, `V31Contract.AssertSentence(new SourceRefusal("A10-087", notice, ""))`.
+  - `ALoopsBodyLeaves_EachTakeTheGate`: in `example-classifier-scope`, `plan_section`, `decline_letter` and
+    `information_request` (in `nodes/plan_sections/`, `nodes/letter_decline_letter/`, `nodes/letter_information_request/`)
+    each carry their deliverable's `if` (reading `node.scope.value.value`); in `example-conditional-documents` the two
+    section leaves carry `consult_note`'s and `progress_note`'s.
+  - `AClassifierAndWhatADeliverablesConditionReads_AreNeverGated`: `example-classifier-scope`'s `nodes/scope.md` keeps
+    `if: null`.
+  - `ANodeAnUnconditionalDeliverableNeeds_IsNotGated`: `example-structured-intake`'s `note_section` and
+    `summarise_note` keep `if: null` (`note` and `notes_digest` have none).
+  - `TwoConditionalDeliverables_GateTheirSharedNode_ByOr`: `Migrated("composer-sources", root => …)` giving `pair` and
+    `topics_then_opening` conditions on two inputs: `opening.md`'s `if` is `{"or":[<pair's>,<topics_then_opening's>]}` in
+    deliverable order.
+  - `AHandEditedDeliverableCondition_GatesNothing`: `plan`'s condition set to the unconvertible
+    `(input.consult_draft | string.upcase) == ""` (as `MigrateDeliverablesTests` l.195 does): `plan_gate`'s leaves keep
+    `if: null`.
+  - `AWhile_IsNeverGated`: `composer-sources`' `refine` body (`draft_summary`) keeps `if: null` when `summary` is given a
+    condition.
+  - `MigrateDeliverablesTests.AGatedSource_AddsNoStateTerm`: a deliverable whose only source is a gated leaf keeps 30's
+    `if` exactly (no `.state` term, no A10-079).
+  - `HandEditsTests.EachHandEditedNode_KeepsTheMigrationsGate`: for every `hand-edits/*/nodes/**.md`, the hand edit's header
+    `if` equals the migrated file's when the latter is non-null.
+  - `ByteEquivalenceTests.TheGatedPackages_SendOnlyThePrompts30Sent`: over every scenario of `example-classifier-scope`,
+    `example-conditional-documents` and `example-structured-intake` (`EquivalenceFixture.Compared`), no `#prompts/` text is
+    31's alone.
+  - `MigratedPackagesTests.NoHandEdit_MeansPublishRefusesNothing` (existing) stays green for all packages.
+- [ ] **Step 2: Run, fail** (focused filter on `MigrateNodesTests`).
+- [ ] **Step 3: Implement.** In `Nodes`, after l.33–34: copy each id whose `AlwaysValued` holds into
+  `m.AlwaysValued30`; call `DeliverableGates(m, tree)`; then recompute every `m.NodeReads[id]` with
+  `AlwaysValued(tree, id, cases, 0, m.DeliverableGates.Keys.ToHashSet())`. `DeliverableGates`:
+  1. `edges` = a mutable copy of `WorkflowNodeClosure.Edges(m.Manifest30.Nodes ?? [], m.Walk30.Edges)`, plus, for every flow
+     in `tree.ById`, an edge to each of `NodeTree.Children(flow)`.
+  2. For each deliverable of `m.Manifest30.EffectiveDeliverables`: its roots (each `sources` entry without `node.`, each
+     `m.Walk30.MacroEdges(macro.Id)` of `deliverable.Macros`, the id of `deliverable.Check` without `node.`) and its rule:
+     `deliverable.If ?? deliverable.When` converted by `WorkflowConditionConverter.FromScriban` directly (no notice: the
+     deliverables pass converts and says it as today), `Logic` or null.
+  3. K = `Reachable(classifiers ∪ node ids in JsonLogicShape.Paths(each rule) ∪ m.Walk30.EdgesOf(each top-level if/case) ∪
+     roots of every deliverable whose rule is null, edges)`; a classifier is a node whose 30 `Format` is `classification`.
+  4. For each top-level id in `tree.Top`, not a check (`IsCheck`), not in K, whose subtree holds no `while`: R = the
+     deliverables with a rule whose `Reachable(roots, edges)` contains it; when R is not empty, gate = R's rules in order (one,
+     or `{ "or": [ … ] }`, each `DeepClone`d), written into `m.DeliverableGates` for the id if it is a leaf, else for every
+     leaf of its subtree (walk `NodeTree.Children` recursively; skip checks).
+  In `WriteNode`, the leaf header's `["if"]` is `m.DeliverableGates.GetValueOrDefault(id)?.DeepClone()`, and when set, the
+  A10-087 notice for `file` with R's ids. In `WhenASourceRan` (l.76) test `m.AlwaysValued30.Contains(id)` in place of
+  `read.AlwaysValued`. Then carry the gate into the hand edit `senior_review_section.md`'s header (copy the migrated `if`)
+  and into any other hand-edited node file the new test names; say in each README's answer that the `if` is the migration's.
+- [ ] **Step 4: Run** the V31 run. A clean package that gains a hand edit through the new guards (R17 now sees a gated
+  leaf as nullable) is recorded in *Recorded in the build*, not hidden.
+- [ ] **Step 5: Docs.** Part 10 § 1.2 gains a row after the R15 row: *"a node only deliverables with a condition need (30
+  ran only what an applicable deliverable needed) | **each leaf of it gets those deliverables' `if`**, one or joined by
+  `or` (a `for` has no `if`, so its body's leaves take it); a classifier, what a condition reads and a `while` are never
+  gated; a notice (A10-087) ([ruled](…#issuecomment-7199237966), item 1)"*; the twin § 10.1 the same; the conformance README
+  row A10-087. **Commit** `PackageFormat (#1509): a node only conditional deliverables need runs only when one of them applies`,
+  `Tests (#1509): the senior review hand edit keeps the migration's gate`, `Docs (#1509): part 10 says which nodes the migration gates`;
+  tick; push.
+
+### Task F2: A date input read whole keeps 30's form (item 2)
+
+**Files:** Modify `PF/Migration/TemplateRewriter.cs` (`Run.Output`, l.299–325: the call `Read(chain, head, vars, sink, false)`
+at l.310; `Run.Read`, l.1031, its `input` case l.1056–1068); Tests `tests/V31Migration/MigrateTemplatesTests.cs`,
+`TemplateRewriterTests.cs`, `ByteEquivalenceTests.cs`; docs part 10 § 1.2, twin § 10.1.
+
+**Interfaces — Produces:** `TemplateRewriter.ThirtyDatePattern = "%d %b %Y"` (internal const); `Run.Read(…, bool wrap,
+bool output = false)`.
+
+- [ ] **Step 1: Failing tests.**
+  - `MigrateTemplatesTests.AWholeDateInput_IsWrittenIn30sForm`: `example-conditional-documents`'
+    `nodes/sections_consult_note_section/consult_note_section.md` body holds
+    `Encounter date: {{ input.seen_on.value | date.to_string "%d %b %Y" }}`; `example-v12-constructs`' `nodes/patient_header.md`
+    holds `{{ input.seen_on.value | date.to_string "%d %b %Y" }}.`
+  - `TemplateRewriterTests.ADateAlreadyPiped_InATest_OrAField_IsLeftAsToday` (with `Working(package, change)`): a prompt
+    `{{ input.seen_on | date.to_string "%d %B %Y" }}` becomes `{{ input.seen_on.value | date.to_string "%d %B %Y" }}`;
+    `{{ if input.seen_on }}x{{ end }}`'s test gains no pipe; a text input read whole gains none.
+  - `ByteEquivalenceTests.AMigratedDate_RendersAs30Did`: `example-conditional-documents/new-patient-billing`'s
+    `#prompts/node.sections_consult_note_section.consult_note_section:assessment` and `example-v12-constructs/default`'s
+    `#renders/node.patient_header` are equal (absent 31-only prompts aside, F1's).
+  - The migrated packages still publish (`MigratedPackagesTests.NoHandEdit_MeansPublishRefusesNothing`).
+- [ ] **Step 2: Run, fail.**
+- [ ] **Step 3: Implement.** `Output` calls `Read(chain, head, vars, sink, false, output: true)`. In `Read`'s `input` case
+  with `steps.Count == 1`, when `output` and the input's format is the JSON string `"date"`, the inserted text at `End(token)`
+  is `.value | date.to_string "%d %b %Y"` (one edit, so `Order` sees one insertion) in place of `.value`. Nothing else.
+- [ ] **Step 4: Run** the V31 run.
+- [ ] **Step 5: Docs.** Part 10 § 1.2's bare-read row (l.78) gains: *"a date input read whole is written
+  `{{ input.x.value | date.to_string "%d %b %Y" }}`, 30's `09 Nov 2026` ([ruled](…#issuecomment-7199237966), item 2); a new
+  package keeps the ISO form (#357)"*; twin § 10.1. **Commit** `PackageFormat (#1509): a date input read whole migrates in 30's "%d %b %Y" form`,
+  `Docs (#1509): …`; tick; push.
+
+### Task F3: Each source a deliverable composes is stripped, as 30 trimmed it (item 3)
+
+**Files:** Modify `PF/Migration/Migrate.Deliverables.cs` (`Composition`, l.124–138: the source piece at l.132; its summary
+l.120–123 and the class summary l.6–20); fixture `tests/Fixtures/ByteEquivalence/edge-tests/*.json` where an `expect` text
+moves; Tests `tests/V31Migration/MigrateDeliverablesTests.cs` (`EachSource_IsReadAsItsContent_InSourcesOrder`, l.110–134),
+`ByteEquivalenceTests.cs`, `EdgeCasePackagesTests.cs`; docs part 10 § 1.2 (the deliverables row, l.69), twin § 10.1.
+
+- [ ] **Step 1: Failing tests.**
+  - `EachSource_IsReadAsItsContent_InSourcesOrder`'s rows become `{{ node.<id>.content | string.strip }}` per source
+    (`pair`: `{{ node.opening.content | string.strip }}\n\n{{ node.closing.content | string.strip }}`).
+  - `MigrateDeliverablesTests.ASnippetPiece_IsNotStripped`: `composer-macros`' `prepended.md` is
+    `{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content | string.strip }}`.
+  - `ByteEquivalenceTests.EachComposedSource_IsTrimmedAs30Did`: `composer-macros/new-visit-defaults#deliverables/deliverable.prepended`
+    is equal or expected (only `escaped-plain-text` credited where it was), and so is every deliverable over `letter_body`;
+    `composer-sources/awkward-texts#deliverables/deliverable.pair` is equal.
+  - The `escaped-plain-text` credit on `composer-sources` `tally` and `example-v12-constructs` `consult` still holds
+    (`EscapedReads` finds a stripped value: if it does not, match the held value's `Trim()` too).
+- [ ] **Step 2: Run, fail.** **Step 3: Implement:** the piece is `$"{{{{ {SourceRead(m, source)}.content | string.strip }}}}"`;
+  the pieces of `DeliverableMacro` and the signature are unchanged. Update any `edge-tests/<package>.json` whose `expect`
+  text for a site `EdgeCasePackagesTests.Unruled` lists now differs (the test prints the site): write the run's text.
+- [ ] **Step 4: Run** the V31 run. Write in *Recorded in the build* the sites still unexplained for difference 4 (the
+  **Blocks** list).
+- [ ] **Step 5: Docs.** Part 10 § 1.2's deliverables row: *"…each source read as `{{ node.<id>.content | string.strip }}`,
+  as 30's composer trimmed each part, never the whole ([ruled](…#issuecomment-7199237966), item 3); a macro's snippet is
+  not stripped (R5)"*; twin. **Commit** `PackageFormat (#1509): each source a migrated deliverable composes is stripped, as 30 trimmed it`;
+  tick; push.
+
+### Task F4: A loop item that did not run is an expected difference (item 4)
+
+**Files:** Modify `PF/Harness/ExpectedDifferences.cs` (`Rules`, l.62–181: a new rule after `while-no-pass-separator`; a new
+private function beside `WhileNoPassSeparator`, l.1501); `tests/V31Migration/EdgeCasePackagesTests.cs` (`Unruled`, l.49–57:
+remove the two `edge-items-not-run` sites; the `Q4` const; the test at l.113–144 per F-D17); fixture
+`edge-tests/edge-items-not-run.json` if its `problem_list` `expect` must hold 31's text; Tests
+`tests/V31Migration/ExpectedDifferencesTests.cs`; docs part 10 § 3.2, twin § 10.11.
+
+**Interfaces — Produces:** `ExpectedDifferences.Rules` gains `new("loop-item-not-run", "#1508, 2026-11-26, item 4, ruled by
+the owner (Q4 stands; both differences expected); part 10 §§ 1.2, 3.2", "an item of a loop that did not run (past its max,
+or its body skipped) writes nothing at 31, where 30's template loop wrote its fixed text for it with its reads empty; that
+text is 30's alone") { Bytes = LoopItemNotRun }`.
+
+- [ ] **Step 1: Failing tests.**
+  - `ExpectedDifferencesTests.ALoopItemThatDidNotRun_IsExpected`: `EquivalenceFixture.Compared("edge-items-not-run",
+    "third-problem-not-run")`: `#renders/node.problem_lines` and `#deliverables/deliverable.problem_list` are
+    `(Equal: false, Expected: true, Unexplained: false)` with `Rules == ["loop-item-not-run"]`.
+  - Near misses on hand-made pairs: a 30-only line that lacks the guarded body's literal text (`"- "`, `": "`) is not credited;
+    a 30-only line when every item of the loop completed is not credited; a template loop that is not the migration's guarded
+    form (`{{ for e in node.x.items }}…` without `{{ if e.state == "completed" }}`) credits nothing.
+  - `EdgeCasePackagesTests.TheReport_HasNoUnexplainedText("edge-items-not-run")` with `Unruled` holding no site of it.
+- [ ] **Step 2: Run, fail.**
+- [ ] **Step 3: Implement `LoopItemNotRun(DifferenceContext c, string old, string now)`.** (1) Only `Render`, `Deliverable`
+  and `Prompt` rows. (2) The templates the row is made from: the row's own source file in `c.Migrated.Files` and the files of
+  the rendered nodes it reads, walked through `c.Plan` as `PlacedMacros` (l.1072) walks reads. (3) In each, every R16 guard the
+  migration writes: `{{ for <v> in <loop read>.items }}{{ if <v>.state == "completed" }}BODY{{ else }}{{ end }}{{ end }}`;
+  BODY's literal fragments (text outside tags), each `Trim()`med, empty ones dropped. (4) `k` = the item rows of that loop in
+  `c.Run31.Rows` (key `<loop key>:<n>`) whose `State` is not `RowState.Completed`. (5) Align 30's and 31's lines with
+  `Aligned`; each run of lines only 30 has that holds BODY's fragments in order, at most `k` per loop, is taken out of 30's
+  text with the line ending that joins it (the one before it; after it, for a run at the start); return `(oldWithout, now)`,
+  or null when none is taken. Then per F-D17: in the test at l.136 replace `Unruled.ContainsKey(site)` with "the
+  comparison's text for the site is not `Equal`" (from `EquivalenceFixture.Compared`), and drop the two sites from `Unruled`.
+- [ ] **Step 4: Run** the V31 run (`EveryRule_HasAGoldenHit_OrANamedReason` finds the new rule's hit in the live report).
+- [ ] **Step 5: Docs.** Part 10 § 3.2 gains the bullet: *"**An item that did not run** ([ruled](…#issuecomment-7199237966),
+  item 4; Q4 stands): past a loop's `max`, or with its body skipped, an item writes nothing at 31 (§ 1.2's guard), where 30's
+  template loop wrote its fixed text for it; that text is 30's alone (`loop-item-not-run`; `edge-items-not-run`). 30's fixed
+  text for an item that never ran was 30's defect."*; twin § 10.11. **Commit** `PackageFormat (#1509): a loop item that did not run is an expected difference (Q4)`;
+  tick; push.
+
+### Task F5: Two white-space differences become expected rules (item 5)
+
+**Files:** Modify `PF/Harness/ExpectedDifferences.cs` (two rules after `loop-item-not-run`; two functions beside
+`MacroTrailingWhitespace`, l.1029, reusing `WhiteSpaceRuns` l.1116, `Undo` l.590, `PlacedMacros` l.1072);
+`tests/V31Migration/EdgeCasePackagesTests.cs` (delete `Unruled` and its uses; `TheReport_HasNoUnexplainedText`, l.146–160,
+asserts every text equal or expected and `counts.partlyExplained + counts.unexplained == 0`); fixture
+`edge-tests/edge-unruled-whitespace.json` if its `expect` must hold 31's text; Tests `ExpectedDifferencesTests.cs`; docs part 10
+§ 3.2, twin § 10.11.
+
+**Interfaces — Produces:**
+- `chosen-macro-final-line-ending` (basis *"#1508, 2026-11-26, item 5, ruled by the owner; R5; part 05 § 8.6; part 10 § 3.2"*;
+  explanation *"a macro the model chose whose body ends in a line ending loses that one line ending at 31, where 30 wrote the
+  body whole"*), `Bytes = ChosenMacroLineEnding`: macros of `ChoiceClassifiers.Of(c.Migrated)` (the ones the model chose)
+  among `PlacedMacros(c)`, whose body in `c.Migrated.Files` (under `macros/`, in `c.Migrated.MacroBodies`) ends in `\n`; a
+  white-space run of 31's text equal to 30's aligned run less one line ending, following the body's last word in 31's text,
+  is written as 30's run.
+- `empty-read-trailing-space` (basis *"#1508, 2026-11-26, item 5, ruled by the owner; part 10 § 3.2"*; explanation *"a read
+  that rendered empty at a line's end leaves the white space before it at 31, which 31's snippet keeps and 30's macro
+  trimmed"*), `Bytes = EmptyReadTrailingSpace`: a run of spaces or tabs in 31's text just before a line ending or the
+  text's end, absent at the aligned place of 30's, where a snippet the row reads that is in `c.Migrated.MacroBodies` (a 30
+  macro written as a snippet, D4) has a line ending in that white space and one read tag (`Seen at: {{ input.clinic.content }}`);
+  31's run is taken out.
+
+- [ ] **Step 1: Failing tests.** `ExpectedDifferencesTests.AChosenMacrosFinalLineEnding_IsExpected` and
+  `AnEmptyReadsTrailingSpace_IsExpected`: `edge-unruled-whitespace/default`'s `#deliverables/deliverable.letter` credited
+  `chosen-macro-final-line-ending` alone and `#deliverables/deliverable.problems` `empty-read-trailing-space` alone, each
+  expected with nothing left; near misses: a macro the engine placed (`problem_close`, still `macro-trailing-whitespace`'s
+  hit), a line ending lost after text that is no chosen macro's body, a trailing space after literal text (not a read).
+  `EdgeCasePackagesTests.TheReport_HasNoUnexplainedText` for all seven edge packages with no `Unruled`.
+- [ ] **Step 2 to 4: Run, implement, run** the V31 run.
+- [ ] **Step 5: Docs.** Part 10 § 3.2 two bullets with the two ids and `edge-unruled-whitespace`, citing item 5 ("no
+  migration change"); twin. **Commit** `PackageFormat (#1509): two white-space differences the edge packages show become expected rules`;
+  tick; push.
+
+### Task F6: Text compared with a literal is compared on the input trimmed by `trim` (item 6)
+
+**Files:** Modify `PF/Migration/ConditionTyping.cs` (`TextLiteral`, l.277–336 and its summary; the class summary l.15–20;
+`IsInputRead`, l.341), `PF/Migration/MigrationSentences.cs` (`TextLiteralBecameIn`, l.48–58; a new A10-085 reason),
+`tests/V31Source/V31Contract.cs` (`["A10-074"]`, l.328; `["A10-085"]`), `PF/Harness/ExpectedDifferences.cs`
+(`ConditionReasons`, l.34–38, only if Step 4 finds a case); Tests `tests/V31Migration/ConditionConverterTests.cs`,
+`ConditionEquivalenceTests.cs`, `MigrateNodesTests.cs`; docs part 10 §§ 1.2 (l.66), 2.2 (l.390, l.423–426), twin §§ 10.1, 10.9,
+conformance README rows A10-074 (l.1058) and A10-085.
+
+**Interfaces — Produces:**
+- A10-074 (corrected): *"\<file\>, \<member\>: '\<comparison\>' became \<rule\>; text is compared with a literal by in at 31,
+  and an input's text is trimmed at both ends first, where 30 trimmed its end."*
+- A10-085 (a reason S10-002 gives): *"'\<comparison\>' compares an input's text with a literal that starts with white space,
+  which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer."*
+- The written form: `{ "in": [ <x with each text input read r as { "trim": [r] }>, ["lit"] ] }`, and `{ "!": [ … ] }` for `!=`.
+
+- [ ] **Step 1: Failing tests** (`ConditionConverterTests`, the converter over `MigrationFixture.ScopeOf`).
+  - `TextComparedWithALiteral_IsComparedOnTheTrimmedInput`: `input.reply == "yes"` (a text input) →
+    `{"in":[{"trim":[{"var":"input.reply.content"}]},["yes"]]}`; `!=` its negation; `string.downcase input.reply == "yes"` →
+    `{"in":[{"lower":[{"trim":[{"var":"input.reply.content"}]}]},["yes"]]}`; a text field `input.intake.note == "yes"` →
+    the trim on `input.intake.value.note`; a node's text `node.draft == "yes"` → no `trim`.
+  - `…_AnswersAs30_ForTrailingWhiteSpace`: the rule evaluated (the converter tests' evaluator) on `"yes "` and `"yes\n"` holds,
+    as 30's comparison holds on the value `CanonicalText.Normalize` gives; on `null` it does not.
+  - `ALiteralThatStartsWithWhiteSpace_IsAHandEdit`: `input.reply == " yes"` → no logic; the notice is A10-085 word for word
+    (`V31Contract.AssertSentence`).
+  - `MigrateNodesTests` (or the test that pins A10-074 today): the notice's new words, word for word, for `composer-macros`'
+    `section_close.if`.
+- [ ] **Step 2: Run, fail.**
+- [ ] **Step 3: Implement.** In `TextLiteral`, after the blank-text branch and before `member` (l.332): a literal whose first
+  rune is white space and whose `reads` hold an input read → `found.Refusals.Add(("A10-085", …))`, return null (as A10-076
+  does, l.325–329). Else `x` is rewritten by a new `TrimInputReads(JsonNode x, ExpressionSite operand, Scope scope,
+  FormatSet formats)`: each `{ "var": p }` subtree with `IsInputRead(p)` whose type (`ExpressionChecker.Check`) has
+  `FormatShape.Text` becomes `{ "trim": [ that ] }`; the blank-text branch (l.309–330) is unchanged. Correct
+  `TextLiteral`'s summary and `TextLiteralBecameIn`'s doc to say what is written (F-D10's words), and A10-074's text as above.
+- [ ] **Step 4: Run** the V31 run. `ConditionEquivalenceTests.TheUnruledDifferences_AreTheseOnes` (expects none) must stay
+  green: if a vector case now differs only because `trim` dropped leading white space, add the reason `trim-both-ends`
+  (*"#1508, 2026-11-26, item 6: an input's text compared with a literal is trimmed by trim, which also drops the leading white
+  space 30 kept"*) to `ConditionReasons` and the reason picker (l.275); none is expected (no vector input has leading text
+  white space; checked).
+- [ ] **Step 5: Docs.** Part 10 § 2.2 l.390 row: `{ "in": [ trim(x)…, ["lit"] ] }` "with `trim` on each text read of an input
+  in `x` (30 trimmed an input's text at its end; `trim` trims both); a literal that starts with white space is a hand edit
+  (A10-085)"; l.423–426 bullet corrected the same (no longer "answers as 30's comparison did" without the trim); § 1.2 l.66;
+  twin §§ 10.1, 10.9; README rows A10-074 (new words) and A10-085; content check; push. **Commit**
+  `PackageFormat (#1509): text compared with a literal is compared on the input trimmed by trim`, `Docs (#1509): …`; tick; push.
+
+### Task F7: A migrated classifier's prompt ends with its format's instruction alone (item 7)
+
+**Files:** Modify `PF/Migration/Migrate.Nodes.cs` (`WriteNode`, l.86–98: `trailer` and the A10-064 notice; `ClassifierTrailer`,
+l.102–116, deleted; `ClassifierValues`' summary l.118–121), `PF/Migration/MigrationSentences.cs` (`ValuesInPrompt`, l.241–247,
+renamed `ValuesInAnswerFormat`), `tests/V31Source/V31Contract.cs` (`["A10-064"]`, l.318, and its comment l.235),
+`PF/Harness/ExpectedDifferences.cs` (`AnswersSent`, l.785–815; the `sent-format` rule's basis and explanation, l.132–137);
+Tests `tests/V31Migration/MigrateNodesTests.cs` (l.97, l.305–336), `ExpectedDifferencesTests.cs` (l.246–260),
+`ByteEquivalenceTests.cs`; docs part 10 §§ 1.2 (l.58), 3.2 (the classifier bullet), twin §§ 10.1, 10.11, README row A10-064
+(l.1047).
+
+**Interfaces — Produces:** A10-064 (corrected): *"Node '\<id\>' declared with at 30, which 31 has no member for; its values
+are the enum of its answer format, which 31 sends after its prompt."*
+
+- [ ] **Step 1: Failing tests.**
+  - `MigrateNodesTests.AClassifiersPrompt_HasNo30AnswerLine`: `example-classifier-scope`'s `nodes/scope.md` body does not hold
+    `Answer with exactly one of` and ends with the last line of 30's prompt; the A10-064 notice in its new words
+    (`V31Contract.AssertSentence`); the tests at l.305–336 rewritten to these expectations.
+  - `ExpectedDifferencesTests.ADroppedAnswerLine_IsCreditedToSentFormat`: 30 = `body + "\n\nAnswer with exactly one of:
+    in_scope, out_of_scope."`, 31 = `body + "\n\n" + <the custom trailer> + <the answers' format>` → `sent-format` credited,
+    nothing left; near misses: values in another order, a format with a `title`, a 30 text that does not end with the line.
+  - `ByteEquivalenceTests.AClassifiersPrompt_IsExpected`: `example-classifier-scope/default#prompts/node.scope` expected with
+    `Rules == ["sent-format"]`; and `edge-answer-outside-set`'s classifier prompt likewise.
+- [ ] **Step 2: Run, fail.**
+- [ ] **Step 3: Implement.** In `WriteNode` drop `trailer`; the notice is `ValuesInAnswerFormat(id)` when `kind == "agent" &&
+  ClassifierValues(node) is not null && node.With is { Count: > 0 }`, else `MemberDropped(id, "with")` as now; the body is
+  `PromptOf(m, node)`. In `AnswersSent`: with `listed` as today, require `old.EndsWith("\n\n" + listed)` and return
+  `(old[..^("\n\n" + listed).Length], before)` (30's line off 30's text; the custom trailer and the format off 31's), no longer
+  requiring `before` to end with `listed`. Correct the summaries of `AnswersSent`, `ClassifierValues` and the `sent-format` rule
+  (basis gains *"#1508, 2026-11-26, item 7 (30's answer line dropped)"*; explanation *"…or a classifier's answers sent as its
+  format, where 30 listed them in its prompt's last line, which the migration drops"*).
+- [ ] **Step 4: Run** the V31 run.
+- [ ] **Step 5: Docs.** Part 10 § 1.2 l.58: *"The prompt ends as 30's did before its last line; 30's *"Answer with exactly one
+  of: <values>."* is dropped, so the prompt ends with the format's instruction only (A10-064, [ruled](…#issuecomment-7199237966),
+  item 7), an expected difference (§ 3.2)"*; § 3.2's classifier bullet the same; twin; README A10-064. **Commit**
+  `PackageFormat (#1509): a migrated classifier's prompt ends with its answer format's instruction alone`, `Docs (#1509): …`;
+  tick; push.
+
+### Task F8: A deliverable whose source's run cannot be read is a hand edit; R15 falls back to the value (item 8)
+
+**Files:** Modify `PF/Migration/Migrate.Deliverables.cs` (`WhenASourceRan`, l.52–103: the loop l.73–80 and the term l.82–86),
+`PF/Migration/ConditionTyping.cs` (`Scope.Node`, l.463–478; a new public reader beside `TypeOf`, l.84),
+`PF/Migration/MigrationSentences.cs` (A10-086), `tests/V31Source/V31Contract.cs`; Tests
+`tests/V31Migration/MigrateDeliverablesTests.cs` (beside `ADeliverableWhoseSourcesMayNotRun_GetsAnIf`, l.137); docs part 10
+§ 1.2 (the R15 row, l.71), part 03 § 4.2 (the deliverable-`if` row, l.159), twin §§ 10.1 and 3.4.2 (l.1838), README A10-086.
+
+**Interfaces — Produces:**
+- `ConditionTyping.ReadsAtDeliverableIf(JsonNode logic, ConversionScope conversion)` → `bool`: the logic checked by
+  `ExpressionChecker.Check` at `new ExpressionSite(ExpressionSiteKind.DeliverableIf, "The read", "if", "", null, null)` over
+  `Scope`, no refusal and a boolean type.
+- `Scope.Node`: a segment `state` right after a node's path is a `ScopeHead(ScopeHeadKind.Value, path.Length + 1,
+  {"type":"string","enum":["completed","skipped","not_run"]}, false, null)`, as `ScopeTree.Member` (l.316) types it.
+- `internal static JsonNode? RanTerm(string path, Func<JsonNode, bool> readable)` in `Migrate.Deliverables.cs`:
+  `{"===":[{"var":path+".state"},"completed"]}` when readable, else `{"!==":[{"var":path+".value"},null]}` when readable, else null.
+- A10-086 (a reason S10-002 gives on a deliverable's `if`): *"every source may not run, and the migration cannot read whether
+  \<unread sources, joined by ", "\> ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it\<,
+  joining \<term\> for the others\>."* (the bracketed clause only when other sources have a term).
+
+- [ ] **Step 1: Failing tests** (`MigrateDeliverablesTests`).
+  - `RanTerm_PrefersState_ThenTheValue_ThenNothing`: with `readable` true for all → the `.state` term; refusing `.state` →
+    `{"!==":[{"var":"node.x.value"},null]}`; refusing both → null.
+  - `TheStateTerm_TypesAtADeliverableIf_AndACheckReadDoesNot`: `ConditionTyping.ReadsAtDeliverableIf` over
+    `m.Scope((string?)null)` of `composer-sources` is true for `node.plan_gate.state === "completed"` and
+    `node.plan_gate.value !== null`, false for `check.<id>.state === "completed"` (S03 site rule).
+  - `ASourceTheMigrationDoesNotRead_IsAHandEdit`: a deliverable whose sources may not run and one of which names a check
+    (a 30 manifest reshaped so `plan`'s `sources` hold `node.plan_gate` and a `terms_subset` node), or a node id
+    `NodeReads` lacks: `deliverables/plan.md`'s `if` keeps 30's condition, one S10-002 on `if` with A10-086 word for word;
+    near miss: the same with a source that always runs keeps today's behaviour (no `if`, no hand edit).
+  - The existing `ADeliverableWhoseSourcesMayNotRun_GetsAnIf` and `ARefusedConditionWhoseSourcesMayNotRun_…` stay green
+    unchanged (the `.state` term is what is written today).
+- [ ] **Step 2: Run, fail.**
+- [ ] **Step 3: Implement.** In `WhenASourceRan`: for each source, a known source that always runs (today's test) or is a
+  `while` returns `rule` as now; otherwise its term is `RanTerm(read.Path, t => ConditionTyping.ReadsAtDeliverableIf(t,
+  m.Scope((string?)null)))`; a source not in `NodeReads`, or with a null term, is listed as unread. After the loop: with any
+  unread source, `m.HandEdit(file, "if", MigrationSentences.SourceRunNotRead(unread, termOfTheOthers))` and return `rule`;
+  else join the terms as today (one, or `or`). Correct the summary (l.52–66): the read is the one the deliverable's `if` scope
+  has, by asking its typing.
+- [ ] **Step 4: Run** the V31 run.
+- [ ] **Step 5: Docs.** Part 10 § 1.2's R15 row gains: *"the term is `.state === "completed"` where the deliverable's `if`
+  can read the source's state, else `.value !== null`; a source whose run it cannot read at all is a hand edit (A10-086)
+  ([ruled](…#issuecomment-7199237966), item 8)"*; part 03 § 4.2 l.159: *"`input`, a node's **`.value`** (data) and `.state`,
+  `run`"* (F-D12), twin § 3.4.2; README A10-086. **Commit** `PackageFormat (#1509): a deliverable whose source's run cannot be read is a hand edit, and R15 falls back to the value`,
+  `Docs (#1509): …`; tick; push.
+
+### Task F9: Configured limits everywhere (item 9)
+
+**Files:** Modify `PF/Publish/PackagePublish.cs` (`PublishOptions`, l.17–27; the tests' call, l.131),
+`WorkflowPackageMigration30To31.cs` (`Migration31Options`, l.25–34; `WithSnapshot`, l.442–470: the request at l.461–463),
+`src/Consultologist.Api/V31/V31PackagePublisher.cs` (`OptionsOf`, l.222–230), `src/Consultologist.Api/V31/MigratePackage.cs`
+(`options with { … }`, l.210–214; `MigrationReport.WorstCaseNote(edited, types)`, l.258),
+`src/Consultologist.Api/V31/OutstandingHandEdits.cs` (constructor, l.116; `new Migration31Options(…)`, l.163–165); Tests
+`tests/V31Publish/PackagePublishTests.cs`, `tests/V31Migration/SnapshotTestTests.cs`, `tests/V31Engine/V31PackagePublisherTests.cs`,
+`MigratePackageTests.cs`, `OperatorWeeklySummaryTests.cs`; docs part 10 § 1.4 (l.146–147), part 07 § 8.4 (l.741–748),
+`docs/customizable-workflow/engine-v31.md` ("The migration line", l.650), `registry-operations.md` (the bulk publish),
+`package-format-library.md` (l.2466, l.2517).
+
+**Interfaces — Produces:**
+- `PublishOptions(…, TimeSpan? MatchTimeLimit = null, RunLimits? RunLimits = null)`; `PackagePublish` passes
+  `options.RunLimits` to `PackageTests.RunAsync(plan, tests, files, options.Clock, options.RunLimits)`.
+- `Migration31Options(…, V31.PublishLimits? Limits = null, V31.Run.RunLimits? RunLimits = null)`; `WithSnapshot` runs
+  `SnapshotTest.Fictional(plan)` `with { Limits = options.RunLimits }` when set.
+- `OutstandingHandEdits(pins, sources, registry, toolchain, formats, contracts, EngineLimitSettings limits, logger)`; its
+  options carry `Limits: limits.PublishLimits`.
+
+**Consumes:** `EngineLimitSettings.Limits` (`RunLimits`) and `.PublishLimits` (singleton, `ApiServices.cs` l.173; the summary
+is registered at l.211, so DI needs no change).
+
+- [ ] **Step 1: Failing tests.**
+  - `PackagePublishTests.ThePackagesTests_RunAtTheGivenRunLimits`: `WithTest()`'s package publishes with `RunLimits` null; with
+    `new RunLimits() with { JobAgentCalls = 1 }` it is refused, its test failing at `run` (the nested note makes many calls).
+  - `SnapshotTestTests.TheSnapshot_RunsAtTheOptionsRunLimits`: a clean package (`example-prior-letters`) migrated with
+    `RunLimits` `JobAgentCalls = 1` gets no snapshot and A10-061's notice (`FailsItsRun`); with none, its snapshot.
+  - `V31PackagePublisherTests.APublish_RunsItsTestsAtTheEngineConfiguredLimits`: configuration
+    `ConsultGeneration:JobAgentCalls = 1` refuses the publish that passes unset.
+  - `MigratePackageTests.TheStoredReportsWorstCaseNote_IsAtTheConfiguredLimits`: with `ConsultGeneration:MaxAgentCallsPerJob = 1`
+    and `ConsultGeneration:JobMinutes = 1` the stored report's notices hold S09-016's note; unset they do not.
+  - `OperatorWeeklySummaryTests.TheMigrationLine_CountsAtTheConfiguredJobInstances`: the package
+    `MigratePackageTests.AtTheConfiguredLimits_APackageOverTheDefaultButWithinThem_Publishes` uses is counted with its A10-081
+    hand edit at the default and without it at `ConsultGeneration:JobInstances = 100000`.
+- [ ] **Step 2: Run, fail.** **Step 3: Implement** the members and the four call sites above; nothing else reads limits.
+- [ ] **Step 4: Run** `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31Engine|FullyQualifiedName~V31Publish"`,
+  the V31 run, `dotnet build Consultologist.sln` and the solution suite.
+- [ ] **Step 5: Docs.** Part 10 § 1.4 l.146–147: *"at the deployment's configured `RunLimits.JobInstances` (10,000 unless
+  set) in the bulk publish and the weekly summary, the starting value in the script"*; part 07 § 8.4 gains *"A publish runs
+  the tests at the engine's configured limits."*; `engine-v31.md`, `registry-operations.md`, `package-format-library.md` as the
+  code now is; remove from the PR's minors (#1535 § 6, first bullet) the summary's default count. **Commit**
+  `PackageFormat (#1509): publish and the migration's snapshot run at the limits they are given`,
+  `Api (#1509): the publish, the bulk publish and the weekly summary count at the configured limits`, `Docs (#1509): …`; tick; push.
+
+### Task F10: One regeneration, and the list of what moved
+
+**Files:** regenerated `tests/Fixtures/ByteEquivalence/migrated/**`, `reports/**`, `conditions/converted.json`,
+`conditions/equivalence.json`; `~/Projects/consultologist-package-format` `v31/conformance/migration-vectors/**` (and
+`v31/conformance/index.json` if the export rewrites it); the pin `external/consultologist-package-format`; this plan's
+*Recorded in the build*.
+
+- [ ] **Step 1: Regenerate once:** `GOLDEN_UPDATE_V31=1 dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31Migration"`,
+  then the same without the variable (all green but `ThePinnedVectors_AreWhatMigrateGives`).
+- [ ] **Step 2: The vectors:** `CONFORMANCE_EXPORT_V31=$HOME/Projects/consultologist-package-format dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~MigrationVectorsExport"`;
+  read `git -C ~/Projects/consultologist-package-format status` and the diff; `python3 scripts/check-v31.py` there (every group
+  ok); commit `Format spec (Consultologist-Blazor#1509): the migration vectors after #1508's fix-first rulings`; push
+  `m39-build`; move the pin (`git -C external/consultologist-package-format fetch origin m39-build` and check out the pushed
+  commit; `git add external/consultologist-package-format`).
+- [ ] **Step 3: Read every changed golden** (`git diff --stat -- tests/Fixtures/ByteEquivalence`, then each file). Only
+  these may move: leaf `if`s and A10-087 notices (F1), date pipes (F2), `| string.strip` on deliverable sources (F3), the
+  trim and A10-074's words (F6), classifier prompts and A10-064 (F7), the snapshot tests and `reports/` that follow, and
+  `converted.json`/`equivalence.json` for F6. Anything else is a bug in the task that caused it: fix it there, not here.
+- [ ] **Step 4: Write the list for the PR** into *Recorded in the build* (one line headed "Part F, what moved"): per item,
+  the files changed under `migrated/` (count and the packages), and per package in `reports/` the `counts` before and after
+  (from `git show HEAD~:…` against the new file); each site that became equal or expected, by item (PR #1532's differences 1,
+  2 and 4; the four edge sites; item 4.3's classifier prompts); each site still unexplained, with its cause (the **Blocks**
+  list for item 3; any other found); the vectors' cases changed; the pin's old and new commit. Say which items were built
+  (1 to 9, item 3 in part).
+- [ ] **Step 5: Run** `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`;
+  pass. **Commit** `Tests (#1509): migrated/, reports/ and the condition goldens regenerated once after #1508's items 1 to 9`
+  (every changed golden named in the body), `Tests (#1509): the content repo pin moves to the re-exported migration vectors`,
+  `Docs (#1509): Part F's record of what moved`; tick; push.
+
+### Spec coverage (Part F)
+
+| #1508 ruling of 2026-11-26 | Task |
+|---|---|
+| 1. Nodes only an unreleased deliverable needs get its `if` | F1 (F-D1 to F-D6) |
+| 2. A date input written whole: `\| date.to_string "%d %b %Y"` | F2 (F-D7) |
+| 3. `\| string.strip` on each composed part 30 trimmed | F3 (F-D8); a loop's items: **Blocks** |
+| 4. Loop items that did not run: expected (Q4 stands) | F4 (F-D9, F-D17) |
+| 5. Two white-space differences: expected rules, no migration change | F5 (F-D9, F-D17) |
+| 6. Text compared with a literal on the explicitly trimmed input; A10-074 and `ConditionTyping.TextLiteral` corrected | F6 (F-D10) |
+| 7. Drop 30's "Answer with exactly one of: …"; expected | F7 (F-D11) |
+| 8. A source the migration does not read: a hand edit; R15's `!== null` fallback | F8 (F-D12, F-D13) |
+| 9. Configured limits at publish tests, bulk publish, weekly summary | F9 (F-D14) |
+| Regenerate `migrated/`, `reports/`, the vectors once; list what moved | F10 |
+
 ## Spec coverage
 
 | Spec | Task |
