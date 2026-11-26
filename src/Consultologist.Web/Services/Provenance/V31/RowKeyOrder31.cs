@@ -34,11 +34,7 @@ public sealed class RowKeyOrder31 : IComparer<string>
         return byRoot != 0 ? byRoot : CompareTails(x, xTail, y, yTail);
     }
 
-    private static int TailStart(string key)
-    {
-        var at = key.IndexOfAny([':', '#']);
-        return at < 0 ? key.Length : at;
-    }
+    private static int TailStart(string key) => RowKey31.InstanceStart(key);
 
     private static int CompareTails(string x, int i, string y, int j)
     {
