@@ -24,7 +24,9 @@ public sealed record BulkPublishArguments(string Folder, Uri Engine, bool Publis
 /// checks every folder before it sends anything, then sends each package (<c>POST Admin/MigratePackage</c>), one at a
 /// time, in the engine's order. It writes <see cref="RecordFile"/> (one row per package: the engine's answer and the time)
 /// and <see cref="OwnersFile"/> (per owner: the packages published, each with the notices the owner must see; the packages
-/// not migrated, each with its reason, S10-005 and A11-015). Exits <see cref="Clean"/> when every package published or
+/// not migrated, each with its reason, S10-005 and A11-015). A rerun carries forward every row of the existing record whose
+/// outcome is <c>published</c> and whose package it did not answer, and builds both files from the merged rows, so no owner
+/// to be told drops out (a record it cannot read is <see cref="Fault"/>, neither file written). Exits <see cref="Clean"/> when every package published or
 /// would, <see cref="NotMigratedExit"/> when any is not migrated (or could not be read), <see cref="Fault"/> on a usage
 /// error, a folder it cannot read, or an engine that does not answer as the route does (the files then hold what was done
 /// before it). It talks only to the engine it is given.
@@ -130,6 +132,14 @@ public static class BulkPublishScript
             return Fault;
         }
 
+        // an earlier run's record: its published rows are carried forward, so a rerun never drops an owner to be told
+        var (earlier, earlierFault) = ReadRecord(Path.Combine(root, RecordFile));
+        if (earlier is null)
+        {
+            error.WriteLine($"error: {earlierFault}; neither file is written.");
+            return Fault;
+        }
+
         var route = new Uri(new Uri(arguments.Engine.AbsoluteUri.TrimEnd('/') + "/"), Route);
 
         // the packages, as the engine lists them
@@ -184,6 +194,11 @@ public static class BulkPublishScript
                 exit = NotMigratedExit;
         }
 
+        // the earlier run's published rows this run did not answer, first, then this run's
+        var answered = rows.Select(r => (Text(r?["owner"]), Text(r?["name"]))).ToHashSet();
+        var carried = earlier.Where(r => Text(r?["outcome"]) == "published" && !answered.Contains((Text(r?["owner"]), Text(r?["name"])))).ToList();
+        var merged = new JsonArray([.. carried.Select(r => r!.DeepClone()), .. rows.Select(r => r!.DeepClone())]);
+
         try
         {
             Write(Path.Combine(root, RecordFile), new JsonObject
@@ -191,9 +206,9 @@ public static class BulkPublishScript
                 ["engine"] = arguments.Engine.AbsoluteUri,
                 ["publish"] = arguments.Publish,
                 ["notRead"] = notRead,
-                ["rows"] = rows,
+                ["rows"] = merged,
             });
-            Write(Path.Combine(root, OwnersFile), Owners(rows));
+            Write(Path.Combine(root, OwnersFile), Owners(merged));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -207,7 +222,8 @@ public static class BulkPublishScript
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"{counts.Count(o => o == "published")} published, {counts.Count(o => o == "would publish")} would publish, "
             + $"{counts.Count(o => o.StartsWith(NotMigratedPrefix, StringComparison.Ordinal))} not migrated"
-            + $"{(arguments.Publish ? "" : " (dry run; pass --publish to publish)")}; written {RecordFile} and {OwnersFile}."));
+            + $"{(arguments.Publish ? "" : " (dry run; pass --publish to publish)")}"
+            + $"{(carried.Count > 0 ? $"; {carried.Count} published by an earlier run carried forward" : "")}; written {RecordFile} and {OwnersFile}."));
         return exit;
     }
 
@@ -256,6 +272,27 @@ public static class BulkPublishScript
         foreach (var (owner, (published, notMigrated)) in owners)
             json[owner] = new JsonObject { ["published"] = published, ["notMigrated"] = notMigrated };
         return json;
+    }
+
+    /// <summary>
+    /// The rows of the record at <paramref name="path"/>: none when there is no file; null and why not when it is not strict
+    /// UTF-8 JSON, an object whose <c>rows</c> is an array of objects.
+    /// </summary>
+    private static (IReadOnlyList<JsonNode?>? Rows, string? Fault) ReadRecord(string path)
+    {
+        if (!File.Exists(path))
+            return ([], null);
+        try
+        {
+            if (V31.StrictJson.Parse(Utf8.GetString(File.ReadAllBytes(path))) is { Fault: null, Value: JsonObject record }
+                && record["rows"] is JsonArray rows && rows.All(r => r is JsonObject))
+                return ([.. rows], null);
+            return (null, $"{path} is not a bulk publish record ({{ engine, publish, notRead, rows }}, each row an object)");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
+        {
+            return (null, $"{path} could not be read: {ex.Message}");
+        }
     }
 
     /// <summary>

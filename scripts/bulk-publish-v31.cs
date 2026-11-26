@@ -17,7 +17,10 @@
 // It writes <operator folder>/bulk-publish-record.json (one row per package: the engine's answer, with the options used,
 // and the time) and <operator folder>/owners.json (per owner: the packages published with the notices the owner must see,
 // and the packages not migrated with the reason, S10-005 and "This package stops working when specVersion 30 is retired.").
-// A package the engine cannot publish keeps its 30 version and its pin.
+// A package the engine cannot publish keeps its 30 version and its pin. A rerun carries forward every row of the existing
+// record whose outcome is "published" and whose package it did not answer, and builds both files from the merged rows, so
+// no owner to be told drops out; a record it cannot read stops it (exit 2) before anything is sent, neither file written.
+// A hand edit is made only when the file its notice names is in hand-edits/ (edited, unchanged, or <path>.deleted).
 //
 // Exit codes: 0 every package published (or, without --publish, would); 1 a package is not migrated, or an account's
 // active package could not be read; 2 usage, a folder that does not read, or an engine fault (the files then hold what was
