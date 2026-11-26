@@ -91,11 +91,11 @@ A task that needs another sentence adds the next id and records it.
 - `WorkflowPackagePublishResponse(string Name, string Version, string Ref, List<string>? Warnings = null, JsonElement? Report = null)`; `PublishErrorPayload(List<string>? Errors, string? Error = null, JsonElement? Report = null)`.
 - `ConsultGenerationRequest(…, Dictionary<string, InputFilePayload>? InputFormFiles = null, string? SignatureBlockId = null)` with `[property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on the new member; `StartConsultGenerationJobAsync(…, IReadOnlyDictionary<string, InputFilePayload>? formFiles = null, string? signatureBlockId = null)`.
 
-- [ ] **Step 1: Failing tests.** `TheWebInputRecord_MirrorsTheApisTrailingMembers` (member names and order equal the Api record's, by reflection, as the existing mirror tests compare); `AStartRequest_WithNoSignaturePick_WritesNoSignatureBlockId` (serialised JSON has no `SignatureBlockId` key); `AStartRequest_WithAPick_WritesIt`; `A5To30Response_ReadsFormatAndChannelAsNull`.
-- [ ] **Step 2: Run, fail.** `dotnet test tests/Consultologist.Web.Tests --filter "FullyQualifiedName~Mirror"`.
-- [ ] **Step 3: Add the members;** thread `signatureBlockId` into the request. Change the l.385 comment to say the Editor and History read them (Tasks 16, 23).
-- [ ] **Step 4: Run the Web suite; pass.**
-- [ ] **Step 5: Commit** `Web (#1509): the client mirrors Format, Channel, SignatureBlockId and the publish report`; push.
+- [x] **Step 1: Failing tests.** `TheWebInputRecord_MirrorsTheApisTrailingMembers` (member names and order equal the Api record's, by reflection, as the existing mirror tests compare); `AStartRequest_WithNoSignaturePick_WritesNoSignatureBlockId` (serialised JSON has no `SignatureBlockId` key); `AStartRequest_WithAPick_WritesIt`; `A5To30Response_ReadsFormatAndChannelAsNull`.
+- [x] **Step 2: Run, fail.** `dotnet test tests/Consultologist.Web.Tests --filter "FullyQualifiedName~Mirror"`.
+- [x] **Step 3: Add the members;** thread `signatureBlockId` into the request. Change the l.385 comment to say the Editor and History read them (Tasks 16, 23).
+- [x] **Step 4: Run the Web suite; pass.**
+- [x] **Step 5: Commit** `Web (#1509): the client mirrors Format, Channel, SignatureBlockId and the publish report`; push.
 
 ### Task 2: The start-checks route (D1)
 

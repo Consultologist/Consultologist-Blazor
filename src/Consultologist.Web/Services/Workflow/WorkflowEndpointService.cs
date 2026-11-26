@@ -133,7 +133,11 @@ public record WorkflowPackageInputResponse(
     string? ExpectedContent = null,
     // v14 (#729): a union input's accepted types, in try order (Type is the
     // primary/first arm the setup form renders). Null for a single-type input.
-    IReadOnlyList<string>? Types = null);
+    IReadOnlyList<string>? Types = null,
+    // #1509 (specVersion 31, area 12; part 09 § 4.3): the input's format as a
+    // self-contained schema, and its channel. Null below 31.
+    JsonElement? Format = null,
+    string? Channel = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageFieldResponse.</summary>
 public record WorkflowPackageFieldResponse(
@@ -383,7 +387,7 @@ public record WorkflowPackageContentResponse(
     int SpecVersion,
     JsonElement Manifest,
     Dictionary<string, string> Files,
-    // #1508 (specVersion 31, area 11): mirrors the Api's trailing members; unused here until area 12.
+    // #1508 (specVersion 31, area 11): mirrors the Api's trailing members; the Editor and History read them (Tasks 16, 23).
     JsonElement? Resolve = null,
     JsonElement? Lock = null,
     JsonElement? PublishReport = null,
@@ -416,7 +420,9 @@ public record WorkflowPackagePublishResponse(
     string Name,
     string Version,
     string Ref,
-    List<string>? Warnings = null);
+    List<string>? Warnings = null,
+    // #1509 (specVersion 31, area 12): the publish report in full; null below 31.
+    JsonElement? Report = null);
 
 /// <summary>Success carries the response; failure carries the endpoint's error list for inline display.</summary>
 public record WorkflowPublishOutcome(
@@ -890,7 +896,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     private sealed record CatalogPointer(string? Version);
 
-    private sealed record PublishErrorPayload(List<string>? Errors);
+    private sealed record PublishErrorPayload(List<string>? Errors, string? Error = null, JsonElement? Report = null);
 
     /// <summary>
     /// Appends the package ref the caller wants, or leaves the URL alone. Null

@@ -38,7 +38,9 @@ public interface IAIEndpointService
         // #991: per form-channel object input, the questionnaire file whose
         // coerced object the value in `inputs` equals — bytes beside the value,
         // verified by the server at start; null when none.
-        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null);
+        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null,
+        // #1509 (specVersion 31, area 12): the signature block picked for this run.
+        string? signatureBlockId = null);
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
@@ -175,7 +177,8 @@ public class AIEndpointService : IAIEndpointService
         IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null,
         IReadOnlyDictionary<string, bool>? macroChoices = null,
         IReadOnlyCollection<string>? acknowledgedShortInputs = null,
-        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null)
+        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null,
+        string? signatureBlockId = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -207,7 +210,8 @@ public class AIEndpointService : IAIEndpointService
                 // #991: the questionnaire files, beside their values.
                 InputFormFiles: formFiles is { Count: > 0 }
                     ? formFiles.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
-                    : null);
+                    : null,
+                SignatureBlockId: signatureBlockId);
 
             _logger.LogInformation(
                 "Starting consult generation job at {Url}. InputCount={InputCount}, InputLength={InputLength}",
@@ -519,7 +523,11 @@ public record ConsultGenerationRequest(
     // the value was imported from. The Create page's questionnaire door
     // populates it; the server verifies and stamps the file-sourced
     // form-response origin.
-    Dictionary<string, InputFilePayload>? InputFormFiles = null);
+    Dictionary<string, InputFilePayload>? InputFormFiles = null,
+    // #1509 (specVersion 31, area 12): mirrors the API record's trailing member —
+    // the account signature block picked for this run; omitted when none.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? SignatureBlockId = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef. #1144: Position
 /// is the element's index in the combined array of a several input; null for a
