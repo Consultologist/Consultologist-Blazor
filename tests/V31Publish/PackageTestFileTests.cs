@@ -248,12 +248,15 @@ public class PackageTestFileTests
     [InlineData("node.x:")]
     [InlineData("node.x:a/")]
     [InlineData("node.x#0")]
-    [InlineData("check.x")]
+    [InlineData("check.")]
+    [InlineData("check.x:")]
+    [InlineData("deliverable.note")]
+    [InlineData("input.referral")]
     [InlineData("Node.x")]
     [InlineData("node.x\n")]
     [InlineData("plan")]
     [InlineData("")]
-    public void AnOutputsKeyThatIsNoNodeRowKey_IsA11005_WithoutTheKey(string key)
+    public void AnOutputsKeyThatIsNoNodeOrCheckRowKey_IsA11005_WithoutTheKey(string key)
     {
         var json = Valid();
         ((JsonObject)json["outputs"]!)[key] = "text";
@@ -290,6 +293,29 @@ public class PackageTestFileTests
         ((JsonObject)json["outputs"]!)[key] = "text";
 
         Assert.Empty(Read(json).Refusals);
+    }
+
+    [Theory]
+    [InlineData("check.all_covered")]
+    [InlineData("check.part_coverage.coverage:1")]
+    [InlineData("check.refine.judge#2")]
+    [InlineData("check.sections.outer#2:1/3")]
+    public void SnapshotOutputs_MayHoldCheckKeys(string key)
+    {
+        // #1508 (2026-11-25, item 9): a check's row key is a stub key too; the reader and test.schema.json agree.
+        var json = Valid();
+        ((JsonObject)json["outputs"]!)[key] = "text";
+
+        var (test, refusals) = Read(json);
+
+        Assert.Empty(refusals);
+        Assert.True(test!.Request.Outputs.ContainsKey(key));
+        Assert.True(V31Migration.SnapshotTestTests.TestSchema().Validate(json.ToJsonString(), null), $"{key} does not fit test.schema.json.");
+
+        var neither = Valid();
+        ((JsonObject)neither["outputs"]!)["deliverable.note"] = "text";
+        Assert.Equal("A11-005", Assert.Single(Refused(neither)).Id);
+        Assert.False(V31Migration.SnapshotTestTests.TestSchema().Validate(neither.ToJsonString(), null), "deliverable.note fits test.schema.json.");
     }
 
     [Theory]

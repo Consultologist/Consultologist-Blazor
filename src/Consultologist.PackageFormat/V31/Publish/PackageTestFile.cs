@@ -18,7 +18,8 @@ public sealed record PackageTestFile(string Id, string Path, string FileHash, Of
 /// has already checked that the six members are present; this reader checks that they say what the compiled package needs:
 /// every declared input listed (S07-010), <c>profile</c> exactly <c>needs.profile</c> (S07-011), <c>run</c> exactly the facts the
 /// package reads (S07-012, a date as <c>{ "value", "timeZone" }</c>), and every <c>outputs</c> key and <c>expect</c> member of
-/// the grammar's shape (A11-005). Whatever the file holds, no exception is thrown; every refusal found is returned in member
+/// the grammar's shape (A11-005; an <c>outputs</c> key is a node's or a check's row key, #1508 2026-11-25 item 9).
+/// Whatever the file holds, no exception is thrown; every refusal found is returned in member
 /// order (one A11-005 for the first fault of a member), at the test's path, and none carries a value from the file.
 /// </summary>
 public static class PackageTestFiles
@@ -28,7 +29,7 @@ public static class PackageTestFiles
     private const string Tail = "(?:#[1-9][0-9]*)*(?::" + Item + "(?:#[1-9][0-9]*)*(?:/" + Item + "(?:#[1-9][0-9]*)*)*)?";
     private const RegexOptions Options = RegexOptions.CultureInvariant | RegexOptions.NonBacktracking;
 
-    private static readonly Regex OutputKey = new($@"\Anode\.{Segment}(?:\.{Segment})*{Tail}\z", Options);
+    private static readonly Regex OutputKey = new($@"\A(?:node|check)\.{Segment}(?:\.{Segment})*{Tail}\z", Options);
     private static readonly Regex RowKey = new($@"\A(?:node|check|deliverable)\.{Segment}(?:\.{Segment})*{Tail}\z", Options);
     private static readonly Regex CheckKey = new($@"\Acheck\.{Segment}(?:\.{Segment})*{Tail}\z", Options);
     private static readonly Regex DeliverableKey = new($@"\Adeliverable\.{Segment}(?:\.{Segment})*(?::{Item}(?:/{Item})*)?\z", Options);
@@ -154,7 +155,7 @@ public static class PackageTestFiles
             position++;
             if (!OutputKey.IsMatch(key))
             {
-                grammar("outputs", $"key number {position} is not a node's row key (node.<id>, then : and its item path, # and its pass)");
+                grammar("outputs", $"key number {position} is not a node's or a check's row key (node.<id> or check.<id>, then : and its item path, # and its pass)");
                 return;
             }
         }

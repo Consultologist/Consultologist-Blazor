@@ -41,7 +41,7 @@ public class SnapshotTestTests
     }
 
     /// <summary>The pinned <c>test.schema.json</c>, with the common schema it refers to.</summary>
-    private static JsonSchema TestSchema()
+    internal static JsonSchema TestSchema()
     {
         List<AdditionalSchemaFile> files =
         [
