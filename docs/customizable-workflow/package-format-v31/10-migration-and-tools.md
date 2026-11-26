@@ -549,7 +549,7 @@ and the migration report lists each such conversion (A10-050).
     Failed (ruling 7, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)).
   - **A macro body's trailing whitespace:** 31 drops exactly one final line ending (part 05 § 8.6), 30 trims all trailing
     whitespace (`TrimEnd()`); each body whose text differs is listed, naming this ruling ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647), 1).
-  - **Plain text escaped into a Markdown deliverable** (part 06 § 6.4): unescaping the 31 text gives 30's bytes. A `let` of text is escaped too, and its computed value unescapes it ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #13); so are plain-text items joined into a Markdown loop's `.content`, which a prompt that reads the loop holds escaped (D23, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 8). The rule is `escaped-plain-text`.
+  - **Plain text escaped into a Markdown deliverable** (part 06 § 6.4): unescaping the 31 text gives 30's bytes. A `let` of text is escaped too, and its computed value unescapes it ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #13); so are plain-text items joined into a Markdown loop's `.content`, which a prompt that reads the loop holds escaped (D23, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 8). A rendered or computed node's text is read stripped as well as whole, since a migrated deliverable composes each source stripped ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7199237966), item 3). The rule is `escaped-plain-text`.
   - **A format's description sent** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 7, #3): 31 sends the
     `description` of a format, at the top or on a property, where 30's sent format had none at that place; beside § 1.8's
     change the rule `sent-format` sets it aside. A description that differs from 30's, a title, `$schema` or `$id` stay
@@ -589,6 +589,10 @@ and the migration report lists each such conversion (A10-050).
     nothing, Q3; § 1.2): both compose the while as empty text, but 30's composer dropped its part with its separator, where
     31's template keeps the blank line between it and the next source; no `if` can drop a separator and keep the text
     (`while-no-pass-separator`; `composer-sources` `summary_then_opening`).
+  - **An item that did not run** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7199237966),
+    item 4; Q4 stands): past a loop's `max`, or with its body skipped, an item writes nothing at 31 (§ 1.2's guard), where
+    30's template loop wrote its fixed text for it; that text is 30's alone (`loop-item-not-run`; `edge-items-not-run`).
+    30's fixed text for an item that never ran was 30's defect.
   - **An item named by its position** (part 04 § 2.7; an empty `itemLabel` field too,
     [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171415045), item 4): the loop's
     label and the position at 31, where 30 gave the input's label (`position-names-from-the-loop`).
