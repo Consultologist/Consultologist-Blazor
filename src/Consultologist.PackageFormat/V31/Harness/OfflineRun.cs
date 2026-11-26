@@ -14,7 +14,9 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// #1508 (area 11; D6): when <paramref name="GenerateMissing"/> is false a call with no stub is not generated for: it fails its
 /// node as a call that could not be made does (no retry, so its dependants never dispatch) and its key is in
 /// <see cref="OfflineResult.MissingOutputs"/>; a stub that does not fit is served nowhere, fails its node the same way, and is in
-/// <see cref="OfflineResult.InvalidOutputs"/>. Neither is asked again, whatever the node's <c>onInvalid</c>.
+/// <see cref="OfflineResult.InvalidOutputs"/>. Neither is asked again, whatever the node's <c>onInvalid</c>. #1508 (comment 6
+/// item 2; R14): a pinned reply is served exactly as written; one whose macro markers are wrong is not a stub fault but the
+/// node's <c>onInvalid</c>'s, as live, and the attempt a <c>retry</c> asks for has no stub (missing, when not generating).
 /// </summary>
 public sealed record OfflineRequest(
     IReadOnlyDictionary<string, JsonNode?> Inputs,
@@ -46,7 +48,7 @@ public sealed record OfflineText(string Key, string Text, string Hash);
 /// (<paramref name="StartRefusals"/>, then nothing ran). <paramref name="Prompts"/> is each agent row's sent prompt in the
 /// order first dispatched (a repaired call's last attempt, whose detail is the row's); <paramref name="Renders"/> each
 /// rendered node's text, in the order rendered (a deliverable's is in <paramref name="Deliverables"/>, the run's outcomes in
-/// plan order). <paramref name="Outputs"/> every reply served, by row key, as served (markers appended, D12);
+/// plan order). <paramref name="Outputs"/> every reply served, by row key, as served (a generated one's markers appended, D12);
 /// <paramref name="Rows"/> and <paramref name="Decisions"/> as recorded; <paramref name="UnusedOutputs"/> the keys of
 /// <see cref="OfflineRequest.Outputs"/> no agent call asked for, in ordinal order (part 07 § 8.2's warning; Review Focus 5:
 /// a key that cannot be mapped is reported, not dropped). #1508 (area 11; D6): <paramref name="MissingOutputs"/> the row keys

@@ -66,7 +66,11 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
             prompts.Add(text);
         }
 
-        var given = request.Outputs.TryGetValue(call.Key, out var pinned);
+        // #1508 (comment 6 item 2; R14): a test's stub answers the row's first attempt; the attempt a reply with wrong markers
+        // asks for under onInvalid: retry has no stub of its own, so a strict run says it is missing (S07-008), as live a
+        // second reply would be needed.
+        JsonNode? pinned = null;
+        var given = !(call.Repair && !request.GenerateMissing) && request.Outputs.TryGetValue(call.Key, out pinned);
         if (!given && !request.GenerateMissing)
         {
             // D6: no stub is no answer; the call fails as one that could not be made, which no retry changes.
@@ -89,8 +93,8 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
 
     /// <summary>
     /// D6: what is wrong with the reply <paramref name="outcome"/> carries, as the runner checks a reply (read as its format's
-    /// value, then validated, an envelope already taken off; a reply with wrong macro markers): the first fault's path and
-    /// keyword, never the value; null when it fits.
+    /// value, then validated, an envelope already taken off): the first fault's path and keyword, never the value; null when
+    /// it fits, and null for a reply with wrong macro markers, which the runner judges under the node's <c>onInvalid</c> (R14).
     /// </summary>
     private StubFault? Fault(AgentCall call, AgentOutcome outcome)
     {
@@ -101,8 +105,9 @@ internal sealed class OfflineHost(RunPlan plan, OfflineRequest request) : IRunHo
         var name = format is JsonObject { Count: 1 } site && SourceLayout.Text(site["$ref"]) is { } reference
             && reference.StartsWith("#/$defs/", StringComparison.Ordinal) ? reference["#/$defs/".Length..] : "its format";
 
+        // #1508 (comment 6 item 2; R14): a reply whose markers are wrong is the node's onInvalid's, as live, not the stub's fault.
         if (outcome.Invalid is { Count: > 0 })
-            return new StubFault(call.Key, name, "/ marker");
+            return null;
         var (value, parsed) = outcome.NotOfFormat ? (null, false) : plan.Formats.Read(outcome.Reply ?? "", format);
         var fits = parsed ? plan.Formats.Validate(value, format) : new FormatValueResult(false, [new FormatValueFault("", "type")]);
         if (fits.Valid)

@@ -9,17 +9,19 @@ namespace Consultologist.PackageFormat.V31.Harness;
 /// call. A pinned output is served as given; a missing one is generated from the entry's format alone by
 /// <see cref="WorkflowStubOutputs"/>, seeded by the seed given (the row key, or 30's key in a comparison): a text format's
 /// <see cref="WorkflowStubOutputs.Text"/> (one line, so it fits <c>markdown_inline</c> too, D21), another format's
-/// <see cref="WorkflowStubOutputs.FromSchema"/> of its expanded schema. Then, for a text reply, each macro the prompt offers
-/// whose marker the reply does not already hold has its marker appended, in prompt order, in the form its instruction asks
-/// (a block marker alone on a line of its own, an inline one after a space), so an <c>ordered</c> node's markers stand in
-/// order and none is written twice. A reply that still does not fit its format is served as it is: the run fails its node
-/// with the runner's sentence.
+/// <see cref="WorkflowStubOutputs.FromSchema"/> of its expanded schema. Then, for a text reply it generated (#1508, comment 6
+/// item 2; R14: a pinned reply is served exactly as written, so a marker it leaves out gives the node's <c>onInvalid</c>
+/// outcome, as live), each macro the prompt offers whose marker the reply does not already hold has its marker appended, in
+/// prompt order, in the form its instruction asks (a block marker alone on a line of its own, an inline one after a space),
+/// so an <c>ordered</c> node's markers stand in order and none is written twice. A reply that does not fit its format is
+/// served as it is: the run fails its node with the runner's sentence.
 /// </summary>
 public static class OfflineStubs
 {
     /// <summary>
     /// The reply for <paramref name="call"/>, whose prompt <paramref name="prepared"/> was sent: <paramref name="pinned"/> when
-    /// <paramref name="given"/>, else generated from <paramref name="seed"/>; with D12's markers appended to a text reply.
+    /// <paramref name="given"/>, exactly as written, else generated from <paramref name="seed"/> with D12's markers appended
+    /// to a text reply (R14).
     /// Returns the value served (a text format's as a JSON string) and the reply's text as the model would send it (a
     /// text as it is, another value as canonical JSON, inside the engine's envelope when the format sent was wrapped).
     /// </summary>
@@ -34,7 +36,7 @@ public static class OfflineStubs
         var format = entries?.GetValueOrDefault(call.EntryKey)?.Format;
         var value = given ? pinned?.DeepClone() : Generate(plan, format, seed);
 
-        if (prepared.TextReply && value is JsonValue text && text.TryGetValue<string>(out var reply))
+        if (!given && prepared.TextReply && value is JsonValue text && text.TryGetValue<string>(out var reply))
             value = JsonValue.Create(WithMarkers(reply, prepared.Composition.Macros));
 
         var body = value is JsonValue s && s.TryGetValue<string>(out var plain) && prepared.TextReply ? plain : CanonicalJson.Write(value);

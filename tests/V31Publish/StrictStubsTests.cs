@@ -115,10 +115,12 @@ public class StrictStubsTests
             {
                 ["node.plan"] = JsonNode.Parse(Sections),
                 ["node.classify"] = JsonNode.Parse($$"""{"answer":{{(answer ? "true" : "false")}},"reason":"The plan says so."}"""),
-                ["node.draft"] = "Margaret Okafor will start letrozole 2.5 mg daily.",
+                // R14: a stub is served as written, so it holds the marker exactly when the macro is offered
+                ["node.draft"] = "Margaret Okafor will start letrozole 2.5 mg daily." + (answer ? "\n{{~ macro.section_notes.hpi.content }}\n" : ""),
             };
 
             var run = await OfflineRun.RunAsync(plan, Request(plan, strict: true, stubs));
+            Assert.Equal(RunState.Completed, run.State);
 
             Assert.Empty(run.InvalidOutputs);
             Assert.DoesNotContain("node.classify", run.MissingOutputs);
@@ -132,7 +134,77 @@ public class StrictStubsTests
         Assert.DoesNotContain("Place the history's closing line alone", prompts[false], StringComparison.Ordinal);
     }
 
-    private const string Sections = """{"sections":[{"title":"History","kind":"narrative"},{"title":"Plan","kind":"table"}]}""";
+    [Fact]
+    public async Task APinnedReply_IsUsedExactlyAsWritten()
+    {
+        // #1508 (2026-11-25, comment 6 item 2; R14): a pinned reply that leaves an offered marker out is served as written, so
+        // the node's onInvalid decides, as live: fail fails it with S05-053; retry asks again, and the second attempt has no
+        // stub (S07-008 at publish). Only a generated reply gets the offered markers.
+        var stubs = new Dictionary<string, JsonNode?>(StringComparer.Ordinal)
+        {
+            ["node.plan"] = JsonNode.Parse(Sections),
+            ["node.classify"] = JsonNode.Parse("""{"answer":true,"reason":"The plan says so."}"""),
+            ["node.draft"] = "Margaret Okafor will start letrozole 2.5 mg daily.",
+        };
+        var noMarker = $"Node 'draft': {PackageFormat.V31.Templates.ReplySentences.NoMarker("section_notes.hpi")}";
+
+        foreach (var strict in new[] { true, false })
+        {
+            var fail = RunFixture.Plan(RunGoldenTests.Macros().WithJson("nodes/draft.md", h => h["onInvalid"] = "fail"));
+            var failed = await OfflineRun.RunAsync(fail, Request(fail, strict, stubs));
+
+            Assert.Equal(RunState.Failed, failed.State);
+            Assert.Equal(noMarker, failed.Sentence);
+            Assert.Equal(RowState.Failed, failed.Rows.Single(r => r.Key == "node.draft").State);
+            Assert.Empty(failed.InvalidOutputs);
+            Assert.Empty(failed.MissingOutputs);
+            Assert.Equal("Margaret Okafor will start letrozole 2.5 mg daily.", (string?)failed.Outputs["node.draft"]);
+        }
+
+        var retry = RunFixture.Plan(RunGoldenTests.Macros().WithJson("nodes/draft.md", h => h["onInvalid"] = "retry"));
+        var retried = await OfflineRun.RunAsync(retry, Request(retry, strict: true, stubs));
+
+        Assert.Equal(RunState.Failed, retried.State);
+        Assert.Equal(["node.draft"], retried.MissingOutputs);
+        Assert.Empty(retried.InvalidOutputs);
+
+        var test = TestFile(retry, stubs);
+        var outcome = await PackageFormat.V31.Publish.PackageTests.RunAsync(
+            retry, [new SourceTest("note", "tests/note.json", test)], new Dictionary<string, string> { ["tests/note.json"] = test.ToJsonString() }, TimeProvider.System);
+        var refusal = Assert.Single(outcome.Refusals);
+        Assert.Equal("S07-008", refusal.Id);
+        Assert.Contains("node.draft", refusal.Sentence, StringComparison.Ordinal);
+
+        // a generated reply still gets the markers its prompt offers
+        var generated = new Dictionary<string, JsonNode?>(stubs, StringComparer.Ordinal);
+        generated.Remove("node.draft");
+        var completed = await OfflineRun.RunAsync(retry, Request(retry, strict: false, generated));
+        Assert.Equal(RunState.Completed, completed.State);
+        Assert.EndsWith(".\n{{~ macro.section_notes.hpi.content }}\n", (string?)completed.Outputs["node.draft"], StringComparison.Ordinal);
+    }
+
+    /// <summary>A test file for <paramref name="plan"/> that gives <paramref name="stubs"/> and expects nothing.</summary>
+    private static JsonObject TestFile(RunPlan plan, IReadOnlyDictionary<string, JsonNode?> stubs)
+    {
+        var request = Request(plan, strict: true, stubs);
+        var inputs = new JsonObject();
+        foreach (var id in plan.InputOrder)
+            inputs[id] = request.Inputs.GetValueOrDefault(id)?.DeepClone();
+        var outputs = new JsonObject();
+        foreach (var (key, value) in stubs)
+            outputs[key] = value?.DeepClone();
+        return new JsonObject
+        {
+            ["description"] = null,
+            ["inputs"] = inputs,
+            ["profile"] = new JsonObject(),
+            ["run"] = new JsonObject { ["date"] = new JsonObject { ["value"] = "2026-11-21", ["timeZone"] = "America/Toronto" } },
+            ["outputs"] = outputs,
+            ["expect"] = new JsonObject(),
+        };
+    }
+
+    private const string Sections ="""{"sections":[{"title":"History","kind":"narrative"},{"title":"Plan","kind":"table"}]}""";
 
     private static string StrictFormat(RunPlan plan, string key) =>
         plan.Entries[key].Format is JsonObject { Count: 1 } site && (string?)site["$ref"] is { } reference && reference.StartsWith("#/$defs/", StringComparison.Ordinal)

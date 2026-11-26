@@ -89,7 +89,9 @@ public static class ByteEquivalence
     /// that cannot be mapped is left out, and the comparison reports the prompt it served under <c>#prompts@30/</c>), with
     /// what 30's engine added to the reply after it came (a <c>concept_list</c>'s <c>source</c>, #1504 ruling 3), and every
     /// member its 31 format lists (<see cref="Fit"/>). A reply the capture lacks is generated, seeded with 30's key
-    /// (<see cref="KeyMap.To30"/>).</item>
+    /// (<see cref="KeyMap.To30"/>). #1508 (comment 6 item 2; R14): a captured reply is replayed exactly as 30's model
+    /// wrote it, no 31 marker added (<see cref="OfflineStubs.Reply"/>), so one that holds no marker for a macro 31 offers
+    /// fails its node as it would live.</item>
     /// </list>
     /// </summary>
     public static OfflineRequest RequestFor(JsonObject scenario30, JsonObject capture30, Migration31Result migrated, RunPlan plan)
