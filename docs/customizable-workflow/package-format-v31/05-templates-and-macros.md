@@ -661,7 +661,8 @@ record shows which was false. The folder is a namespace: `macro.<folder>.<id>`
 - One classifier per macro, per node, per item. A classifier answering several questions is
   #1416 (Milestone 40).
 - **A classifier asks its question** ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1508#issuecomment-7171840295), item 1): a `judgement` node
-  whose prompt, with its parts' text, holds nothing outside its tags but white space asks nothing, and is refused
+  whose prompt, with its parts' text and the text of the snippets it places, holds nothing outside its tags but white
+  space asks nothing, and is refused
   (A11-013). The migration writes a classifier so, for a macro 30's model chose, and the operator writes the question
   (part 10 §§ 1.2, 1.4).
 
