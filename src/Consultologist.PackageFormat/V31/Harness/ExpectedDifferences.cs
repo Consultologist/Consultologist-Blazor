@@ -1464,7 +1464,8 @@ public static class ExpectedDifferences
     /// <summary>
     /// #5: each text reply the 31 run served that holds <c>{{</c> stands in 31's text as written, where 30's holds it as 30
     /// rendered it (<see cref="Rendered30"/>, with no variable: a reply that reads one did not render at 30, which
-    /// <see cref="ReplyNotRendered"/> covers). Each place is put back as 30's.
+    /// <see cref="ReplyNotRendered"/> covers). Each place is put back as 30's: the reply whole, and the reply stripped
+    /// as a migrated deliverable reads a source (<c>| string.strip</c>, #1508, 2026-11-26, item 3) by 30's render stripped.
     /// </summary>
     private static (string Old, string New)? RenderedReplies(DifferenceContext c, string old, string now)
     {
@@ -1474,8 +1475,11 @@ public static class ExpectedDifferences
         foreach (var reply in c.Run31.Outputs.Values.Select(v => v is JsonValue value && value.TryGetValue<string>(out var text) ? text : null)
                      .OfType<string>().Where(r => r.Contains("{{", StringComparison.Ordinal)).Distinct(StringComparer.Ordinal).OrderByDescending(r => r.Length))
         {
-            if (Rendered30(reply) is { } rendered && rendered != reply)
-                undone = undone.Replace(reply, rendered, StringComparison.Ordinal);
+            if (Rendered30(reply) is not { } rendered || rendered == reply)
+                continue;
+            undone = undone.Replace(reply, rendered, StringComparison.Ordinal);
+            if (reply.Trim() is { Length: > 0 } strippedReply && strippedReply != reply)
+                undone = undone.Replace(strippedReply, rendered.Trim(), StringComparison.Ordinal);
         }
 
         return undone == now ? null : (old, undone);

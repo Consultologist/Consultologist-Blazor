@@ -414,6 +414,13 @@ public class ExpectedDifferencesTests
         var run = Run(RunState.Completed, outputs: new() { ["node.plan_gate.draft_plan"] = Reply });
         Assert.StartsWith("reply-never-a-template: ", Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan", run)));
 
+        // The reply as a migrated deliverable reads it, stripped (#1508, 2026-11-26, item 3: `| string.strip` on each source):
+        // the reply served ends with a line ending, which neither text holds.
+        var served = Run(RunState.Completed, outputs: new() { ["node.plan_gate.draft_plan"] = "# Plan\n\n" + Reply + "\n" });
+        var stripped = ExpectedDifferences.Credit(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan", served));
+        Assert.Equal(["reply-never-a-template"], stripped.Rules.Select(r => r.Id));
+        Assert.True(stripped.Expected);
+
         // Near: a reply the run did not serve; 30's text is not the rendered reply (another number); a reply that does not
         // render at 30 (a variable its scope lacks), written the same at 31.
         Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan")));
