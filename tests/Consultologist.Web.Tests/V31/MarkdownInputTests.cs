@@ -112,6 +112,21 @@ public class MarkdownInputTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void Preview_RendersWithThe31Pipeline()
+    {
+        // #1510 (G-D2): a 31 input previews as 31 renders: a single line ending is no break, ^x^ is superscript.
+        var cut = Render<MarkdownInput>(p => p
+            .Add(c => c.Label, "Consult draft")
+            .Add(c => c.Value, "Seen by Dr A. Sample\nfor a grade ^2^ rash"));
+
+        cut.Find("button[data-action=preview]").Click();
+
+        var preview = cut.Find(".markdown-input__preview");
+        Assert.Empty(preview.QuerySelectorAll("br"));
+        Assert.Equal("2", preview.QuerySelector("sup")!.TextContent);
+    }
+
+    [Fact]
     public void Preview_OfALeadingHash_ShowsAHeading()
     {
         var cut = Render<MarkdownInput>(p => p

@@ -169,6 +169,25 @@ public class ConsultsRunView31Tests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AMarkdownDeliverable_RendersWithThe31Pipeline()
+    {
+        // #1510 (G-D2): a 31 note renders as 31 does: a single line ending is no break, ^x^ is superscript.
+        Pin31();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job31("Running"));
+        AIService.GetJobRowAsync(JobId, "deliverable.note").Returns(Released("Dr A. Sample saw Margaret Okafor\nfor a grade ^2^ rash."));
+        Stream(RowFinished("deliverable.note", "deliverable", "released"), Done(Job31("Completed")));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() =>
+        {
+            var note = page.Find(".run31-deliverable[data-key='deliverable.note'] .note-preview");
+            Assert.Equal("2", note.QuerySelector("sup")!.TextContent);
+            Assert.Empty(note.QuerySelectorAll("br"));
+        }, Settle);
+    }
+
+    [Fact]
     public void ABlockedDeliverable_IsNamedBlocked_WithALinkToHistory_AndNoText()
     {
         Pin31();
