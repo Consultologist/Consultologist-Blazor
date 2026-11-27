@@ -633,6 +633,12 @@ From [the further rulings of 2026-11-25](https://github.com/Consultologist/Consu
 
 > **Before 31 leaves preview,** these same packages also run **live on the dev deployment** with fictional inputs. This joins the release conditions above (the dev run with a forced replay). The full live-model test suite stays Milestone 40 (#1449).
 
+From [the third fix-first group](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166)
+(item 5):
+
+> Add to "Before 31 leaves preview": the live dev run of the edge-case packages checks that replies written line per line render as intended.
+
+
 **The edge-case packages** (#1508, Task 35). "These same packages" are the six small packages built for the cases the
 review of area 10 found, one each: `edge-missing-marker` (a reply that leaves a macro out), `edge-no-branch` (a flow that
 takes no branch), `edge-items-not-run` (loop items not run), `edge-unset-object` (an unset optional object input),

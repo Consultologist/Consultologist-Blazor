@@ -400,7 +400,7 @@ validated against the full format (§ 3.4).
   "type": "string",
   "contentMediaType": "text/markdown",
   "x-markdown": "block",
-  "description": "Markdown text that stands on its own lines (a paragraph, a list or a table)."
+  "description": "Markdown text that stands on its own lines (a paragraph, a list or a table). A single line ending is not a break: write separate lines as list items, or leave a blank line between them."
 }
 ```
 

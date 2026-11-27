@@ -255,7 +255,7 @@ information, not a warning.
 
 **Line endings.** At 31 a single line ending inside a paragraph is not a break: Markdown reads it as
 a space ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166), item 4). End such a line with `\` (an explicit hard
-break, which `~` does not strip) or leave a blank line. Publish and the Editor warn (W-3) once for each
+break, which `~` does not strip) or leave a blank line. Publish warns (W-3) once for each
 such line ending in a Markdown body a reader sees: a deliverable, a `rendered` node, a macro, a snippet
 (one or a folder's item) or a renderer whose `format` is `markdown_block` or `markdown_inline`. A prompt
 and a part are never warned, nor is a body only prompts read or place, since its text is the model's to
