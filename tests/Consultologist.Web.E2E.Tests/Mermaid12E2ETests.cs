@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Consultologist.PackageFormat.V31.Diagram;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -9,7 +11,9 @@ namespace Consultologist.Web.E2E.Tests;
 /// <summary>
 /// #1510 (area 13, Task 1, D1): the vendored Mermaid is 12, the full build, and the app draws with ELK whether or not
 /// a diagram's text declares it. The three diagrams of part 09 § 10.5 are copied verbatim: the 31 drawing rules
-/// (the <c>doc</c> and <c>tag-rect</c> shapes, an edge to a frame under ELK) depend on 12 drawing them.
+/// (the <c>doc</c> and <c>tag-rect</c> shapes, an edge to a frame under ELK) depend on 12 drawing them. Task 7 (D13, D15;
+/// Review Focus 1, 4): every golden <c>dag.mmd</c> of <c>tests/V31Diagram/Golden/</c> (linked into this project) renders,
+/// and a drawing whose labels hold Mermaid's own syntax shows them as written.
 /// </summary>
 [Collection(BrowserCollection.Name)]
 public class Mermaid12E2ETests
@@ -98,6 +102,50 @@ public class Mermaid12E2ETests
             input__consult_draft -->|"content"| node__draft
         """;
 
+    /// <summary>
+    /// A small <c>resolve.json</c> whose labels an author wrote with Mermaid's own syntax in them (Review Focus 1): a quote,
+    /// markup, <c>]</c>, <c>|</c>, a backtick, the word <c>end</c>, an entity's text and a line break. Fictional text.
+    /// </summary>
+    private const string SyntaxDocument = """
+        {
+          "inputs": { "consult_draft": { "label": "consult_draft" }, "points": { "label": "points" } },
+          "nodes": {
+            "node.quoted": { "id": "quoted", "kind": "agent", "label": "Say \"hello\" to <b>Margaret Okafor</b>", "producer": "generated",
+              "format": { "$ref": "#/$defs/plaintext" }, "modelDerived": true, "reads": ["input.consult_draft.content"] },
+            "node.piped": { "id": "piped", "kind": "agent", "label": "Plan [a] | b | `code` and end", "producer": "generated",
+              "format": { "$ref": "#/$defs/plaintext" }, "modelDerived": true, "reads": ["node.quoted.content"] },
+            "node.loop": { "id": "loop", "kind": "for", "label": "end", "producer": "computed", "in": "input.points.value",
+              "nodes": ["node.loop.broken"], "ret": "node.loop.broken", "until": null, "reads": ["input.points.value"] },
+            "node.loop.broken": { "id": "broken", "kind": "agent", "label": "Line one\nline two #35; done", "producer": "generated",
+              "format": { "$ref": "#/$defs/plaintext" }, "modelDerived": true, "reads": ["node.piped.content", "item.value"], "parent": "node.loop" }
+          },
+          "checks": {},
+          "deliverables": {
+            "deliverable.letter": { "id": "letter", "kind": "rendered", "label": "Letter for Dr A. Sample: end]",
+              "format": { "$ref": "#/$defs/markdown_block" }, "reads": ["node.loop.items"] }
+          },
+          "graph": { "edges": [], "order": ["node.quoted", "node.piped", "node.loop", "deliverable.letter"] }
+        }
+        """;
+
+    /// <summary>The labels of <see cref="SyntaxDocument"/> as a reader sees them: as written, a line break one space (D8).</summary>
+    public static TheoryData<string> AsWritten() => new()
+    {
+        "Say \"hello\" to <b>Margaret Okafor</b>",
+        "Plan [a] | b | `code` and end",
+        "Line one line two #35; done",
+        "Letter for Dr A. Sample: end]",
+    };
+
+    /// <summary>The golden drawings linked into this project (<c>Golden/&lt;name&gt;.dag.mmd</c>), by name.</summary>
+    private static string[] GoldenNames() =>
+        Directory.EnumerateFiles(Path.Combine(AppContext.BaseDirectory, "Golden"), "*.dag.mmd")
+            .Select(path => Path.GetFileName(path)[..^".dag.mmd".Length])
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+    public static TheoryData<string> Goldens() => new(GoldenNames());
+
     private readonly BrowserFixture _fixture;
 
     public Mermaid12E2ETests(BrowserFixture fixture) => _fixture = fixture;
@@ -174,6 +222,65 @@ public class Mermaid12E2ETests
 
         Assert.Contains("Drafting the note", svg);
         Assert.Equal("elk", await page.EvaluateAsync<string>("() => window.mermaid.mermaidAPI.getConfig().layout"));
+        Assert.Empty(LayoutFallbacks(console));
+    }
+
+    /// <summary>
+    /// The text a reader sees in <paramref name="svg"/>: its nodes' text, with the SVG's own <c>&lt;style&gt;</c> left out.
+    /// </summary>
+    private static Task<string> TextOfAsync(IPage page, string svg) =>
+        page.EvaluateAsync<string>(
+            """
+            svg => {
+                const holder = document.createElement("div");
+                holder.innerHTML = svg;
+                holder.querySelectorAll("style").forEach(s => s.remove());
+                return holder.textContent;
+            }
+            """,
+            svg);
+
+    /// <summary>
+    /// Every golden <c>dag.mmd</c> renders with ELK: an SVG, no error and no layout fallback. The largest
+    /// (<c>example-v12-constructs</c>) is Review Focus 4's size check; <c>functions</c> draws a <c>-.-o</c> edge into a
+    /// function's frame, frame-to-frame <c>aligned</c> edges and edges whose ends sit in nested frames.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Goldens))]
+    public async Task EveryGoldenDiagram_RendersInTheBrowser(string name)
+    {
+        var diagram = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Golden", name + ".dag.mmd"));
+        var (page, console) = await OpenAsync();
+
+        var svg = await MermaidProbe.RenderAsync(page, diagram);
+
+        Assert.StartsWith("<svg", svg);
+        Assert.Empty(LayoutFallbacks(console));
+    }
+
+    /// <summary>The link holds every golden: the seven drawings of <c>DiagramFixture.Drawings</c> (Task 6).</summary>
+    [Fact]
+    public void TheGoldens_AreTheSevenDrawings()
+    {
+        Assert.Equal(
+            ["checked-note", "composer-sources", "conditional", "example-v12-constructs", "functions", "macros", "nested-note"],
+            GoldenNames());
+    }
+
+    /// <summary>
+    /// Review Focus 1: a drawing generated from labels holding Mermaid's own syntax renders, and each label shows as the
+    /// author wrote it (a line break as one space): asserted on the drawing's text, not only on its rendering.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AsWritten))]
+    public async Task ALabelHoldingMermaidSyntax_RendersAsWritten(string label)
+    {
+        var (page, console) = await OpenAsync();
+
+        var svg = await MermaidProbe.RenderAsync(page, PackageDiagram.Generate(SyntaxDocument));
+
+        Assert.StartsWith("<svg", svg);
+        Assert.Contains(label, await TextOfAsync(page, svg));
         Assert.Empty(LayoutFallbacks(console));
     }
 }
