@@ -493,8 +493,9 @@ line-ending finder all parse with it (the library's `ConsultMarkdown.For(31)`, w
     `<p onclick="x">`). In the 31 bundle the braces are text.
   - **CustomContainers:** `:::name` and `::text::` write a `class` taken from the text, the same
     path by another syntax.
-  - **MediaLinks:** turns a URL into an `iframe`, `video` or `audio` element; with HTML off it is
-    the one embed path left, and the PDF has no counterpart.
+  - **MediaLinks:** turns image-link syntax (`![…](url)`) into an embed: an `iframe` when the URL
+    is a known video host's, a `video` or `audio` element when it names a media file; with HTML off
+    it is the one embed path left, and the PDF has no counterpart.
   - **Mathematics:** neither surface typesets it, and `$` amounts appear in clinical text.
   - **Diagrams:** no note surface draws Mermaid or nomnoml; a fence shows as code.
   - **GridTables:** row and column spans and multi-block cells the PDF does not lay out; pipe tables

@@ -399,7 +399,9 @@ node with `plain`, or a renderer); the only automatic step is escaping
   so paragraphs stay paragraphs. Two spaces rather than `\`, because the escape works piece by
   piece and a piece cannot know whether its line ending ends a paragraph, where a `\` would show
   and two spaces are dropped. The rule is local to the line ending, so escaping piece by piece is
-  escaping whole. `markdown_escape` stays 1.0.0, as it is not yet frozen
+  escaping whole, except where a cut falls inside one `\r\n`: `"x\r"` then `"\ny"` escape to a
+  paragraph break where `"x\r\ny"` escapes to a hard break (the composer then records the unit's
+  text as one substitution, as for any escape that reads across a cut). `markdown_escape` stays 1.0.0, as it is not yet frozen
   ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166), item 1).
 - **The template's own literal text is typed too:** a `plaintext` deliverable may not write
   Markdown syntax (a line starting `#`, `-`, `*` or `>`, or a `**` pair). A Markdown
