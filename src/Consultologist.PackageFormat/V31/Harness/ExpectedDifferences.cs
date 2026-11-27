@@ -117,6 +117,12 @@ public static class ExpectedDifferences
         {
             Bytes = (c, old, now) => c.Kind == ComparedKind.Deliverable || (c.Kind is ComparedKind.Prompt or ComparedKind.Render && ReadsEscapedText(c)) ? EscapedReads(c, old, now) : null,
         },
+        new("explicit-hard-break",
+            "#1510, the owner's third fix-first group (2026-11-27), item 4 (an explicit hard break where 30's pipeline broke a single line ending); part 10 §§ 1.2, 3.2",
+            "a single line ending inside a paragraph of a Markdown body, which 30's pipeline broke and 31's does not, ends with \\ (an explicit hard break) the migration wrote: 31's text holds that \\ before the line ending, where 30's has none")
+        {
+            Bytes = ExplicitHardBreaks,
+        },
         new("item-ids-from-one",
             "ruled by the owner on #1506, 2026-11-21, 2 (item numbers are 1-based everywhere users see them; 30 counted an array input's from 0); D12",
             "an item of a loop over an input's list is numbered from 1, where 30 numbered it from 0")
@@ -271,6 +277,20 @@ public static class ExpectedDifferences
     private static bool ClassifierPrompt(DifferenceContext c) =>
         c.Kind == ComparedKind.Prompt && c.OldText is null && c.NewText is not null && c.Key31 is { } key
         && ChoiceClassifiers.Of(c.Migrated).Any(k => k.Key == EntryOf(key));
+
+    /// <summary>
+    /// #1510 (item 4; G-D9): in a package whose sources hold a hard break the migration wrote
+    /// (<see cref="Migration31Result.HardBreaks"/>), 31's text without one <c>\</c> directly before each line ending, in any
+    /// compared kind (a macro body or a rendered node read later reaches prompts). <see cref="Credit"/> keeps it only where
+    /// that brings the text nearer 30's.
+    /// </summary>
+    private static (string Old, string New)? ExplicitHardBreaks(DifferenceContext c, string old, string now) =>
+        c.Migrated.HardBreaks.Values.Any(n => n > 0) && now.Contains('\\', StringComparison.Ordinal)
+            ? (old, BackslashBeforeALineEnding.Replace(now, ""))
+            : null;
+
+    private static readonly System.Text.RegularExpressions.Regex BackslashBeforeALineEnding =
+        new(@"\\(?=\r?\n)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>
     /// #1510 (F-D3): a rendered text only 31 has, of a node the migration wrote to strip a loop's items

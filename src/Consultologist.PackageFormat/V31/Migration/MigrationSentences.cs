@@ -496,6 +496,22 @@ internal static class MigrationSentences
         $"loop '{loop}' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.";
 
     /// <summary>
+    /// A10-091 (#1510; #1509 comment 7209167166, item 4; G-D8, G-D10): in the Markdown body <paramref name="file"/>, the
+    /// migration ended <paramref name="count"/> line endings inside a paragraph with <c>\</c>, where 30's pipeline broke a
+    /// single line ending and 31's does not. One per file.
+    /// </summary>
+    public static string ExplicitHardBreaks(string file, int count) =>
+        $"In '{file}', {count} line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.";
+
+    /// <summary>
+    /// A10-092 (#1510; #1509 comment 7209167166, item 4; G-D8, G-D10): the Markdown body <paramref name="file"/> is read or
+    /// placed by a prompt, so the migration wrote no <c>\</c> in it (one would change what the model reads), yet a
+    /// deliverable, a rendered node or a macro shows it, where its single line endings no longer break at 31.
+    /// </summary>
+    public static string LineEndingsKeptForAPrompt(string file) =>
+        $"'{file}' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\.";
+
+    /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
     /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
     /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is
