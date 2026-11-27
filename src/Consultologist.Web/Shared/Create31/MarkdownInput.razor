@@ -1,7 +1,8 @@
 @using Consultologist.Web.Shared.WorkflowEditor
+@using PublishedStamp = Consultologist.PackageFormat.V31.PublishedStamp
 @inject IJSRuntime JS
 @* #1509 (D5, part 09 § 5.1): a `markdown_block` input. A text area holding Markdown, a toolbar that wraps or prefixes
-   the selection, and a Preview toggle rendered by MarkdownPreview (the same sanitising as every other preview). The
+   the selection, and a Preview toggle rendered by MarkdownPreview (the same sanitising as every other preview) through the 31 pipeline (#1510). The
    value reported is the Markdown text; no HTML is stored. Only the text control: the page's slot keeps the documents,
    earlier runs and snippets around it. The toolbar sits in the preventDefault wrapper the repo's traps ask for, because
    the page may draw this inside a <label>. *@
@@ -24,7 +25,7 @@
     @if (previewing)
     {
         <div class="markdown-input__preview" aria-label="@(Label) preview">
-            @((MarkupString)MarkdownPreview.Render(Value ?? string.Empty))
+            @((MarkupString)MarkdownPreview.Render(Value ?? string.Empty, PublishedStamp.SpecVersion))
         </div>
     }
     else

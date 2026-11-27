@@ -1,6 +1,7 @@
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Provenance.V31
 @using System.Text.Json
+@using PublishedStamp = Consultologist.PackageFormat.V31.PublishedStamp
 @*
     #1509 (Task 12, D15; part 09 §§ 3.8, 4.2): the Create page's run view for a 31 job (record storage 12). The rail lists
     the package's top-level nodes, each set from its row's stored status, its item and pass rows under it as they finish;
@@ -59,7 +60,7 @@
                         </div>
                         @if (string.Equals(Member(fetched.Row, "format"), "markdown_block", StringComparison.Ordinal))
                         {
-                            <article class="note-preview generated-note">@((MarkupString)MarkdownPreview.Render(content))</article>
+                            <article class="note-preview generated-note">@((MarkupString)MarkdownPreview.Render(content, PublishedStamp.SpecVersion))</article>
                         }
                         else
                         {
