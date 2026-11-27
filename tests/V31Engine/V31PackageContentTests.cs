@@ -388,6 +388,54 @@ public class V31PackageContentTests
         Assert.Null(Body(response)["diagram"]);
     }
 
+    [Fact]
+    public async Task TheDiagramRoute_OfAVersionWhoseResolveIsMissing_IsA06004_As400()
+    {
+        // The load refuses a folder without its resolve.json (A06-004, an integrity refusal), and the route's own read of
+        // it, after a load that holds the version's plan, answers the same sentence.
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry);
+        var path = FakeRegistry.PathOf(stored.Ref, CompiledPackage.ResolveFile);
+        rig.Registry.Blobs.TryRemove(path, out _);
+
+        var refused = await rig.DiagramAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        var error = (string)Body(refused)["error"]!;
+        Assert.Equal(CompiledPackageStore.NotPublished(stored.Ref.Name, stored.Ref.Version), error);
+        V31Contract.AssertSentence(new SourceRefusal("A06-004", error, ""));
+        Assert.Null(Body(refused)["diagram"]);
+
+        var cached = new Rig();
+        var again = await PublishAsync(cached.Registry);
+        Assert.Equal(HttpStatusCode.OK, (await cached.DiagramAsync(again.Ref)).StatusCode);
+        cached.Registry.Blobs.TryRemove(FakeRegistry.PathOf(again.Ref, CompiledPackage.ResolveFile), out _);
+
+        var missing = await cached.DiagramAsync(again.Ref);
+
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Assert.Equal(CompiledPackageStore.NotPublished(again.Ref.Name, again.Ref.Version), (string)Body(missing)["error"]!);
+        Assert.Null(Body(missing)["diagram"]);
+    }
+
+    [Fact]
+    public async Task TheDiagramRoute_WhenTheRegistryCannotBeRead_Is503()
+    {
+        // The version's plan is held from a first load, so the load reads nothing; the route's read of resolve.json fails.
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry);
+        Assert.Equal(HttpStatusCode.OK, (await rig.DiagramAsync(stored.Ref)).StatusCode);
+        rig.Registry.ReadFailure = new Azure.RequestFailedException(503, "unavailable https://registry.example.test/secret");
+
+        var response = await rig.DiagramAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("Workflow package registry is unavailable.", (string)Body(response)["error"]!);
+        Assert.Null(Body(response)["diagram"]);
+        Assert.Contains(rig.Log.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Error && e.Message.Contains("could not be read at 31", StringComparison.Ordinal));
+        Assert.DoesNotContain("registry.example.test", rig.Log.Everything, StringComparison.Ordinal);
+    }
+
     // ---- The migration report (D10) -------------------------------------------------------------------------------------
 
     [Fact]
