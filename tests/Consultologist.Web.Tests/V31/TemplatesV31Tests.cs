@@ -261,5 +261,34 @@ public class TemplatesV31Tests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ThePickersLabel_SaysViewing_ForA31Package_AndEditing_ForA30One()
+    {
+        // Final review C4: a read-only 31 package is not being edited.
+        Assert.Equal("Viewing", RenderEditor(EditorFixtures.V31()).Find(".editor-bar__info > span").TextContent.Trim());
+        Assert.Equal("Editing", RenderEditor(EditorFixtures.V30()).Find(".editor-bar__info > span").TextContent.Trim());
+    }
+
+    [Fact]
+    public async Task A31PackageFromTheRegistry_ClearsThePrevious30PackagesHistory()
+    {
+        // Final review C5: the 31 load returns before every 30 step; the undo and redo of the package before it go.
+        var page = RenderEditor(EditorFixtures.V30());
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var undo = (List<string?>)typeof(Templates).GetField("undoStack", flags)!.GetValue(page.Instance)!;
+        var redo = (List<string?>)typeof(Templates).GetField("redoStack", flags)!.GetValue(page.Instance)!;
+        undo.Add("{\"earlier\":true}");
+        redo.Add("{\"later\":true}");
+
+        WorkflowService.GetCurrentPackageContentAsync(Arg.Any<string?>()).Returns(EditorFixtures.V31());
+        await page.InvokeAsync(() => (Task)typeof(Templates).GetMethod("OnPackagePinnedAsync", flags)!.Invoke(page.Instance, null)!);
+        page.Render();
+
+        Assert.Single(page.FindComponents<V31PackageView>());
+        Assert.Empty(undo);
+        Assert.Empty(redo);
+        Assert.Null(typeof(Templates).GetField("currentSnapshotJson", flags)!.GetValue(page.Instance));
+    }
+
+    [Fact]
     public void ANewPackage_IsCreatedAt30() => Assert.Equal(30, Templates.NewestSpecVersion);
 }

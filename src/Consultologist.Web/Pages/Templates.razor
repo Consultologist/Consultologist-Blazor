@@ -52,7 +52,8 @@
         {
             <div class="editor-bar">
                 <div class="editor-bar__info">
-                    <span>Editing</span>
+                    @* #1509 (final review C4): a 31 package is read-only (D14). *@
+                    <span>@(IsV31 ? "Viewing" : "Editing")</span>
                     @* #411: a chooser, not the pin control. Selecting here used
                        to write consult.workflowPackage, so looking at a package
                        pointed your consults at it. Consults owns that now.
@@ -17286,9 +17287,10 @@
             // #1509 (area 12, Task 23; D14): a 31 package is drawn by V31PackageView from the
             // content as served. Every step below projects, restores or draws a 30 manifest
             // (the upgrade, the readers, the formats, the draft, the history, the diagram), so
-            // none runs for it.
+            // none runs for it. The package before it may have left its undo and redo: cleared, as a 31 import does.
             if (IsV31)
             {
+                ClearHistoryState();
                 return;
             }
 
