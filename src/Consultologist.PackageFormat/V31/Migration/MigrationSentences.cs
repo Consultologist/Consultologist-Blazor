@@ -481,6 +481,14 @@ internal static class MigrationSentences
         $"Loop '{loop}' returns each item through the new node '{node}', which strips the item's text as specVersion 30 did.";
 
     /// <summary>
+    /// A10-090 (#1510, F1 fix round 1): a reason: the <c>for</c> <paramref name="loop"/>, whose <c>.content</c> is read, returns
+    /// items of more than one text format (an <c>if</c> or a <c>case</c> of a Markdown and a plain branch), so no one node can
+    /// strip them and keep each as the engine writes it: the loop keeps its <c>ret</c>, and the operator strips each branch.
+    /// </summary>
+    public static string LoopItemsMixFormats(string loop) =>
+        $"loop '{loop}' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.";
+
+    /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
     /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
     /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is

@@ -518,7 +518,9 @@ internal static partial class Migrate
     /// (<see cref="ContentKind"/>), so the engine escapes an item where it did. The reads of the loop's <c>.content</c> stay as
     /// written. A new node reads its old <c>ret</c>'s <c>.content</c>, so a loop returned by a loop is stripped too, as 30
     /// trimmed both: the pass runs until no loop is left. The loop's format and those of the flows that return it follow the
-    /// new <c>ret</c> (<see cref="Reformat"/>). Each is said (A10-088) and kept in <see cref="Migrated.StripNodes"/>.
+    /// new <c>ret</c> (<see cref="Reformat"/>). Each is said (A10-088) and kept in <see cref="Migrated.StripNodes"/>. A loop whose
+    /// old <c>ret</c> has no one text kind (an <c>if</c> or a <c>case</c> of a Markdown and a plain branch) gets no node, since
+    /// one format would escape a branch the old <c>ret</c> did not: it keeps its <c>ret</c>, a hand edit (A10-090, fix round 1).
     /// </summary>
     public static void StripLoopItems(Migrated m)
     {
@@ -538,11 +540,17 @@ internal static partial class Migrate
                 }
 
                 stripped.Add(id);
+                if (ContentKind(m, ret, set, 0) is not { } kind)
+                {
+                    // Fix round 1: items of more than one text format, which no one node can strip as each was written.
+                    m.HandEdit(FlowFile(tree, id), "ret", MigrationSentences.LoopItemsMixFormats(id));
+                    continue;
+                }
+
                 changed = true;
                 var key = m.Keys[id];
                 var retId = ret[(ret.LastIndexOf('.') + 1)..];
                 var newId = FreeNodeId(m, tree, retId, "_stripped");
-                var kind = ContentKind(m, ret, set, 0);
                 m.Put($"nodes/{key["node.".Length..].Replace('.', '/')}/{newId}.md", new JsonObject
                 {
                     ["kind"] = "rendered",
@@ -606,20 +614,29 @@ internal static partial class Migrate
     /// F-D2: the text kind of <c>.content</c> of the node at <paramref name="key"/>, as the type checker types it
     /// (<c>ScopeTree.RenderedContent</c>) and the engine writes it (<c>PlanRunner.WritesMarkdown</c>): a <c>for</c>'s is
     /// <c>markdown_block</c>; a <c>while</c>'s its <c>ret</c>'s; an <c>if</c>'s or a <c>case</c>'s its <c>ret</c>s' when they are
-    /// one kind; a leaf's its format's when that is <c>markdown_block</c> or <c>markdown_inline</c>. Anything else (plain text,
-    /// a value that is not text, branches of two kinds) is <c>plaintext</c>.
+    /// one kind; a leaf's its format's when that is <c>markdown_block</c> or <c>markdown_inline</c>, else <c>plaintext</c> (plain
+    /// text, a value that is not text). Branches of more than one kind have none: <see langword="null"/> (fix round 1).
     /// </summary>
-    private static string ContentKind(Migrated m, string key, FormatSet set, int depth)
+    private static string? ContentKind(Migrated m, string key, FormatSet set, int depth)
     {
         if (depth > SourceBounds.JsonDepth || HeaderAt(m, key)?.Json is not { } header)
             return "plaintext";
-        var kinds = SourceLayout.Text(header["kind"]) switch
+        switch (SourceLayout.Text(header["kind"]))
         {
-            "for" => ["markdown_block"],
-            "while" or "if" or "case" => RetsOf(header).Select(r => ContentKind(m, r, set, depth + 1)).Distinct(StringComparer.Ordinal).ToList(),
-            _ => [FormatTypes.TextKind(header["format"], set) ?? "plaintext"],
-        };
-        return kinds is [var one] && one is "markdown_block" or "markdown_inline" ? one : "plaintext";
+            case "for":
+                return "markdown_block";
+            case "while" or "if" or "case":
+                var kinds = RetsOf(header).Select(r => ContentKind(m, r, set, depth + 1)).Distinct(StringComparer.Ordinal).ToList();
+                return kinds switch
+                {
+                    [] => "plaintext",
+                    [var one] => one,
+                    _ => null,
+                };
+            default:
+                var text = FormatTypes.TextKind(header["format"], set);
+                return text is "markdown_block" or "markdown_inline" ? text : "plaintext";
+        }
     }
 
     /// <summary>
