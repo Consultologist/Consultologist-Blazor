@@ -38,8 +38,11 @@ public sealed partial record DiagramModel
             public List<DiagramEdge> Edges { get; } = [];
         }
 
-        /// <summary>The map the nodes of the scope being drawn are keyed in: the package's, or the function's own.</summary>
-        private JsonObject Map => function?.Nodes ?? nodes;
+        /// <summary>The map the entries being drawn are keyed in: <c>checks</c> while the checks are drawn (<c>DiagramModel.Checks.cs</c>), else <see cref="NodeMap"/>.</summary>
+        private JsonObject Map => drawingChecks ? checks : NodeMap;
+
+        /// <summary>The map a <c>node.*</c> read resolves in: the package's <c>nodes</c>, or the function's own.</summary>
+        private JsonObject NodeMap => function?.Nodes ?? nodes;
 
         /// <summary>A node's Mermaid id: <see cref="IdOf"/>, prefixed <c>fn_&lt;function&gt;__</c> inside a function (D3).</summary>
         private string BoxId(string key) => function is { } body ? body.Prefix + IdOf(key) : IdOf(key);

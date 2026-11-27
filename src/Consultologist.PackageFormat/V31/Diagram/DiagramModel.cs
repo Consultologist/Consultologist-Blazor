@@ -26,7 +26,7 @@ public sealed record DiagramEdge(string From, string To, EdgeStyle Style, string
 /// #1510 (specVersion 31, area 13): the one graph model of a 31 package's drawing (part 09 § 10.1), built from the
 /// canonical <c>resolve.json</c> text: <paramref name="Root"/> the top level (pills first, in order of first read; the
 /// top-level entries in <c>graph.order</c>; deliverables last), <paramref name="Edges"/> the edges written after every
-/// frame, in the order built; <paramref name="HasChecks"/> whether the package has a check. <c>dag.mmd</c>, the
+/// frame, in the order built; <paramref name="HasChecks"/> whether a check is drawn (the Checks frame). <c>dag.mmd</c>, the
 /// Editor's diagram and the run diagram all write this model (<see cref="DiagramWriter"/>).
 /// </summary>
 public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<DiagramEdge> Edges, bool HasChecks)
@@ -72,7 +72,7 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
         public DiagramFrame Freeze() => new(id, title, Boxes.ToList(), Frames.Select(f => f.Freeze()).ToList(), Edges.ToList());
     }
 
-    /// <summary>One build over one document. The production rules are in <c>DiagramModel.Production.cs</c>, calls and functions in <c>DiagramModel.Functions.cs</c>.</summary>
+    /// <summary>One build over one document. The production rules are in <c>DiagramModel.Production.cs</c>, renderers and macros in <c>DiagramModel.Uses.cs</c>, calls and functions in <c>DiagramModel.Functions.cs</c>, checks and gates in <c>DiagramModel.Checks.cs</c>.</summary>
     private sealed partial class Builder(JsonObject document)
     {
         private readonly JsonObject document = document;
@@ -91,10 +91,10 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
             Production();
             root.Boxes.InsertRange(0, pills);
             var frozen = root.Freeze();
-            return new DiagramModel(frozen, Drawn(frozen), checks.Count > 0);
+            return new DiagramModel(frozen, Drawn(frozen), frozen.Frames.Any(f => f.Id == "checks"));
         }
 
-        /// <summary>The edges built whose two ends are drawn (a box or a frame); an edge to something not drawn (a check before Task 5's frame, a key the document does not hold) is left out.</summary>
+        /// <summary>The edges built whose two ends are drawn (a box or a frame); an edge to something not drawn (a key the document does not hold, a gate naming no check) is left out.</summary>
         private List<DiagramEdge> Drawn(DiagramFrame frozen)
         {
             var ids = new HashSet<string>(StringComparer.Ordinal);

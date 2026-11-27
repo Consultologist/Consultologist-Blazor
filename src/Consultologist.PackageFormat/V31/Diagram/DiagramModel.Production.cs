@@ -45,6 +45,7 @@ public sealed partial record DiagramModel
                 Node(key, root, 0);
             foreach (var key in InOrder(deliverables, order))
                 Deliverable(key);
+            Checks();
             Functions();
             foreach (var id in InputIds().Where(id => !pillKeys.Contains("input." + id)))
                 Pill("input." + id);
@@ -113,7 +114,7 @@ public sealed partial record DiagramModel
             if (kind == "for")
             {
                 lines.Add(Until($"item in {Printed(list)}", entry));
-                framed = Loop(scope, "for_" + id, $"{name}: per {Printed(list)} item", entry, depth);
+                framed = Loop(scope, "for_" + id, LoopTitle(name, list), entry, depth);
             }
             else if (kind == "while")
             {
@@ -143,6 +144,8 @@ public sealed partial record DiagramModel
             scope.Boxes.Add(new DiagramBox(id, BoxKey(key), BoxShape.Rectangle, lines, Bool(entry["modelDerived"])));
             if (feed is { } source)
                 Edge(source.Id, framed ? "for_" + id : id, EdgeStyle.Read, "for");
+            if (kind == "for")
+                Aligned(framed ? "for_" + id : id, list);
             Conditions(id, conditions);
             if (kind is "for" or "while")
                 Ret(Text(entry["ret"]), id, "ret");
@@ -287,7 +290,7 @@ public sealed partial record DiagramModel
                 case "param":
                     return function is { } body ? new Read(Param(body, name), null, Member(2)) : null;
                 case "node" or "check" or "deliverable":
-                    var map = root == "node" ? Map : root == "check" ? checks : deliverables;
+                    var map = root == "node" ? NodeMap : root == "check" ? checks : deliverables;
                     return Longest(map, segments) is { } key ? new Read(root == "node" ? BoxId(key) : IdOf(key), Member(key.Split('.').Length)) : null;
                 default:
                     return null;

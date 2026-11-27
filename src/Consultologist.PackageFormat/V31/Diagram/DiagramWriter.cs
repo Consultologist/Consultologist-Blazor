@@ -19,7 +19,8 @@ public sealed record DiagramText(string Mermaid, IReadOnlyDictionary<string, str
 /// box: <c>for_</c>, <c>while_</c>, <c>if_…_then</c>, <c>if_…_else</c>, <c>case_…_branch_N</c>, <c>case_…_else</c>),
 /// then its other frames, then its own edges; the model's edges follow every frame, so Mermaid pulls no box into the
 /// frame an edge is written in. At the top level a blank line parts the pills, each flow and the runs of plain boxes.
-/// Last come the model-derived class (D9) and an overlay's classes. Every label line is escaped (D8): <c>"</c>,
+/// Then come the model-derived class (D9) and an overlay's classes, and last, when a check is drawn, the Checks frame's
+/// heavier border (<c>style checks stroke-width:3px</c>, D9). Every label line is escaped (D8): <c>"</c>,
 /// <c>&lt;</c> and <c>&gt;</c> as <c>#quot;</c>, <c>#lt;</c> and <c>#gt;</c>, a line break as one space; the only
 /// markup a label holds is the writer's own <c>&lt;br/&gt;</c>.
 /// </summary>
@@ -85,6 +86,9 @@ public static partial class DiagramWriter
 
         foreach (var (name, ids) in classes)
             text.Append(Indent).Append("class ").Append(string.Join(',', ids)).Append(' ').Append(name).Append('\n');
+
+        if (model.HasChecks)
+            text.Append(Indent).Append("style checks stroke-width:3px\n");
 
         return new DiagramText(text.ToString(), anchors);
     }
