@@ -315,6 +315,36 @@ public class History31InputsTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task ABlockedDeliverablesRunSpot_OffersNoOutput_AndFetchesNothing()
+    {
+        // Final review D1 (R1): a blocked deliverable's text is read only in its "Refused, not delivered" panel; a run spot
+        // the row does not hold shows its hash alone. A raw run.* output the row itself holds stays.
+        RowTextIs("deliverable.patient.letter", new
+        {
+            content = "Dear Margaret Okafor,",
+            spots = new Dictionary<string, string> { ["deliverable.patient.letter/spot:1"] = "16 November 2026" },
+        });
+        var page = Render31(runFacts: RunFactsDate, rows:
+        [
+            Ref("deliverable.patient.letter", "deliverable", """
+                { "label": "Patient letter", "state": "blocked", "composedHash": "sha256:33333333", "runNeutralHash": null,
+                  "runSpots": [ { "id": "deliverable.patient.letter/spot:1", "site": 1, "pass": null, "start": 0, "length": 16, "reads": "run.date",
+                                  "valueHash": "sha256:v1", "output": null, "outputHash": "sha256:ob" },
+                                { "id": "deliverable.patient.letter/spot:2", "site": 2, "pass": null, "start": 20, "length": 10, "reads": "run.date",
+                                  "valueHash": "sha256:v1", "output": "2026-11-16", "outputHash": "sha256:or" } ] }
+                """),
+        ]);
+
+        var spots = page.FindAll("#history31-run-facts .history31-spot");
+        Assert.Equal(2, spots.Count);
+        Assert.Empty(page.FindAll(".history31-spot__show"));
+        Assert.Contains("sha256:ob", spots[0].TextContent);
+        Assert.DoesNotContain("16 November 2026", page.Markup);
+        Assert.Contains("2026-11-16", spots[1].TextContent);
+        await AIService.DidNotReceive().GetJobRowAsync(Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
     public void ABodyWhoseTwoHashesDiffer_SaysA12003()
     {
         var page = Render31(runFacts: RunFactsDate, rows:

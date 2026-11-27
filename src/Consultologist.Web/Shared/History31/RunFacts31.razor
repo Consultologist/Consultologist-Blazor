@@ -8,7 +8,8 @@
     beside it), and under it every run spot that read it: the body's row key, the site and the formatted output. The spots are
     gathered from every row's `runSpots` and from each macro row's own. A spot's output is in the row only when it reads raw
     `run.*` facts; otherwise it is in the body's retained text, fetched when the person asks for it and sliced at the spot's
-    `start` and `length` (in runes), and after the 7-day drop the spot shows its output hash and A12-002. Beside any body
+    `start` and `length` (in runes), and after the 7-day drop the spot shows its output hash and A12-002. A spot of a
+    `blocked` deliverable is never fetched (R1): its hash alone, as for a macro's spot. Beside any body
     whose run-neutral hash and sent-text hash differ, A12-003. Run facts are kept for the life of the record.
 *@
 @if (_facts.Count == 0)
@@ -65,7 +66,7 @@ else
     [Parameter, EditorRequired]
     public RowText31 Texts { get; set; } = default!;
 
-    private sealed record SpotView(string Id, string BodyKey, string RowKey, bool Macro, int? Site, string Reads, string? Output, string? OutputHash);
+    private sealed record SpotView(string Id, string BodyKey, string RowKey, bool Macro, int? Site, string Reads, string? Output, string? OutputHash, bool Blocked);
 
     private sealed record BodyView(string Key, string Sent, string Neutral, bool Differs);
 
@@ -99,7 +100,7 @@ else
             {
                 var one = new Row31(key, row.Section, spot);
                 spots.Add(new SpotView(one.Text("id") ?? $"{key}/spot:{spots.Count + 1}", key, row.Key, macro, one.Int("site"),
-                    one.Text("reads") ?? "", one.Text("output"), one.Text("outputHash")));
+                    one.Text("reads") ?? "", one.Text("output"), one.Text("outputHash"), IsBlocked(row.Key)));
             }
 
             if (BodyOf(key, holder, row.Section, macro) is { } body)
@@ -124,6 +125,11 @@ else
             .Select(group => KeyValuePair.Create(group.Key, group.ToList()))
             .ToList();
     }
+
+    // R1 (final review D1): a blocked deliverable's text is read only in its "Refused, not delivered" panel, so no spot of
+    // it fetches the retained text; an output the row itself holds (a raw run.* fact) stays.
+    private bool IsBlocked(string rowKey) =>
+        Record.Find(rowKey) is { Section: "deliverable" } row && row.Text("state") == "blocked";
 
     private static bool Reads(string reads, string fact) =>
         string.Equals(reads, $"run.{fact}", StringComparison.Ordinal) || reads.StartsWith($"run.{fact}.", StringComparison.Ordinal);
@@ -194,7 +200,7 @@ else
                         {
                             <span class="history31-spot__output">@output</span>
                         }
-                        else if (!spot.Macro)
+                        else if (!spot.Macro && !spot.Blocked)
                         {
                             // a macro's own spots have no retained text (the engine keeps the spots of the row's own body)
                             var reveal = _reveals.GetValueOrDefault(spot.Id);
