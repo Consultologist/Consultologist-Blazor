@@ -820,11 +820,11 @@ admits 31 in production: the admission lists are untouched.*
 
 - **The start checks.** `GET WorkflowPackages/Current/StartChecks` (`V31StartChecksRoute`), above, answers the account's
   sentences before a start. The Create page (`Consults.razor`, `Shared/Create31/StartChecks31.razor`) asks it after a 31 load,
-  on each pick of a package or a signature block, on window focus (`wwwroot/js/windowFocus.js`) and before each of its three
-  starts; when it cannot ask it says A12-004 and holds Start.
-- **References at a start.** `V31JobStarter.ExtractFor31Async` reads `InputRefs`, `InputFormRefs` and `InputFormFiles` (above, "Inputs
+  on each pick of a package or a signature block, on window focus (`wwwroot/js/windowFocus.js`) and before a start (one ask in
+  `CreateConsultAsync`, behind the one button labelled "Create consult", "Create & next" or "Schedule consult"); when it cannot ask it says A12-004 and holds Start.
+- **References at a start.** `ConsultGenerationJobStarter.ExtractFor31Async` (private) reads `InputRefs`, `InputFormRefs` and `InputFormFiles` (above, "Inputs
   sent by reference"). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
-  the held inputs document's `modelDerived` member, read into `RunInputs.ModelDerivedInputs`. The start also writes the lineage
+  the held inputs document's `modelDerived` member (written by `V31JobStarter`), read into `RunInputs.ModelDerivedInputs` by `ConsultGenerationOrchestratorV31`. The start also writes the lineage
   links (`IConsultGenerationLinkStore`).
 - **Rerun.** `ConsultGenerationJobs/{jobId}/Rerun` of a storage-12 job rebuilds its request from the held inputs
   (`RerunRequestAsync`), repeats the `previous-run` origins through `ConsultGenerationJobOrigin.InheritedInputOrigins`, and gives
@@ -840,8 +840,7 @@ admits 31 in production: the admission lists are untouched.*
   again only when the job's `Rows` count has moved. A row's text (`GET …/Rows?key=`) is fetched once, when its row is first opened
   (a deliverable's, a node's, a check's), or when a run spot's output or a retained name is needed; nothing is fetched for a
   collapsed row, and a text the engine has dropped (`textDeleted`) says A12-002 with the row's hash. The record
-  (`GET …/Record`) is fetched only by the download and by Verify. A 31 run view on Create (`RunView31`) lists the rows on attaching,
-  on a poll whose count moved and on `done`, and fetches a `released` deliverable's text only.
+  (`GET …/Record`) is fetched only by the download and by Verify. On Create, `RunView31` is given the rows `Consults.razor` lists (`LoadRows31Async`: on attaching, on a poll whose count moved and on `done`), and it fetches a `released` deliverable's text only.
 - **Profile and the Editor.** Letter details and the time zone are account settings read and written through
   `Account/Settings/{key}` (`LetterDetailsCard`, `TimeZoneCard`; the Api's 400 for a value over a limit is plain text the card
   shows). A 31 package opens read-only in the Editor (`V31PackageView`), whose download is `PackageDownload31`.

@@ -484,7 +484,7 @@ The engine repeats the same checks at job start (§ 1.2, step 6), so a job sent 
 satellite, the email intake) is refused with the same sentences.
 
 The page asks the engine for the account's sentences (`GET WorkflowPackages/Current/StartChecks`, which reads the account with
-the code a start reads it with) after a 31 package loads, on each pick, on window focus and before each of the three starts
+the code a start reads it with) after a 31 package loads, on each pick, on window focus and before a start
 (decided in the build, #1509). When they cannot be asked, Start stays disabled with A12-004: *"The workflow's checks couldn't be
 run. Reload the page to try again."*
 
