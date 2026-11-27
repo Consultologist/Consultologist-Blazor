@@ -106,7 +106,7 @@ public static class ExpectedDifferences
         },
         new("reply-never-a-template",
             "#1508, comment 5, item 7, #5, ruled by the owner on 2026-11-25; part 05 § 1; part 10 § 3.2",
-            "a reply is never rendered as a template at 31, where 30 rendered one that held '{{': 31's text holds the reply as written where 30's holds it rendered, and a job 30 failed because a reply did not render completes")
+            "a reply is never rendered as a template at 31, where 30 rendered one that held '{{': 31's text holds the reply as written, or stripped as a migrated deliverable reads a source (#1508, item 3), where 30's holds it rendered, and a job 30 failed because a reply did not render completes")
         {
             Case = ReplyNotRendered,
             Bytes = RenderedReplies,

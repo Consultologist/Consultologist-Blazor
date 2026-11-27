@@ -421,6 +421,9 @@ public class ExpectedDifferencesTests
         Assert.Equal(["reply-never-a-template"], stripped.Rules.Select(r => r.Id));
         Assert.True(stripped.Expected);
 
+        // Near: the reply served is stripped at 31, but 30's text kept something else than the reply rendered and stripped.
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\nSomething else kept.", "# Plan\n\n" + Reply, "deliverable.plan", served)));
+
         // Near: a reply the run did not serve; 30's text is not the rendered reply (another number); a reply that does not
         // render at 30 (a variable its scope lacks), written the same at 31.
         Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan")));
