@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A specVersion 31 package is drawn the same way in three places (`dag.mmd`, the Editor's diagram and the run diagram) from one graph model built from `resolve.json`, on Mermaid 12 with ELK; and the owner's second fix-first group on the migration (a loop's trimmed items, a letter with no signature) is built first.
+**Goal:** A specVersion 31 package is drawn the same way in three places (`dag.mmd`, the Editor's diagram and the run diagram) from one graph model built from `resolve.json`, on Mermaid 12 with ELK; and the owner's second and third fix-first groups (a loop's trimmed items, a letter with no signature; one Markdown standard for 31) are built first.
 
 **Architecture:** One model in the library, `Consultologist.PackageFormat.V31.Diagram`: `DiagramModel.Build` reads the canonical `resolve.json` text into boxes, frames and edges, and `DiagramWriter.Write` turns a model (and, for a run, an overlay of extra label lines, classes and links per box) into Mermaid text. `PackageDiagram.Generate(string resolve)` is the `Func<string, string>` that `PublishOptions.Diagram` has waited for since area 11. The Web references the library already, so the Editor's 31 view and the run diagram call the same code; the run diagram's overlay (`RunDiagram31`) is a pure function from the model and a `Record31`. The 5–30 generators (`WorkflowDagDiagram`, `RunDagDiagram`) keep their text; they only change layout, because the vendored Mermaid moves from 11.16.0 to 12.3.0.
 
@@ -35,6 +35,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 |---|---|---|
 | R1 | ruled by the owner on #1510 (2026-11-21) | A function's inside is drawn from its entry's `nodes` and `reads` in `resolve.json`, not from `graph.edges` (which holds none inside a function). |
 | R2 | #1510 (2026-11-26, 2026-11-27) | Area 12 built items 1 to 9 of the first fix-first group (item 3 except a loop's items); this area builds the two items of the second group (Part F). |
+| R3 | #1510 (2026-11-27, the third group) | This area builds the five items of the third fix-first group, one Markdown standard for 31 (Part G), after Part F and before its own tasks. The group was posted after this plan's first commit; Part G was added then. |
 | D1 | part 09 § 10.1 "the upgrade lands early … waits for the go-ahead" | The early PR never happened, so the upgrade lands here, on `m39-build`: `wwwroot/lib/mermaid.min.js` becomes Mermaid **12.3.0**'s `dist/mermaid.min.js` from the npm tarball (sha256 `336df803d87a38b70a01e736e666c8f7601d2ce42f5e47c8fafe5d721074b9a3`; it holds ELK, `doc` and `tag-rect`). `mermaid.initialize` also sets `layout: "elk"`, so every diagram the app draws uses ELK whether or not its text has frontmatter. |
 | D2 | § 10.1 the frontmatter | `PackageDiagram.Generate` always starts with the five frontmatter lines and `flowchart TD`. Line ends are `\n`; four spaces of indent per nesting level, as § 10.5. |
 | D3 | § 10.4 "Mermaid ids"; § 10.5 the function example | Inside a function, a box's id is `fn_<function>__` + its local key with `.` → `__` (as the example), **and a `param.*` pill is `fn_<function>__param__<id>`**, not the example's bare `param__<id>`: two functions with a parameter of the same name would otherwise share one pill across two frames. |
@@ -51,7 +52,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | D14 | § 10.1 "the Editor's Graph pane" | `V31PackageView`'s "Diagram" entry draws `PackageDiagram.Generate(Resolve)` when the content holds `Resolve`, and the stored `dag.mmd` only when it does not; the two are the same bytes for a version published from here on. `GET WorkflowPackages/Current/Diagram` answers the same text at 31. |
 | D15 | § 10.5 "to be checked … how GitHub renders them tested" | `doc` and `tag-rect` are in Mermaid 12.3.0 (checked in the bundle, and drawn in the browser suite). How GitHub draws them and whether it honours `layout: elk` is **not** tested by this build (it would publish a file outside the repos this build owns): left for the owner. |
 
-Part F's decisions are in Part F.
+Part F's decisions are in Part F, Part G's in Part G.
 
 ## Review Focus
 
@@ -122,10 +123,166 @@ The renderer's body (F-D4), `signature_after_blank_line`; `~` on the guard's own
 **Files:** `FX/migrated/**`, `FX/reports/**`, the condition goldens if they move; the content repo (`v31/conformance/migration-vectors/`, the A10 table of `v31/conformance/README.md`, its chapter 10 twin); `docs/customizable-workflow/package-format-v31/10-migration-and-tools.md` § 1.2 and § 3.2, `docs/customizable-workflow/package-format-library.md` (the deliverables pass row), `FX/README.md`.
 
 - [ ] **Step 1:** `GOLDEN_UPDATE_V31=1 dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31Migration"`, then the same without the variable: green except `ThePinnedVectors_AreWhatMigrateGives`.
-- [ ] **Step 2:** `CONFORMANCE_EXPORT_V31=$HOME/Projects/consultologist-package-format dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~MigrationVectorsExport"`; add A10-088, A10-089 and the rule `loop-item-strip-node` to the content repo's README and chapter 10; `python3 scripts/check-v31.py` there is ok; commit `Format spec (Consultologist-Blazor#1510): …` on `m39-build`, push; move the pin (`git -C external/consultologist-package-format fetch origin m39-build`, check out the pushed commit, `git add external/consultologist-package-format`).
+- [ ] **Step 2:** `CONFORMANCE_EXPORT_V31=$HOME/Projects/consultologist-package-format dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~MigrationVectorsExport"`; add A10-088, A10-089, A10-090 (Task F1's fix round) and the rule `loop-item-strip-node` to the content repo's README and chapter 10; `python3 scripts/check-v31.py` there is ok; commit `Format spec (Consultologist-Blazor#1510): …` on `m39-build`, push; move the pin (`git -C external/consultologist-package-format fetch origin m39-build`, check out the pushed commit, `git add external/consultologist-package-format`).
 - [ ] **Step 3:** read `git diff --stat -- tests/Fixtures/ByteEquivalence` and every report's counts; **every report's unexplained and partly-explained counts are equal to or lower than before**, the ten sites of the ruling are explained or equal, and nothing else became unexplained. If something did, stop and report.
 - [ ] **Step 4:** correct the spec text and the documents to say what is written (the `for` row, the signature row, the new rule), and write the **Part F, what moved** line under *Recorded in the build* (files per package, each report's counts before → after).
 - [ ] **Step 5:** `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`: green. Commit (the goldens named in the body), push.
+
+---
+
+## Part G: the third fix-first group, one Markdown standard for 31 (before this area's own tasks)
+
+Added to the plan on 2026-11-27, after [the owner's third fix-first group](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166) (#1510's fourth comment), which was posted after this plan's first commit and after area 12 had merged, so none of it is on `m39-build`.
+
+The owner's principle: 31 renders by one standard. A single line ending is not a break. The 31 extension bundle is built explicitly and has no injection paths. The PDF draws everything that bundle produces. 5–30 jobs keep today's pipeline until 30 is retired.
+
+Part G starts after Task F3 is committed, so its goldens start green. It ends with one regeneration (G8). Code lives in `src/Consultologist.PackageFormat/ConsultMarkdown.cs`, `…/V31/PlainConversion.cs`, `…/V31/Templates/`, `…/V31/Migration/`, `…/V31/Harness/`, `src/Consultologist.Api/Email/ConsultDocumentPdf.cs` and `src/Consultologist.Web/Shared/`. Each item is built with its failing test first.
+
+**The G filter.** Tasks G1 to G7 run this filter. It is F1 step 4's filter plus the golden tests whose bytes this group moves, so those goldens stay red by design until G8:
+`--filter "FullyQualifiedName~V31&FullyQualifiedName!~TheMigratedSource_IsTheGolden&FullyQualifiedName!~TheReport_IsTheGolden&FullyQualifiedName!~TheGolden_IsWhat&FullyQualifiedName!~ThePinnedVectors_AreWhatMigrateGives&FullyQualifiedName!~TheGoldens_AreWhatTheCodeGives&FullyQualifiedName!~ThePinnedFamilies_AreTheGoldens&FullyQualifiedName!~Publish_GivesTheGolden&FullyQualifiedName!~RunGoldenTests&FullyQualifiedName!~ThePublishedFormats_HashAsFrozen"`. The bare `ConsultMarkdown`, `ConsultDocumentPdf` and `MarkdownPreview` tests are also run by class. Any other golden that goes red only because of bytes this group moves is named in the commit body and left for G8.
+
+### Decisions Part G takes
+
+| # | Where | Choice |
+|---|---|---|
+| G-D1 | item 1, "one shared selector" | The library gets `ConsultMarkdown.For(int specVersion) : MarkdownPipeline`. It returns `Pipeline31` for `specVersion >= 31`, and otherwise the unchanged `ConsultMarkdown.Pipeline` (which stays public and byte-identical). New public members: `ConsultMarkdown.Pipeline31` and `ConsultMarkdown.Extensions31 : IReadOnlyList<string>`, which holds the names that `constants.json` `markdig.extensions` lists. Nothing else builds a Markdown pipeline at 31. |
+| G-D2 | item 1, how each surface learns the version | **PDF:** a new `ConsultDocumentPdf.Render(string markdown, int specVersion, string password, ILogger? logger = null, PdfRenderContext? context = null)`. The existing 4-argument `Render` stays and delegates with `specVersion: 30`. It remains the 5–30 entry used by `SendEmailIntakeReplyActivity.cs:191`: that payload (`EmailIntakeReplyInput`) carries no spec version, keeps its Durable shape, and only 5–30 jobs reach it. `V31/DeliveryChannels.cs:215` passes `PublishedStamp.SpecVersion`, because `DeliverV31Input` exists only for 31 jobs. **Web:** a new `MarkdownPreview.Render(string markdown, int specVersion)`. `Render(string)` stays the 5–30 rendering for `Templates.razor:836,6388`, `WorkflowEditorPane.razor:93` and `Consults.razor:956,971`. G3 step 1 confirms that the last two sit in the `!IsRun31` branch. `Create31/RunView31.razor:62` (drawn only when `IsRun31`) and `Create31/MarkdownInput.razor:27` (used only for a 31 `markdown_block` input, by `Input31.razor:194` and `Consults.razor:1443`) pass `PublishedStamp.SpecVersion`. History and `V31PackageView` render no Markdown (no `MarkupString` holds Markdown there). |
+| G-D3 | item 2, the bundle | `Pipeline31` uses the 0.41.3 `UseAdvancedExtensions` order: `.UseAlertBlocks().UseAbbreviations().UseAutoIdentifiers().UseCitations().UseDefinitionLists().UseEmphasisExtras(EmphasisExtraOptions.Superscript \| EmphasisExtraOptions.Inserted).UseFigures().UseFooters().UseFootnotes().UsePipeTables().UseListExtras().UseTaskLists().UseAutoLinks().DisableHtml().Build()`. It has no `UseSoftlineBreakAsHardlineBreak`. `constants.json` `markdig` becomes `{"version":"0.41.3","extensions":[those 13 names, as today's spelling: Alert, Abbreviation, AutoIdentifier, Citation, DefinitionList, EmphasisExtra, Figure, Footer, Footnote, PipeTable, ListExtra, TaskList, AutoLink],"emphasisExtras":["Superscript","Inserted"],"html":false}`. |
+| G-D4 | items 2 and 3, what is left out and why | **GenericAttributes**: item 2; `{…}` writes any attribute. **CustomContainers**: `:::name` and `::text::` write a `class` taken from the text, which is item 2's `.class` by another syntax. **MediaLinks**: turns a URL into an iframe, video or audio element. With HTML off it is the one embed path left, and the PDF has no counterpart. **Mathematics**: neither surface typesets it, and `$` amounts appear in clinical text. **Diagrams**: no note surface draws Mermaid or nomnoml; the PDF shows a fence as code, so the Web does too. **GridTables**: row and column spans and multi-block cells that `AppendTable` does not lay out; pipe tables remain. **EmphasisExtras' Strikethrough, Subscript and Marked**: MigraDoc 6.2.4's `Font` has Bold, Italic, Underline, Superscript, Subscript and Color, with no strikethrough or highlight (checked in its XML doc). Subscript shares `~` with strikethrough, and on its own it reads `~~x~~` as nested subscripts. So `~~x~~` and `==x==` stay visible as written. CustomContainers and MediaLinks are left out on item 2's principle, not item 3's: *For the owner*. |
+| G-D5 | item 3, the walker | At 31, `AppendBlock` and `AppendInline` take `standard: true`, and every new case is guarded `when standard`, so 5–30 output is byte-identical. **Blocks:** `HeadingBlock`, `ParagraphBlock`, `ListBlock` (ListExtras labels `a.`, `A.`, `i.`, `I.` from `BulletType`/`OrderedStart`), `QuoteBlock`, `AlertBlock` (before `QuoteBlock`: a bold title, Note/Tip/Important/Warning/Caution, then its children indented), `CodeBlock`/`FencedCodeBlock`, `ThematicBreakBlock`, pipe `Table`, `DefinitionList`/`DefinitionItem`/`DefinitionTerm` (term bold, the rest indented), `Figure`/`FigureCaption` (caption italic), `FooterBlock` (children at 9 pt), `FootnoteGroup`/`Footnote` (a rule, then `n. ` and the children), `LinkReferenceDefinitionGroup` (silent). **Inlines:** `LiteralInline`, `EmphasisInline` by `DelimiterChar` (`*`/`_` as today, `"` italic, `^` superscript, `+` underline), `LineBreakInline` (hard is a line break, soft is one space), `CodeInline`, `LinkInline` (its text, an image its alt text, an autolink its URL text), `AutolinkInline` (its URL), `HtmlEntityInline` (its `Transcoded`, so the escape's `&#32;` is a space), `TaskList` (`[x] ` or `[ ] `, ASCII because of font coverage), `FootnoteLink` (superscript order; a back link draws nothing), `AbbreviationInline` (its label), `DelimiterInline` (its literal, then its children). At 31, `default` throws `NotSupportedException("…" + type name)`: there is no generic fallback. `ConsultDocumentPdf.Drawn31 : IReadOnlySet<Type>` names exactly these types. |
+| G-D6 | item 1, `PlainConversion` | `PlainConversion`'s private pipeline becomes `ConsultMarkdown.Pipeline31`, replacing its own "must not change with the Editor" pipeline, which the ruling reverses. `plain_conversion` **stays 1.0.0**. The precedent is the conformance README's D7 row for `markdown_escape` under R9: "the version stays 1.0.0, as it is not yet frozen". No published lock names other bytes. Today's goldens (`PlainConversionTests.ToPlain_Goldens`, `operation-goldens/plain.json`) contain no HTML, attribute or excluded syntax and must stay as they are. Two new cases pin raw HTML and a generic attribute kept as text. |
+| G-D7 | item 1, `MarkdownEscape` (31-only) | With standard line handling, a line ending in escaped plain text would join its lines, and the escape's contract (part 06 § 6.4) is that the text displays "exactly" as written. So `Escape` writes **two spaces before each line ending** (`\r\n` counts as one ending). Two spaces, not the backslash, for three reasons. The escape works piece by piece (`BodyComposer.RunSpots.Escaped`, `EscapedSubstitutions` compares the two results), and a piece cannot know whether its line ending ends a paragraph. A `\` at a paragraph's end shows as a `\`, while two spaces there are dropped. And the escape's output is never authored, so item 4's visibility reason does not apply. The rule is local, so piecewise escaping still equals whole escaping, except for a cut between `\r` and `\n`, where `EscapedSubstitutions` already falls back to the whole unit. `markdown_escape` stays 1.0.0 (same precedent). `IsBlank` is unchanged. `escaped-plain-text` follows by itself because it calls `Escape`. *For the owner.* |
+| G-D8 | item 4, where the migration writes `\` | One shared finder, `V31/Templates/MarkdownLineEndings.Find(string body) : IReadOnlyList<int>`, returns the offsets of line endings to break. The body is parsed with `Pipeline31` after each tag from `TemplateTags.Scan` (and each comment span) is masked with `x` characters of the same length. A hit is a `LineBreakInline { IsHard: false }` inside a `ParagraphBlock` (in a list item, quote, alert or footnote too). That excludes fences, indented code, tables, headings, a paragraph's last line, and an ending before a list item or heading, as the ruling lists. It is then **not** a hit when: the line ending lies inside a tag; the line ends with a tag closed by `~}}` (Scriban removes that line ending); or the line before or after holds only tags and white space (a statement, a block placement, an output alone, whose output may be empty or a block, which would leave `\` at a paragraph's end). An existing `\` or two-space break is already hard, so the pass is idempotent. **Sites:** the bodies of 31 deliverables, `rendered` nodes, macros, snippets (single or folder item) and package renderers whose `format` is `markdown_block` or `markdown_inline`. Never: a prompt or `parts`; a snippet that a prompt or part places; a rendered node whose `.content` a prompt or part reads (a `\` there changes what the model reads); a file the migration itself writes (F1's stripping nodes, F2's renderers). `MarkdownLineEndings.WithHardBreaks(string body) : (string Text, int Count)` inserts `\` immediately before each line ending found, after any trailing spaces. `\` is not white space, so `~` does not strip it. |
+| G-D9 | item 4, the comparison | A new **bytes** rule, `explicit-hard-break`, sits after `escaped-plain-text`. Basis: "#1510, the owner's third fix-first group (2026-11-27), item 4 (an explicit hard break where 30's pipeline broke a single line ending); part 10 §§ 1.2, 3.2". It removes a `\` directly before a line ending in 31's text, in any compared kind (a macro body or rendered node read later reaches prompts). It applies only in a package whose sources (with hand edits laid over) hold a migration-written break: `Migration31Result.HardBreaks` (file → count), which `MigrationFixture.Overlay` recounts for overlaid files. `Credit` keeps it only where it brings the text nearer. |
+| G-D10 | item 4, notices | (A10-090 is Task F1's mixed-format loop notice.) **A10-091**: *"In '\<file\>', \<n\> line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line."* One per file. **A10-092**: *"'\<file\>' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\."* Said only for an excluded site that has hits and is also read or placed by a deliverable, rendered node or macro. |
+| G-D11 | item 4, the publish warning | **S05-065 (W-3)**, part 05 § 2.6 and Refusals. Part 05's next free number: S05-064 is the last in `sentences.json`, and part 05 holds W-1 and W-2. Wording: *"\<Subject\> has a single line ending inside a paragraph at line \<n\>: a single line ending is not a break; end the line with \ or leave a blank line."* It is raised by `SourceTemplates` (beside S05-061) once per hit of `MarkdownLineEndings.Find`, on G-D8's sites only, with the same predicate. It is a **warning**: the package publishes. Migrated packages are checked too, so the warnings fall exactly on A10-092's sites. `refusal-sentences.md`: part 05 count 64→65, total 374→375. |
+| G-D12 | item 5, the instruction | The engine's Markdown instruction to the model is the built-in format's `description` (part 02 §§ 3.5, 5.1). It lives in the content repo, `v31/formats/markdown_block.json` and `markdown_inline.json`; the agents catalogue holds none, so `consultologist-agents` does not change. `markdown_block` ends with *"A single line ending is not a break: write separate lines as list items, or leave a blank line between them."* `markdown_inline` holds no line ending (RunSentences: a reply with one is refused), so it gains *"It holds no line ending; separate lines are list items or paragraphs with a blank line between them, in Markdown that stands on its own lines."* This is the ruling's letter, but inline cannot use either: *For the owner*. `formatHash` moves for both, so it lands in G8. |
+| G-D13 | item 5, preview exit | Under "Before 31 leaves preview" in `registry-operations.md` (§ at line 611) and `engine-v31.md` (§ at line 1064), add the owner's sentence, quoted with a link to the comment: the live dev run of the edge-case packages checks that replies written line per line render as intended. |
+
+### Task G1: the selector, the 31 pipeline, no generic attributes, `PlainConversion` (items 1, 2)
+
+**Files:** modify `src/Consultologist.PackageFormat/ConsultMarkdown.cs` and `V31/PlainConversion.cs`. Test: `tests/ConsultMarkdownTests.cs` (new methods only), `tests/V31Logic/PlainConversionTests.cs`, `tests/V31Logic/LogicVectors.cs` (two `plain` cases). Content repo: `v31/constants.json` (G-D3).
+**Interfaces:** produces `ConsultMarkdown.For(int)`, `ConsultMarkdown.Pipeline31`, `ConsultMarkdown.Extensions31`.
+
+- [ ] **Step 1: failing tests** in `ConsultMarkdownTests`:
+  - `For_BelowThirtyOne_IsTheUnchangedPipeline` (`Same(For(30), Pipeline)`, and `For(5)`).
+  - `Pipeline31_IsTheAdvancedBundleLessTheExcluded`: the extension types of `UseAdvancedExtensions().Build()` minus G-D4's equal `Pipeline31`'s, which pins the 0.41.3 list.
+  - `Pipeline31_IsTheExtensionsTheContractNames` (each type name less `Extension` against `constants.json`).
+  - `Pipeline31_ASingleLineEnding_IsNoBreak`.
+  - `Pipeline31_Html_IsText`.
+  - `Pipeline31_GenericAttributes_AreText`: `# Plan {#id .class key=value}` and `Seen by Dr A. Sample {onclick=x}` keep their braces as text; no `onclick=`, `class="class"` or `key=`.
+  - `TheAdvancedBundle_WritesAnyAttributeName`: the evidence for the PR body; `UseAdvancedExtensions().DisableHtml()` on the same text. Write what Markdig 0.41.3 actually emits; if it filters `on*`, record that and still exclude the extension (item 2 stands).
+  - In `PlainConversionTests`: `ToPlain_KeepsRawHtmlAsText`, `ToPlain_KeepsAGenericAttributeAsText`. Expected strings are taken from the run in step 3 and read before pinning.
+- [ ] **Step 2:** run `--filter "FullyQualifiedName~ConsultMarkdownTests|FullyQualifiedName~PlainConversionTests"`; they fail.
+- [ ] **Step 3:** implement G-D1, G-D3 and G-D6. The content repo `constants.json` change is checked with `python3 scripts/check-v31.py` there; update it if the checker pins `markdig`'s keys. Commit `Format spec (Consultologist-Blazor#1510): …` on `m39-build`, push, and move the pin. **Stop and report** if `UseAdvancedExtensions` in 0.41.3 holds an extension that G-D3 plus G-D4 do not name (or lacks one), or if any existing `ToPlain_Goldens` case changes.
+- [ ] **Step 4:** the G filter, plus `ConsultMarkdownTests` (the four existing 5–30 tests unchanged): green. Commit (`PackageFormat (#1510): …`, `Tests (#1510): …`), push.
+
+### Task G2: the PDF draws every block of the 31 bundle (items 1, 2, 3)
+
+**Files:** modify `src/Consultologist.Api/Email/ConsultDocumentPdf.cs` (G-D5; the new `Render` overload; `Drawn31`; an internal seam `Draw(Section, MarkdownDocument, bool standard)`) and `src/Consultologist.Api/V31/DeliveryChannels.cs:215`. Create `tests/Fixtures/Markdown31/every-block.md`: one fictional note (Margaret Okafor) using every type of G-D5. Link it into both test projects' output (`<None Include=… CopyToOutputDirectory>`). Test: `tests/ConsultDocumentPdfTests.cs` (new methods), `tests/V31Engine/DeliveryChannelsTests.cs`.
+**Interfaces:** produces `ConsultDocumentPdf.Render(string, int, string, ILogger?, PdfRenderContext?)` and `ConsultDocumentPdf.Drawn31`; consumes `ConsultMarkdown.For`.
+
+- [ ] **Step 1: failing tests:**
+  - `TheEveryBlockNote_HoldsEveryTypeTheWalkerDraws`: the set of block and inline types in `Markdown.Parse(note, Pipeline31)` equals `Drawn31`.
+  - `Render31_EveryBlockOfTheBundle_IsDrawn`: `PageTexts` shows the alert's title, `[x]`, the definition term, the figure caption, the footer, the footnote number and text, the abbreviation, `b.`, the table's cells and the code. Nothing throws.
+  - `Render31_ABlockTheWalkerDoesNotKnow_Throws` (through the seam, with a block such as `YamlFrontMatterBlock`).
+  - `Render31_ASingleLineEnding_IsASpace_AndABackslashIsABreak`.
+  - `Render31_AnEntity_IsItsCharacter` (`&#32;`).
+  - `Render31_GenericAttributes_AreText` (G1's two texts, braces in the page text).
+  - `Render31_ExcludedSyntax_IsText` (`~~x~~`, `$x$`, `:::note`).
+  - In `DeliveryChannelsTests`: `Pdf_RendersWithThe31Pipeline`.
+  - Every existing `ConsultDocumentPdfTests` method stays as it is.
+- [ ] **Step 2:** run `--filter "FullyQualifiedName~ConsultDocumentPdfTests|FullyQualifiedName~DeliveryChannelsTests"`; they fail.
+- [ ] **Step 3:** implement. Determine with a throwaway assertion whether `Abbreviation` definitions stay in the AST (add a silent case if they do) and how `ListItemBlock.Order` reads for alpha lists. **Stop and report** if the parse yields a type G-D5 does not name. Do not add a fallback.
+- [ ] **Step 4:** the same filter plus `SendEmailIntakeReplyAttachmentTests` and `DocumentExtractionTests` (unchanged): green. Commit `Api (#1510): …` and `Tests (#1510): …`, push.
+
+### Task G3: the Web's 31 surfaces render through the selector (items 1, 2, 3)
+
+**Files:** modify `src/Consultologist.Web/Shared/WorkflowEditor/MarkdownPreview.cs`, `Shared/Create31/RunView31.razor:62` and `Shared/Create31/MarkdownInput.razor:27`. Test: `tests/Consultologist.Web.Tests/MarkdownPreviewTests.cs` (new methods), `V31/ConsultsRunView31Tests.cs`, `V31/MarkdownInputTests.cs`.
+**Interfaces:** produces `MarkdownPreview.Render(string markdown, int specVersion)`.
+
+- [ ] **Step 1:** confirm that `Consults.razor:956,971` sit in the `!IsRun31` branch. If not, stop and report. Then write the failing tests:
+  - `Render31_EveryBlockOfTheBundle_RendersItsElements` (the G2 fixture: `<sup>`, `<ins>`, `<cite>`, `<abbr`, `<dl>`, `<figure>`, `<footer>`, `markdown-alert`, `class="footnotes"`, `type="checkbox"`, `<ol type="a"`).
+  - `Render31_GenericAttributes_AreText` (no `onclick=`).
+  - `Render31_ExcludedSyntax_IsText` (no `<del>`, `<iframe`, `class="math"`, `class="note"`).
+  - `Render31_ASingleLineEnding_IsNoBreak`.
+  - `ConsultsRunView31Tests.AMarkdownDeliverable_RendersWithThe31Pipeline`.
+  - `MarkdownInputTests.Preview_RendersWithThe31Pipeline`.
+  - The existing `MarkdownPreviewTests` stay as they are.
+- [ ] **Step 2:** `dotnet test tests/Consultologist.Web.Tests --filter "FullyQualifiedName~MarkdownPreviewTests|FullyQualifiedName~RunView31|FullyQualifiedName~MarkdownInputTests"`: they fail.
+- [ ] **Step 3:** implement G-D2's Web half.
+- [ ] **Step 4:** `dotnet test tests/Consultologist.Web.Tests`: green. Commit `Web (#1510): …`, push.
+
+### Task G4: escaped plain text keeps its lines at 31 (item 1, G-D7)
+
+**Files:** modify `src/Consultologist.PackageFormat/V31/Templates/MarkdownEscape.cs` (and its XML doc). Test: `tests/V31Run/MarkdownEscapeTests.cs`, whose renders move to `ConsultMarkdown.For(31)`; it is a 31 test.
+
+- [ ] **Step 1: failing tests:**
+  - `ALineEnding_IsWrittenAsAHardBreak`: `"a\nb"`→`"a  \nb"`, `"a\r\nb"`→`"a  \r\nb"`, `"a\n\nb"`→`"a  \n  \nb"`.
+  - `AnEscapedText_KeepsItsLines_ThroughThe31Pipeline` (the `<br />` count equals the line count less one; blank lines stay paragraph breaks).
+  - `EscapingPieceByPiece_IsEscapingWhole` (cuts at every offset except inside `\r\n`).
+  - `LettersDigitsSpacesNewlinesAndNonAscii_AreUnchanged` loses only its newline cases.
+- [ ] **Step 2:** run `--filter "FullyQualifiedName~MarkdownEscapeTests"`: they fail.
+- [ ] **Step 3:** implement. If a caller of `ExpectedDifferences.Unescape` applies it to escaped text, it also drops two spaces before a line ending.
+- [ ] **Step 4:** the G filter. The goldens it reddens (`deliverable-escaped`, run goldens, captures) are named in the commit body. Commit `PackageFormat (#1510): …`, push.
+
+### Task G5: the migration writes explicit hard breaks; the rule credits them (item 4)
+
+**Files:**
+- Create `src/Consultologist.PackageFormat/V31/Templates/MarkdownLineEndings.cs` (G-D8) and `V31/Migration/Migrate.HardBreaks.cs`. The pass `HardBreaks(Migrated m)` is called in `WorkflowPackageMigration30To31.cs` after `StripLoopItems` and before `Derived`.
+- Modify `V31/Migration/Migrated.cs` (`HardBreaks`, carried to `Migration31Result.HardBreaks` as `StripNodes` is), `MigrationSentences.cs` (A10-091, A10-092), `V31/Harness/ExpectedDifferences.cs` (G-D9), and `tests/V31Migration/MigrationFixture.cs` (`Overlay` recounts).
+- Test: `tests/V31Templates/MarkdownLineEndingsTests.cs` (new), `tests/V31Migration/MigrateHardBreaksTests.cs` (new), `ExpectedDifferencesTests.cs`, `ByteEquivalenceTests.cs`, and `tests/V31Source/V31Contract.cs` (`MigrationAreaSentences`).
+
+**Interfaces:** produces `MarkdownLineEndings.Find(string) : IReadOnlyList<int>`, `MarkdownLineEndings.WithHardBreaks(string) : (string Text, int Count)`, `Migration31Result.HardBreaks : IReadOnlyDictionary<string, int>`, the rule `explicit-hard-break`, and notices A10-091 and A10-092.
+
+- [ ] **Step 1: failing tests.**
+  - In `MarkdownLineEndingsTests`: `ASingleLineEndingInAParagraph_IsFound`, `NotInAFenceATableOrAParagraphsLastLine`, `NotBeforeAListItemOrAHeading`, `ALineEndingATildeRemoves_IsNotFound`, `ALineOfOnlyTags_BreaksNeitherSide`, `ALineEndingInsideATag_IsNotFound`, `APipeInsideATag_DoesNotMakeATable`, `ABackslashOrTwoSpaces_IsAlreadyABreak`, `WithHardBreaks_IsIdempotent`.
+  - In `MigrateHardBreaksTests`: `ADeliverableWrittenLinePerLine_EndsItsLinesWithABackslash` (find a migrated fixture with a line-per-line Markdown deliverable or macro, such as an address or signature block; else a constructed 30 package; A10-091 names the file); `APromptAndASnippetAPromptPlaces_AreLeftAsWritten`; `APlainTextDeliverable_IsLeftAsWritten`; `ARenderedNodeAPromptAndADeliverableRead_IsLeft_WithA10_092`; `MigratingTwice_WritesNoSecondBackslash`.
+  - In `ExpectedDifferencesTests`: `AnExplicitHardBreak_IsCreditedOnlyInAPackageWithOne` (both ways).
+  - In `ByteEquivalenceTests`: `AHardBreakTheMigrationWrote_IsExplainedByItsRule`.
+- [ ] **Step 2:** run `--filter "FullyQualifiedName~MarkdownLineEndingsTests|FullyQualifiedName~V31Migration"`: they fail.
+- [ ] **Step 3:** implement G-D8 to G-D10. For a hand-edit Markdown body (`FX/hand-edits/**`) where `Find` reports hits that 30 broke, add the `\` by hand and say so in its README. `MigratedPackagesTests.NoHandEdit_MeansPublishRefusesNothing` and `HandEditsTests.TheEditedPackage_Publishes` stay green. **Stop and report** if any check refuses a `\` at a line's end at any site.
+- [ ] **Step 4:** the G filter: green. Commit `PackageFormat (#1510): …` and `Tests (#1510): …`, push.
+
+### Task G6: the publish warning (item 4, G-D11)
+
+**Files:**
+- Modify `V31/Templates/DialectSentences.cs` (`SingleLineEnding(string subject, int line, string path)` → S05-065) and a new partial `V31/Templates/SourceTemplates.LineEndings.cs`, called where S05-061 is checked.
+- Docs: `docs/customizable-workflow/package-format-v31/refusal-sentences.md` (row and counts) and `05-templates-and-macros.md` (§ 2.6 paragraph, W-3 under Refusals).
+- Content repo: `v31/sentences.json` and `package-format-v31.md` (its sentence table and part 05 twin), committed, pushed, pin moved.
+- Test: `tests/V31Templates/DialectRulesTests.cs` (`[InlineData("SingleLineEnding", "S05-065")]`), a new `tests/V31Templates/LineEndingWarningTests.cs`, and `tests/V31Source/RefusalPackagesTests.cs` (S05-065 in `TemplatesNotShipped`: a warning, so the package publishes).
+
+- [ ] **Step 1: failing tests:** `ASingleLineEndingInAMarkdownDeliverable_Warns_AndPublishes`; `ASingleLineEndingInAPrompt_DoesNotWarn`; `APlainTextDeliverable_DoesNotWarn`; `ABackslashOrABlankLine_DoesNotWarn`; `ASnippetAPromptPlaces_DoesNotWarn`; `AMacroAndARenderedNode_Warn`; `EveryMigratedPackage_WarnsOnlyWhereA10_092Said`.
+- [ ] **Step 2:** run `--filter "FullyQualifiedName~LineEndingWarningTests|FullyQualifiedName~DialectRulesTests|FullyQualifiedName~V31Contract"`: they fail.
+- [ ] **Step 3:** implement.
+- [ ] **Step 4:** the G filter: green. Commit, push.
+
+### Task G7: the model's instruction; the preview-exit check (item 5)
+
+**Files:** content repo `v31/formats/markdown_block.json`, `markdown_inline.json` and the `package-format-v31.md` example near its line 1203. `docs/customizable-workflow/package-format-v31/02-types-and-inputs.md` (the example at line 403). `docs/customizable-workflow/registry-operations.md` and `engine-v31.md` (G-D13). Test: `tests/V31Types/SentFormatTests.cs` (line 97), `tests/V31Engine/V31PackageDescriptionTests.cs` (lines 60, 182), and a new `tests/V31Types/MarkdownInstructionTests.cs`.
+
+- [ ] **Step 1: failing test:** `TheMarkdownFormats_TellTheModelHowToWriteSeparateLines` (the registry's `markdown_block` and `markdown_inline` descriptions hold G-D12's sentences). Also update the two expectation sets above.
+- [ ] **Step 2:** commit the content repo change on `m39-build` and push. **The pin does not move here**: `formatHash` changes, and it moves once in G8. Until G8 these tests stay red with the pin; say so in the commit body.
+- [ ] **Step 3:** write the docs. Commit `Docs (#1510): …` and `Tests (#1510): …`, push.
+
+### Task G8: one regeneration; what moved; the documents
+
+**Files:** `FX/migrated/**`, `FX/reports/**`, `tests/V31Resolve/Golden/*`, `tests/V31Run/Golden/*`, `tests/V31Templates/Golden/**` and the format-hash golden. Content repo: `v31/conformance/` (migration vectors, compiled documents, dialect and renderer goldens, `markdown-escape-vectors`, operation goldens), the conformance `README.md` (the D7 escape row, the D13 `plain` row, the A10 table with A10-090 to A10-092 as far as F3 did not add them, the rule `explicit-hard-break`), and `scripts/check-v31.py` (`markdown_escape` writes two spaces before a line ending). Docs, each corrected against the code as built:
+- part 02 § 5.2 (the bundle by name, what is left out and why, `DisableHtml`, standard line handling, 5–30 kept);
+- `index.md:150`;
+- part 03 § 3.5.2 if it names the pipeline;
+- part 06 § 6.4 (escaping and line endings);
+- part 10 § 1.2 (the hard-break row) and § 3.2 (the rule);
+- `package-format-library.md` (`ConsultMarkdown`, line 422 `PlainConversion`, line 2165 `MarkdownEscape`, the migration pass row, line 1809's warnings);
+- the content repo twins (`package-format-v31.md` §§ 2.5.2, 124, escape, part 05, part 10).
+
+- [ ] **Step 1:** move the pin to the content repo's `m39-build` head (G7's commit). Run `GOLDEN_UPDATE_V31=1 dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31"`, then the same without the variable: green except `ThePinnedVectors_AreWhatMigrateGives` and the pinned families.
+- [ ] **Step 2:** export with `CONFORMANCE_EXPORT_V31=$HOME/Projects/consultologist-package-format` through `MigrationVectorsExport`, `CompiledDocumentsExport`, `DialectGoldensExport` and `LogicVectorsExport`. Update `check-v31.py` and the README. `python3 scripts/check-v31.py` reports ok. Commit `Format spec (Consultologist-Blazor#1510): …`, push, move the pin, and re-run step 1's filter: green.
+- [ ] **Step 3:** read `git diff --stat` and every report's counts. **Every unexplained and partly-explained count is equal or lower than before.** `sent-format` and `escaped-plain-text` still credit what they credited, and `explicit-hard-break` credits only migration-written breaks. If a count rose, stop and report.
+- [ ] **Step 4:** write the docs, and under *Recorded in the build* the line **Part G, what moved**: the files per family; each report's counts before and after; the formats whose `formatHash` moved; what Markdig 0.41.3 did with `{onclick=x}` (G1); and the PDF's choice (render or narrow) per extension.
+- [ ] **Step 5:** `dotnet build Consultologist.sln`; `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`; `.github/scripts/run-e2e.sh | tail -40`: green. Commit with the goldens named in the body, push.
+
+**For the PR body (R3):** this area builds the five items of the third fix-first group: item 1 in G1 to G4, item 2 in G1 to G3, item 3 in G2 and G3 (the bundle narrowed per G-D4), item 4 in G5 and G6, item 5 in G7; one regeneration (G8), whose "what moved" line is quoted there. Under *For the owner*: G-D4 (CustomContainers and MediaLinks), G-D7, G-D12; that the hard-break pass and the warning see template source only (a break that existed only in composed output, such as consecutive loop items on their own lines, changes its look at 31 with no warning: the live dev run of item 5 is its check); that `plain_conversion` and `markdown_escape` change bytes and stay 1.0.0; that AutoIdentifiers stays (heading ids, which two deliverables on one page can share).
 
 ---
 
@@ -328,7 +485,12 @@ public static class PackageDiagram { public static string Generate(string resolv
 | #1510: the function's inside from `nodes` and `reads` | 4 (R1) |
 | #1509 second group, item 1 (a loop's trimmed items) | F1, F3 |
 | #1509 second group, item 2 (no signature block) | F2, F3 |
-| #1510: say which items were built where | the PR body (R2) |
+| #1509 third group, item 1 (the pipeline by spec family, one selector; `PlainConversion`; part 02 § 5.2) | G1, G2, G3, G4, G8 |
+| #1509 third group, item 2 (no generic attributes; both surfaces; Markdig 0.41.3 checked) | G1, G2, G3 |
+| #1509 third group, item 3 (the PDF draws every block of the bundle, or the bundle is narrowed) | G1 (G-D4), G2, G3 |
+| #1509 third group, item 4 (explicit hard breaks; the rule; the publish warning S05-065) | G5, G6, G8 |
+| #1509 third group, item 5 (the model's instruction; the preview-exit check) | G7, G8 |
+| #1510: say which items were built where | the PR body (R2, R3) |
 
 ## Recorded in the build
 
