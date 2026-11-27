@@ -200,7 +200,7 @@ Part G starts after Task F3 is committed, so its goldens start green. It ends wi
 **Files:** modify `src/Consultologist.Web/Shared/WorkflowEditor/MarkdownPreview.cs`, `Shared/Create31/RunView31.razor:62` and `Shared/Create31/MarkdownInput.razor:27`. Test: `tests/Consultologist.Web.Tests/MarkdownPreviewTests.cs` (new methods), `V31/ConsultsRunView31Tests.cs`, `V31/MarkdownInputTests.cs`.
 **Interfaces:** produces `MarkdownPreview.Render(string markdown, int specVersion)`.
 
-- [ ] **Step 1:** confirm that `Consults.razor:956,971` sit in the `!IsRun31` branch. If not, stop and report. Then write the failing tests:
+- [x] **Step 1:** confirm that `Consults.razor:956,971` sit in the `!IsRun31` branch. If not, stop and report. Then write the failing tests:
   - `Render31_EveryBlockOfTheBundle_RendersItsElements` (the G2 fixture: `<sup>`, `<ins>`, `<cite>`, `<abbr`, `<dl>`, `<figure>`, `<footer>`, `markdown-alert`, `class="footnotes"`, `type="checkbox"`, `<ol type="a"`).
   - `Render31_GenericAttributes_AreText` (no `onclick=`).
   - `Render31_ExcludedSyntax_IsText` (no `<del>`, `<iframe`, `class="math"`, `class="note"`).
@@ -208,9 +208,9 @@ Part G starts after Task F3 is committed, so its goldens start green. It ends wi
   - `ConsultsRunView31Tests.AMarkdownDeliverable_RendersWithThe31Pipeline`.
   - `MarkdownInputTests.Preview_RendersWithThe31Pipeline`.
   - The existing `MarkdownPreviewTests` stay as they are.
-- [ ] **Step 2:** `dotnet test tests/Consultologist.Web.Tests --filter "FullyQualifiedName~MarkdownPreviewTests|FullyQualifiedName~RunView31|FullyQualifiedName~MarkdownInputTests"`: they fail.
-- [ ] **Step 3:** implement G-D2's Web half.
-- [ ] **Step 4:** `dotnet test tests/Consultologist.Web.Tests`: green. Commit `Web (#1510): …`, push.
+- [x] **Step 2:** `dotnet test tests/Consultologist.Web.Tests --filter "FullyQualifiedName~MarkdownPreviewTests|FullyQualifiedName~RunView31|FullyQualifiedName~MarkdownInputTests"`: they fail.
+- [x] **Step 3:** implement G-D2's Web half.
+- [x] **Step 4:** `dotnet test tests/Consultologist.Web.Tests`: green. Commit `Web (#1510): …`, push.
 
 ### Task G4: escaped plain text keeps its lines at 31 (item 1, G-D7)
 
@@ -520,3 +520,5 @@ public static class PackageDiagram { public static string Generate(string resolv
 - **Task G2:** ruled by the controller (G2's stop): G-D5 and `Drawn31` gain the exact type `ContainerInline`, drawn as its children. When an abbreviation is defined, Markdig 0.41.3's Abbreviations wraps the literal it splits in a bare `ContainerInline` in common shapes (`HPI here`, `HPI`, `Seen HPI`, a heading, a list item, a table cell, after a line break or a code span; one probe of `The HPI here` came back flat, so the shape does not predict it), and the walker threw on it. It is a wrapper the bundle writes, as `ListItemBlock`, `TableRow` and `TableCell` are, not a fallback: the case matches the exact type, so an unnamed subclass still throws (`Render31_AnAbbreviationThatOpensALine_IsDrawn`; `every-block.md` gained `HPI reviewed with Margaret at the visit.`).
 - **Task G2:** step 3's findings: an abbreviation definition (`*[HPI]: …`) leaves no block in the AST, so it needs no silent case. Under ListExtras, `ListItemBlock.Order` is the item's number counted from the list's start, with the kind in `BulletType`: `c. d.` gives `a`, Orders 3 and 4; `iv. v.` gives `i`, 4 and 5; `I. II.` gives `I`, 1 and 2; `3. 4.` gives `1`, 3 and 4. So the label is `OrderedLabel(BulletType, Order)`.
 - **Task G2:** `Drawn31` names concrete types. G-D5's `DelimiterInline` is abstract, and the one left after a parse is `LinkDelimiterInline` (an unmatched `[`). The set also names the parts a container's own case lays out (`ListItemBlock`, `TableRow`, `TableCell`). At 31, `AppendBlock` and `AppendInline` first check the exact type against `Drawn31`, so a subclass the bundle does not write (a `YamlFrontMatterBlock` is a `CodeBlock`) throws instead of being drawn by its base type's case. `standard` is `ConsultMarkdown.For(specVersion)` being `Pipeline31`.
+- **Task G3:** step 1 confirmed: `Consults.razor:956,971` sit in the `else` of `@if (IsRun31)` (line 832), so they keep `Render(string)`. `RunView31.razor` and `MarkdownInput.razor` name `PublishedStamp.SpecVersion` (the constant 31, as `DeliveryChannels.cs:216`) through a `@using` alias, so the rest of `Consultologist.PackageFormat.V31` stays out of their scope.
+- **Task G3:** `Render31_GenericAttributes_AreText` asserts no ` onclick=` (with the space an attribute has): the text keeps `{onclick=x}`, which holds `onclick=`. It and `Render31_ExcludedSyntax_IsText` pass against the 5–30 pipeline too (it has none of those extensions), so their red was not seen; they hold `Pipeline31` to its exclusions. `Render30_IsTodaysRendering` was added: `Render(markdown, 30)` keeps the hard break, and an empty text at 31 is still the muted paragraph.
