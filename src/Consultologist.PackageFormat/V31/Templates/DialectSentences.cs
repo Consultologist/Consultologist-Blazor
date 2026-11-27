@@ -158,6 +158,13 @@ public static class DialectSentences
     public static SourceRefusal BlockRendererInsideALine(string subject, string id, int line, string path) =>
         new("S05-061", $"{subject} pipes renderer.{id}, a markdown_block, inside a line at line {Line(line)}.", path);
 
+    /// <summary>
+    /// S05-065 (W-3; #1510, the owner's third fix-first group, item 4; G-D11), a warning: a single line ending inside a
+    /// paragraph of a Markdown body a reader sees, at <paramref name="line"/>, which 31 does not break (<see cref="MarkdownLineEndings"/>).
+    /// </summary>
+    public static SourceRefusal SingleLineEnding(string subject, int line, string path) =>
+        new("S05-065", $"{subject} has a single line ending inside a paragraph at line {Line(line)}: a single line ending is not a break; end the line with \\ or leave a blank line.", path);
+
     /// <summary>S05-037 (R-S3): a bare <c>snippet.&lt;id&gt;</c>; <paramref name="id"/> as written (<c>tone</c>, <c>standards.hpi</c>).</summary>
     public static SourceRefusal ReadsBareSnippet(string subject, string id, int line, string path) =>
         new("S05-037", $"{subject} reads snippet.{id} at line {Line(line)}; read its text as snippet.{id}.content.", path);
