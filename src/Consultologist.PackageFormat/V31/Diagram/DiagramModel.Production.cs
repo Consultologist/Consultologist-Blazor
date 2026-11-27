@@ -10,9 +10,9 @@ namespace Consultologist.PackageFormat.V31.Diagram;
 /// kind a plain rectangle (a <c>call</c> is a <c>tag-rect</c>, <c>DiagramModel.Functions.cs</c>). A flow node is its
 /// frames (a <c>for_</c> or <c>while_</c> body; an <c>if_…_then</c>, <c>if_…_else</c>, <c>case_…_branch_N</c> or
 /// <c>case_…_else</c> per body that holds a node) and, after them, its summary box carrying the loop or condition line,
-/// every condition and list printed by <see cref="JsonLogicPrinter.Print"/>. A deliverable is a hexagon. Every <c>input.*</c>, <c>run.*</c>,
-/// <c>profile.*</c> and <c>snippet.*</c> read is one pill at the top level, in order of first read; an input nothing
-/// reads follows, in <c>inputOrder</c>.
+/// every condition and list printed by <see cref="JsonLogicPrinter.Print"/>. A deliverable is a hexagon. Every
+/// <c>input.*</c>, <c>run.*</c>, <c>profile.*</c> and <c>snippet.*</c> read is one pill at the top level, in order of
+/// first read; an input nothing reads follows, in <c>inputOrder</c>.
 /// <para>
 /// Edges come from the entries (D6), not from <c>graph.edges</c>: a read is <c>--&gt;</c> labelled with the member read
 /// (D4; none for a pill but an input's); a condition's read (an <c>if</c>, <c>while</c>, <c>until</c>, a <c>case</c>
