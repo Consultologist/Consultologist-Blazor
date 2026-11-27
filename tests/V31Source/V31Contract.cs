@@ -261,8 +261,9 @@ internal static class V31Contract
     /// new node that strips it, #1509 comment 7207709261 item 1, area 13 Task F1; A10-089: a signature written through a renderer
     /// that tests its trimmed value, #1509 comment 7207709261 item 2, area 13 Task F2; A10-090: a loop whose .content is read and whose
     /// items have more than one text format, a hand edit's reason, area 13 Task F1 fix round 1; A10-091: a Markdown body's single
-    /// line endings inside a paragraph ended with \ by the migration, and A10-092: a body a prompt reads, shown elsewhere, whose
-    /// line endings are kept, #1509 comment 7209167166 item 4, area 13 Task G5).
+    /// line endings inside a paragraph ended with \ by the migration, #1509 comment 7209167166 item 4, area 13 Task G5, its count
+    /// agreeing with its noun, #1543 ruling 10; A10-092, a body a prompt reads whose line endings were kept, retired by #1543
+    /// ruling 1 and unused).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -355,7 +356,6 @@ internal static class V31Contract
         ["A10-089"] = "The signature is written through renderer '<id>', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
         ["A10-090"] = "loop '<id>' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.",
         ["A10-091"] = "In '<file>', <n> line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.",
-        ["A10-092"] = "'<file>' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>
@@ -566,6 +566,15 @@ internal static class V31Contract
             const string optional = " 31.+?\\.$";
             Assert.EndsWith(optional, pattern, StringComparison.Ordinal);
             pattern = pattern[..^optional.Length] + " 31(?:, and an input's text is trimmed at both ends first, where 30 trimmed its end)?\\.$";
+        }
+
+        // A10-091's count agrees with its noun (#1543, ruling 10): "1 line ending inside a paragraph ends", or "<n> line
+        // endings inside a paragraph end" for any other count.
+        if (refusal.Id == "A10-091")
+        {
+            var plural = ToPattern("<n> line endings inside a paragraph end ");
+            Assert.Contains(plural, pattern, StringComparison.Ordinal);
+            pattern = pattern.Replace(plural, "(?:" + Regex.Escape("1 line ending inside a paragraph ends ") + "|(?!1 )[0-9]+" + Regex.Escape(" line endings inside a paragraph end ") + ")", StringComparison.Ordinal);
         }
 
         // A10-086's last clause (", joining <term> for the others") is said only when another source has a term.

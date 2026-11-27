@@ -11,10 +11,9 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// <summary>
 /// #1510 (the owner's third fix-first group, item 4; G-D8, G-D10): 30's pipeline broke every single line ending, 31's reads one
 /// inside a paragraph as a space, so the migration ends such a line with <c>\</c> (an explicit hard break) in the Markdown
-/// bodies a reader sees (deliverables, rendered nodes, macros, snippets), said once per file (A10-091). A prompt, a part and a
-/// body a prompt reads keep their line endings as written (a <c>\</c> would change what the model reads); one that is also
-/// shown is said (A10-092). No migrated fixture writes a Markdown body line per line, so each case is a fixture package with
-/// one changed. Content is fictional (Margaret Okafor, Dr A. Sample, Sample Oncology Clinic).
+/// bodies (deliverables, rendered nodes, macros, snippets), said once per file (A10-091). #1543 (ruling 1): a body a prompt
+/// reads or places is one of them; a prompt and its parts are not Markdown values, and keep their line endings as written.
+/// No migrated fixture writes such a body line per line, so each case is a fixture package with one changed. Content is fictional (Margaret Okafor, Dr A. Sample, Sample Oncology Clinic).
 /// </summary>
 public class MigrateHardBreaksTests
 {
@@ -47,25 +46,62 @@ public class MigrateHardBreaksTests
     }
 
     [Fact]
-    public void APromptAndASnippetAPromptPlaces_AreLeftAsWritten()
+    public void ASnippetAPromptPlaces_EndsItsLinesWithABackslash()
     {
-        // example-macros' summary prompt is written line per line ("Task:" then its line), and places the snippet style,
-        // written here as two lines: neither is given a \, and neither is said.
+        // #1543 (ruling 1): example-macros' summary prompt places the snippet style, written here as two lines. A body a
+        // prompt places is a site like any other: it gets its \, said by A10-091, and no notice says a prompt reads it.
         const string Style = "Write in the first person plural,\npast tense, without abbreviations the patient would not know.";
         var result = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["snippets/style.md"] = files["snippets/style.md"].Replace(
             "Write in the first person plural, past tense, without abbreviations the patient would not know.", Style, StringComparison.Ordinal));
 
-        var prompt = MigrateNodesTests.Md(result, "nodes/summary.md").Body;
+        Assert.StartsWith("Write in the first person plural,\\\npast tense", MigrateNodesTests.Md(result, "snippets/style.md").Body, StringComparison.Ordinal);
+        Assert.Equal(new Dictionary<string, int> { ["snippets/style.md"] = 1 }, result.HardBreaks);
+        const string Notice = "In 'snippets/style.md', 1 line ending inside a paragraph ends with \\ (an explicit hard break), where specVersion 30 broke the line.";
+        Assert.Single(result.Notices, n => n == Notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-091", Notice, ""));
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("'snippets/style.md' is read by a prompt", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void APromptAndAPart_AreLeftAsWritten()
+    {
+        // example-macros' summary prompt is written line per line ("Task:" then its line), and example-conditional-documents'
+        // billing part likewise: neither is a site, so the pass leaves each byte for byte, and says neither.
+        var m = Passes("example-macros");
+        var prompt = m.Sources["nodes/summary.md"].Body!;
         Assert.NotEmpty(MarkdownLineEndings.Find(prompt));
         Assert.Contains("Task:\nSummarise the consult draft", prompt, StringComparison.Ordinal);
-        Assert.DoesNotContain("\\\n", prompt, StringComparison.Ordinal);
-        Assert.StartsWith(Style + "\n", MigrateNodesTests.Md(result, "snippets/style.md").Body, StringComparison.Ordinal);
-        Assert.Empty(result.HardBreaks);
-        Assert.DoesNotContain(result.Notices, n => n.Contains("nodes/summary.md'", StringComparison.Ordinal) || n.Contains("snippets/style.md'", StringComparison.Ordinal));
+        Migrate.HardBreaks(m);
+        Assert.Equal(prompt, m.Sources["nodes/summary.md"].Body);
+        Assert.False(m.HardBreaks.ContainsKey("nodes/summary.md"));
+        Assert.DoesNotContain(m.Result([]).Notices, n => n.Contains("nodes/summary.md'", StringComparison.Ordinal));
 
-        // A prompt's parts are never a site either (example-conditional-documents' billing part is written line per line).
-        var parts = MigrateNodesTests.Migrated("example-conditional-documents");
+        const string Section = "nodes/sections_consult_note_section/consult_note_section.md";
+        var parts = Passes("example-conditional-documents");
+        var header = parts.Sources[Section].Json["parts"]!.ToJsonString();
+        Assert.Contains("\"Billing:\",\"End the section", header, StringComparison.Ordinal);
+        var body = parts.Sources[Section].Body;
+        Migrate.HardBreaks(parts);
+        Assert.Equal(header, parts.Sources[Section].Json["parts"]!.ToJsonString());
+        Assert.Equal(body, parts.Sources[Section].Body);
         Assert.Empty(parts.HardBreaks);
+    }
+
+    [Fact]
+    public void OneLineEnding_SaysLineEnding_TwoSayLineEndings()
+    {
+        // #1543 (ruling 10): A10-091's count agrees with its noun.
+        var one = MigrationSentences.ExplicitHardBreaks("snippets/letterhead.md", 1);
+        var two = MigrationSentences.ExplicitHardBreaks("snippets/letterhead.md", 2);
+
+        Assert.Equal("In 'snippets/letterhead.md', 1 line ending inside a paragraph ends with \\ (an explicit hard break), where specVersion 30 broke the line.", one);
+        Assert.Equal("In 'snippets/letterhead.md', 2 line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.", two);
+        V31Contract.AssertSentence(new SourceRefusal("A10-091", one, ""));
+        V31Contract.AssertSentence(new SourceRefusal("A10-091", two, ""));
+
+        // The contract takes the two forms, not a count against its noun.
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => V31Contract.AssertSentence(new SourceRefusal("A10-091", one.Replace("1 line ending inside a paragraph ends", "1 line endings inside a paragraph end", StringComparison.Ordinal), "")));
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => V31Contract.AssertSentence(new SourceRefusal("A10-091", two.Replace("2 line endings inside a paragraph end", "2 line ending inside a paragraph ends", StringComparison.Ordinal), "")));
     }
 
     [Fact]
@@ -81,7 +117,7 @@ public class MigrateHardBreaksTests
         Assert.Contains("{{ macro.house_style }}", MigrateNodesTests.Md(result, "snippets/style.md").Body, StringComparison.Ordinal);
         Assert.StartsWith("Reviewed against\\\nthe house style.", MigrateNodesTests.Md(result, "macros/house_style.md").Body, StringComparison.Ordinal);
         Assert.Equal(new Dictionary<string, int> { ["macros/house_style.md"] = 1 }, result.HardBreaks);
-        Assert.Single(result.Notices, n => n.StartsWith("In 'macros/house_style.md', 1 line endings", StringComparison.Ordinal));
+        Assert.Single(result.Notices, n => n.StartsWith("In 'macros/house_style.md', 1 line ending inside", StringComparison.Ordinal));
         Assert.DoesNotContain(result.Notices, n => n.StartsWith("'macros/house_style.md'", StringComparison.Ordinal));
     }
 
@@ -131,40 +167,36 @@ public class MigrateHardBreaksTests
     }
 
     [Fact]
-    public void ARenderedNodeAPromptAndADeliverableRead_IsLeft_WithA10_092()
+    public void ARenderedNodeAPromptReads_EndsItsLinesWithABackslash()
     {
         // The migration writes every rendered node plaintext, so example-v12-constructs' patient_header (which the consult
         // deliverable reads) is made a Markdown body written line per line before the pass, and the tone prompt reads it.
+        // #1543 (ruling 1): read by a prompt or not, it gets its \, said by A10-091, and no notice says a prompt reads it.
         const string Header = "Margaret Okafor\nSample Oncology Clinic";
+        const string Broken = "Margaret Okafor\\\nSample Oncology Clinic";
+        const string Notice = "In 'nodes/patient_header.md', 1 line ending inside a paragraph ends with \\ (an explicit hard break), where specVersion 30 broke the line.";
         var m = Passes("example-v12-constructs");
         m.Sources["nodes/patient_header.md"].Json["format"] = "markdown_block";
         m.Sources["nodes/patient_header.md"].Body = Header;
         m.Sources["nodes/tone.md"].Body += "\n{{ node.patient_header.content }}";
         Migrate.HardBreaks(m);
 
-        Assert.Equal(Header, m.Sources["nodes/patient_header.md"].Body);
-        Assert.Empty(m.HardBreaks);
+        Assert.Equal(Broken, m.Sources["nodes/patient_header.md"].Body);
+        Assert.Equal(new Dictionary<string, int> { ["nodes/patient_header.md"] = 1 }, m.HardBreaks);
         var result = m.Result([]);
-        const string Notice = "'nodes/patient_header.md' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\.";
         Assert.Single(result.Notices, n => n == Notice);
-        V31Contract.AssertSentence(new SourceRefusal("A10-092", Notice, ""));
+        V31Contract.AssertSentence(new SourceRefusal("A10-091", Notice, ""));
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("'nodes/patient_header.md' is read by a prompt", StringComparison.Ordinal));
 
-        // Read by the deliverable alone, it is broken; read by the prompt alone (the deliverable reads it no more), it is
-        // left and not said, since nothing shows it.
-        var shown = Passes("example-v12-constructs");
-        shown.Sources["nodes/patient_header.md"].Json["format"] = "markdown_block";
-        shown.Sources["nodes/patient_header.md"].Body = Header;
-        Migrate.HardBreaks(shown);
-        Assert.Equal("Margaret Okafor\\\nSample Oncology Clinic", shown.Sources["nodes/patient_header.md"].Body);
-
-        var unshown = Passes("example-v12-constructs");
-        unshown.Sources["nodes/patient_header.md"].Json["format"] = "markdown_block";
-        unshown.Sources["nodes/patient_header.md"].Body = Header;
-        unshown.Sources["nodes/tone.md"].Body += "\n{{ node.patient_header.content }}";
-        unshown.Sources["deliverables/consult.md"].Body = unshown.Sources["deliverables/consult.md"].Body!.Replace("{{ node.patient_header.content | string.strip }}", "", StringComparison.Ordinal);
-        Migrate.HardBreaks(unshown);
-        Assert.Equal(Header, unshown.Sources["nodes/patient_header.md"].Body);
-        Assert.DoesNotContain(unshown.Result([]).Notices, n => n.StartsWith("'nodes/patient_header.md'", StringComparison.Ordinal));
+        // Read by the prompt alone (the deliverable reads it no more), likewise.
+        var prompted = Passes("example-v12-constructs");
+        prompted.Sources["nodes/patient_header.md"].Json["format"] = "markdown_block";
+        prompted.Sources["nodes/patient_header.md"].Body = Header;
+        prompted.Sources["nodes/tone.md"].Body += "\n{{ node.patient_header.content }}";
+        prompted.Sources["deliverables/consult.md"].Body = prompted.Sources["deliverables/consult.md"].Body!.Replace("{{ node.patient_header.content | string.strip }}", "", StringComparison.Ordinal);
+        Migrate.HardBreaks(prompted);
+        Assert.Equal(Broken, prompted.Sources["nodes/patient_header.md"].Body);
+        Assert.Single(prompted.Result([]).Notices, n => n == Notice);
     }
 
     [Fact]

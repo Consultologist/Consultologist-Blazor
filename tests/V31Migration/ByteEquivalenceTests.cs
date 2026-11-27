@@ -555,6 +555,62 @@ public class ByteEquivalenceTests
     }
 
     /// <summary>
+    /// #1543 (ruling 1): example-two-documents' SNOMED tool guidance, a Markdown snippet four prompts place, written line per
+    /// line, which 30 sent as written. The migration ends its line with <c>\</c>, so each prompt that places it differs from
+    /// 30's by that <c>\</c> alone and is expected, credited to <c>explicit-hard-break</c>; with a word of 30's also lost
+    /// (a capture whose prompt holds one 31's does not), it is unexplained.
+    /// </summary>
+    [Fact]
+    public async Task ABackslashAPromptReads_IsExplainedByTheHardBreakRule()
+    {
+        const string Package = "example-two-documents";
+        const string Scenario = "default";
+        const string Sentence = "never a sentence or passage. If a tool returns";
+        const string Lines = "never a sentence or passage.\nIf a tool returns";
+        var migrated = MigrationFixture.Overlay(
+            MigrateNodesTests.Migrated(Package, _ => { }, files => files["snippets/snomed_tool_guidance.md"] = files["snippets/snomed_tool_guidance.md"].Replace(Sentence, Lines, StringComparison.Ordinal)),
+            MigrationFixture.HandEditsOf(Package));
+        Assert.Equal(1, migrated.HardBreaks["snippets/snomed_tool_guidance.md"]);
+        var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(migrated), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed);
+        Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));
+        var (plan, refusal) = RunPlan.Build(compiled!.Resolve, compiled.ResolveHash, compiled.LockHash, null);
+        Assert.True(plan != null, refusal?.Sentence);
+
+        JsonObject Capture(string lost)
+        {
+            var capture = EquivalenceFixture.Capture(Package, Scenario);
+            foreach (var row in capture["prompts"]!.AsArray().OfType<JsonObject>())
+            {
+                if ((string?)row["text"] is not { } text || !text.Contains(Sentence, StringComparison.Ordinal))
+                    continue;
+                row["text"] = text.Replace(Sentence, Lines, StringComparison.Ordinal).Replace("and retry.", "and retry" + lost + ".", StringComparison.Ordinal);
+                row["hash"] = CanonicalJson.HashText((string)row["text"]!);
+            }
+
+            return capture;
+        }
+
+        string[] placed = ["extract_patient_concepts", "identify_problem", "create_typical_trajectory", "create_patient_trajectory"];
+        var sites = placed.Select(p => $"{Package}/{Scenario}#prompts/node.{p}").ToList();
+        var asWritten = Capture("");
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(Package, Scenario), asWritten, migrated, plan!);
+        var run = await OfflineRun.RunAsync(plan!, request);
+        foreach (var key in placed)
+            Assert.Contains("never a sentence or passage.\\\nIf a tool returns", run.Prompts.Single(p => p.Key == "node." + key).Text, StringComparison.Ordinal);
+
+        var texts = Equivalence.Compare(Package, Scenario, asWritten, run, migrated, plan!, request);
+        foreach (var site in sites)
+        {
+            var text = texts.Single(t => t.Site == site);
+            Assert.True((text.Equal, text.Expected, text.Unexplained) == (false, true, false), $"{site}: equal {text.Equal}, expected {text.Expected}, rules {string.Join(",", text.Rules)}");
+            Assert.Equal(["explicit-hard-break"], text.Rules);
+        }
+
+        var lost = Equivalence.Compare(Package, Scenario, Capture(" once"), run, migrated, plan!, request);
+        Assert.All(sites, site => Assert.True(lost.Single(t => t.Site == site).Unexplained, site));
+    }
+
+    /// <summary>
     /// #1510 (#1509 comment 7207709261, item 2): composer-macros' profile in <c>no-signature</c> has no signature block, and
     /// 30 left the signature and the line before it out; through the renderer that tests the trimmed signature, so does 31.
     /// <c>authored</c> differs only as the plain text it holds is escaped in Markdown.
@@ -653,7 +709,7 @@ public class ByteEquivalenceTests
         ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
         ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
         ["macro-trailing-whitespace"] = "the one compared macro whose body ends in more white space than one line ending, edge-unruled-whitespace's problem_close, ends each item of a loop whose .content is read, which the migration strips as 30 trimmed it (#1510); the rule's own tests hold it on hand-made texts.",
-        ["explicit-hard-break"] = "no migrated fixture writes a Markdown body a reader sees line per line (every single line ending inside a paragraph is a prompt's), so the migration writes no \\ in any (#1510, item 4); AHardBreakTheMigrationWrote_IsExplainedByItsRule holds it on composer-macros with its letterhead written as an address.",
+        ["explicit-hard-break"] = "no migrated fixture writes a Markdown body line per line (every single line ending inside a paragraph is a prompt's or a part's), so the migration writes no \\ in any (#1510, item 4); AHardBreakTheMigrationWrote_IsExplainedByItsRule holds it on composer-macros with its letterhead written as an address, and ABackslashAPromptReads_IsExplainedByTheHardBreakRule on a prompt that places example-two-documents' guidance written line per line (#1543, ruling 1).",
     };
 
     [Fact]
