@@ -2,6 +2,8 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using System.Text.Json
+@using Consultologist.Web.Services.Workflow.V31
+@using Consultologist.Web.Shared.WorkflowEditor.V31
 @inject IWorkflowEndpointService WorkflowService
 @inject IAccountEndpointService AccountService
 @inject IJSRuntime JS
@@ -62,11 +64,12 @@
                                            WritesPin="false"
                                            Selected="@(editingRef ?? content.Ref)"
                                            OnSelected="OnPackageSelectedAsync" />
-                    @if (LoadedTitle is { Length: > 0 } loadedTitle)
+                    @* #1509 (Task 23): a 31 manifest is not read as a 30 one; the 31 view shows it whole. *@
+                    @if (!IsV31 && LoadedTitle is { Length: > 0 } loadedTitle)
                     {
                         <span class="editor-bar__title">@loadedTitle</span>
                     }
-                    @if (WorkflowManifestReader.ReadDerivedFrom(content.Manifest) is { } parentRef)
+                    @if (!IsV31 && WorkflowManifestReader.ReadDerivedFrom(content.Manifest) is { } parentRef)
                     {
                         <span class="muted-text">derived from <code>@parentRef</code></span>
                     }
@@ -83,6 +86,11 @@
                      commands, grouped with vertical dividers (edit · publish · history ·
                      reset · package I/O). Keeps flex-wrap at narrow widths. *@
                   <FluentToolbar Class="editor-bar__toolbar">
+                    @* #1509 (Task 23; D14): a 31 package keeps the picker, Download and Import only — the editing
+                       commands, from the upgrade to Revert, are not drawn (their <text> ends before the download). *@
+                    @if (!IsV31)
+                    {
+                    <text>
                     @* #347: the migration. Shown only while the fork is below the
                        newest format — upward only, by construction rather than by
                        a refusal. It stages a pending change and publishes like any
@@ -226,6 +234,8 @@
                                    OnClick="RevertToDefaultAsync"
                                    OnBackOut="CancelToolbarArm" />
                     <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
+                    </text>
+                    }
                     @* #808: download the package being edited as a zip of the real
                        directory tree (current edits applied), interchangeable with the
                        GitOps repo and local editing. No gate — an unedited package downloads too. *@
@@ -255,7 +265,7 @@
                editing against it — and publishing turns that into a version of
                THEIR package carrying this content. Said here because it was not
                said anywhere, and it cost three accidental publishes in one day. *@
-            @if (!EditingOwnPackage)
+            @if (!EditingOwnPackage && !IsV31)
             {
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
                     <strong>You are editing <code>@content.Ref</code>, which is not your package.</strong>
@@ -288,7 +298,19 @@
             }
 
             @* #847: an import refusal (bad zip / invalid package) — the editor is unchanged. *@
-            @if (!string.IsNullOrWhiteSpace(importError))
+            @if (importErrors is { Count: > 0 })
+            {
+                @* #1509 (Task 23; D14): a refused 31 import says every sentence the source check gave. *@
+                <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="true" Class="import-errors">
+                    <ul>
+                        @foreach (var error in importErrors)
+                        {
+                            <li>@error</li>
+                        }
+                    </ul>
+                </FluentMessageBar>
+            }
+            else if (!string.IsNullOrWhiteSpace(importError))
             {
                 <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="true">@importError</FluentMessageBar>
             }
@@ -342,6 +364,14 @@
                 </FluentMessageBar>
             }
 
+            @* #1509 (area 12, Task 23; D14): a 31 package is read-only until Milestone 41 — drawn by V31PackageView in
+               place of the editing layout, which reads a 30 manifest throughout. *@
+            @if (IsV31)
+            {
+                <V31PackageView Content="@content" Owned="@EditingOwnPackage" />
+            }
+            else
+            {
             <div class="editor-layout">
                 <nav class="editor-nav" aria-label="Package contents">
                     <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Branch())" /> Workflow</span>
@@ -4356,6 +4386,7 @@
                     }
                 </section>
             </div>
+            }
         }
     </Authorized>
 </AuthorizeView>
@@ -5413,6 +5444,13 @@
     private int LoadedSpecVersion => content?.SpecVersion ?? 0;
 
     /// <summary>
+    /// #1509 (area 12, Task 23; part 09 § 8.1; D14): the loaded package is specVersion 31 or later, which the Editor
+    /// opens read-only through V31PackageView until Milestone 41. Nothing reads its manifest with WorkflowManifestReader:
+    /// the load skips every 5–30 projection, and the editing layout and commands are not drawn.
+    /// </summary>
+    private bool IsV31 => LoadedSpecVersion >= 31;
+
+    /// <summary>
     /// Whether the loaded package is the account's own fork. False means the
     /// editor is holding repo-owned content — legitimate, and how a fork is
     /// started or restarted, but it makes Publish mean something other than
@@ -5944,7 +5982,8 @@
     private bool OffersNewestUpgrade => RunnableSpecVersion < NewestSpecVersion && CanUpgradeTo(NewestSpecVersion);
 
     /// <summary>A staged bump past the runnable ceiling, or a loaded package already past it.</summary>
-    private bool NotYetRunnable => EffectiveSpecVersion > RunnableSpecVersion;
+    // #1509 (Task 23): a 31 package is not published from here, so the publishable-but-not-runnable notice is not its.
+    private bool NotYetRunnable => !IsV31 && EffectiveSpecVersion > RunnableSpecVersion;
 
     private IReadOnlyList<PendingKind>? pendingKinds;
 
@@ -17236,6 +17275,15 @@
                 }
             }
 
+            // #1509 (area 12, Task 23; D14): a 31 package is drawn by V31PackageView from the
+            // content as served. Every step below projects, restores or draws a 30 manifest
+            // (the upgrade, the readers, the formats, the draft, the history, the diagram), so
+            // none runs for it.
+            if (IsV31)
+            {
+                return;
+            }
+
             // C6 (#1012): an unpublished upgrade of THIS package held in this browser
             // takes its place; the notice it was given comes back with it.
             string? storedNotice = null;
@@ -20215,6 +20263,15 @@
             return;
         }
 
+        // #1509 (Task 23; D14): a 31 package downloads as served — its manifest's raw text, its files, and the
+        // published version's resolve.json, lock.json and publish-report.json when the content holds them.
+        if (IsV31)
+        {
+            await JS.InvokeVoidAsync("consultologistDownload", $"{content.Ref}.zip", "application/zip",
+                Convert.ToBase64String(PackageDownload31.Zip(content)));
+            return;
+        }
+
         var files = AssembleFiles();
         files["manifest.json"] = JsonSerializer.Serialize(ComposeManifest(), new JsonSerializerOptions { WriteIndented = true });
         await DownloadZipAsync(files, $"{content.Ref}.zip");
@@ -20233,6 +20290,7 @@
     private static readonly IReadOnlyDictionary<string, string> EmptyCatalogSchemas =
         new Dictionary<string, string>(StringComparer.Ordinal);
     private string? importError;
+    private IReadOnlyList<string>? importErrors;
 
     private async Task ImportPackageAsync(InputFileChangeEventArgs args)
     {
@@ -20242,6 +20300,7 @@
         }
 
         importError = null;
+        importErrors = null;
         selectionNotice = null;
         var file = args.File;
 
@@ -20272,6 +20331,14 @@
                 // The server read the bytes and says they are not a package — a
                 // local unzip would only fail the same way. Leave the editor as is.
                 importError = outcome.Error;
+                importErrors = outcome.Errors; // #1509 (Task 23): a refused 31 import's every sentence.
+                return;
+            }
+
+            // #1509 (Task 23; D14): a 31 zip the source check passed opens read-only, with its notices.
+            if (outcome?.Content is { SpecVersion: >= 31 } content31)
+            {
+                await ApplyImported31Async(content31);
                 return;
             }
 
@@ -20344,6 +20411,25 @@
         selectionNotice = findings.Count == 0
             ? $"Imported {content.Ref} — held locally in this browser. Name it below and Publish as a new package to keep it."
             : $"Imported {content.Ref}, but it has issues to resolve before it will publish: {string.Join(" | ", findings)}";
+    }
+
+    // #1509 (area 12, Task 23; D14): a 31 import opens V31PackageView with the ingest's notices. Nothing in it can be
+    // edited or published from here, so it is not projected, not held for a reload (a held import is a 30 one to
+    // name and publish; the one held before is dropped, as a new import replaces it) and opens no name field.
+    private async Task ApplyImported31Async(WorkflowPackageContentResponse importedContent)
+    {
+        ClearPending();
+        ResetFormScratch();
+        ClearHistoryState();
+        diagramText = null;
+        diagramIncludesPending = false;
+        editingRef = null;
+        await ForgetRememberedPackageAsync();
+        await ForgetImportAsync();
+        content = importedContent;
+        imported = true;
+        newPackageOpen = false;
+        newPackageSlug = string.Empty;
     }
 
     // #847/#857: the split-and-parse an import shares — a fresh upload and a

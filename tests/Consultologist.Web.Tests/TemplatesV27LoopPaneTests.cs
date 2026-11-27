@@ -79,7 +79,7 @@ public class TemplatesV27LoopPaneTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void A27Package_PublishesClean_AndTheVersionAfter_MeetsTheVersionSentence()
+    public void A27Package_PublishesClean_AndTheVersionAfter_OpensReadOnly()
     {
         // #1237: 27 is the public accepted set's newest — no seam; 28 is what it refuses.
         CapturePublish();
@@ -89,13 +89,10 @@ public class TemplatesV27LoopPaneTests : ClientRenderTestContext
         Assert.Empty(Refusals(page));
         Assert.NotNull(sent);
 
-        sent = null;
+        // #1509 (Task 23; part 09 § 8.1, D14): a package at 31 opens read-only — nothing to edit, no publish to refuse.
         var beyond = RenderEditor(V27FlowAt31());
-        Nudge(beyond);
-        Publish(beyond);
-        Assert.Null(sent);
-        // The manifest read's sentence — the public accepted set, the next bump's to move.
-        Assert.Contains(Refusals(beyond), r => r.Contains("is specVersion 31; this engine runs specVersion", StringComparison.Ordinal));
+        Assert.Single(beyond.FindComponents<Consultologist.Web.Shared.WorkflowEditor.V31.V31PackageView>());
+        Assert.DoesNotContain(beyond.FindAll("fluent-button"), b => b.TextContent.Contains("Publish", StringComparison.Ordinal));
     }
 
     [Fact]
