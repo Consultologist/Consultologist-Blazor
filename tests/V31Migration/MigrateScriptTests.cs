@@ -6,6 +6,7 @@ using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Diagram;
 using Consultologist.PackageFormat.V31.Harness;
 
 namespace Consultologist.Api.Tests.V31Migration;
@@ -91,12 +92,12 @@ public class MigrateScriptTests
             var migrated = MigratedPackagesTests.Migrated("example-prior-letters");
             foreach (var notice in migrated.Notices)
                 Assert.Contains($"notice: {notice}", lines);
-            Assert.Contains("delete:  dag.mmd", lines);
+            Assert.Contains("rewrite: dag.mmd", lines);
             Assert.Contains("delete:  prompts/assessment.md", lines);
             Assert.Contains("add:     nodes/index.json", lines);
             Assert.Contains("add:     tests/migration_snapshot.json", lines);
             Assert.Contains("rewrite: manifest.json", lines);
-            Assert.Single(lines, l => l == Migration31Script.NoDiagram);
+            Assert.Single(lines, l => l == Migration31Script.DiagramWritten);
             Assert.EndsWith(" (dry run; pass --write to apply)", lines[^1], StringComparison.Ordinal);
         }
         finally
@@ -117,11 +118,11 @@ public class MigrateScriptTests
 
             Assert.Equal(Migration31Script.Clean, exit);
             Assert.Equal("", error);
-            Assert.Equal(Expected(MigratedPackagesTests.Migrated("example-prior-letters")), Contents(dir));
+            var migrated = MigratedPackagesTests.Migrated("example-prior-letters");
+            Assert.Equal(new SortedDictionary<string, string>(Expected(migrated), StringComparer.Ordinal) { ["dag.mmd"] = DiagramOf(migrated) }, Contents(dir));
             Assert.False(Directory.Exists(Path.Combine(dir, "prompts")));
-            Assert.False(File.Exists(Path.Combine(dir, "dag.mmd")));
             var lines = Lines(output);
-            Assert.Single(lines, l => l == Migration31Script.NoDiagram);
+            Assert.Single(lines, l => l == Migration31Script.DiagramWritten);
             Assert.EndsWith("; written", lines[^1], StringComparison.Ordinal);
         }
         finally
@@ -147,6 +148,64 @@ public class MigrateScriptTests
                 Assert.Contains($"notice: {edit}", lines);
             Assert.EndsWith($"; {Migration31Script.HandEditsRemain}", lines[^1], StringComparison.Ordinal);
             V31Contract.AssertSentence(new SourceRefusal("S10-001", Migration31Script.HandEditsRemain, ""));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>The 31 drawing of <paramref name="migrated"/>, compiled as publish compiles it (at the engine's default limits).</summary>
+    private static string DiagramOf(Migration31Result migrated)
+    {
+        var (refusals, compiled) = CompiledPackage.Publish(
+            MigratedPackagesTests.Upload(migrated), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, WorkflowPackageMigration30To31.EngineLimits);
+        Assert.True(compiled != null, string.Join(" | ", refusals.Select(r => r.Sentence)));
+        return PackageDiagram.Generate(compiled!.Resolve);
+    }
+
+    [Fact]
+    public void TheMigrationScript_WritesTheDiagram_WhenThePackageCompiles()
+    {
+        // #1510 (area 13, D13): the migrated package compiles, so its 30 dag.mmd is replaced by the 31 drawing of its
+        // resolve.json, and the script says so.
+        var dir = CopyOf("example-prior-letters");
+        try
+        {
+            var (exit, output, error) = Run(dir, "--write");
+
+            Assert.Equal(Migration31Script.Clean, exit);
+            Assert.Equal("", error);
+            var diagram = File.ReadAllText(Path.Combine(dir, "dag.mmd"));
+            Assert.Equal(DiagramOf(MigratedPackagesTests.Migrated("example-prior-letters")), diagram);
+            Assert.StartsWith("---\nconfig:\n  layout: elk\n---\nflowchart TD\n", diagram, StringComparison.Ordinal);
+            var lines = Lines(output);
+            Assert.Contains("rewrite: dag.mmd", lines);
+            Assert.Single(lines, l => l == Migration31Script.DiagramWritten);
+            Assert.DoesNotContain(Migration31Script.DiagramWaits, output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TheMigrationScript_SaysWhenItCannotYet()
+    {
+        // #1510 (area 13, D13): example-macros does not compile until its hand edits are made (S03-025), so no dag.mmd is
+        // written, the 30 one is deleted, and the script says the drawing is written once the edits are done.
+        var dir = CopyOf("example-macros");
+        try
+        {
+            var (exit, output, _) = Run(dir, "--write");
+
+            Assert.Equal(Migration31Script.HandEditsLeft, exit);
+            Assert.False(File.Exists(Path.Combine(dir, "dag.mmd")));
+            var lines = Lines(output);
+            Assert.Contains("delete:  dag.mmd", lines);
+            Assert.Single(lines, l => l == Migration31Script.DiagramWaits);
+            Assert.DoesNotContain(Migration31Script.DiagramWritten, output, StringComparison.Ordinal);
         }
         finally
         {
@@ -202,7 +261,7 @@ public class MigrateScriptTests
             foreach (var refusal in expected.Refusals)
                 Assert.Contains($"error: {refusal}", Lines(error));
             Assert.EndsWith("nothing written.", Lines(error)[^1], StringComparison.Ordinal);
-            Assert.DoesNotContain(Migration31Script.NoDiagram, output, StringComparison.Ordinal);
+            Assert.DoesNotContain("dag.mmd", output, StringComparison.Ordinal);
         }
         finally
         {
@@ -225,7 +284,7 @@ public class MigrateScriptTests
             Assert.Equal(Migration31Script.Clean, dryExit);
             Assert.Equal(before, Contents(dir));
             Assert.Contains($"add:     {SnapshotTest.File}", Lines(dryOutput));
-            Assert.DoesNotContain(Migration31Script.NoDiagram, dryOutput, StringComparison.Ordinal);
+            Assert.DoesNotContain("dag.mmd", dryOutput, StringComparison.Ordinal);
 
             var (exit, _, error) = Run(dir, "--snapshot", "--write");
 
