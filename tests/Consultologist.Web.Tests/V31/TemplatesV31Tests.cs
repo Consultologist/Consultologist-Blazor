@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Text.Json;
 using Bunit;
 using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31.Diagram;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
 using Consultologist.Web.Services.Workflow.V31;
@@ -108,7 +109,7 @@ public class TemplatesV31Tests : ClientRenderTestContext
         var page = RenderEditor(fixture);
 
         var sources = fixture.Files.Keys.Order(StringComparer.Ordinal).ToList();
-        Assert.Equal(["manifest.json", .. sources, "resolve.json", "lock.json", "Publish report"], Listed(page));
+        Assert.Equal(["manifest.json", .. sources, "resolve.json", "lock.json", "Publish report", "Diagram"], Listed(page));
 
         foreach (var path in sources)
         {
@@ -154,20 +155,38 @@ public class TemplatesV31Tests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheDiagramEntry_AppearsOnlyWithADagFile()
+    public void TheDiagramEntry_DrawsThePackageFromItsCompiledDocument()
     {
-        var without = RenderEditor(EditorFixtures.V31());
-        Assert.DoesNotContain("Diagram", Listed(without));
-
+        // The stored dag.mmd differs on purpose: the compiled document wins.
         var fixture = EditorFixtures.V31(withDiagram: true);
-        var with = RenderEditor(fixture);
-        var listed = Listed(with);
+        var page = RenderEditor(fixture);
+        var listed = Listed(page);
         Assert.Equal("Diagram", listed[^1]);
         // dag.mmd is the diagram, not a source file: it is listed once, as the diagram.
         Assert.DoesNotContain("dag.mmd", listed);
 
-        Open(with, "Diagram");
-        Assert.Equal(fixture.Files["dag.mmd"], with.FindComponent<WorkflowDagView>().Instance.Diagram);
+        Open(page, "Diagram");
+        var drawn = page.FindComponent<WorkflowDagView>().Instance.Diagram;
+        Assert.Equal(PackageDiagram.Generate(fixture.Resolve!.Value.GetRawText()), drawn);
+        Assert.NotEqual(fixture.Files["dag.mmd"], drawn);
+    }
+
+    [Fact]
+    public void TheDiagramEntry_FallsBackToTheStoredFile_WhenThereIsNoCompiledDocument()
+    {
+        var fixture = EditorFixtures.V31(withDiagram: true) with { Resolve = null };
+        var page = RenderEditor(fixture);
+        Assert.Equal("Diagram", Listed(page)[^1]);
+
+        Open(page, "Diagram");
+        Assert.Equal(fixture.Files["dag.mmd"], page.FindComponent<WorkflowDagView>().Instance.Diagram);
+    }
+
+    [Fact]
+    public void TheDiagramEntry_IsAbsentWithNeither()
+    {
+        var page = RenderEditor(EditorFixtures.V31() with { Resolve = null });
+        Assert.DoesNotContain("Diagram", Listed(page));
     }
 
     [Fact]

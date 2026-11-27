@@ -410,8 +410,8 @@ public static class PackageDiagram { public static string Generate(string resolv
 
 **Files:** Modify `src/Consultologist.Web/Shared/WorkflowEditor/V31/V31PackageView.razor`; Test `tests/Consultologist.Web.Tests/V31/TemplatesV31Tests.cs`.
 
-- [ ] **Step 1: failing tests:** `TheDiagramEntry_DrawsThePackageFromItsCompiledDocument` (`WorkflowDagView.Instance.Diagram` equals `PackageDiagram.Generate(resolve text)`), `…_FallsBackToTheStoredFile_WhenThereIsNoCompiledDocument`, `…_IsAbsentWithNeither` (the existing `TheDiagramEntry_AppearsOnlyWithADagFile` is rewritten into these).
-- [ ] **Step 2 to 5:** fail, implement, `dotnet test tests/Consultologist.Web.Tests`, commit (`Web (#1510): …`), push.
+- [x] **Step 1: failing tests:** `TheDiagramEntry_DrawsThePackageFromItsCompiledDocument` (`WorkflowDagView.Instance.Diagram` equals `PackageDiagram.Generate(resolve text)`), `…_FallsBackToTheStoredFile_WhenThereIsNoCompiledDocument`, `…_IsAbsentWithNeither` (the existing `TheDiagramEntry_AppearsOnlyWithADagFile` is rewritten into these).
+- [x] **Step 2 to 5:** fail, implement, `dotnet test tests/Consultologist.Web.Tests`, commit (`Web (#1510): …`), push.
 
 ---
 
@@ -584,3 +584,4 @@ public static class PackageDiagram { public static string Generate(string resolv
 - **Task 7:** `scripts/check-workflow-package-v31.cs` passes the drawing to the pipeline (so `--write` puts `dag.mmd` among the version's files) and, once a package would publish, compares a committed `dag.mmd` byte for byte with the drawing of the in-memory `resolve.json`: a difference is exit 1 (`refused: dag.mmd differs …`, nothing written, with or without `--write`); `--write-dag` writes the fresh one into the folder instead; a folder with none passes. The rerender script only checks (`CheckAsync`), so it did not change. Run by hand on a copy of `migrated/example-prior-letters`: no `dag.mmd` exit 0; `--write-dag` writes it, then exit 0; one line appended, exit 1; `--write-dag --write <out>` publishes, the out folder's `dag.mmd` identical to the folder's.
 - **Task 7:** the E2E project references `Consultologist.PackageFormat` (not the Web) to draw Review Focus 1's document, and links the goldens as `Golden/*.dag.mmd`; `TheGoldens_AreTheSevenDrawings` holds the link to the seven. Every golden rendered under ELK at the first run (`functions` included), and each Mermaid-syntax label (`"`, `<b>…</b>`, `[`/`]`, `|`, a backtick, `end`, `#35;`, a line break as one space) is found as written in the SVG's text (its `<style>` removed): the writer needed no fix, so no golden was regenerated, and the browser tests' red was not seen.
 - **Task 7:** `package-format-library.md`'s paragraph on the migration script's `dag.mmd` line names the two new constants; the other documents are Task 11's.
+- **Task 8:** the Diagram entry draws from `Content.Resolve` whether or not the account owns the version (the entry is not gated on `Owned`, unlike the resolve.json entry): the drawing is a derived view, not evidence. `EverySourceFile_IsListed_AndOpensReadOnly` now expects "Diagram" last, since the owned fixture holds a `resolve.json`.
