@@ -459,7 +459,8 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// Part 06 § 6.4's escape undone (<see cref="MarkdownEscape"/>): a backslash before an ASCII punctuation character
-    /// removed, <c>&amp;#32;</c> and <c>&amp;#9;</c> written as the space and the tab they stand for.
+    /// removed, <c>&amp;#32;</c> and <c>&amp;#9;</c> written as the space and the tab they stand for, and the two spaces
+    /// before a line ending dropped (#1510, G-D7).
     /// </summary>
     public static string Unescape(string escaped)
     {
@@ -481,6 +482,10 @@ public static class ExpectedDifferences
             {
                 text.Append('\t');
                 i += 3;
+            }
+            else if (string.CompareOrdinal(escaped, i, "  ", 0, 2) == 0 && i + 2 < escaped.Length && escaped[i + 2] is '\n' or '\r')
+            {
+                i += 1;
             }
             else
             {
