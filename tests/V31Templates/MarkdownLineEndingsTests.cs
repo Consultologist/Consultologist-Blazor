@@ -219,13 +219,47 @@ public class MarkdownLineEndingsTests
     [InlineData("1. ")]
     [InlineData("- > ")]
     [InlineData("  2) ")]
-    public void WithBlockReadsSeparated_LeavesAReadAfterABlockMarker(string marker)
+    [InlineData("- Seen: ")]
+    [InlineData("> Signed: ")]
+    [InlineData("### Plan: ")]
+    [InlineData("-")]
+    public void WithBlockReadsSeparated_LeavesALineThatStartsABlock(string before)
     {
-        // Item 4: a blank line would leave an empty container and move the value out of it: the line is left, the read marked.
-        var body = "Plan:\n\n" + marker + "{{ profile.signature }} (dictated)\n";
+        // Item 4, as the controller extended it for the owner (Task A5's review): the text before the read starts a list
+        // item, a quote or a heading, whether or not more text follows the marker; a blank line would move the read out of
+        // it. Nothing on the line is moved, the read is marked.
+        var body = "Plan:\n\n" + before + "{{ profile.signature }} (dictated)\n";
         Assert.Equal((body, "", "{{ profile.signature }}"), Separated(body));
-        // Text that is more than a marker is separated as any text is.
-        Assert.Equal("- Seen: \n\n{{ profile.signature }}", Separated("- Seen: {{ profile.signature }}").Text);
+    }
+
+    [Theory]
+    [InlineData("\tcode")]
+    [InlineData("    code")]
+    [InlineData("  \t code")]
+    [InlineData(" - continued")]
+    [InlineData(" * continued")]
+    [InlineData(" 3. continued")]
+    [InlineData(" > quoted")]
+    [InlineData(" # Plan")]
+    [InlineData(" -")]
+    public void WithBlockReadsSeparated_LeavesALineWhoseTextAfterWouldStartABlock(string after)
+    {
+        // The text after the read would start a block on its own line: indented code, a list item, a quote, a heading.
+        // Nothing on the line is moved, the text before it included; a second read on the line stays too.
+        var body = "Regards, {{ profile.signature }}" + after + "\n";
+        Assert.Equal((body, "", "{{ profile.signature }}"), Separated(body));
+        var two = "Seen {{ profile.closing }} by {{ profile.signature }}" + after;
+        Assert.Equal((two, "", "{{ profile.closing }} {{ profile.signature }}"), Separated(two));
+    }
+
+    [Fact]
+    public void WithBlockReadsSeparated_SeparatesOrdinaryText()
+    {
+        // A marker that is not at the line's start, or not followed by white space, and up to three spaces before the text
+        // after: no block starts, so the read is separated on both sides.
+        Assert.Equal("Plan - see \n\n{{ profile.signature }}\n\n   (dictated)", Separated("Plan - see {{ profile.signature }}   (dictated)").Text);
+        Assert.Equal("-Seen \n\n{{ profile.signature }}\n\n -x", Separated("-Seen {{ profile.signature }} -x").Text);
+        Assert.Equal("#1 \n\n{{ profile.signature }}", Separated("#1 {{ profile.signature }}").Text);
     }
 
     [Fact]

@@ -264,8 +264,9 @@ internal static class V31Contract
     /// line endings inside a paragraph ended with \ by the migration, #1509 comment 7209167166 item 4, area 13 Task G5, its count
     /// agreeing with its noun, #1543 ruling 10; A10-092, a body a prompt reads whose line endings were kept, retired by #1543
     /// ruling 1 and unused; A10-093: a markdown_block read separated from the text beside it by a blank line, #1543 ruling 2
-    /// as the owner amended it on 2026-11-27, area 14 Task A5; A10-094: a markdown_block read after only a Markdown block
-    /// marker, a hand edit's reason, the same amendment's item 4, area 14 Task A5).
+    /// as the owner amended it on 2026-11-27, area 14 Task A5; A10-094: a markdown_block read on a line that a blank line
+    /// would break out of its Markdown block (a list item, a quote, a heading or indented text), a hand edit's reason, the
+    /// same amendment's item 4 as the controller extended it for the owner, area 14 Task A5 fix round 1).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -359,7 +360,7 @@ internal static class V31Contract
         ["A10-090"] = "loop '<id>' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.",
         ["A10-091"] = "In '<file>', <n> line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.",
         ["A10-093"] = "In '<file>', the read <read> now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.",
-        ["A10-094"] = "the line holds only a Markdown block marker before the read <read> at line <n>, and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.",
+        ["A10-094"] = "the read <read> at line <n> stands in a line that a blank line would break out of its Markdown block (a list item, a quote, a heading or indented text), and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

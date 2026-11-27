@@ -11,8 +11,9 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// #1543 (ruling 2, D7, as the owner amended it on 2026-11-27): a <c>markdown_block</c> read stands alone on its line at 31,
 /// so where a 30 body has one with text beside it, the migration separates it from that text by a blank line, on both
 /// sides, and drops nothing; a line of text next to a line holding only a block read gets a blank line too, never a
-/// <c>\</c>. One notice per file (A10-093). Where the text before the read is only a Markdown block marker, the line is
-/// left and is a hand edit (A10-094). A macro body is where 30 let a body read the profile, so most cases are
+/// <c>\</c>. One notice per file (A10-093). Where a blank line would break the read's line out of its Markdown block (the
+/// text before it starts a list item, a quote or a heading; the text after it would start one, or indented code), nothing
+/// on the line is moved and it is a hand edit (A10-094). A macro body is where 30 let a body read the profile, so most cases are
 /// example-macros' house_style macro with its one line changed. Content is fictional (Margaret Okafor, Dr A. Sample,
 /// Sample Oncology Clinic).
 /// </summary>
@@ -139,28 +140,80 @@ public class MigrateBlockReadsTests
         Assert.Empty(Judged(result, HouseStyle));
     }
 
+    /// <summary>A10-094's reason, as pinned: the read on its line at line 1 of house_style's body.</summary>
+    private const string BreaksItsBlock =
+        "the read profile.signature at line 1 stands in a line that a blank line would break out of its Markdown block (a list item, a quote, a heading or indented text), and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.";
+
     [Theory]
+    [InlineData("- Seen: ")]
+    [InlineData("> Signed: ")]
+    [InlineData("# Plan: ")]
+    [InlineData("1. See ")]
     [InlineData("- ")]
-    [InlineData("> ")]
-    [InlineData("# ")]
-    [InlineData("1. ")]
     [InlineData("- > ")]
-    public void ABlockMarkerBeforeTheRead_IsAHandEdit(string marker)
+    [InlineData("  * ")]
+    [InlineData("2) ")]
+    public void TextBeforeTheReadThatStartsABlock_IsAHandEdit(string before)
     {
-        // Item 4: a blank line would leave an empty container and move the value out of it, so the line is left as 30 wrote
-        // it and is a hand edit (A10-094); publish refuses it (S05-066) until it is made.
-        var line = marker + "{{ profile.signature }}";
+        // Item 4, as the controller extended it for the owner (Task A5's review): a blank line before the read would leave
+        // the read outside the list item, the quote or the heading its line starts, so nothing on the line is moved, the
+        // line is a hand edit (A10-094), and publish refuses it (S05-066) until it is made.
+        var line = before + "{{ profile.signature }}";
         var result = WithHouseStyle(line);
 
         Assert.Equal(Given(line), MigrateNodesTests.Md(result, HouseStyle).Body);
         Assert.Empty(result.MovedReads);
-        var reason = MigrationSentences.BlockMarkerBeforeARead("profile.signature", 1);
-        Assert.Equal("the line holds only a Markdown block marker before the read profile.signature at line 1, and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.", reason);
+        Assert.Empty(result.SeparatedReads);
+        Assert.DoesNotContain(result.Notices, n => n.Contains("after a blank line", StringComparison.Ordinal));
+        var reason = MigrationSentences.ReadBreaksItsBlock("profile.signature", 1);
+        Assert.Equal(BreaksItsBlock, reason);
         V31Contract.AssertSentence(new SourceRefusal("A10-094", reason, ""));
         var edit = Assert.Single(result.HandEdits, e => e.Contains(HouseStyle, StringComparison.Ordinal));
         Assert.Equal(MigrationSentences.HandEdit(HouseStyle, "body", reason), edit);
         Assert.Equal("Hand edit needed in macros/house_style.md, body: " + reason, edit);
         Assert.Contains(Judged(result, HouseStyle), r => r.Id == "S05-066");
+    }
+
+    [Theory]
+    [InlineData("\t(dictated)")]
+    [InlineData("    (dictated)")]
+    [InlineData(" - continued")]
+    [InlineData(" > quoted")]
+    [InlineData(" ## Plan")]
+    public void TextAfterTheReadThatWouldStartABlock_IsAHandEdit(string after)
+    {
+        // The text after the read, on its own line, would itself start a block: indented code (a tab, four or more
+        // spaces), a list item, a quote or a heading. Nothing on the line is moved, the text before it included.
+        var line = "Regards, {{ profile.signature }}" + after;
+        var result = WithHouseStyle(line);
+
+        Assert.Equal(Given(line), MigrateNodesTests.Md(result, HouseStyle).Body);
+        Assert.Empty(result.MovedReads);
+        var edit = Assert.Single(result.HandEdits, e => e.Contains(HouseStyle, StringComparison.Ordinal));
+        Assert.Equal(MigrationSentences.HandEdit(HouseStyle, "body", BreaksItsBlock), edit);
+        Assert.Contains(Judged(result, HouseStyle), r => r.Id == "S05-067");
+
+        // With no text before, the same.
+        var alone = WithHouseStyle("{{ profile.signature }}" + after);
+        Assert.Empty(alone.MovedReads);
+        Assert.Single(alone.HandEdits, e => e == MigrationSentences.HandEdit(HouseStyle, "body", BreaksItsBlock));
+    }
+
+    [Theory]
+    [InlineData("Regards, {{ profile.signature }} (dictated)", "Regards, \n\n{{ profile.signature }}\n\n (dictated)")]
+    [InlineData("Plan - see {{ profile.signature }}, then > below", "Plan - see \n\n{{ profile.signature }}\n\n, then > below")]
+    [InlineData("-Seen {{ profile.signature }}   (dictated)", "-Seen \n\n{{ profile.signature }}\n\n   (dictated)")]
+    [InlineData("#1 {{ profile.signature }} -x", "#1 \n\n{{ profile.signature }}\n\n -x")]
+    public void OrdinaryTextOnBothSides_IsStillSeparated(string line, string separated)
+    {
+        // A marker inside the text, a - or # not followed by white space, three spaces before the text after: none starts
+        // a block, so the read is separated on both sides and no hand edit is raised.
+        var result = WithHouseStyle(line);
+
+        Assert.Equal(Given(separated), MigrateNodesTests.Md(result, HouseStyle).Body);
+        Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 1 }, result.MovedReads);
+        Assert.DoesNotContain(result.HandEdits, e => e.Contains(HouseStyle, StringComparison.Ordinal));
+        Assert.Empty(Judged(result, HouseStyle));
     }
 
     [Fact]
