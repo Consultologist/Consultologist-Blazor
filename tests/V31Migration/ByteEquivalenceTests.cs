@@ -611,14 +611,15 @@ public class ByteEquivalenceTests
     }
 
     /// <summary>
-    /// #1543 (ruling 2, D7, D8): edge-unset-object's intake line reads a field of the object input, a <c>markdown_block</c>
-    /// at 31, with text on both sides; the migration moves it onto a line of its own (<c>Referred for: \</c>, the read, then
-    /// the text after it). The letter differs from 30's by those line endings alone and is expected, credited to
-    /// <c>block-read-own-line</c> alone; against the same run, a result that says it moved no read leaves it unexplained, and
-    /// so does a capture whose letter holds a word 31's does not.
+    /// #1543 (ruling 2, D7, D8, as the owner amended them on 2026-11-27): edge-unset-object's intake line reads a field of
+    /// the object input, a <c>markdown_block</c> at 31, with text on both sides; the migration separates it from both by a
+    /// blank line (<c>Referred for: </c>, a blank line, the read, a blank line, then the text after it). The letter (the
+    /// intake unset, so the read is empty and the blank lines meet) differs from 30's by those line endings alone, holds no
+    /// <c>\</c>, and is expected, credited to <c>block-read-own-line</c> alone; against the same run, a result that says it
+    /// separated no read leaves it unexplained, and so does a capture whose letter holds a word 31's does not.
     /// </summary>
     [Fact]
-    public async Task AReadTheMigrationMoved_IsExplainedByItsRule()
+    public async Task AReadTheMigrationSeparated_IsExplainedByItsRule()
     {
         const string Package = "edge-unset-object";
         const string Scenario = "intake-unset";
@@ -626,7 +627,9 @@ public class ByteEquivalenceTests
         var migrated = EquivalenceFixture.Migrated(Package);
         Assert.Equal(1, migrated.MovedReads["snippets/intake_line.md"]);
         var (capture, run, texts) = await EquivalenceFixture.Compared(Package, Scenario);
-        Assert.StartsWith("Referred for: \\\n\n (from the intake form).", run.Deliverables.Single(d => d.Key == "deliverable.note").Text, StringComparison.Ordinal);
+        var letter = run.Deliverables.Single(d => d.Key == "deliverable.note").Text;
+        Assert.StartsWith("Referred for: \n\n\n\n (from the intake form).", letter, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\", letter, StringComparison.Ordinal);
 
         var text = texts.Single(t => t.Site == Site);
         Assert.True((text.Equal, text.Expected, text.Unexplained) == (false, true, false), $"{Site}: equal {text.Equal}, expected {text.Expected}, rules {string.Join(",", text.Rules)}");

@@ -5,6 +5,7 @@ using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.Api.Tests.V31Migration;
 
@@ -200,6 +201,7 @@ internal static class MigrationFixture
         var strip = new Dictionary<string, string>(migrated.StripNodes, StringComparer.Ordinal);
         var breaks = new Dictionary<string, int>(migrated.HardBreaks, StringComparer.Ordinal);
         var moved = new Dictionary<string, int>(migrated.MovedReads, StringComparer.Ordinal);
+        var separated = new Dictionary<string, IReadOnlyList<string>>(migrated.SeparatedReads, StringComparer.Ordinal);
         foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
@@ -227,6 +229,7 @@ internal static class MigrationFixture
                 Assert.True(files.Remove(removed), $"{relative} removes {removed}, which the migration did not write.");
                 breaks.Remove(removed);
                 moved.Remove(removed);
+                separated.Remove(removed);
                 foreach (var node in strip.Keys.Where(k => StripNodeFile(k) == removed).ToList())
                     strip.Remove(node);
                 continue;
@@ -244,17 +247,21 @@ internal static class MigrationFixture
             else
                 breaks.Remove(relative);
 
-            // #1543 (ruling 2, D8): likewise the reads moved onto a line of their own: those the migration moved there, which
-            // the edit keeps, or as many as the edited body moves after an explicit hard break (an operator's edit written
-            // in the form the pass writes), whichever is more.
-            if (relative.EndsWith(".md", StringComparison.Ordinal) && Math.Max(migrated.MovedReads.GetValueOrDefault(relative), MovedReadsIn(text)) is var reads and > 0)
-                moved[relative] = reads;
+            // #1543 (ruling 2, D8): likewise the reads separated by a blank line, counted as the block-reads pass counts them.
+            if (relative.EndsWith(".md", StringComparison.Ordinal) && SeparatedReadsIn(text, migrated, relative) is { Count: > 0 } reads)
+            {
+                moved[relative] = reads.Count;
+                separated[relative] = reads;
+            }
             else
+            {
                 moved.Remove(relative);
+                separated.Remove(relative);
+            }
         }
 
         Assert.All(strip.Keys, k => Assert.True(files.ContainsKey(StripNodeFile(k)), $"{HandEditsStripNodes} names {k}, which the edited package does not hold."));
-        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip, HardBreaks = breaks, MovedReads = moved };
+        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip, HardBreaks = breaks, MovedReads = moved, SeparatedReads = separated };
     }
 
     /// <summary>
@@ -266,12 +273,44 @@ internal static class MigrationFixture
         FrontMatter.Split(text) is { } split ? System.Text.RegularExpressions.Regex.Count(split.Body, @"(?<!\\)(?:\\\\)*\\(?=\r?\n)") : 0;
 
     /// <summary>
-    /// The reads a file with a header moves onto a line of their own after an explicit hard break, as the block-reads pass
-    /// writes text before a read (D7): each tag that starts a line of its body directly after a line ending that follows an
-    /// odd number of <c>\</c>.
+    /// #1543 (ruling 2, D8): the reads an edited file with a header holds separated by a blank line, as the block-reads pass
+    /// counts them (one per tag, in order): each tag <see cref="MarkdownLineEndings.Separations"/> finds separated from a
+    /// line of text that is either one the migration separated in that file (<see cref="Migration31Result.SeparatedReads"/>)
+    /// or one the operator separated as the pass would have: a tag that stood with literal text beside it on its line in
+    /// the migrated file. A paragraph the body had already, or any other tag-ended line, is no separated read.
     /// </summary>
-    private static int MovedReadsIn(string text) =>
-        FrontMatter.Split(text) is { } split ? System.Text.RegularExpressions.Regex.Count(split.Body, @"(?<!\\)(?:\\\\)*\\\r?\n\{\{") : 0;
+    private static List<string> SeparatedReadsIn(string text, Migration31Result migrated, string path)
+    {
+        if (FrontMatter.Split(text) is not { } split)
+            return [];
+        var body = split.Body;
+        var theirs = migrated.SeparatedReads.GetValueOrDefault(path) ?? [];
+        var before = migrated.Files.TryGetValue(path, out var file) ? FrontMatter.Split(file)?.Body : null;
+        var (tags, _) = TemplateTags.Scan(body);
+        var candidates = tags.Select(t => body[t.Start..t.End])
+            .Where(t => theirs.Contains(t) || (before is not null && HasTextBeside(before, t)))
+            .ToHashSet(StringComparer.Ordinal);
+        var at = MarkdownLineEndings.Separations(body, candidates).Select(s => s.Tag).ToHashSet();
+        return tags.Where(t => at.Contains(t.Start)).Select(t => body[t.Start..t.End]).ToList();
+    }
+
+    /// <summary>Whether a tag written <paramref name="tag"/> stands in <paramref name="body"/> on a line with literal text (more than white space) beside it.</summary>
+    private static bool HasTextBeside(string body, string tag)
+    {
+        var (tags, _) = TemplateTags.Scan(body);
+        foreach (var found in tags.Where(t => body[t.Start..t.End] == tag))
+        {
+            var start = body.LastIndexOf('\n', Math.Max(found.Start - 1, 0)) + 1;
+            var end = body.IndexOf('\n', found.End) is var next and >= 0 ? next : body.Length;
+            var line = body[start..end];
+            foreach (var other in tags.Where(t => t.Start >= start && t.End <= end).OrderByDescending(t => t.Start))
+                line = line.Remove(other.Start - start, other.End - other.Start);
+            if (line.Trim().Length > 0)
+                return true;
+        }
+
+        return false;
+    }
 
     /// <summary>The file of the stripping node at rooted key <paramref name="key"/> (<c>node.a.b</c> is <c>nodes/a/b.md</c>).</summary>
     private static string StripNodeFile(string key) => "nodes/" + key["node.".Length..].Replace('.', '/') + ".md";

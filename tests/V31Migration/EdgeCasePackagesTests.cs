@@ -150,8 +150,8 @@ public class EdgeCasePackagesTests
         // The three Q3 to Q5 cases: the migration's if, the loop's .content and the object guard give 30's bytes, every text
         // equal but edge-items-not-run's template loop, Q4's difference, expected as the owner ruled (#1508, 2026-11-26,
         // item 4: loop-item-not-run), and the texts of the node that strips the problem loop's items, 31's alone (#1510,
-        // loop-item-strip-node). #1543 (ruling 2, D7): edge-unset-object's intake line stands alone on its line, after
-        // "Referred for: \", with the text after it on the next line, credited to block-read-own-line alone.
+        // loop-item-strip-node). #1543 (ruling 2, D7, as amended on 2026-11-27): edge-unset-object's intake line is
+        // separated by a blank line from "Referred for: " and from the text after it, credited to block-read-own-line alone.
         Assert.All((await EquivalenceFixture.Report(package)).Texts, t => Assert.True(
             t.Equal || (t.Expected && (t.Rules.Contains("loop-item-not-run") || t.Rules.SequenceEqual(["loop-item-strip-node"]) || t.Rules.SequenceEqual(["block-read-own-line"]))), t.Site));
     }
@@ -278,8 +278,9 @@ public class EdgeCasePackagesTests
 
         Assert.Equal(At30("letter").Replace("three months.\n\n", "three months.\n", StringComparison.Ordinal), At31("deliverable.letter"));
         Assert.StartsWith("Seen at:\n\n", At30("problems"), StringComparison.Ordinal);
-        // #1543 (ruling 2, D7): the read stands alone on its line at 31, after "Seen at: \".
-        Assert.StartsWith("Seen at: \\\n\n\n", At31("deliverable.problems"), StringComparison.Ordinal);
+        // #1543 (ruling 2, D7, as the owner amended it on 2026-11-27): the read is separated from "Seen at: " by a blank
+        // line at 31; the clinic is unset, so the blank lines meet, and no \ is written.
+        Assert.StartsWith("Seen at: \n\n\n\n## Problem list 1", At31("deliverable.problems"), StringComparison.Ordinal);
         Assert.Equal(["chosen-macro-final-line-ending"], texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.letter", StringComparison.Ordinal)).Rules);
 
         // problem_close, placed after each paragraph by 30's engine, ends its body in more white space than one line ending:

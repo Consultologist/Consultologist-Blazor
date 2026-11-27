@@ -314,54 +314,87 @@ public class ExpectedDifferencesTests
     }
 
     [Fact]
-    public void AMovedBlockRead_IsCreditedOnlyInAPackageWithOne()
+    public void ASeparatedBlockRead_IsCreditedOnlyInAPackageWithOne()
     {
-        // #1543 (ruling 2, D8): the migration moved a markdown_block read that had text beside it onto a line of its own:
-        // text before it ends with \ and the read starts the next line; text after it starts the next line. 31's text holds
-        // those line endings and is otherwise 30's. In a package whose sources hold such a move, in any compared kind.
-        var plain = EquivalenceFixture.Migrated("example-nested-note") with
-        {
-            HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal),
-            MovedReads = new Dictionary<string, int>(StringComparer.Ordinal),
-        };
-        var moved = WithMovedReads(plain);
+        // #1543 (ruling 2, D8, as the owner amended it on 2026-11-27): the migration separated a markdown_block read from
+        // the text beside it by a blank line (two line endings where the read stood inside the line), and a line of text
+        // next to a read's line by one more line ending. 31's text holds those line endings and is otherwise 30's. In a
+        // package whose sources hold such a read, in any compared kind.
+        var plain = Unseparated();
+        var moved = WithSeparatedReads(plain);
         const string Old = "Seen today by Dr A. Sample.\n\nRegards, Dr A. Sample\nInternal Medicine (dictated)";
-        const string Now = "Seen today by Dr A. Sample.\n\nRegards, \\\nDr A. Sample\nInternal Medicine\n (dictated)";
+        const string Now = "Seen today by Dr A. Sample.\n\nRegards, \n\nDr A. Sample\nInternal Medicine\n\n (dictated)";
         Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable, Old, Now, migrated: moved, key31: "deliverable.note")));
         Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Prompt, Old, Now, migrated: moved, key31: "node.refine")));
         Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Render, Old, Now, migrated: moved, key31: "node.refine")));
-        // Text that stood against the read: the \ and the line ending stand between it and the read.
-        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable, "Seen at:Riverside Clinic.", "Seen at:\\\nRiverside Clinic\n.", migrated: moved, key31: "deliverable.note")));
-        // A \r\n line ending is one too; and a \ the hard-break rule took first leaves the line ending to this rule.
-        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable, "Regards, Dr A. Sample", "Regards, \\\r\nDr A. Sample", migrated: moved, key31: "deliverable.note")));
-        var both = moved with { HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal) { ["snippets/letterhead.md"] = 1 } };
-        var credited = ExpectedDifferences.Credit(Context(ComparedKind.Deliverable, Old, Now, migrated: both, key31: "deliverable.note"));
+        // Text that stood against the read; a \r\n line ending is one too.
+        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable, "Seen at:Riverside Clinic.", "Seen at:\n\nRiverside Clinic\n\n.", migrated: moved, key31: "deliverable.note")));
+        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable, "Regards, Dr A. Sample", "Regards, \r\n\r\nDr A. Sample", migrated: moved, key31: "deliverable.note")));
+        // A line of text next to a read's line: one line ending, above it and below it.
+        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable, "Sincerely,\nDr A. Sample\nSample Oncology Clinic", "Sincerely,\n\nDr A. Sample\n\nSample Oncology Clinic", migrated: moved, key31: "deliverable.note")));
+        // An empty value: the two blank lines meet, and both are the migration's.
+        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable, "Seen at:.", "Seen at:\n\n\n\n.", migrated: moved, key31: "deliverable.note")));
+        var credited = ExpectedDifferences.Credit(Context(ComparedKind.Deliverable, Old, Now, migrated: moved with { HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal) { ["snippets/letterhead.md"] = 1 } }, key31: "deliverable.note"));
         Assert.Equal(["block-read-own-line"], credited.Rules.Select(r => r.Id));
         Assert.False(credited.Unexplained);
 
-        // The other way: the same texts in a package whose sources hold no moved read.
+        // The other way: the same texts in a package whose sources hold no separated read.
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now, migrated: plain, key31: "deliverable.note")));
-
-        // Near: a line ending 31 has in place of a space (a space lost, not only a line ending added); a \ that is not
-        // before a line ending; a line ending 30 has and 31 has not; a line ending 31 added away from a moved read's text.
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Medicine\n (dictated)", "Medicine\n(dictated)", StringComparison.Ordinal), migrated: moved, key31: "deliverable.note")));
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Regards, \\\n", "Regards, \\", StringComparison.Ordinal), migrated: moved, key31: "deliverable.note")));
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Sample\nInternal", "Sample Internal", StringComparison.Ordinal), migrated: moved, key31: "deliverable.note")));
-        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Seen today by", "Seen today\nby", StringComparison.Ordinal), migrated: moved, key31: "deliverable.note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now, migrated: moved with { MovedReads = new Dictionary<string, int>(StringComparer.Ordinal) }, key31: "deliverable.note")));
     }
 
     [Fact]
-    public void AMovedBlockRead_DoesNotExcuseLostText()
+    public void ASeparationNextToAnInlineRead_IsCredited()
     {
-        // #1543 (D8; ruling 5): the rule only deletes line endings (and the \ before one), so a word of 30's that 31's text
-        // lacks beside the move is left: the rule is credited for the line endings, and the difference is unexplained.
-        var moved = WithMovedReads(EquivalenceFixture.Migrated("example-nested-note") with
-        {
-            HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal),
-            MovedReads = new Dictionary<string, int>(StringComparer.Ordinal),
-        });
+        // #1543 (D8; the first build's review): text beside the read that starts or ends with an inline read's tag. The
+        // place is the text's line read outward to its first literal word, the inline read's tag any text there.
+        var moved = WithSeparatedReads(Unseparated());
+        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable,
+            "Dear Margaret Okafor Dr A. Sample\nInternal Medicine Margaret Okafor follows.",
+            "Dear Margaret Okafor \n\nDr A. Sample\nInternal Medicine\n\n Margaret Okafor follows.",
+            migrated: moved, key31: "deliverable.note")));
+        // A line of only an inline read above the read's line has no literal word: its place is a whole line holding one of
+        // the run's values; a line holding none is no place.
+        var run = Run(RunState.Completed, outputs: new Dictionary<string, JsonNode?>(StringComparer.Ordinal) { ["node.patient"] = JsonValue.Create("Margaret Okafor") });
+        Assert.StartsWith("block-read-own-line: ", Explain(Context(ComparedKind.Deliverable,
+            "Margaret Okafor\nRiverside Clinic", "Margaret Okafor\n\nRiverside Clinic", run: run, migrated: moved, key31: "deliverable.note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable,
+            "Kind regards,\nRiverside Clinic", "Kind regards,\n\nRiverside Clinic", run: run, migrated: moved, key31: "deliverable.note")));
+    }
+
+    [Fact]
+    public void ALineEndingElsewhere_IsNotCredited()
+    {
+        // A line ending 31 added away from a separated read's place, in a file that holds one, or a line ending 30 has
+        // and 31 has not, or one in place of a space.
+        var moved = WithSeparatedReads(Unseparated());
+        const string Old = "Seen today by Dr A. Sample.\n\nRegards, Dr A. Sample\nInternal Medicine (dictated)";
+        const string Now = "Seen today by Dr A. Sample.\n\nRegards, \n\nDr A. Sample\nInternal Medicine\n\n (dictated)";
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Seen today by", "Seen today\n\nby", StringComparison.Ordinal), migrated: moved, key31: "deliverable.note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Sample\nInternal", "Sample Internal", StringComparison.Ordinal), migrated: moved, key31: "deliverable.note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Medicine\n\n (dictated)", "Medicine\n\n(dictated)", StringComparison.Ordinal), migrated: moved, key31: "deliverable.note")));
+        // The moved file's own paragraphs are no separated read's: a blank line there is not this rule's.
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "Kind regards,\nRiverside", "Kind regards,\n\nRiverside", migrated: moved, key31: "deliverable.note")));
+    }
+
+    [Fact]
+    public void ABackslash_IsNotDeletedByThisRule()
+    {
+        // The rule deletes line endings and nothing else: a \ before the blank line (the earlier form) stays unexplained.
+        var moved = WithSeparatedReads(Unseparated());
+        var credited = ExpectedDifferences.Credit(Context(ComparedKind.Deliverable, "Regards, Dr A. Sample", "Regards, \\\n\nDr A. Sample", migrated: moved, key31: "deliverable.note"));
+        Assert.True(credited.Unexplained);
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, "Regards, Dr A. Sample", "Regards, \\\nDr A. Sample", migrated: moved, key31: "deliverable.note")));
+    }
+
+    [Fact]
+    public void ASeparatedBlockRead_DoesNotExcuseLostText()
+    {
+        // #1543 (D8; ruling 5): the rule only deletes line endings, so a word of 30's that 31's text lacks beside the
+        // separation is left: the rule is credited for the line endings, and the difference is unexplained.
+        var moved = WithSeparatedReads(Unseparated());
         const string Old = "Regards, Dr A. Sample\nInternal Medicine (dictated)";
-        const string Lost = "Regards, \\\nDr A. Sample\nInternal Medicine\n (dictated";
+        const string Lost = "Regards, \n\nDr A. Sample\nInternal Medicine\n\n (dictated";
 
         var credited = ExpectedDifferences.Credit(Context(ComparedKind.Deliverable, Old, Lost, migrated: moved, key31: "deliverable.note"));
 
@@ -371,23 +404,47 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Lost, migrated: moved, key31: "deliverable.note")));
     }
 
+    /// <summary>example-nested-note as migrated, with no hard break and no separated read.</summary>
+    private static Migration31Result Unseparated() => EquivalenceFixture.Migrated("example-nested-note") with
+    {
+        HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal),
+        MovedReads = new Dictionary<string, int>(StringComparer.Ordinal),
+        SeparatedReads = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal),
+    };
+
     /// <summary>
-    /// <paramref name="migrated"/> with two snippets in the form the block-reads pass writes (D7), each counted as a moved
-    /// read: the signature after <c>Regards, \</c> with <c> (dictated)</c> on the next line, and a clinic after
-    /// <c>Seen at:\</c> with <c>.</c> on the next line.
+    /// <paramref name="migrated"/> with snippets in the form the block-reads pass writes (D7), each read separated: the
+    /// signature after <c>Regards, </c> with <c> (dictated)</c> after it; a clinic after <c>Seen at:</c> with <c>.</c> after
+    /// it; the signature between <c>Sincerely,</c> and the clinic's line; a closing between a greeting that ends with an
+    /// inline read and text that starts with one; a clinic below a line of only an inline read. A paragraph of the moved
+    /// file's own (<c>Kind regards,</c>) is no read's.
     /// </summary>
-    private static Migration31Result WithMovedReads(Migration31Result migrated)
+    private static Migration31Result WithSeparatedReads(Migration31Result migrated)
     {
         const string Header = "---\n{\"label\":\"Moved\",\"description\":null,\"if\":null,\"format\":\"markdown_block\"}\n---\n";
         var files = new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal)
         {
-            ["snippets/signed.md"] = Header + "Regards, \\\n{{ profile.signature }}\n (dictated)",
-            ["snippets/seen.md"] = Header + "Seen at:\\\n{{ input.clinic.content }}\n.",
+            ["snippets/signed.md"] = Header + "Regards, \n\n{{ profile.signature }}\n\n (dictated)\n\nKind regards,\n\n{{ profile.name }}",
+            ["snippets/seen.md"] = Header + "Seen at:\n\n{{ input.clinic.content }}\n\n.",
+            ["snippets/sincerely.md"] = Header + "Sincerely,\n\n{{ profile.signature }}\n\nSample Oncology Clinic",
+            ["snippets/greeting.md"] = Header + "Dear {{ input.name }} \n\n{{ profile.closing }}\n\n {{ input.name }} follows.",
+            ["snippets/letterhead_clinic.md"] = Header + "{{ profile.name }}\n\n{{ input.clinic.content }}",
         };
         return migrated with
         {
             Files = files,
-            MovedReads = new Dictionary<string, int>(StringComparer.Ordinal) { ["snippets/signed.md"] = 1, ["snippets/seen.md"] = 1 },
+            MovedReads = new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["snippets/signed.md"] = 1, ["snippets/seen.md"] = 1, ["snippets/sincerely.md"] = 1, ["snippets/greeting.md"] = 1, ["snippets/letterhead_clinic.md"] = 1,
+            },
+            SeparatedReads = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["snippets/signed.md"] = ["{{ profile.signature }}"],
+                ["snippets/seen.md"] = ["{{ input.clinic.content }}"],
+                ["snippets/sincerely.md"] = ["{{ profile.signature }}"],
+                ["snippets/greeting.md"] = ["{{ profile.closing }}"],
+                ["snippets/letterhead_clinic.md"] = ["{{ input.clinic.content }}"],
+            },
         };
     }
 
@@ -863,6 +920,21 @@ public class ExpectedDifferencesTests
         var problems = texts.Single(t => t.Site == "edge-unruled-whitespace/default#deliverables/deliverable.problems");
         Assert.Equal((false, true, false), (problems.Equal, problems.Expected, problems.Unexplained));
         Assert.Equal(["block-read-own-line", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+    }
+
+    [Fact]
+    public void ASeparatedEmptyRead_IsCreditedWithItsTrailingSpace_AsAPair()
+    {
+        // #1543 (D8): clinic_line's read is separated from "Seen at: " by a blank line, and the clinic is unset: the space
+        // and the blank line stand in one run of white space, which is one token, so neither block-read-own-line nor
+        // empty-read-trailing-space alone brings the texts nearer. Credit then tries the two together.
+        var credited = ExpectedDifferences.Credit(WhitespaceContext("Seen at:\n\n## Problem list 1", "Seen at: \n\n\n\n## Problem list 1", "deliverable.problems"));
+        Assert.True(credited.Expected);
+        Assert.Equal(["block-read-own-line", "empty-read-trailing-space"], credited.Rules.Select(r => r.Id));
+
+        // Ruling 5: a word lost beside them is left; and a space 30 had too is not taken.
+        Assert.True(ExpectedDifferences.Credit(WhitespaceContext("Seen at:\n\n## Problem list 1 (draft)", "Seen at: \n\n\n\n## Problem list 1", "deliverable.problems")).Unexplained);
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext("Seen at: \n\n## Problem list 1", "Seen at: \n\n\n\n## Problem list 1 x", "deliverable.problems")));
     }
 
     [Fact]
