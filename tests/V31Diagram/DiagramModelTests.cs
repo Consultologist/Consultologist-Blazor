@@ -262,7 +262,7 @@ public class DiagramModelTests
 
         Assert.Contains("    node__classify -.->|\"if\"| node__draft", lines);
         Assert.Contains("    node__stamp -->|\"content\"| node__draft", lines);
-        // The macro's own rule reads node.classify.value too: it is the macro box's (Task 3), never a read edge into the node.
+        // The macro's own rule reads node.classify.value too: it is the macro box's (D7), never a read edge into the node.
         Assert.DoesNotContain("    node__classify -->|\"value\"| node__draft", lines);
     }
 
@@ -461,25 +461,33 @@ public class DiagramModelTests
         var resolve = Resolve(golden);
         var model = DiagramModel.Build(resolve);
         var drawn = model.AllBoxes().Select(b => b.Key).ToHashSet(StringComparer.Ordinal);
+        // A macro is drawn as its box in the frame of what places it (D7): a placed edge's source is that box.
+        bool Placed(string from, string to) => from.StartsWith("macro.", StringComparison.Ordinal) && drawn.Contains($"{to}#macro:{from["macro.".Length..]}");
         var edges = JsonNode.Parse(resolve)!["graph"]!["edges"]!.AsArray()
             .Select(e => (From: (string)e!["from"]!, To: (string)e["to"]!, Kind: (string)e["kind"]!))
-            .Where(e => e.Kind is "reads" or "if" or "for" or "ret" && drawn.Contains(e.From) && drawn.Contains(e.To))
+            .Where(e => (e.Kind is "reads" or "if" or "for" or "ret" && drawn.Contains(e.From) && drawn.Contains(e.To)) || (e.Kind == "placed" && Placed(e.From, e.To)))
             .ToList();
+        var written = model.Edges.Concat(FrameEdges(model.Root)).ToList();
 
         Assert.NotEmpty(edges);
         foreach (var (from, to, kind) in edges)
         {
             var source = DiagramModel.IdOf(from);
             var target = DiagramModel.IdOf(to);
+            // A read piped through renderers enters the reader's first renderer box (D7), which feeds the reader.
+            var readers = model.AllBoxes().Where(b => b.Key == to || b.Key.StartsWith(to + "#render:", StringComparison.Ordinal)).Select(b => b.Id).ToHashSet();
             Assert.True(kind switch
             {
-                "reads" => model.Edges.Any(e => e.From == source && e.To == target && e.Style == EdgeStyle.Read && e.Label is not "for" && e.Label?.StartsWith("ret", StringComparison.Ordinal) != true),
+                "reads" => model.Edges.Any(e => e.From == source && readers.Contains(e.To) && e.Style == EdgeStyle.Read && e.Label is not "for" && e.Label?.StartsWith("ret", StringComparison.Ordinal) != true),
                 "if" => model.Edges.Contains(new DiagramEdge(source, target, EdgeStyle.If, "if")),
                 "for" => model.Edges.Any(e => e.From == source && e.To == "for_" + target && e.Label == "for"),
+                "placed" => written.Contains(new DiagramEdge($"{target}__macro_{DiagramModel.IdOf(from["macro.".Length..])}", target, EdgeStyle.Read, "placed")),
                 _ => model.Edges.Any(e => e.From == source && e.To == target && e.Label?.StartsWith("ret", StringComparison.Ordinal) == true),
             }, $"{golden}: {from} -{kind}-> {to} is not drawn");
         }
     }
+
+    private static IEnumerable<DiagramEdge> FrameEdges(DiagramFrame frame) => frame.Edges.Concat(frame.Frames.SelectMany(FrameEdges));
 
     public static TheoryData<string> GoldenNames() => new(Goldens);
 }
