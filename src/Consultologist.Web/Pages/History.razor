@@ -2098,8 +2098,7 @@
             : date.ToLocalTime().ToString("MMM d, yyyy");
     }
 
-    private static string? HashPrefix(string? hash) =>
-        string.IsNullOrEmpty(hash) ? "—" : hash[..Math.Min(12, hash.Length)] + "…";
+    private static string? HashPrefix(string? hash) => ProvenanceHashes.HashPrefix(hash);
 
     // #551: a stage's cost, or — on a stage that SHOULD have one (a prompt
     // node) — the named absence. Aggregates, roll-ups and fan summaries

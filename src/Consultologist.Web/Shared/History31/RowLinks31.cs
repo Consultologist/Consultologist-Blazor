@@ -16,4 +16,7 @@ public sealed class RowLinks31
     /// or a copied link goes to the row, not to the home page; the click handler is the enhancement. Empty: a bare fragment.
     /// </summary>
     public string JobId { get; set; } = "";
+
+    /// <summary>#1510 (D12): the element id of the row <paramref name="key"/> on History's record view (<c>row-&lt;key&gt;</c>), which a link's fragment names.</summary>
+    public static string Anchor(string key) => "row-" + key;
 }
