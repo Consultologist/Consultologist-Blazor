@@ -67,6 +67,12 @@ public static class Migration31Script
         "notice: dag.mmd is not written yet: the migrated package does not compile until its hand edits are done; a 30 dag.mmd "
         + "is deleted. Once they are, scripts/check-workflow-package-v31.cs <package-dir> --write-dag writes it.";
 
+    /// <summary>#1510 (final review): the line that says the migrated package does not compile though the migration named no hand edit.</summary>
+    public const string DiagramNotCompiled =
+        "notice: dag.mmd is not written: the migrated package does not compile, and scripts/check-workflow-package-v31.cs "
+        + "<package-dir> says why; a 30 dag.mmd is deleted. Once it compiles, scripts/check-workflow-package-v31.cs <package-dir> "
+        + "--write-dag writes it.";
+
     /// <summary>The usage line of <c>--to 31</c>.</summary>
     public const string Usage =
         "usage: dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 31 [--write] "
@@ -247,7 +253,7 @@ public static class Migration31Script
 
         var after = new Dictionary<string, string>(result.Files, StringComparer.Ordinal) { [Manifest] = result.ManifestJson };
         // #1510 (area 13, D13): a migrated package that compiles gets its 31 drawing; one that does not yet gets none (a 30
-        // dag.mmd is deleted) until its hand edits are done.
+        // dag.mmd is deleted) until its hand edits are done, or, when the migration named none, until it compiles.
         if (!arguments.Snapshot && DiagramOf(result, chosen) is { } diagram)
             after[Diagram] = diagram;
         if (OutsideOf(root, after.Keys) is { } outside)
@@ -265,7 +271,7 @@ public static class Migration31Script
         foreach (var path in added) output.WriteLine($"add:     {path}");
         foreach (var path in rewritten) output.WriteLine($"rewrite: {path}");
         if (!arguments.Snapshot)
-            output.WriteLine(after.ContainsKey(Diagram) ? DiagramWritten : DiagramWaits);
+            output.WriteLine(after.ContainsKey(Diagram) ? DiagramWritten : result.HandEdits.Count > 0 ? DiagramWaits : DiagramNotCompiled);
 
         if (arguments.Write)
         {

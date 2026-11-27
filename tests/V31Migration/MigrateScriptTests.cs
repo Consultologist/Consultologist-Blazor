@@ -23,13 +23,16 @@ public class MigrateScriptTests
     private static Migration31Options BaseOptions() =>
         new(V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, TestFormats.Catalog);
 
-    private static (int Exit, string Output, string Error) Run(string folder, params string[] args)
+    private static (int Exit, string Output, string Error) Run(string folder, params string[] args) =>
+        RunWith(folder, BaseOptions(), args);
+
+    private static (int Exit, string Output, string Error) RunWith(string folder, Migration31Options options, params string[] args)
     {
         var (arguments, usage) = Migration31Script.Parse([folder, "--to", "31", .. args]);
         Assert.True(usage is null, usage);
         var output = new StringWriter { NewLine = "\n" };
         var error = new StringWriter { NewLine = "\n" };
-        var exit = Migration31Script.Run(folder, arguments!, BaseOptions(), output, error);
+        var exit = Migration31Script.Run(folder, arguments!, options, output, error);
         return (exit, output.ToString(), error.ToString());
     }
 
@@ -206,6 +209,31 @@ public class MigrateScriptTests
             Assert.Contains("delete:  dag.mmd", lines);
             Assert.Single(lines, l => l == Migration31Script.DiagramWaits);
             Assert.DoesNotContain(Migration31Script.DiagramWritten, output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TheMigrationScript_WhenThePackageDoesNotCompileWithNoHandEdit_DoesNotBlameHandEdits()
+    {
+        // #1510 (final review): a migration that names no hand edit, whose package still does not compile (here anything
+        // on the way faults: no toolchain), says so and where to look, not that hand edits are left.
+        var dir = CopyOf("example-prior-letters");
+        try
+        {
+            var (exit, output, _) = RunWith(dir, BaseOptions() with { Toolchain = null! }, "--write");
+
+            Assert.Equal(Migration31Script.Clean, exit);
+            Assert.False(File.Exists(Path.Combine(dir, "dag.mmd")));
+            var lines = Lines(output);
+            Assert.Contains("delete:  dag.mmd", lines);
+            Assert.Single(lines, l => l == Migration31Script.DiagramNotCompiled);
+            Assert.DoesNotContain(Migration31Script.DiagramWaits, output, StringComparison.Ordinal);
+            Assert.DoesNotContain(Migration31Script.DiagramWritten, output, StringComparison.Ordinal);
+            Assert.DoesNotContain("hand edits are done", output, StringComparison.Ordinal);
         }
         finally
         {
