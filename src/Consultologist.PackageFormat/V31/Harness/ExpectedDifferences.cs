@@ -190,6 +190,12 @@ public static class ExpectedDifferences
             Case = ClassifierPrompt,
             Bytes = ChoiceInstruction,
         },
+        new("loop-item-strip-node",
+            "#1509, comment 7207709261, item 1, ruled by the owner on 2026-11-27 (a rendered node for each such loop's ret strips each item); part 10 §§ 1.2, 3.2",
+            "a loop whose .content is read returns each item through a node the migration wrote, which strips the item's text as 30 trimmed it: that node's text is 31's alone, and it is the item's text trimmed")
+        {
+            Case = StripNodeText,
+        },
         new("blank-conversion",
             "R1, ruled by the owner on #1507, 2026-11-20; part 10 §§ 2.3, 3.2",
             "the text is gated by a '!x' converted to blank(x), which held at 31 for an empty or white-space-only text where 30's !x did not, so only 31 has it")
@@ -265,6 +271,17 @@ public static class ExpectedDifferences
     private static bool ClassifierPrompt(DifferenceContext c) =>
         c.Kind == ComparedKind.Prompt && c.OldText is null && c.NewText is not null && c.Key31 is { } key
         && ChoiceClassifiers.Of(c.Migrated).Any(k => k.Key == EntryOf(key));
+
+    /// <summary>
+    /// #1510 (F-D3): a rendered text only 31 has, of a node the migration wrote to strip a loop's items
+    /// (<see cref="Migration31Result.StripNodes"/>), which is exactly the old <c>ret</c>'s text at the same item (its row's
+    /// <c>content</c>), trimmed. A text that 30 and 31 both have is never this rule's.
+    /// </summary>
+    private static bool StripNodeText(DifferenceContext c) =>
+        c.Kind == ComparedKind.Render && c.OldText is null && c.NewText is { } now && c.Key31 is { } key
+        && c.Migrated.StripNodes.TryGetValue(EntryOf(key), out var ret)
+        && c.Run31.Rows.FirstOrDefault(r => r.Key == ret + key[EntryOf(key).Length..]) is { } row
+        && SourceLayout.Text(row.Text?["content"]) is { } item && string.Equals(now, item.Trim(), StringComparison.Ordinal);
 
     /// <summary>
     /// #1508 (R13, R14): the prompt of an agent a macro-choice classifier stands before, at an instance where the classifier
