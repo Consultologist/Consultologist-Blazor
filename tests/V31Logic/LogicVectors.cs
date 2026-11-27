@@ -272,6 +272,8 @@ internal static class LogicVectors
             C("§ 3.5.2 plain: text with no Markdown marks is unchanged.", """{"plain":["plain text, no marks"]}"""),
             C("§ 3.5.2 plain: \\r\\n becomes \\n, and line breaks and spaces at the very end are removed.", """{"plain":["Seen today.\r\n\r\nReview in 6 weeks.  \r\n"]}"""),
             C("§ 3.5.2 plain: inline code keeps its text without the backticks.", """{"plain":["Take `letrozole` daily"]}"""),
+            C("§ 3.5.2 plain: raw HTML is text, kept as written (HTML is off at 31, #1510).", """{"plain":["a <b>bold</b> claim"]}"""),
+            C("§ 3.5.2 plain: a generic attribute is text, kept as written (the 31 bundle has no GenericAttributes, #1510).", """{"plain":["Seen by Dr A. Sample {onclick=x}"]}"""),
             C("§ 3.6.2 plain: a number, data that escaped validation, reads as null.", """{"plain":[5]}"""));
 
         yield return File(F, "object", "object: builds an object from its fields (§ 3.5.4); the output, canonical JSON, sorts the members.",
