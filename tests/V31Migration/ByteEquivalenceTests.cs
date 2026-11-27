@@ -505,6 +505,65 @@ public class ByteEquivalenceTests
         Assert.Null(ExpectedDifferences.Explain(Context(render.Key, null, render.Text) with { Migrated = migrated with { StripNodes = new Dictionary<string, string>() } }));
     }
 
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 2): composer-macros' profile in <c>no-signature</c> has no signature block, and
+    /// 30 left the signature and the line before it out; through the renderer that tests the trimmed signature, so does 31.
+    /// <c>authored</c> differs only as the plain text it holds is escaped in Markdown.
+    /// </summary>
+    [Fact]
+    public async Task ALetterWithNoSignature_EndsAs30Did()
+    {
+        var (_, _, texts) = await EquivalenceFixture.Compared("composer-macros", "no-signature");
+        ComparedText Site(string id) => texts.Single(t => t.Site == "composer-macros/no-signature#deliverables/deliverable." + id);
+
+        foreach (var id in new[] { "signed_letter", "signed_only" })
+            Assert.True((Site(id).Equal, Site(id).Rules.Count, Site(id).Unexplained) == (true, 0, false), $"{id}: equal {Site(id).Equal}, rules {string.Join(",", Site(id).Rules)}");
+        var authored = Site("authored");
+        Assert.Equal((false, true, false), (authored.Equal, authored.Expected, authored.Unexplained));
+        Assert.Equal(["escaped-plain-text"], authored.Rules);
+    }
+
+    /// <summary>
+    /// #1510 (F-D5′, ruled by the controller): with a signature, the letters end with the blank line (the line ending, for
+    /// <c>authored</c>'s snippet) and the signature in 30's own bytes, which the renderer writes unescaped; no text is
+    /// unexplained, and no rule is credited that the golden report did not already credit for it.
+    /// </summary>
+    [Fact]
+    public async Task ALetterWithASignature_HasThirtysSignatureBytes()
+    {
+        var letters = new (string Package, string Id, string Before)[]
+        {
+            ("composer-macros", "signed_letter", "\n\n"), ("composer-macros", "signed_only", "\n\n"), ("composer-macros", "authored", "\n"),
+            ("example-classifier-scope", "decline_letter", "\n\n"),
+        };
+        var compared = 0;
+        foreach (var (package, id, before) in letters)
+        {
+            var golden = JsonNode.Parse(ByteEquivalenceFixtures.ReadText(Path.Combine(ByteEquivalenceFixtures.Root, GoldenFolder, package + ".json")))!["texts"]!.AsArray();
+            foreach (var scenario in EquivalenceFixture.Scenarios(package))
+            {
+                if ((string?)EquivalenceFixture.Scenario(package, scenario)["profile"]?["signature"] is not { } signature)
+                    continue;
+                var (capture, run, texts) = await EquivalenceFixture.Compared(package, scenario);
+                var site = $"{package}/{scenario}#deliverables/deliverable.{id}";
+                if (texts.SingleOrDefault(t => t.Site == site) is not { } text)
+                    continue;
+                var old = (string?)capture["deliverables"]!.AsArray().Single(d => (string?)d!["id"] == id)!["text"];
+                var now = run.Deliverables.Single(d => d.Key == "deliverable." + id).Text;
+                Assert.False(text.Unexplained, site);
+                if (old is null)
+                    continue; // 30 skipped the letter here (its if, or a source that did not run)
+                Assert.EndsWith(before + signature, old, StringComparison.Ordinal);
+                Assert.EndsWith(before + signature, now, StringComparison.Ordinal);
+                var credited = golden.Single(t => (string?)t!["site"] == site)!["rules"]!.AsArray().Select(r => (string)r!).ToList();
+                Assert.All(text.Rules, rule => Assert.Contains(rule, credited));
+                compared++;
+            }
+        }
+
+        Assert.True(compared >= 8, $"{compared} letters with a signature compared");
+    }
+
     [Fact]
     public async Task TheReport_CountsTheTextsExplained_PartlyExplained_AndUnexplained()
     {

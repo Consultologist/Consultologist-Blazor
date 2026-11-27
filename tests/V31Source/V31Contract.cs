@@ -258,7 +258,8 @@ internal static class V31Contract
     /// A10-086: a deliverable whose sources may all not run and one of whose runs the migration cannot read, a hand edit's
     /// reason, #1508 2026-11-26 item 8, area 12 Task F8; A10-087: a node only deliverables with a condition need, given
     /// their if, #1508 2026-11-26 item 1, area 12 Task F1; A10-088: a loop whose .content is read returns each item through a
-    /// new node that strips it, #1509 comment 7207709261 item 1, area 13 Task F1; A10-090: a loop whose .content is read and whose
+    /// new node that strips it, #1509 comment 7207709261 item 1, area 13 Task F1; A10-089: a signature written through a renderer
+    /// that tests its trimmed value, #1509 comment 7207709261 item 2, area 13 Task F2; A10-090: a loop whose .content is read and whose
     /// items have more than one text format, a hand edit's reason, area 13 Task F1 fix round 1).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
@@ -349,6 +350,7 @@ internal static class V31Contract
         ["A10-086"] = "every source may not run, and the migration cannot read whether <sources> ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it<, joining <term> for the others>.",
         ["A10-087"] = "<file>, if: written so that the node runs only when deliverable <ids> applies, as 30 ran only what an applicable deliverable needed.",
         ["A10-088"] = "Loop '<id>' returns each item through the new node '<new id>', which strips the item's text as specVersion 30 did.",
+        ["A10-089"] = "The signature is written through renderer '<id>', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
         ["A10-090"] = "loop '<id>' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.",
     };
 

@@ -384,15 +384,43 @@ public class MigrateDeliverablesTests
         Assert.Equal(["while-no-pass-separator"], kept.Rules);
     }
 
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 2; F-D4, F-D5′): 30 appended the signature after a blank line only when the
+    /// profile had one; 31 writes it through a package renderer whose body tests the signature's trimmed value (a body
+    /// <c>if</c> elsewhere tests no read, S05-007), so a blank or absent signature leaves it and the blank line out.
+    /// </summary>
     [Fact]
-    public void ASignature_IsTheProfilesSignatureAfterABlankLine()
+    public void ASignature_IsWrittenThroughTheRendererThatTestsItTrimmed()
     {
         var result = MigrateNodesTests.Migrated("composer-macros");
 
-        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ profile.signature }}", Template(result, "signed_only"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}{{ profile.signature | renderer.signature_after_blank_line }}", Template(result, "signed_only"));
         // After an appended macro: the signature is last.
-        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ snippet.cc_line.content }}\n\n{{ profile.signature }}", Template(result, "signed_letter"));
+        Assert.Equal(
+            "{{ node.letter_body.content | string.strip }}\n\n{{ snippet.cc_line.content }}{{ profile.signature | renderer.signature_after_blank_line }}",
+            Template(result, "signed_letter"));
         Assert.DoesNotContain(result.HandEdits, e => e.Contains("deliverables/signed", StringComparison.Ordinal));
+
+        var renderer = MigrateNodesTests.Md(result, "renderers/signature_after_blank_line.md");
+        Assert.Equal(
+            """{"label":"Signature after a blank line","kind":"rendered","description":null,"input":"plaintext","format":"plaintext"}""",
+            renderer.Header.ToJsonString(Unescaped));
+        Assert.Equal("{{ if value != null && (value | string.strip) != \"\" }}\n\n{{ value }}{{ end }}", renderer.Body);
+        Assert.Contains("signature_after_blank_line", MigrateNodesTests.Json(result, "renderers/index.json")["items"]!.AsArray().Select(i => (string?)i));
+
+        var notice = "The signature is written through renderer 'signature_after_blank_line', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.";
+        Assert.Single(result.Notices, n => n == notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-089", notice, ""));
+    }
+
+    [Fact]
+    public void APackageWithoutASignature_GetsNoRenderer()
+    {
+        var result = MigrateNodesTests.Migrated("composer-sources");
+
+        Assert.Equal("[]", MigrateNodesTests.Json(result, "renderers/index.json")["items"]!.ToJsonString());
+        Assert.DoesNotContain(result.Files.Keys, f => f.StartsWith("renderers/signature_", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("The signature is written through renderer", StringComparison.Ordinal));
     }
 
     [Fact]
