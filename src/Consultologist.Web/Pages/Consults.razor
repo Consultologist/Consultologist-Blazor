@@ -4195,6 +4195,8 @@
 
   private void ResetStartChecks31()
   {
+    // An ask still out is for the package being replaced: its answer is not current.
+    startChecksAsked31++;
     currentRefusal31 = null;
     asksStartChecks31 = false;
     startChecks31 = null;
@@ -4224,10 +4226,11 @@
     var asked = ++startChecksAsked31;
     var followedDefault = signaturePick31 == ChosenSignature31;
 
+    SignatureBlocks.SignatureBlockSet? read = null;
     try
     {
       var setting = await AccountService.GetSettingAsync(SignatureBlocks.SettingKey);
-      signatureSet31 = SignatureBlocks.Parse(setting?.Value);
+      read = SignatureBlocks.Parse(setting?.Value);
     }
     catch (AccessTokenNotAvailableException exception)
     {
@@ -4237,6 +4240,17 @@
     catch
     {
       // The blocks last read stand; the start reads the account itself.
+    }
+
+    // A newer ask (a pick, a focus, a package switch) owns the blocks and the pick from here.
+    if (asked != startChecksAsked31)
+    {
+      return false;
+    }
+
+    if (read is not null)
+    {
+      signatureSet31 = read;
     }
 
     if (followedDefault || !signatureSet31.Blocks.Any(block => block.Id == signaturePick31))

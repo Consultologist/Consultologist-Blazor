@@ -571,6 +571,57 @@ public class ConsultsStartChecks31Tests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task AnOlderAsksSettingsRead_LandingAfterAPick_DoesNotResetThePick()
+    {
+        // Final review C1: a focus's ask reads the blocks; the clinician picks while that read is out; the older ask's answer
+        // must not put the pick back on the chosen block.
+        Pin();
+        var held = new TaskCompletionSource<AccountSettingResponse?>();
+        var reads = 0;
+        var setting = new AccountSettingResponse(SignatureBlocks.SettingKey, Blocks("sig-1", "sig-1", "sig-2"), SignatureBlocks.ContentType, DateTimeOffset.UnixEpoch);
+        AccountService.GetSettingAsync(SignatureBlocks.SettingKey).Returns(_ => ++reads == 2 ? held.Task : Task.FromResult<AccountSettingResponse?>(setting));
+        Checks(Answer(needs: ["signature"]));
+
+        var page = Render<Consults>();
+        Fill(page);
+
+        var focusing = page.InvokeAsync(() => page.Instance.OnWindowFocusAsync());
+        SignatureSelect(page)!.Change("sig-2");
+        held.SetResult(setting);
+        await focusing;
+
+        Assert.Equal("sig-2", SignatureSelect(page)!.GetAttribute("current-value"));
+        Start(page).Click();
+        Assert.True(submitted);
+        Assert.Equal("sig-2", sentSignatureBlockId);
+    }
+
+    [Fact]
+    public async Task APackageSwitch_DuringTheBeforeStartAsk_StartsNothing()
+    {
+        // Final review C2: Create pressed on a 31 package; the clinician pins a 30 package while the ask is out. The old ask's
+        // answer is not the new package's: nothing starts.
+        Pin();
+        var beforeStart = new TaskCompletionSource<WorkflowPackageStartChecksResponse>();
+        var asks = 0;
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(_ => ++asks == 2 ? beforeStart.Task : Task.FromResult(Answer()));
+
+        var page = Render<Consults>();
+        Fill(page);
+
+        var clicking = page.InvokeAsync(() => Start(page).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs()));
+        WorkflowService.GetCurrentPackageAsync().Returns(Package(Input("referral", "Referral", true, Plaintext)) with { SpecVersion = 30 });
+        await page.InvokeAsync(() => (Task)typeof(Consults)
+            .GetMethod("OnPackagePinnedAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(page.Instance, null)!);
+        beforeStart.SetResult(Answer());
+        await clicking;
+
+        Assert.False(submitted);
+    }
+
+    [Fact]
     public void A30Package_AsksNoChecks()
     {
         Pin(specVersion: 30);
