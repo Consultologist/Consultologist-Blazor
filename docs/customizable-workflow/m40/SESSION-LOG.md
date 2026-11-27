@@ -3,18 +3,19 @@
 Where the planning stands at the end of each session, newest first. Read `README.md` first, then this
 file, then re-read the milestone on GitHub: issues are added to it while M39 is built.
 
-## Session 2 (2026-11-26 and 2026-11-27): the inputs group, five rounds
+## Session 2 (2026-11-26 and 2026-11-27): the inputs group, seven rounds
 
 Re-read the milestone, read what M39 built since 2026-11-21, and grilled the owner on the inputs
 group. The decisions are in [`input-kinds.md`](input-kinds.md). No plan is written yet.
 
-**The milestone on 2026-11-27:** 65 open issues, 3 closed.
+**The milestone on 2026-11-27:** 66 open issues, 3 closed.
 
 - **Added:** #1534 (a macro's `condition`, a plain-language question compiled to a `judgement` node
   at publish), filed from the M39 build on 2026-11-25. #1458 and #1459, moved in as a measuring
   spike under #1477. #1536 (the 1 MiB row ceiling, and replies travelling the Durable history
   twice) and #1537 (a reaper for dead orchestrations), filed this session from M39's rulings on
-  #1508 and #1509.
+  #1508 and #1509. #1538 (the layout model as the document-to-Markdown converter), with its
+  findings in [`layout-model.md`](layout-model.md).
 - **Closed as decided:** #1429 (no HTML text format), #1451 (one Markdown, Markdig with
   `UseAdvancedExtensions`) and #1427 (`channel` keeps its name).
 - **Moved out:** #1433 (FHIR, HL7 v2, CDA), to the new Milestone 42 (structured clinical data).
@@ -62,8 +63,8 @@ specification; the closest effort is the volunteer json-logic organisation.
 **Next session:**
 
 1. Re-read the milestone and its open issues, and check `m39-build` for areas 12 and 13.
-2. Settle the open point in `input-kinds.md` (raw HTML in Markdown), and check whether M39 fixed
-   its two Markdown pipelines.
+2. Check whether M39 fixed its two Markdown pipelines, and take up #1538 (the layout model) before
+   the converter is planned.
 3. Go on with the inputs group's remaining questions (the spreadsheet door's mapping rules, limits
    and their refusal sentences, mixed arrays, the Create page's widgets), then plan the converter
    as the first slice.

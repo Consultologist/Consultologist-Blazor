@@ -1,7 +1,7 @@
 # Milestone 40: inputs
 
 What the owner has decided for the inputs group: the input kinds, the file model, the converter,
-the locale and the input declaration. Decided in session 2 (2026-11-26 and 2026-11-27), in five
+the locale and the input declaration. Decided in session 2 (2026-11-26 and 2026-11-27), in seven
 rounds. The parent issue is
 [#1442](https://github.com/Consultologist/Consultologist-Blazor/issues/1442).
 
@@ -75,6 +75,44 @@ unasked.
   needs no file model: it changes what a document uploaded to a `markdown_block` input yields.
 - **It arrives with the next spec version,** as `effectiveInputHash` definition 8. A 31 package
   keeps "extracted text, as at 30".
+- **DOCX is converted by the engine's own deterministic code** (headings, lists, tables, emphasis),
+  pinned by golden files. #1538 looks at this again, against the layout model and off-the-shelf
+  libraries.
+- **PDF and scanned pages go through the OCR service's layout model,** recorded with its dated
+  version, and are marked best effort. The higher price is accepted.
+- **`plaintext` does not pay for structure:** a `plaintext` extraction keeps `prebuilt-read`, and a
+  PDF with a text layer is parsed locally, as today. For `markdown_block`, a PDF with a text layer
+  goes to the layout model too.
+- **Tables:** one with no spans is a pipe table, one with spans a grid table, for DOCX and PDF
+  alike.
+- **Page headers, footers, numbers and breaks are dropped,** and the extraction's record row says
+  how many.
+- **The service or an off-the-shelf component is preferred over custom code.** What was found about
+  the layout model is in [`layout-model.md`](layout-model.md).
+
+## The spreadsheet door
+
+A CSV or XLSX file fills an array-of-objects input (#1434).
+
+- **It is opened by the same `extract` member,** so it is explicit too.
+- **Header cells match the properties' `title`s exactly,** after trimming.
+- **An unknown column refuses the file,** and so does a missing column whose property is not
+  nullable.
+- **An empty cell is `null`.**
+- **XLSX with more than one sheet is refused.** A formula gives its stored value and is never
+  evaluated.
+- **CSV is UTF-8 only,** RFC 4180.
+
+## Arrays and limits
+
+- **An input may be an array of `document` or `image`,** and every element is a file.
+- **A text-format array with `extract`** still takes typed text, documents and earlier runs'
+  deliverables, in the order sent.
+- **No array mixes file values with typed rows.**
+- **File limits are engine limits** (size, count, pages, image dimensions): configured per
+  deployment, recorded in the job header beside Milestone 39's ten, each with a refusal sentence.
+  A package cannot raise them. The numbers are set when the slice is planned, from what uploads
+  look like today.
 
 ## Text formats
 
@@ -84,6 +122,10 @@ unasked.
   the pinned version and none of the others. No flavour member and no flavour checks (#1451,
   closed).
 - **The same pipeline everywhere:** escaping, `plain()`, previews and every rendering at delivery.
+- **Raw HTML is disabled in it** (`DisableHtml`): a tag typed into Markdown is shown as the
+  characters typed, wherever Markdown is parsed or rendered.
+- **Line endings are standard Markdown's:** a single line ending is not a break. Keeping
+  line-per-line sources looking the same is Milestone 39's to decide.
 
 ## The locale
 
@@ -131,8 +173,9 @@ Decided here, so that the declaration changes once.
   PDF and the Web's previews, is `DisableHtml`, `UsePipeTables` and
   `UseSoftlineBreakAsHardlineBreak` (read at `94b66aec`). The owner carries it to the M39 build, for
   area 12 or 13. Milestone 40 plans against one pipeline.
-- **Raw HTML in Markdown.** Whether the one pipeline also disables it, as the rendering pipeline
-  does today, is asked and not yet answered.
+- **How the converter gets from the layout model's output to the engine's Markdown,** and the
+  model's price and availability in the engine's region: #1538, with the findings in
+  [`layout-model.md`](layout-model.md).
 
 ## Milestone 39 facts relied on
 

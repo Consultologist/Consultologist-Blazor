@@ -13,11 +13,11 @@ end of each session, and what the next one does first: [`SESSION-LOG.md`](SESSIO
 ## Scope
 
 The milestone's description on GitHub is the source of truth; re-read it and its open issues at the
-start of **every** session, since issues are added to it while M39 is built. On 2026-11-27 it held 65
+start of **every** session, since issues are added to it while M39 is built. On 2026-11-27 it held 66
 open issues and 3 closed, in these groups (from the description):
 
 - **The chain from inputs to delivery:** inputs (#1442 and its sub-issues #1430–#1432 and
-  #1434–#1437; #1452, #1456), extraction (#1438), production (#1439 and its sub-issues #1438, #1440, #1441; #1415, #1416),
+  #1434–#1437; #1452, #1456, #1538), extraction (#1438), production (#1439 and its sub-issues #1438, #1440, #1441; #1415, #1416),
   tool calls (#1445),
   formats (#1402–#1405), review (#1446), delivery (#1443), confidence (#1444), patient data (#1448).
 - **Revisits of M39 decisions:** #1426, #1428, #1453, and the many "Revisit …" / "Review …"
