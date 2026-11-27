@@ -41,7 +41,7 @@ CHECK_MINUTES="${M39_CHECK_MINUTES:-120}"
 # A PR touching any of these is refused: CI, this driver, the agent's instructions and settings
 # change by the user's hand only.
 PROTECTED='(^(\.github/|scripts/m39-build/)|(^|/)\.claude/|(^|/)(AGENTS|CLAUDE(\.local)?)\.md$|^docs/customizable-workflow/package-format-v31/BUILD-RUNBOOK\.md$)'
-AREAS=(00 01 02 03 04 05 06 07 08 09 10 11 12 13)
+AREAS=(00 01 02 03 04 05 06 07 08 09 10 11 12 13 14)
 
 log()    { printf '%s  %s\n' "$(date -u +%FT%TZ)" "$*"; }
 notify() {
