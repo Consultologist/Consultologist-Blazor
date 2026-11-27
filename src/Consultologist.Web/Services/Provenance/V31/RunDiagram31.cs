@@ -16,7 +16,10 @@ namespace Consultologist.Web.Services.Provenance.V31;
 /// written); a loop with no row of its own but item or pass rows (a running job, or one that failed in it: the engine
 /// writes the loop's row when it ends) lists them when they are of one instance and shows their tally when they are of
 /// several (a nested loop in outer items), and is <c>running</c> while the job runs, once it has ended the class of the
-/// worst item (D10's order below). A loop with one own row lists that instance's items only. With several rows (a box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
+/// worst item (D10's order below). A loop's box is one instance's (its own row, that instance's items listed under it)
+/// only when every row of its key is that instance's; else it spans several instances and shows the tally of its own rows
+/// and of the items of each instance with no own row, <c>running</c> while the job runs, once it has ended the class of the
+/// worst. With several rows (another box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
 /// class of the worst (Failed, then Cancelled, Skipped, NotRun, Completed; D10). With exactly one, its status as stored;
 /// a node's output hash and retry count; a loop's items (a <c>while</c>'s passes), one line each, the first
 /// <see cref="Listed"/>, then <c>… and &lt;k&gt; more</c>; an <c>if</c>'s or <c>case</c>'s decision; a classifier's answer
@@ -139,13 +142,23 @@ public static class RunDiagram31
                 return new BoxOverlay([], !terminal && inside ? "running" : "ranNot", null);
             }
 
+            if (kind is "for" or "while")
+            {
+                // a loop's box is one instance's only when every row of its key is that instance's; else it spans several
+                // (a nested loop in outer items): a tally of the own rows and the items of each instance with no own row (D10)
+                var ownKeys = own.Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
+                var items = all.Where(r => Tokens(r.Key) == depth + 1).ToList();
+                if (own.Count == 1 && items.All(r => Instance(r.Key) == own[0].Key))
+                    return One(own[0], kind, key, items);
+                var tallied = own.Concat(items.Where(r => !ownKeys.Contains(Instance(r.Key)))).ToList();
+                return Tally(tallied) with { Class = terminal ? Worst(tallied) : "running" };
+            }
+
             if (own.Count > 1)
                 return Tally(own);
 
             var row = own[0];
-            // a nested loop's one own row is one instance's: only that instance's items are its
-            var items = all.Where(r => Tokens(r.Key) == depth + 1 && Instance(r.Key) == row.Key).ToList();
-            return One(row, kind ?? row.Text("kind"), key, items);
+            return One(row, kind ?? row.Text("kind"), key, []);
         }
 
         /// <summary>The overlay of a box with one row.</summary>
