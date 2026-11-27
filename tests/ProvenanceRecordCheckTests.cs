@@ -420,6 +420,56 @@ public class ProvenanceRecordCheckTests
         Assert.Contains(checks, c => c.Name == "recordHash" && c.Matches == false);
     }
 
+    // ---- final review A1: the --host path reads Rows?key= and tells a dropped text from one not offered ----
+
+    private static JsonNode RowsAnswer(string? composedHash, string? content, bool textDeleted) => new JsonObject
+    {
+        ["key"] = "deliverable.letter",
+        ["section"] = "deliverable",
+        ["row"] = new JsonObject { ["key"] = "deliverable.letter", ["state"] = "released", ["composedHash"] = composedHash },
+        ["text"] = content == null ? null : new JsonObject { ["content"] = content },
+        ["textDeleted"] = textDeleted,
+    };
+
+    [Fact]
+    public void ARowText_NotOffered_AndNotDeleted_FailsComposedHash()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer("sha256:00", null, textDeleted: false), out var failure);
+
+        Assert.Null(text);
+        Assert.NotNull(failure);
+        Assert.Equal("deliverables[deliverable.letter].composedHash", failure!.Name);
+        Assert.False(failure.Matches);
+        Assert.Equal("the row's text was not offered: missing, or it does not hash to composedHash", failure.Note);
+    }
+
+    [Fact]
+    public void ARowText_Deleted_IsNotAFailure()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer("sha256:00", null, textDeleted: true), out var failure);
+
+        Assert.Null(text);
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public void ARowText_NeverComposed_IsNotAFailure()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer(null, null, textDeleted: false), out var failure);
+
+        Assert.Null(text);
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public void ARowText_Offered_IsTheText()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer("sha256:00", "Dear Dr A. Sample,", textDeleted: false), out var failure);
+
+        Assert.Equal("Dear Dr A. Sample,", text);
+        Assert.Null(failure);
+    }
+
     [Fact]
     public async Task ANullRecordHash_OnAJobThatIsNotTerminal_IsNotCheckedAndSaysSo()
     {

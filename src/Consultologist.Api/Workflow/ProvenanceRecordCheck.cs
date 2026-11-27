@@ -164,6 +164,33 @@ public static class ProvenanceRecordCheck
         return checks;
     }
 
+    /// <summary>
+    /// #1509 (final review A1): a deliverable's retained text from a <c>Rows?key=</c> answer. The route offers
+    /// <c>text.content</c> only when it hashes to the row's <c>composedHash</c>, so an absent content is a dropped text only
+    /// when the answer says <c>textDeleted: true</c>; otherwise the text is missing or altered and <paramref name="failure"/>
+    /// fails the deliverable's <c>composedHash</c>. A row never composed (<c>composedHash</c> null) owes no text.
+    /// </summary>
+    public static string? OfferedRowText(string key, JsonNode? answer, out HashCheck? failure)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        failure = null;
+        var content = answer?["text"] is JsonObject text ? SourceLayout.Text(text["content"]) : null;
+        if (content != null)
+        {
+            return content;
+        }
+
+        var deleted = answer?["textDeleted"] is JsonValue flag && flag.TryGetValue<bool>(out var value) && value;
+        var composed = answer?["row"] is JsonObject row && SourceLayout.Text(row["composedHash"]) != null;
+        if (!deleted && composed)
+        {
+            failure = new HashCheck($"deliverables[{key}].composedHash", RecordRows.DeliverableHashVersion, null, null, false,
+                "the row's text was not offered: missing, or it does not hash to composedHash");
+        }
+
+        return null;
+    }
+
     /// <summary>The deliverable hash, by the definition the record names — the same dispatch the engine's response uses.</summary>
     public static HashCheck OutputHash(ConsultGenerationJobResponse record)
     {

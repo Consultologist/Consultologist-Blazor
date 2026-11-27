@@ -129,10 +129,12 @@ if (record.SchemaVersion >= 12 && (Option("--host") ?? Option("--record")) is no
             {
                 try
                 {
-                    // a dropped text answers 200 with text: null and textDeleted: true
+                    // a dropped text answers 200 with text: null and textDeleted: true; a text not offered and not
+                    // deleted is missing or does not hash to composedHash, which fails this deliverable's check
                     var row = System.Text.Json.Nodes.JsonNode.Parse(
                         await http.GetStringAsync($"{host}/ConsultGenerationJobs/{record.JobId}/Rows?key={Uri.EscapeDataString(key)}"));
-                    texts[key] = row?["text"] is System.Text.Json.Nodes.JsonObject text ? (string?)text["content"] : null;
+                    texts[key] = ProvenanceRecordCheck.OfferedRowText(key, row, out var notOffered);
+                    if (notOffered != null) fetchFailures.Add(notOffered);
                 }
                 catch (Exception ex) when (ex is HttpRequestException or JsonException)
                 {
