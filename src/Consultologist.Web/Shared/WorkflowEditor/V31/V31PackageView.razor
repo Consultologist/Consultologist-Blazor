@@ -4,7 +4,7 @@
     #1509 (Task 23; part 09 § 8.1, § 8.2; D14): a specVersion 31 package in the Editor, read-only, drawn in place of the
     editing layout. The bar says so; an import's notices follow it. Left, the package's entries: manifest.json first,
     then every source file by path (ordinal), then resolve.json and lock.json when the content holds them and the
-    account owns the version, then the diagram when the content holds dag.mmd. Right, the open entry: a file's text as
+    account owns the version, then "Publish report" and, for a migrated version, "Migration", then the diagram when the content holds dag.mmd. Right, the open entry: a file's text as
     stored in a <pre>, the two evidence files pretty-printed, the diagram drawn. Nothing here edits, and nothing reads
     the manifest as a 30 one. Another entry is one more line in Entries.
 *@
@@ -85,6 +85,18 @@
         if (Owned && Content.Lock is { } lockFile)
         {
             list.Add(new("lock.json", "lock.json", Text(Pretty(lockFile))));
+        }
+
+        // #1509 (Task 24; D10, D11): the publish report as the version's evidence, and the migration report when the
+        // operator migrated it.
+        if (Owned && Content.PublishReport is { } report)
+        {
+            list.Add(new("publish-report", "Publish report", @<PublishReport31 Report="@report" />));
+        }
+
+        if (Content.MigrationReport is { } migration && Content.MigratedFrom is { Length: > 0 } oldVersion)
+        {
+            list.Add(new("migration", "Migration", @<MigrationReport31 Report="@migration" OldVersion="@oldVersion" />));
         }
 
         if (Content.Files.TryGetValue(DiagramFile, out var diagram))

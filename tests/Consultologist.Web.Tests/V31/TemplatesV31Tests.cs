@@ -88,7 +88,8 @@ public class TemplatesV31Tests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V31());
 
-        var buttons = page.FindAll("fluent-button, button").Select(button => button.TextContent.Trim()).ToList();
+        // The "Publish report" entry in the file list is evidence, not a control (Task 24).
+        var buttons = page.FindAll("fluent-button, button:not(.v31-package__file)").Select(button => button.TextContent.Trim()).ToList();
         Assert.DoesNotContain(buttons, text => text.Contains("Publish", StringComparison.Ordinal));
         Assert.DoesNotContain(buttons, text => text.Contains("Upgrade", StringComparison.Ordinal));
         Assert.DoesNotContain(buttons, text => text is "Undo" or "Redo" or "Discard" or "Revert to default");
@@ -107,7 +108,7 @@ public class TemplatesV31Tests : ClientRenderTestContext
         var page = RenderEditor(fixture);
 
         var sources = fixture.Files.Keys.Order(StringComparer.Ordinal).ToList();
-        Assert.Equal(["manifest.json", .. sources, "resolve.json", "lock.json"], Listed(page));
+        Assert.Equal(["manifest.json", .. sources, "resolve.json", "lock.json", "Publish report"], Listed(page));
 
         foreach (var path in sources)
         {

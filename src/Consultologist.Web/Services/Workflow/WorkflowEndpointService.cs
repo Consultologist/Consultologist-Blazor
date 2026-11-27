@@ -436,7 +436,9 @@ public record WorkflowPackagePublishResponse(
 /// <summary>Success carries the response; failure carries the endpoint's error list for inline display.</summary>
 public record WorkflowPublishOutcome(
     WorkflowPackagePublishResponse? Response,
-    IReadOnlyList<string> Errors)
+    IReadOnlyList<string> Errors,
+    // #1509 (Task 24; D11): a 31 publish's report, published or refused (a 400 carries it beside its errors); null below 31.
+    JsonElement? Report = null)
 {
     public bool Succeeded => Response != null;
 }
@@ -599,7 +601,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
         {
             var published = await response.Content.ReadFromJsonAsync<WorkflowPackagePublishResponse>()
                 ?? throw new InvalidOperationException("Failed to deserialize publish response.");
-            return new WorkflowPublishOutcome(published, Array.Empty<string>());
+            return new WorkflowPublishOutcome(published, Array.Empty<string>(), published.Report);
         }
 
         // 400/403 carry { errors: [...] } for inline display; anything else is a
@@ -609,7 +611,8 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             var payload = await response.Content.ReadFromJsonAsync<PublishErrorPayload>();
             return new WorkflowPublishOutcome(
                 null,
-                payload?.Errors is { Count: > 0 } ? payload.Errors : new List<string> { $"Publish failed: {response.StatusCode}" });
+                payload?.Errors is { Count: > 0 } ? payload.Errors : new List<string> { $"Publish failed: {response.StatusCode}" },
+                payload?.Report);
         }
 
         var errorContent = await response.Content.ReadAsStringAsync();

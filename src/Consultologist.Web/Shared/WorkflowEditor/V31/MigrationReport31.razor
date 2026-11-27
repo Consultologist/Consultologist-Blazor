@@ -1,0 +1,102 @@
+@using System.Text.Json
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 24; part 09 § 6.2, § 8.1; D10): a migrated 31 version's migration report (part 10 § 3.2): the line S09-004
+    gives, the counts, the hand edits and notices, and each compared text by site with its two hashes and whether it is
+    equal, expected (with its explanation) or unexplained. Read leniently (ReportJson); the report holds ids, package text,
+    sentences and hashes only, and this shows nothing else.
+*@
+@{
+    var from = OldVersion ?? ReportJson.Text(Report, "oldVersion");
+    var counts = ReportJson.Object(Report, "counts");
+    var handEdits = ReportJson.Strings(Report, "handEdits");
+    var notices = ReportJson.Strings(Report, "notices");
+    var texts = ReportJson.Items(Report, "texts");
+}
+<div class="migration-report31" aria-label="Migration report">
+    @if (from is { Length: > 0 })
+    {
+        <p class="migration-report31__from">@HistorySentences31.MigratedFrom(from)</p>
+    }
+
+    @if (counts is { } c)
+    {
+        <dl class="migration-report31__counts" aria-label="Counts">
+            @foreach (var (label, name) in new[] { ("Explained", "explained"), ("Partly explained", "partlyExplained"), ("Unexplained", "unexplained") })
+            {
+                @if (ReportJson.Number(c, name) is { } number)
+                {
+                    <dt>@label</dt>
+                    <dd class="migration-report31__count-@name">@number</dd>
+                }
+            }
+        </dl>
+    }
+
+    @if (handEdits.Count > 0)
+    {
+        <h4>Hand edits</h4>
+        <ul class="migration-report31__hand-edits">
+            @foreach (var edit in handEdits)
+            {
+                <li>@edit</li>
+            }
+        </ul>
+    }
+
+    @if (notices.Count > 0)
+    {
+        <h4>Notices</h4>
+        <ul class="migration-report31__notices">
+            @foreach (var notice in notices)
+            {
+                <li>@notice</li>
+            }
+        </ul>
+    }
+
+    @if (texts.Count > 0)
+    {
+        <h4>Compared texts</h4>
+        <ul class="migration-report31__texts">
+            @foreach (var text in texts)
+            {
+                var state = State(text);
+                <li class="migration-report31__text">
+                    <code class="migration-report31__site">@ReportJson.Text(text, "site")</code>
+                    @if (state is not null)
+                    {
+                        <span class="migration-report31__state">@state</span>
+                    }
+                    @if (ReportJson.Text(text, "oldHash") is { } oldHash)
+                    {
+                        <span class="migration-report31__old-hash" title="Old hash">@oldHash</span>
+                    }
+                    @if (ReportJson.Text(text, "newHash") is { } newHash)
+                    {
+                        <span class="migration-report31__new-hash" title="New hash">@newHash</span>
+                    }
+                    @if (ReportJson.Text(text, "explanation") is { Length: > 0 } explanation)
+                    {
+                        <span class="migration-report31__explanation">@explanation</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    /// <summary>The report as the content holds it (<c>migration-report.json</c>).</summary>
+    [Parameter, EditorRequired] public JsonElement Report { get; set; }
+
+    /// <summary>The version it was migrated from (the content's <c>MigratedFrom</c>); the report's <c>oldVersion</c> when none.</summary>
+    [Parameter] public string? OldVersion { get; set; }
+
+    /// <summary>A compared text's standing in the report's own words: equal, expected, or unexplained; null when it says none.</summary>
+    private static string? State(JsonElement text) =>
+        ReportJson.Flag(text, "equal") == true ? "equal"
+        : ReportJson.Flag(text, "expected") == true ? "expected"
+        : ReportJson.Flag(text, "unexplained") == true ? "unexplained"
+        : null;
+}

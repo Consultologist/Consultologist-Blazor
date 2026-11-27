@@ -1,0 +1,117 @@
+@using System.Text.Json
+@*
+    #1509 (Task 24; part 09 § 8.1; D11): a 31 version's publish report (part 07 § 9), as stored or as publish answered it.
+    Every member is read leniently (ReportJson): one that is missing or of another kind shows what there is. The report
+    holds sentences, sites, ids, hashes and package text only, and this shows nothing else. Its warnings are listed once,
+    under "Warnings and notes": the notes of part 07 § 3.5 are among them (D11).
+*@
+@{
+    var outcome = ReportJson.Text(Report, "outcome");
+    var publishedAt = ReportJson.Text(Report, "publishedAtUtc");
+    var publishedBy = ReportJson.Text(Report, "publishedBy");
+    var hashes = new[] { ("Source hash", ReportJson.Text(Report, "sourceHash")), ("Resolve hash", ReportJson.Text(Report, "resolveHash")), ("Lock hash", ReportJson.Text(Report, "lockHash")) };
+    var normalised = ReportJson.Strings(Report, "normalised");
+    var refusals = ReportJson.Items(Report, "refusals");
+    var warnings = ReportJson.Items(Report, "warnings");
+    var tests = ReportJson.Items(Report, "tests");
+}
+<div class="publish-report31" aria-label="Publish report">
+    <dl class="publish-report31__facts">
+        @if (outcome is not null)
+        {
+            <dt>Outcome</dt>
+            <dd class="publish-report31__outcome">@outcome</dd>
+        }
+        @if (publishedAt is not null)
+        {
+            <dt>Published at</dt>
+            <dd class="publish-report31__time">@publishedAt</dd>
+        }
+        @if (publishedBy is not null)
+        {
+            <dt>Published by</dt>
+            <dd class="publish-report31__by">@publishedBy</dd>
+        }
+        @foreach (var (label, hash) in hashes.Where(h => h.Item2 is not null))
+        {
+            <dt>@label</dt>
+            <dd class="publish-report31__hash">@hash</dd>
+        }
+    </dl>
+
+    @if (refusals.Count > 0)
+    {
+        <h4>Refusals</h4>
+        <ul class="publish-report31__refusals">
+            @foreach (var item in refusals)
+            {
+                <li>@Sentence(item)</li>
+            }
+        </ul>
+    }
+
+    @if (warnings.Count > 0)
+    {
+        <h4>Warnings and notes</h4>
+        <ul class="publish-report31__warnings">
+            @foreach (var item in warnings)
+            {
+                <li>@Sentence(item)</li>
+            }
+        </ul>
+    }
+
+    @if (normalised.Count > 0)
+    {
+        <h4>Normalised files</h4>
+        <ul class="publish-report31__normalised">
+            @foreach (var path in normalised)
+            {
+                <li>@path</li>
+            }
+        </ul>
+    }
+
+    @if (tests.Count > 0)
+    {
+        <h4>Tests</h4>
+        <ul class="publish-report31__tests">
+            @foreach (var test in tests)
+            {
+                var mismatch = ReportJson.Object(test, "firstMismatch");
+                <li class="publish-report31__test">
+                    <span class="publish-report31__test-id">@ReportJson.Text(test, "id")</span>
+                    <span class="publish-report31__test-result">@ReportJson.Text(test, "result")</span>
+                    @if (ReportJson.Text(test, "outcomeHash") is { } outcomeHash)
+                    {
+                        <span class="publish-report31__hash">@outcomeHash</span>
+                    }
+                    @if (mismatch is { } m)
+                    {
+                        <dl class="publish-report31__mismatch" aria-label="First mismatch">
+                            <dt>Expectation</dt><dd>@ReportJson.Text(m, "expectation")</dd>
+                            <dt>Key</dt><dd>@ReportJson.Text(m, "key")</dd>
+                            <dt>Expected</dt><dd>@ReportJson.Text(m, "expected")</dd>
+                            <dt>Actual</dt><dd>@ReportJson.Text(m, "actual")</dd>
+                        </dl>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    /// <summary>The report as the content or the publish answer holds it (<c>publish-report.json</c>).</summary>
+    [Parameter, EditorRequired] public JsonElement Report { get; set; }
+
+    private static RenderFragment Sentence(JsonElement item) => item.ValueKind == JsonValueKind.String
+        ? @<span class="publish-report31__sentence">@item.GetString()</span>
+        : @<text>
+            <span class="publish-report31__sentence">@ReportJson.Text(item, "sentence")</span>
+            @if (ReportJson.Text(item, "at") is { } at)
+            {
+                <code class="publish-report31__at">@at</code>
+            }
+        </text>;
+}

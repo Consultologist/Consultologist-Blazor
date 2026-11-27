@@ -364,6 +364,12 @@
                 </FluentMessageBar>
             }
 
+            @* #1509 (Task 24; D11): a 31 publish's report, published or refused, beside the warnings and errors above. *@
+            @if (publishReport is { } report)
+            {
+                <PublishReport31 Report="@report" />
+            }
+
             @* #1509 (area 12, Task 23; D14): a 31 package is read-only until Milestone 41 — drawn by V31PackageView in
                place of the editing layout, which reads a 30 manifest throughout. *@
             @if (IsV31)
@@ -16692,6 +16698,8 @@
     // Advisory: after a successful publish, about the version just made (already
     // immutable, #310); after a rejected one, beside its errors (#1298).
     private List<string> publishWarnings = new();
+    // #1509 (Task 24; D11): the report a publish answered with, when it answered with one (31).
+    private JsonElement? publishReport;
 
     // #1298: the armed toolbar Discard's or Revert's warning; set and cleared with its flag (DisarmToolbar).
     private string? toolbarArmNotice;
@@ -18245,6 +18253,11 @@
         walkTick++;
         publishSuccess = null;
         publishWarnings.Clear();
+        // #1509 (Task 24): a refused report stays with its errors; a published one goes with its warnings.
+        if (publishErrors.Count == 0)
+        {
+            publishReport = null;
+        }
         // #812: any change (an edit, or a scoped discard) disarms a pending
         // per-pane discard — a stale "Confirm" never carries across an edit.
         paneDiscardArmedKey = null;
@@ -18778,6 +18791,7 @@
             if (!outcome.Succeeded)
             {
                 publishErrors = outcome.Errors.ToList();
+                publishReport = outcome.Report;
                 return;
             }
 
@@ -18819,6 +18833,7 @@
                 : $"Published {publishedRef}{named} and switched your consults to it.")
                 + (notYetRunnable ? " It is not yet runnable." : string.Empty);
             publishWarnings = warnings;
+            publishReport = outcome.Response.Report;
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -20040,6 +20055,7 @@
         publishErrors = new List<string>();
         publishSuccess = null;
         publishWarnings.Clear();
+        publishReport = null;
     }
 
     // The manifest rides opaque except for this one surgical write: pending
