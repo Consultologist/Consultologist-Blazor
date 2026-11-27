@@ -938,6 +938,34 @@ public class ExpectedDifferencesTests
     }
 
     [Fact]
+    public void TwoRulesThatAreNotBlockReadOwnLine_AreNotCreditedAsAPair()
+    {
+        // #1543 (D8; Task A5's review): the pair step is block-read-own-line's alone. Here explicit-hard-break's change is
+        // neutral by itself ("at: \" then a line ending becomes the one run " \n", still 30's "\n" less nothing), and only
+        // after it would empty-read-trailing-space take the space. Neither is block-read-own-line, so no pair is tried and
+        // nothing is credited. clinic_line is as 30 wrote it (no separated read), and the package holds a hard break.
+        var separated = EquivalenceFixture.Migrated("edge-unruled-whitespace");
+        var files = new Dictionary<string, string>(separated.Files, StringComparer.Ordinal);
+        files["snippets/clinic_line.md"] = files["snippets/clinic_line.md"].Replace("Seen at: \n\n{{", "Seen at: {{", StringComparison.Ordinal);
+        Assert.Contains("Seen at: {{ input.clinic.content }}", files["snippets/clinic_line.md"], StringComparison.Ordinal);
+        var migrated = separated with
+        {
+            Files = files,
+            MovedReads = new Dictionary<string, int>(StringComparer.Ordinal),
+            SeparatedReads = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal),
+            HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal) { ["snippets/clinic_line.md"] = 1 },
+        };
+        var context = new DifferenceContext("edge-unruled-whitespace", "default", "edge-unruled-whitespace/default#deliverables/deliverable.problems",
+            ComparedKind.Deliverable, null, "deliverable.problems", "Seen at:\n## Problem list 1", "Seen at: \\\n## Problem list 1",
+            Capture("Completed", null), Run(RunState.Completed), migrated, EquivalenceFixture.Plan("edge-unruled-whitespace"));
+
+        var credited = ExpectedDifferences.Credit(context);
+
+        Assert.Empty(credited.Rules);
+        Assert.True(credited.Unexplained);
+    }
+
+    [Fact]
     public void AnEmptyReadsTrailingSpace_DoesNotExplainANearPair()
     {
         // Hand-made pairs on edge-unruled-whitespace's plan: deliverable.problems places the snippet clinic_line,
