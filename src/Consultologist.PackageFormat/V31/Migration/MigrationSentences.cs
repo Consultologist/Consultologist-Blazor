@@ -516,13 +516,14 @@ internal static class MigrationSentences
         : $"In '{file}', the reads {string.Join(", ", reads)} now start their own lines, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.";
 
     /// <summary>
-    /// A10-094 (#1543, ruling 2, D7, as the owner amended it on 2026-11-27, item 4): a reason: the text before the
-    /// <c>markdown_block</c> read <paramref name="read"/> at line <paramref name="line"/> of the body is only Markdown block
-    /// markers (a list item's, a quote's, a heading's), and a blank line would leave the container empty and move the value
-    /// out of it, so the migration leaves the line as 30 wrote it. S10-002 gives it.
+    /// A10-094 (#1543, ruling 2, D7, as the owner amended it on 2026-11-27, item 4, as the controller extended it in Task
+    /// A5's review, for the owner): a reason: the <c>markdown_block</c> read <paramref name="read"/> at line
+    /// <paramref name="line"/> of the body stands in a line that a blank line would break out of its Markdown block (the
+    /// text before it starts a list item, a quote or a heading; the text after it would start one, or indented code), so the
+    /// migration leaves the line as 30 wrote it. S10-002 gives it.
     /// </summary>
-    public static string BlockMarkerBeforeARead(string read, int line) =>
-        string.Create(CultureInfo.InvariantCulture, $"the line holds only a Markdown block marker before the read {read} at line {line}, and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.");
+    public static string ReadBreaksItsBlock(string read, int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"the read {read} at line {line} stands in a line that a blank line would break out of its Markdown block (a list item, a quote, a heading or indented text), and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.");
 
     /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the

@@ -167,9 +167,11 @@ public static class MarkdownLineEndings
     /// placement, a renderer, another block read) kept on the read's line, so <c>{{ if x }}{{ r }}</c> moves whole; where it
     /// finds text after it, two line endings directly after it and the tags that stay with it. Then each single line ending
     /// between a line of text and a line whose only reads are block reads (<see cref="LineEndingKind.BesideABlockRead"/>,
-    /// either side) gets one more, so a blank line stands between them. A read whose text before is only Markdown block
-    /// markers (<c>- </c>, <c>&gt; </c>, <c># </c>, <c>1. </c>, …) is not moved: a blank line would leave an empty container
-    /// and move the value out of it; it is in <c>Marked</c>. <c>Separated</c> is each block read with a blank line written
+    /// either side) gets one more, so a blank line stands between them. A read on a line that a blank line would break out
+    /// of its Markdown block (<see cref="BreaksItsBlock"/>: the text before it starts a list item, a quote or a heading,
+    /// <c>- Seen: {{ r }}</c>; the text after it would start one on its new line, or indented code) is not moved, and
+    /// neither is anything else on that line: it is in <c>Marked</c> (#1543, the owner's item 4 as the controller extended
+    /// it in Task A5's review, for the owner). <c>Separated</c> is each block read with a blank line written
     /// beside it, in order; both lists hold the tags of <paramref name="body"/> as given. The line endings written are
     /// <c>\n</c> (the migration's bodies are normalised) but where one is doubled, which keeps its own. Written again, it
     /// writes nothing: a blank line already there is left.
@@ -184,12 +186,15 @@ public static class MarkdownLineEndings
         var separated = new HashSet<TemplateTag>();
         var marked = new List<TemplateTag>();
         var writes = new SortedDictionary<int, string>();
-        foreach (var tag in neighbours.Scanned.Where(t => role(t) == TagRole.BlockRead))
+        var besides = neighbours.Scanned.Where(t => role(t) == TagRole.BlockRead)
+            .Select(t => (Tag: t, Side: Beside(body, t, role, neighbours)))
+            .Where(t => t.Side.Before || t.Side.After)
+            .ToList();
+        // Nothing on a line that a blank line would break out of its block is moved, another read on it included.
+        var left = besides.Where(t => BreaksItsBlock(body, t.Side)).Select(t => LineStart(body, t.Tag.Start)).ToHashSet();
+        foreach (var (tag, beside) in besides)
         {
-            var beside = Beside(body, tag, role, neighbours);
-            if (!beside.Before && !beside.After)
-                continue;
-            if (beside.Before && OnlyBlockMarkers(body, neighbours, LineStart(body, beside.From), beside.From))
+            if (left.Contains(LineStart(body, tag.Start)))
             {
                 marked.Add(tag);
                 continue;
@@ -244,16 +249,32 @@ public static class MarkdownLineEndings
     }
 
     /// <summary>
-    /// Whether <paramref name="body"/> from <paramref name="start"/> to <paramref name="end"/> (a line's text before a read)
-    /// holds no tag or comment and, trimmed, only Markdown block markers separated by white space: <c>-</c>, <c>*</c>,
-    /// <c>+</c>, a list number (<c>1.</c>, <c>1)</c>), <c>&gt;</c>, <c>#</c> to <c>######</c>.
+    /// #1543 (the owner's item 4, as the controller extended it in Task A5's review, for the owner): whether separating the
+    /// read <paramref name="beside"/> describes would change the block structure of its line. Either the text before it,
+    /// trimmed at its start, starts with a Markdown block marker (<see cref="StartsABlock"/>), whether or not more text
+    /// follows the marker (<c>- Seen: {{ r }}</c>, <c>&gt; {{ r }}</c>): a blank line would move the read out of the list
+    /// item, the quote or the heading. Or the text after it would itself start a block on its new line: after its leading
+    /// white space it starts with such a marker, or it is led by a tab or by four or more spaces (an indented code block).
     /// </summary>
-    private static bool OnlyBlockMarkers(string body, Neighbours neighbours, int start, int end) =>
-        !neighbours.ByStart.Values.Any(t => t.Tag.Start < end && t.Tag.End > start)
-        && BlockMarkers.IsMatch(body[start..end].Trim(' ', '\t'));
+    private static bool BreaksItsBlock(string body, (bool Before, bool After, int From, int To) beside)
+    {
+        if (beside.Before && StartsABlock.IsMatch(body[LineStart(body, beside.From)..beside.From].TrimStart(' ', '\t')))
+            return true;
+        if (!beside.After)
+            return false;
+        var after = body[beside.To..LineEnd(body, beside.To)];
+        var text = after.TrimStart(' ', '\t');
+        var lead = after[..(after.Length - text.Length)];
+        return lead.Contains('\t', StringComparison.Ordinal) || lead.Length >= 4 || StartsABlock.IsMatch(text);
+    }
 
-    private static readonly System.Text.RegularExpressions.Regex BlockMarkers = new(
-        @"^(?:[-*+>]|[0-9]{1,9}[.)]|#{1,6})(?:[ \t]+(?:[-*+>]|[0-9]{1,9}[.)]|#{1,6}))*$",
+    /// <summary>
+    /// A Markdown block marker at a text's start: <c>-</c>, <c>*</c> or <c>+</c> followed by white space or nothing (the
+    /// tag), a list number (<c>1.</c>, <c>1)</c>) likewise, <c>&gt;</c>, <c>#</c> to <c>######</c> followed by white space
+    /// or nothing.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex StartsABlock = new(
+        @"^(?:[-*+](?:[ \t]|$)|[0-9]{1,9}[.)](?:[ \t]|$)|>|#{1,6}(?:[ \t]|$))",
         System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>

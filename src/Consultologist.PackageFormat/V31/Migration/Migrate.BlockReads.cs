@@ -11,9 +11,10 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <c>Sincerely, </c>, an empty line, <c>{{ profile.closing }}</c>; the text after a read starts its own line after a blank
 /// line; and a line of text next to a line holding only a block read gets a blank line between them, never a <c>\</c>
 /// (<see cref="LineEndingKind.BesideABlockRead"/>). A blank line is right for every value, where <c>\</c> breaks only
-/// inside a paragraph and a value may start or end with any block. Where the text before the read is only a Markdown block
-/// marker (<c>- {{ … }}</c>, <c>&gt; {{ … }}</c>, <c># {{ … }}</c>, a list number), a blank line would leave an empty
-/// container and move the value out of it, so the line is left and is a hand edit (A10-094). The sites are the
+/// inside a paragraph and a value may start or end with any block. Where a blank line would break the read's line out of
+/// its Markdown block (the text before it starts a list item, a quote or a heading, <c>- Seen: {{ … }}</c>; the text after
+/// it would start one, or indented code), nothing on the line is moved and it is a hand edit (A10-094; the owner's item 4
+/// as the controller extended it in Task A5's review, for the owner). The sites are the
 /// hard-breaks pass's, and the reads are found as publish finds them (<see cref="MarkdownLineEndings.BlockReadsBeside"/>,
 /// <see cref="MarkdownLineEndings.Find"/>, each tag's role publish's own, read from the 31 set written so far: every body
 /// the checker typed, a file refused before the line rules typing none), so a migrated package with no hand edit is
@@ -25,8 +26,8 @@ internal static partial class Migrate
     /// The block-reads pass, after <see cref="StripLoopItems"/> and directly before <see cref="HardBreaks"/> (which reads
     /// the lines as separated, its roles typed again). Each site whose body has a block read with text beside it, or a line
     /// of text next to a line of only block reads, gets its blank lines, the reads counted in
-    /// <see cref="Migrated.MovedReads"/> and said once per file (A10-093); a read after a block marker is a hand edit
-    /// (A10-094). Run again, it writes nothing.
+    /// <see cref="Migrated.MovedReads"/> and said once per file (A10-093); a read on a line that a blank line would break
+    /// out of its block is a hand edit (A10-094). Run again, it writes nothing.
     /// </summary>
     public static void BlockReads(Migrated m)
     {
@@ -65,7 +66,7 @@ internal static partial class Migrate
             var (text, separated, marked) = MarkdownLineEndings.WithBlockReadsSeparated(body, roles.Of(path, body));
             string Read(TemplateTag t) => roles.ReadOf(path, body, t) ?? body[t.Start..t.End];
             foreach (var tag in marked)
-                m.HandEdit(path, "body", MigrationSentences.BlockMarkerBeforeARead(Read(tag), tag.Line));
+                m.HandEdit(path, "body", MigrationSentences.ReadBreaksItsBlock(Read(tag), tag.Line));
             if (separated.Count == 0)
                 continue;
             file.Body = text;
