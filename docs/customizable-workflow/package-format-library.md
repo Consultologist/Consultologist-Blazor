@@ -2711,10 +2711,12 @@ three are usage errors. `--options <file>` (#1508, R18; `Migration31Arguments.Op
 with `--snapshot` it is a usage error, and a file that cannot be read, is not strict JSON (A10-019), is not a JSON
 object or is refused (A10-070 to A10-072, A10-082) is exit 2, nothing read or written.
 
-`Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line that 31's `dag.mmd` is not this
-script's (`Migration31Script.NoDiagram`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
-exactly the result's files: 30's `prompts/`, flat macros and `dag.mmd` are deleted (`--snapshot` leaves a 31 folder's
-`dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files are written first, then changed ones
+`Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line about `dag.mmd` (#1510, D13):
+when the migrated package compiles, its `dag.mmd` is the 31 drawing of its `resolve.json`
+(`Migration31Script.DiagramWritten`); when it does not yet, none is written until its hand edits are done
+(`Migration31Script.DiagramWaits`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
+exactly the result's files: 30's `prompts/` and flat macros are deleted, and so is 30's `dag.mmd` when no 31 one replaces
+it (`--snapshot` leaves a 31 folder's `dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files are written first, then changed ones
 with `manifest.json` last, then the deletes, so a write that fails part-way deletes no 30 file.
 
 | Exit | When |
