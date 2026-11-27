@@ -5,24 +5,28 @@ done **while Milestone 39 is being built**, and reconciled with what M39 actuall
 `main`. This file is the handover for the agent doing the planning: read it, then `AGENTS.md`, before
 anything else.
 
-**Status (2026-11-21): set up, nothing planned yet.** Branch `m40-planning`, from `main` at
+**Status (2026-11-27): the inputs group is being decided; no plan is written yet.** The decisions so
+far are in [`input-kinds.md`](input-kinds.md). Branch `m40-planning`, from `main` at
 `3b0e707a`, in its own clone (`~/Projects/Consultologist/app/M40`). Where the planning stands at the
 end of each session, and what the next one does first: [`SESSION-LOG.md`](SESSION-LOG.md).
 
 ## Scope
 
 The milestone's description on GitHub is the source of truth; re-read it and its open issues at the
-start of **every** session, since issues are added to it while M39 is built. On 2026-11-21 it held 64
-open issues, in these groups (from the description):
+start of **every** session, since issues are added to it while M39 is built. On 2026-11-27 it held 65
+open issues and 3 closed, in these groups (from the description):
 
-- **The chain from inputs to delivery:** inputs (#1442 and its sub-issues #1430–#1437; #1429, #1451,
-  #1452), extraction (#1438), production (#1439 and its sub-issues #1438, #1440, #1441; #1415, #1416),
+- **The chain from inputs to delivery:** inputs (#1442 and its sub-issues #1430–#1432 and
+  #1434–#1437; #1452, #1456), extraction (#1438), production (#1439 and its sub-issues #1438, #1440, #1441; #1415, #1416),
   tool calls (#1445),
   formats (#1402–#1405), review (#1446), delivery (#1443), confidence (#1444), patient data (#1448).
-- **Revisits of M39 decisions:** #1426, #1427, #1428, #1453, and the many "Revisit …" / "Review …"
-  issues filed during M39's design and build (#1455–#1487, #1493, #1522–#1527).
+- **Revisits of M39 decisions:** #1426, #1428, #1453, and the many "Revisit …" / "Review …"
+  issues filed during M39's design and build (#1455–#1487, #1493, #1522–#1527, #1534, #1536).
+- **Standard components:** #1477, with #1458 and #1459 as a measuring spike.
 - **Retiring old spec versions:** #1450 (placeholder).
-- **Other follow-ups:** #1391, #1399, #1417, #1420, #1422, #1454.
+- **Other follow-ups:** #1391, #1399, #1417, #1420, #1422, #1454, #1537.
+- **Closed as decided:** #1429 (no HTML text format), #1451 (one Markdown), #1427 (`channel` keeps
+  its name). **Moved out:** #1433 (FHIR, HL7 v2, CDA), to Milestone 42.
 
 The milestone's own sentence: it **starts after the Milestone 39 format has been tested.** Planning
 now is fine; building is not.
