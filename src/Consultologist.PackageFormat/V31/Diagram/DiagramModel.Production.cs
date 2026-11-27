@@ -7,10 +7,10 @@ namespace Consultologist.PackageFormat.V31.Diagram;
 /// #1510 (specVersion 31, area 13): the production drawing (part 09 §§ 10.2 to 10.4). Each node of <c>nodes</c> is a box
 /// in the frame of its scope: an agent a rectangle (<c>agent → &lt;format&gt; · &lt;producer&gt;</c>), a <c>rendered</c>
 /// node one too (<c>rendered → …</c>), a <c>computed</c> node a double box (<c>computed → &lt;format&gt;</c>), any other
-/// kind (a <c>call</c> until Task 4) a plain rectangle. A flow node is its frames (a <c>for_</c> or <c>while_</c> body;
-/// an <c>if_…_then</c>, <c>if_…_else</c>, <c>case_…_branch_N</c> or <c>case_…_else</c> per body that holds a node) and,
-/// after them, its summary box carrying the loop or condition line, every condition and list printed by
-/// <see cref="JsonLogicPrinter.Print"/>. A deliverable is a hexagon. Every <c>input.*</c>, <c>run.*</c>,
+/// kind a plain rectangle (a <c>call</c> is a <c>tag-rect</c>, <c>DiagramModel.Functions.cs</c>). A flow node is its
+/// frames (a <c>for_</c> or <c>while_</c> body; an <c>if_…_then</c>, <c>if_…_else</c>, <c>case_…_branch_N</c> or
+/// <c>case_…_else</c> per body that holds a node) and, after them, its summary box carrying the loop or condition line,
+/// every condition and list printed by <see cref="JsonLogicPrinter.Print"/>. A deliverable is a hexagon. Every <c>input.*</c>, <c>run.*</c>,
 /// <c>profile.*</c> and <c>snippet.*</c> read is one pill at the top level, in order of first read; an input nothing
 /// reads follows, in <c>inputOrder</c>.
 /// <para>
@@ -22,10 +22,10 @@ namespace Consultologist.PackageFormat.V31.Diagram;
 /// goes into the summary box). An entry's <c>reads</c> mixes its content and condition reads; <c>graph.edges</c> keeps
 /// them apart per source key, so a path a condition reads draws its data edge too only when <c>graph.edges</c> (or a
 /// <c>computed</c> expression) says it is also content (<see cref="Reads"/>). Reads of
-/// <c>item</c>, <c>pass</c>, <c>renderer.*</c>, <c>macro.*</c>, <c>function.*</c> and <c>param.*</c> draw nothing
-/// here; a macro's placement rule is its own box's, and a path a renderer step renders runs into that step's box
-/// (<c>DiagramModel.Uses.cs</c>, D7). A body's edges are built before its flow's, and the
-/// flow's own (<c>for</c>, then <c>if</c>, then <c>ret</c>) after them.
+/// <c>item</c>, <c>pass</c>, <c>renderer.*</c>, <c>macro.*</c> and <c>function.*</c> draw nothing, and a
+/// <c>param.*</c> read draws from its function's pill (<c>DiagramModel.Functions.cs</c>); a macro's placement rule is
+/// its own box's, and a path a renderer step renders runs into that step's box (<c>DiagramModel.Uses.cs</c>, D7). A
+/// body's edges are built before its flow's, and the flow's own (<c>for</c>, then <c>if</c>, then <c>ret</c>) after them.
 /// </para>
 /// </summary>
 public sealed partial record DiagramModel
@@ -45,6 +45,7 @@ public sealed partial record DiagramModel
                 Node(key, root, 0);
             foreach (var key in InOrder(deliverables, order))
                 Deliverable(key);
+            Functions();
             foreach (var id in InputIds().Where(id => !pillKeys.Contains("input." + id)))
                 Pill("input." + id);
         }
@@ -62,10 +63,10 @@ public sealed partial record DiagramModel
         /// <summary>The node <paramref name="key"/> drawn into <paramref name="scope"/>, once.</summary>
         private void Node(string key, Scope scope, int depth)
         {
-            if (depth > MaxDepth || nodes[key] is not JsonObject entry || !placedKeys.Add(key))
+            if (depth > MaxDepth || Map[key] is not JsonObject entry || !placedKeys.Add(BoxKey(key)))
                 return;
 
-            var id = IdOf(key);
+            var id = BoxId(key);
             var kind = Text(entry["kind"]);
             if (kind is "for" or "while" or "if" or "case")
             {
@@ -84,11 +85,16 @@ public sealed partial record DiagramModel
                     lines.Add($"computed → {Format(entry)}");
                     shape = BoxShape.DoubleBox;
                     break;
+                case "call":
+                    lines = CallLines(key, entry);
+                    shape = BoxShape.TagRect;
+                    break;
             }
 
-            var uses = Uses(key, id, entry, scope);
-            uses.Boxes.Add(new DiagramBox(id, key, shape, lines, Bool(entry["modelDerived"])));
-            Reads(id, entry);
+            var uses = Uses(BoxKey(key), id, entry, scope);
+            uses.Boxes.Add(new DiagramBox(id, BoxKey(key), shape, lines, Bool(entry["modelDerived"])));
+            Reads(id, entry, function != null);
+            Calls(id, entry);
             UsesEdges(id, entry, uses);
         }
 
@@ -134,7 +140,7 @@ public sealed partial record DiagramModel
                 bodies.Add(Branch(scope, $"case_{id}_else", name, "else", entry["else"], depth));
             }
 
-            scope.Boxes.Add(new DiagramBox(id, key, BoxShape.Rectangle, lines, Bool(entry["modelDerived"])));
+            scope.Boxes.Add(new DiagramBox(id, BoxKey(key), BoxShape.Rectangle, lines, Bool(entry["modelDerived"])));
             if (feed is { } source)
                 Edge(source.Id, framed ? "for_" + id : id, EdgeStyle.Read, "for");
             Conditions(id, conditions);
@@ -179,8 +185,8 @@ public sealed partial record DiagramModel
 
         private void Ret(string? ret, string id, string label)
         {
-            if (ret != null && nodes.ContainsKey(ret))
-                Edge(IdOf(ret), id, EdgeStyle.Read, label);
+            if (ret != null && Map.ContainsKey(ret))
+                Edge(BoxId(ret), id, EdgeStyle.Read, label);
         }
 
         private void Deliverable(string key)
@@ -254,8 +260,12 @@ public sealed partial record DiagramModel
 
         private static IEnumerable<JsonObject> Placements(JsonObject entry) => (entry["placements"] as JsonArray ?? []).OfType<JsonObject>();
 
-        /// <summary>What a read draws from: the box of the key it names and the member it reads (D4).</summary>
-        private readonly record struct Read(string Id, string? Member);
+        /// <summary>
+        /// What a read draws from: the box of the key it names and the member it reads (D4), the edge's label.
+        /// <paramref name="Unlabelled"/> is the member of a read whose edge has no label (a <c>param.*</c>): it keeps a
+        /// parameter's content read apart from a condition's read of another member, as a labelled member does.
+        /// </summary>
+        private readonly record struct Read(string Id, string? Member, string? Unlabelled = null);
 
         /// <summary>
         /// The box <paramref name="path"/> reads from, with its member (the step after the key), registering a pill; null
@@ -274,9 +284,11 @@ public sealed partial record DiagramModel
                     return new Read(Pill($"{root}.{name}"), null);
                 case "snippet":
                     return new Read(Pill(Longest(snippets, segments) ?? $"snippet.{name}"), null);
+                case "param":
+                    return function is { } body ? new Read(Param(body, name), null, Member(2)) : null;
                 case "node" or "check" or "deliverable":
-                    var map = root == "node" ? nodes : root == "check" ? checks : deliverables;
-                    return Longest(map, segments) is { } key ? new Read(IdOf(key), Member(key.Split('.').Length)) : null;
+                    var map = root == "node" ? Map : root == "check" ? checks : deliverables;
+                    return Longest(map, segments) is { } key ? new Read(root == "node" ? BoxId(key) : IdOf(key), Member(key.Split('.').Length)) : null;
                 default:
                     return null;
             }

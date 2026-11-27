@@ -5,7 +5,7 @@ namespace Consultologist.PackageFormat.V31.Diagram;
 
 /// <summary>
 /// #1510 (specVersion 31, area 13): renderers and macros, drawn inside the frame of what uses them (part 09 § 10.4, D7).
-/// An entry (a node, a deliverable; a check's in Task 5, a function's nodes in Task 4) with a <c>renders</c> step or a
+/// An entry (a node, a function's node, a deliverable; a check's in Task 5) with a <c>renders</c> step or a
 /// placed macro is wrapped in a <c>uses_&lt;box id&gt;</c> frame titled <c>&lt;id&gt; · &lt;label&gt;</c>, holding one
 /// parallelogram per renderer step (<c>&lt;box id&gt;__render_&lt;n&gt;</c>, <c>renderer.&lt;id&gt;</c> over
 /// <c>&lt;input&gt; → &lt;format&gt;</c>), one doc box per placed macro (<c>&lt;box id&gt;__macro_&lt;macro id&gt;</c>,

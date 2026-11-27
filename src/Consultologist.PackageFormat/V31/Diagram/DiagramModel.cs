@@ -63,6 +63,8 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
     /// <summary>A frame while it is built.</summary>
     private sealed class Scope(string id, string title)
     {
+        public string Id { get; } = id;
+
         public List<DiagramBox> Boxes { get; } = [];
         public List<Scope> Frames { get; } = [];
         public List<DiagramEdge> Edges { get; } = [];
@@ -70,7 +72,7 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
         public DiagramFrame Freeze() => new(id, title, Boxes.ToList(), Frames.Select(f => f.Freeze()).ToList(), Edges.ToList());
     }
 
-    /// <summary>One build over one document. The production rules are in <c>DiagramModel.Production.cs</c>.</summary>
+    /// <summary>One build over one document. The production rules are in <c>DiagramModel.Production.cs</c>, calls and functions in <c>DiagramModel.Functions.cs</c>.</summary>
     private sealed partial class Builder(JsonObject document)
     {
         private readonly JsonObject document = document;
@@ -112,8 +114,9 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
         private void Edge(string from, string to, EdgeStyle style, string? label)
         {
             var edge = new DiagramEdge(from, to, style, label);
+            // Inside a function body the edge waits until the body is drawn: its frame's own, or the model's (DiagramModel.Functions.cs).
             if (seen.Add(edge))
-                edges.Add(edge);
+                (function?.Edges ?? edges).Add(edge);
         }
 
         private static string? Text(JsonNode? node) =>
