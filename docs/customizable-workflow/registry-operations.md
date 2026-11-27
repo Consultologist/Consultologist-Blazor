@@ -423,9 +423,11 @@ dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write
 - With `--write` it runs steps 0 to 4 and writes the version's files in the pipeline's order into `<out folder>`, then
   `publish.json` last. The out folder must be new or empty (a stamped or non-empty one is refused, exit 2), so no stale
   file ever sits beside the stamp. These are the files CI is to attach as Release assets.
-- `dag.mmd` is a view (#1510, D13): once the package would publish, a committed `dag.mmd` that differs byte for byte
-  from the drawing of its `resolve.json` is exit 1 (`refused: dag.mmd differs …`; with `--write`, nothing is written).
-  `--write-dag` writes the fresh drawing into `<folder>` instead. A folder with none passes. With `--write`, the out
+- `dag.mmd` is a view (#1510, D13): once the package would publish, a committed `dag.mmd` that differs from the
+  drawing of its `resolve.json` (its `\r\n` read as `\n`, as a `text=auto` checkout may write it) is exit 1
+  (`refused: dag.mmd differs …`; with `--write`, nothing is written). `--write-dag` writes the fresh drawing into
+  `<folder>` instead; a `dag.mmd` that is a symbolic link is refused (exit 2), never written through. A folder with none
+  passes. With `--write`, the out
   folder's `dag.mmd` is the drawing.
 - `--version <tag>` replaces `manifest.json`'s `version` in place before step 0 (the name is kept); without it the
   manifest's own name and version are used. `--published-by` is the report's `publishedBy`; it defaults to `ci <tag>`

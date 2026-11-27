@@ -805,9 +805,11 @@ JSON object is A06-004; a registry failure while reading the folder is 503. All 
 `PackageDiagram.Generate` draws from the stored `resolve.json` (the library's one drawing, part 09 § 10; "specVersion
 31: the diagram" in [the package format as a library](package-format-library.md)). It is drawn afresh, not read from
 the stored `dag.mmd`: the two are the same bytes for a version published since D13, and a version published before has
-none. A load refusal is a 400 with its sentence, a `resolve.json` that is absent is A06-004, and a registry failure
-while reading it is 503 *"Workflow package registry is unavailable."*, logged by the failure's type and status. With
-31 not admitted the answer is S09-001, as for `Current`. A version with no 31 stamp takes today's path
+none. As `Current/Content` serves the version, only an integrity refusal of the load (A06-004, S09-009, S09-014) is a
+400 with its sentence; any other refusal (a version this engine will not run, S07-004 among them) is still drawn, 200.
+A `resolve.json` absent when the route reads it is A06-004 too, and a registry failure while reading it is 503
+*"Workflow package registry is unavailable."*, logged by the failure's type and status (a load that could not read the
+registry takes today's path, which answers the same 503). With 31 not admitted the answer is S09-001, as for `Current`. A version with no 31 stamp takes today's path
 (`WorkflowDagDiagram`).
 
 ### Import

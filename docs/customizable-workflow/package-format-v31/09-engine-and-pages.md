@@ -760,8 +760,10 @@ The wording below is the starting text. It follows the style rules in [index § 
   from one graph model built from `resolve.json`
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1398#issuecomment-6950053048)).
   Today the drawing is `WorkflowDagDiagram` (library) and `RunDagDiagram` (Web). At 31 it is the
-  library's `Consultologist.PackageFormat.V31.Diagram` (`PackageDiagram.Generate`), which all three
-  call; the 5–30 drawings keep their text (decided in the build, #1510).
+  library's `Consultologist.PackageFormat.V31.Diagram` (`DiagramModel` and `DiagramWriter`;
+  `PackageDiagram.Generate` for `dag.mmd` and the Editor), which all three use: the run diagram
+  builds the same `DiagramModel` and writes it with `DiagramWriter` and its overlay; the 5–30
+  drawings keep their text (decided in the build, #1510).
 - **Mermaid 12, the full build, with ELK layout**
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1398#issuecomment-6949511478)).
   The client upgrades its vendored `src/Consultologist.Web/wwwroot/lib/mermaid.min.js` from

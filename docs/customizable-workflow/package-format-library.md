@@ -2718,7 +2718,8 @@ object or is refused (A10-070 to A10-072, A10-082) is exit 2, nothing read or wr
 `Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line about `dag.mmd` (#1510, D13):
 when the migrated package compiles, its `dag.mmd` is the 31 drawing of its `resolve.json`
 (`Migration31Script.DiagramWritten`); when it does not yet, none is written until its hand edits are done
-(`Migration31Script.DiagramWaits`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
+(`Migration31Script.DiagramWaits`), or, when the migration named no hand edit, until it compiles, and
+`scripts/check-workflow-package-v31.cs <package-dir>` says why it does not (`Migration31Script.DiagramNotCompiled`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
 exactly the result's files: 30's `prompts/` and flat macros are deleted, and so is 30's `dag.mmd` when no 31 one replaces
 it (`--snapshot` leaves a 31 folder's `dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files
 are written first, then changed ones with `manifest.json` last, then the deletes, so a write that fails part-way
@@ -3168,11 +3169,13 @@ record (part 09 § 10.6; D10 to D12), with `RunDagDiagram`'s five colours.
 - **Publish** (D13): the engine's `V31PackagePublisher` and `scripts/check-workflow-package-v31.cs` pass
   `PackageDiagram.Generate`, so step 4 lists `dag.mmd` after the source files. `dag.mmd` is outside `sourceHash`, the
   lock and the report: nothing pinned moved.
-- **The CI script** compares a committed `dag.mmd` byte for byte with the drawing of the in-memory `resolve.json` once
-  the package would publish: a difference is exit 1 (`refused: dag.mmd differs …`, nothing written); `--write-dag`
-  writes the fresh one into the folder instead; a folder with none passes.
+- **The CI script** compares a committed `dag.mmd` with the drawing of the in-memory `resolve.json` once the package
+  would publish, the committed side's `\r\n` read as `\n` (a `text=auto` checkout may write them): a difference is
+  exit 1 (`refused: dag.mmd differs …`, nothing written); `--write-dag` writes the fresh one into the folder instead,
+  and refuses (exit 2) a `dag.mmd` that is a symbolic link, never followed; a folder with none passes.
 - **The migration script** (`Migration31Script`, "The script" above) writes `dag.mmd` when the migrated package
-  compiles (`DiagramWritten`) and otherwise deletes a 30 one and says it waits (`DiagramWaits`).
+  compiles (`DiagramWritten`) and otherwise deletes a 30 one and says it waits: for the hand edits (`DiagramWaits`), or,
+  when the migration named none, for the package to compile (`DiagramNotCompiled`).
 - **The engine's `Current/Diagram`** at 31 and **the Editor's 31 view** (`V31PackageView`) draw `Generate` of the stored
   `resolve.json` (D14); the Editor shows the stored `dag.mmd` only when the content holds no `resolve.json`.
 - **The run diagram** on History and the Create page draws `RunDiagram31.Build`. Mermaid stays at `securityLevel:
