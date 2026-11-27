@@ -466,10 +466,13 @@ public class DiagramModelTests
         // A function is drawn as its frame, fn_<function>; graph.edges writes a call's edge from the function to the call.
         var frames = model.Root.Frames.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
         string Called(string from) => "fn_" + DiagramModel.IdOf(from["function.".Length..]);
+        // D5: an aligned edge is drawn only from a check loop's frame; one into a production loop (over another loop's .items) gets its for edge alone.
+        bool Aligned(string to) => to.StartsWith("check.", StringComparison.Ordinal);
         var edges = JsonNode.Parse(resolve)!["graph"]!["edges"]!.AsArray()
             .Select(e => (From: (string)e!["from"]!, To: (string)e["to"]!, Kind: (string)e["kind"]!))
-            .Where(e => (e.Kind is "reads" or "if" or "for" or "ret" && drawn.Contains(e.From) && drawn.Contains(e.To)) || (e.Kind == "placed" && Placed(e.From, e.To))
-                || (e.Kind == "calls" && e.From.StartsWith("function.", StringComparison.Ordinal) && frames.Contains(Called(e.From)) && drawn.Contains(e.To)))
+            .Where(e => (e.Kind is "reads" or "if" or "for" or "ret" or "gates" && drawn.Contains(e.From) && drawn.Contains(e.To)) || (e.Kind == "placed" && Placed(e.From, e.To))
+                || (e.Kind == "calls" && e.From.StartsWith("function.", StringComparison.Ordinal) && frames.Contains(Called(e.From)) && drawn.Contains(e.To))
+                || (e.Kind == "aligned" && Aligned(e.To) && drawn.Contains(e.From) && drawn.Contains(e.To)))
             .ToList();
         var written = model.Edges.Concat(FrameEdges(model.Root)).ToList();
 
@@ -486,6 +489,8 @@ public class DiagramModelTests
                 "if" => model.Edges.Contains(new DiagramEdge(source, target, EdgeStyle.If, "if")),
                 "for" => model.Edges.Any(e => e.From == source && e.To == "for_" + target && e.Label == "for"),
                 "calls" => model.Edges.Contains(new DiagramEdge(target, Called(from), EdgeStyle.Reference, "calls")),
+                "aligned" => model.Edges.Contains(new DiagramEdge("for_" + target, "for_" + source, EdgeStyle.Reference, "aligned")),
+                "gates" => model.Edges.Contains(new DiagramEdge(source, target, EdgeStyle.Gate, "gates")),
                 "placed" => written.Contains(new DiagramEdge($"{target}__macro_{DiagramModel.IdOf(from["macro.".Length..])}", target, EdgeStyle.Read, "placed")),
                 _ => model.Edges.Any(e => e.From == source && e.To == target && e.Label?.StartsWith("ret", StringComparison.Ordinal) == true),
             }, $"{golden}: {from} -{kind}-> {to} is not drawn");

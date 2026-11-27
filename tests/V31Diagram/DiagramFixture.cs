@@ -21,15 +21,16 @@ internal static class DiagramFixture
     /// <summary>The diagram of <paramref name="resolve"/>, its lines.</summary>
     public static string[] Lines(string resolve) => PackageDiagram.Generate(resolve).Split('\n');
 
-    /// <summary>A <c>resolve.json</c> of <paramref name="entries"/>: each <c>node.*</c> into <c>nodes</c>, <c>deliverable.*</c> into <c>deliverables</c>, the inputs read declared.</summary>
+    /// <summary>A <c>resolve.json</c> of <paramref name="entries"/>: each <c>node.*</c> into <c>nodes</c>, <c>check.*</c> into <c>checks</c>, <c>deliverable.*</c> into <c>deliverables</c>, the inputs read declared.</summary>
     public static string Document(params (string Key, JsonObject Entry)[] entries)
     {
         var nodes = new JsonObject();
+        var checks = new JsonObject();
         var deliverables = new JsonObject();
         var inputs = new JsonObject();
         foreach (var (key, entry) in entries)
         {
-            (key.StartsWith("deliverable.", StringComparison.Ordinal) ? deliverables : nodes)[key] = entry;
+            (key.StartsWith("deliverable.", StringComparison.Ordinal) ? deliverables : key.StartsWith("check.", StringComparison.Ordinal) ? checks : nodes)[key] = entry;
             foreach (var read in (entry["reads"] as JsonArray ?? []).Select(r => r!.GetValue<string>()))
             {
                 if (read.Split('.') is ["input", var id, ..])
@@ -41,6 +42,7 @@ internal static class DiagramFixture
         {
             ["inputs"] = inputs,
             ["nodes"] = nodes,
+            ["checks"] = checks,
             ["deliverables"] = deliverables,
             ["graph"] = new JsonObject { ["edges"] = new JsonArray(), ["order"] = new JsonArray(entries.Select(e => (JsonNode?)e.Key).ToArray()) },
         }.ToJsonString();
