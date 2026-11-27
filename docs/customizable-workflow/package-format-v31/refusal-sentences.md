@@ -10,13 +10,13 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | [02 Types and inputs](#02-types-and-inputs) | 56 |
 | [03 Expressions](#03-expressions) | 44 |
 | [04 Loops and functions](#04-loops-and-functions) | 80 |
-| [05 Templates and macros](#05-templates-and-macros) | 64 |
+| [05 Templates and macros](#05-templates-and-macros) | 65 |
 | [06 Checks, deliverables and the profile](#06-checks-deliverables-and-the-profile) | 38 |
 | [07 The compiled documents](#07-the-compiled-documents) | 17 |
 | [08 The record](#08-the-record) | 9 |
 | [09 The engine and the pages](#09-the-engine-and-the-pages) | 18 |
 | [10 Migration and tools](#10-migration-and-tools) | 6 |
-| **Total** | **374** |
+| **Total** | **375** |
 
 ## 01 Files and scopes
 
@@ -324,6 +324,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S05-062 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> stopped rendering: it took more than \<limit\> steps."* | author | |
 | S05-063 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\>[\<n\>] at line \<n\>, a position in a list; lists are read whole, with a for, or by identity through .items."* | author | |
 | S05-064 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\> at line \<n\>, which carries profile text through macro '\<id\>'; a prompt or a part doesn't read profile text. Read it in a deliverable."* | author | |
+| S05-065 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> has a single line ending inside a paragraph at line \<n\>: a single line ending is not a break; end the line with \ or leave a blank line."* | author | |
 
 ### An engine fault in reading a template
 
