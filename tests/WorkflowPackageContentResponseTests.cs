@@ -68,4 +68,16 @@ public class WorkflowPackageContentResponseTests
 
         Assert.Equal(registry, wire);
     }
+
+    [Fact]
+    public void A30ContentResponse_HasNoMigrationReportKey()
+    {
+        // #1509 (final review A2): area 12's trailing member is not written when null, so a 5–30 response stays byte-equal
+        var manifest = new WorkflowPackageManifest("acct-x", "v2026.10.1", 30, Deliverables: new List<WorkflowDeliverableSpec> { new("consult", "node.all", "Note") });
+
+        var json = JsonSerializer.Serialize(WorkflowPackageContentResponse.For(manifest, NoFiles), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        using var document = JsonDocument.Parse(json);
+        Assert.False(document.RootElement.TryGetProperty("migrationReport", out _), json);
+    }
 }

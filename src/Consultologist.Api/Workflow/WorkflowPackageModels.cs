@@ -237,7 +237,8 @@ public sealed record WorkflowPackageContentResponse(
     string? MigratedFrom = null,
     IReadOnlyList<string>? Notices = null,
     // #1509 (area 12; D10): the stored migration-report.json of a version the operator migrated, parsed from its bytes; else null.
-    JsonElement? MigrationReport = null)
+    // Not written when null, so a 5–30 response keeps its bytes.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonElement? MigrationReport = null)
 {
     /// <summary>
     /// The response for a resolved manifest and its files; the manifest serialized once, canonically.

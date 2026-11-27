@@ -320,9 +320,11 @@ public class V31PackageContentTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = Body(response).AsObject();
         Assert.Equal(
-            ["Name", "Version", "SpecVersion", "Manifest", "Files", "Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices", "MigrationReport"],
+            ["Name", "Version", "SpecVersion", "Manifest", "Files", "Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices"],
             body.Select(member => member.Key));
-        Assert.All(["Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices", "MigrationReport"], name => Assert.Null(body[name]));
+        Assert.All(["Resolve", "Lock", "PublishReport", "MigratedFrom", "Notices"], name => Assert.Null(body[name]));
+        // #1509 (final review A2): area 12's trailing MigrationReport is not written when null
+        Assert.False(body.ContainsKey("MigrationReport"));
         var before = JsonNode.Parse(JsonSerializer.Serialize(WorkflowPackageContentResponse.For(manifest, files)))!.AsObject();
         foreach (var name in new[] { "Name", "Version", "SpecVersion", "Manifest", "Files" })
             Assert.True(JsonNode.DeepEquals(before[name], body[name]), name);
