@@ -1707,11 +1707,13 @@ public static class ExpectedDifferences
     /// #1508, 2026-11-26, item 4 (Q4 stands): in a prompt, a rendered node's text or a deliverable's, an item of a loop that
     /// did not run writes nothing at 31 (R16's guard), where 30's template loop wrote its fixed text with its reads empty.
     /// The templates the row is made from (its own source file and those of the rendered nodes it reads, in turn) are read
-    /// for R16's guard (<see cref="GuardedLoop"/>), each with its body's literal fragments (the text outside its tags, each
-    /// trimmed, empty ones dropped) and the number of the loop's items in the 31 run that did not complete. 30's and 31's
-    /// lines are aligned (<see cref="Aligned"/>); each run of lines only 30 has that holds a guard's fragments in order, at
-    /// most as many per loop as its items that did not complete, is taken out of 30's text with the line ending that joins
-    /// it (the one before it; the one after, for a run at the start). Null when none is taken.
+    /// for R16's guard (<see cref="GuardedLoop"/>), each with its body as a pattern (<see cref="ItemPattern"/>: its literal
+    /// text exactly, a read of the item's identity any text on one line, a read of the item's result the empty text), and
+    /// the number of the loop's items in the 31 run that did not run (<see cref="ItemsNotRun"/>: rows <c>NotRun</c> or
+    /// <c>Skipped</c>, under the compared row's outer items). 30's and 31's lines are aligned (<see cref="Aligned"/>); a run
+    /// of lines only 30 has that is, whole, m ≥ 1 repetitions of a guard's pattern (its trailing white space trimmed or
+    /// not), m at most the loop's items not yet counted, is taken out of 30's text with the line ending that joins it (the
+    /// one before it; the one after, for a run at the start), and counts m. Null when none is taken.
     /// </summary>
     private static (string Old, string New)? LoopItemNotRun(DifferenceContext c, string old, string now)
     {
@@ -1719,7 +1721,7 @@ public static class ExpectedDifferences
             || !c.Plan.Entries.TryGetValue(EntryOf(key), out var row))
             return null;
 
-        var guards = new List<(string Loop, List<string> Fragments)>();
+        var guards = new List<(string Loop, System.Text.RegularExpressions.Regex Pattern)>();
         var seen = new HashSet<string>(StringComparer.Ordinal) { row.Key };
         var pending = new Queue<PlanEntry>([row]);
         while (pending.Count > 0)
@@ -1729,9 +1731,8 @@ public static class ExpectedDifferences
             {
                 foreach (System.Text.RegularExpressions.Match guard in GuardedLoop.Matches(template))
                 {
-                    var fragments = Tag.Split(guard.Groups["body"].Value).Select(f => f.Trim()).Where(f => f.Length > 0).ToList();
-                    if (fragments.Count > 0)
-                        guards.Add((guard.Groups["loop"].Value, fragments));
+                    if (ItemPattern(guard.Groups["v"].Value, guard.Groups["body"].Value) is { } pattern)
+                        guards.Add((guard.Groups["loop"].Value, pattern));
                 }
             }
 
@@ -1744,9 +1745,7 @@ public static class ExpectedDifferences
         }
 
         var left = guards.Select(g => g.Loop).Distinct(StringComparer.Ordinal).ToDictionary(
-            loop => loop,
-            loop => c.Run31.Rows.Count(r => r.EntryKey == loop && r.Key.StartsWith(loop + ":", StringComparison.Ordinal) && r.State != RowState.Completed),
-            StringComparer.Ordinal);
+            loop => loop, loop => ItemsNotRun(c, loop, key), StringComparer.Ordinal);
         if (left.Values.All(n => n == 0))
             return null;
 
@@ -1765,14 +1764,96 @@ public static class ExpectedDifferences
                 p++;
             var lines = pairs.Skip(start).Take(p - start + 1).Select(q => q.A).ToList();
             var text = string.Join("\n", lines.Select(i => a[i]));
-            var holder = guards.FirstOrDefault(g => left[g.Loop] > 0 && InOrder(text, g.Fragments));
-            if (holder.Loop is null)
-                continue;
-            left[holder.Loop]--;
-            taken.UnionWith(lines);
+            foreach (var (loop, pattern) in guards)
+            {
+                var items = Repetitions(pattern, text);
+                if (items == 0 || items > left[loop])
+                    continue;
+                left[loop] -= items;
+                taken.UnionWith(lines);
+                break;
+            }
         }
 
         return taken.Count == 0 ? null : (string.Join("\n", a.Where((_, i) => !taken.Contains(i))), now);
+    }
+
+    /// <summary>A tag in a guarded body that reads the item's identity (<c>v.item</c>, <c>v.item.*</c>, <c>v.label</c>, <c>v.id</c>), its result (<c>v.content</c>, <c>v.value</c>, <c>v.nodes.*</c>), or neither.</summary>
+    private static readonly System.Text.RegularExpressions.Regex ItemRead = new(
+        @"^\{\{\s*(?<v>\w+)\.(?:(?<identity>item(?:\.[\w.]+)?|label|id)|(?<result>content|value|nodes(?:\.[\w.]+)?))\s*(?:\|[^}]*)?\}\}$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// #1509 (final review B1): one item's text as 30's template loop wrote it for an item that did not run, as a pattern
+    /// over a run of 30's lines: the guard body's literal text exactly; a tag that reads the item's identity any text with
+    /// no line ending; a tag that reads its result the empty string. The last repetition may lose any trailing part of the
+    /// body's final white space (the line ending that joins the run; a deliverable's <c>string.strip</c>). Each repetition is
+    /// captured as <c>u</c>. Null when the body holds another tag, a white-space control, or no literal text but white space.
+    /// </summary>
+    private static System.Text.RegularExpressions.Regex? ItemPattern(string variable, string body)
+    {
+        var pieces = new List<string>();
+        var literal = new System.Text.StringBuilder();
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match tag in Tag.Matches(body))
+        {
+            literal.Append(body, at, tag.Index - at);
+            at = tag.Index + tag.Length;
+            if (ItemRead.Match(tag.Value) is not { Success: true } read || read.Groups["v"].Value != variable)
+                return null;
+            if (read.Groups["identity"].Success)
+            {
+                pieces.Add(System.Text.RegularExpressions.Regex.Escape(literal.ToString()));
+                pieces.Add(@"[^\n]*?");
+                literal.Clear();
+            }
+        }
+
+        literal.Append(body, at, body.Length - at);
+        var all = string.Concat(Tag.Split(body));
+        if (all.All(char.IsWhiteSpace))
+            return null;
+
+        var tail = literal.ToString();
+        var kept = tail.TrimEnd();
+        var white = tail[kept.Length..];
+        var head = string.Concat(pieces);
+        var unit = head + System.Text.RegularExpressions.Regex.Escape(tail);
+        var trimmed = string.Join("|", Enumerable.Range(0, white.Length + 1).Reverse().Select(n => System.Text.RegularExpressions.Regex.Escape(white[..n])));
+        var last = head + System.Text.RegularExpressions.Regex.Escape(kept) + "(?:" + trimmed + ")";
+        return new System.Text.RegularExpressions.Regex(
+            $"^(?:(?<u>{unit}))*?(?<u>{last})\\z",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2));
+    }
+
+    /// <summary>How many repetitions of <paramref name="pattern"/> the whole <paramref name="text"/> is; 0 when it is none.</summary>
+    private static int Repetitions(System.Text.RegularExpressions.Regex pattern, string text)
+    {
+        try
+        {
+            return pattern.Match(text) is { Success: true } match ? match.Groups["u"].Captures.Count : 0;
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// #1509 (final review B1): the items of <paramref name="loop"/> the 31 run did not run (rows <c>NotRun</c>, or
+    /// <c>Skipped</c>: past its max, or its body skipped; not <c>Failed</c> or <c>Cancelled</c>), counting only its own item
+    /// rows (an item path one id longer than the loops around it) and, for a compared row inside outer items, only the items
+    /// under that row's item path.
+    /// </summary>
+    private static int ItemsNotRun(DifferenceContext c, string loop, string key31)
+    {
+        var depth = 1 + c.Plan.Entries.Count(e => e.Value.Kind == PlanKind.For && loop.StartsWith(e.Key + ".", StringComparison.Ordinal));
+        var colon = key31.IndexOf(':', StringComparison.Ordinal);
+        var outer = colon < 0 ? [] : key31[(colon + 1)..].Split('/');
+        return c.Run31.Rows.Count(r => r.EntryKey == loop && r.State is RowState.NotRun or RowState.Skipped
+            && r.Key.StartsWith(loop + ":", StringComparison.Ordinal)
+            && r.Key[(loop.Length + 1)..].Split('/') is var path && path.Length == depth
+            && path.Take(depth - 1).Zip(outer).All(p => p.First == p.Second));
     }
 
     /// <summary>The template body of the entry <paramref name="key"/> (<c>node.&lt;path&gt;</c> or <c>deliverable.&lt;path&gt;</c>), or null.</summary>
@@ -1782,21 +1863,6 @@ public static class ExpectedDifferences
             : key.StartsWith("deliverable.", StringComparison.Ordinal) ? "deliverables/" + key["deliverable.".Length..]
             : null;
         return path is not null && migrated.Files.TryGetValue(path.Replace('.', '/') + ".md", out var file) ? FrontMatter.Split(file)?.Body : null;
-    }
-
-    /// <summary>Whether <paramref name="text"/> holds each of <paramref name="fragments"/>, in order, none overlapping.</summary>
-    private static bool InOrder(string text, IReadOnlyList<string> fragments)
-    {
-        var at = 0;
-        foreach (var fragment in fragments)
-        {
-            var found = text.IndexOf(fragment, at, StringComparison.Ordinal);
-            if (found < 0)
-                return false;
-            at = found + fragment.Length;
-        }
-
-        return true;
     }
 
     /// <summary><paramref name="candidate"/> when it is nearer <paramref name="old"/> than <paramref name="now"/> is, else <paramref name="now"/>.</summary>

@@ -660,6 +660,57 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Status, "Completed", "Failed", null, notRun)));
     }
 
+    // ---- final review B1: the rule credits only an item's fixed text with its result reads empty ----
+
+    private const string ItemsRan = "- Type 2 diabetes: Diabetes paragraph.\n- Metformin continued: Medication paragraph.\n";
+
+    [Fact]
+    public void ALoopItemThatDidNotRun_DoesNotExplainA30OnlyLineWithAResult()
+    {
+        // (a) the line 31 would lack if it skipped an item 30 ran: its result read is not empty
+        var notRun = ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: Blood pressure paragraph.\n", ItemsRan, "node.problem_lines", notRun)));
+    }
+
+    [Fact]
+    public void ALoopItemThatDidNotRun_CountsEachItemInARun()
+    {
+        // (b) two items' fixed text in one run of 30-only lines, one item not run: refused; two not run: credited
+        const string Two = "- Blood pressure of 148/92: \n- Weight 82 kg: \n";
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + Two, ItemsRan, "node.problem_lines",
+            ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun))));
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, ItemsRan + Two, ItemsRan, "node.problem_lines",
+            ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun, RowState.NotRun))));
+    }
+
+    [Fact]
+    public void ALoopItemThatFailed_IsNotCredited()
+    {
+        // (c) the ruling covers an item past its max or with its body skipped, not one that failed or was cancelled
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: \n", ItemsRan, "node.problem_lines",
+            ItemsRun(RowState.Completed, RowState.Completed, RowState.Failed))));
+    }
+
+    [Fact]
+    public void ALoopItemWhoseBodyWasSkipped_IsCredited_WithItsResultEmptyOnly()
+    {
+        var skipped = ItemsRun(RowState.Completed, RowState.Completed, RowState.Skipped);
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: \n", ItemsRan, "node.problem_lines", skipped)));
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: Blood pressure paragraph.\n", ItemsRan, "node.problem_lines", skipped)));
+    }
+
+    [Fact]
+    public void ALoopItemNotRun_CountsOnlyTheLoopsOwnItemRows()
+    {
+        // a row one item path deeper (an inner loop's instance, keyed by the loop's own entry) is not one of its items
+        var deeper = Run(RunState.Completed, rows:
+        [
+            Row("node.problem_loop:1", PlanKind.For, RowState.Completed), Row("node.problem_loop:2", PlanKind.For, RowState.Completed),
+            Row("node.problem_loop:3", PlanKind.For, RowState.Completed), Row("node.problem_loop:3/1", PlanKind.For, RowState.NotRun),
+        ]);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: \n", ItemsRan, "node.problem_lines", deeper)));
+    }
+
     [Fact]
     public async Task AChosenMacrosFinalLineEnding_IsExpected()
     {
