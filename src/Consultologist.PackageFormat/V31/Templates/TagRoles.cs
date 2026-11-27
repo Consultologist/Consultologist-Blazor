@@ -65,43 +65,17 @@ internal static class TagRoles
     }
 
     /// <summary>
-    /// The roles of the tags of <paramref name="text"/>, the body of the file <paramref name="path"/>, as the checker typed
-    /// it wherever it read it among <paramref name="bodies"/> (each top body and every body it places,
-    /// <see cref="PackageTemplates.Placed"/>); every tag <see cref="TagRole.Statement"/> when <paramref name="refused"/>
-    /// holds the file or the checker read it nowhere.
+    /// The roles of every file the checker read among <paramref name="bodies"/> (each top body and every body it places,
+    /// <see cref="PackageTemplates.Placed"/>), built once for a whole check, a file of <paramref name="refused"/> typing none.
     /// </summary>
-    public static Func<TemplateTag, TagRole> Of(IEnumerable<CheckedBody> bodies, ScopeTree tree, string path, string text, IReadOnlySet<string> refused)
-    {
-        ArgumentNullException.ThrowIfNull(bodies);
-        ArgumentNullException.ThrowIfNull(path);
-        ArgumentNullException.ThrowIfNull(text);
-        ArgumentNullException.ThrowIfNull(refused);
-        if (refused.Contains(path))
-            return _ => TagRole.Statement;
-        var read = bodies.SelectMany(PackageTemplates.Placed).Select(p => p.Body)
-            .Where(b => b.Host.Path == path && b.Syntax.Text == text)
-            .Distinct(ReferenceEqualityComparer.Instance).Cast<CheckedBody>();
-        Dictionary<int, TagRole>? merged = null;
-        foreach (var body in read)
-        {
-            var roles = Of(body, tree);
-            if (merged is null)
-            {
-                merged = new Dictionary<int, TagRole>(roles);
-                continue;
-            }
-
-            foreach (var (start, role) in roles)
-                merged[start] = merged.TryGetValue(start, out var other) ? Merge(other, role) : TagRole.Statement;
-        }
-
-        return merged is null ? _ => TagRole.Statement : tag => merged.GetValueOrDefault(tag.Start, TagRole.Statement);
-    }
+    public static SiteRoles Of(IEnumerable<CheckedBody> bodies, ScopeTree tree, IReadOnlySet<string> refused) => new(bodies, tree, refused);
 
     /// <summary>What an output that places nothing is, by what the checker says it writes.</summary>
     private static TagRole Written(WrittenOutput written, FormatSet formats)
     {
-        if (written.Rendered)
+        // #1543 (D2, D5): a renderer's role is an output whose pipe ends in one; a built-in step after it gives the role
+        // of the final value's type, as for any other output.
+        if (written.Output.Pipes is [.., var last] && last.Name.StartsWith(DialectRules.RendererRoot + ".", StringComparison.Ordinal))
             return TagRole.Renderer;
         if (written.Format is not { } format)
             return TagRole.Statement;
@@ -109,8 +83,62 @@ internal static class TagRoles
     }
 
     /// <summary>The role that says least of two a tag has: two reads a block read, any other two different roles a statement.</summary>
-    private static TagRole Merge(TagRole a, TagRole b) =>
+    internal static TagRole Merge(TagRole a, TagRole b) =>
         a == b ? a
         : a is TagRole.BlockRead or TagRole.InlineRead && b is TagRole.BlockRead or TagRole.InlineRead ? TagRole.BlockRead
         : TagRole.Statement;
+}
+
+/// <summary>
+/// #1543 (ruling 2, D2, D5): the path → roles map of one check, built once and read by each rule that judges the text beside
+/// a tag (publish's S05-065, S05-066 and S05-067; the migration's hard breaks). For each file the checker read, with the
+/// text it read, each tag's role as <see cref="TagRoles"/> gives it, merged over every place it read it, and what each
+/// output reads as written (its piped head, without its pipes).
+/// </summary>
+internal sealed class SiteRoles
+{
+    private readonly Dictionary<(string Path, string Text), Dictionary<int, TagRole>> roles = [];
+    private readonly Dictionary<(string Path, string Text), Dictionary<int, string>> reads = [];
+    private readonly IReadOnlySet<string> refused;
+
+    internal SiteRoles(IEnumerable<CheckedBody> bodies, ScopeTree tree, IReadOnlySet<string> refused)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+        ArgumentNullException.ThrowIfNull(tree);
+        ArgumentNullException.ThrowIfNull(refused);
+        this.refused = refused;
+        var read = bodies.SelectMany(PackageTemplates.Placed).Select(p => p.Body)
+            .Distinct(ReferenceEqualityComparer.Instance).Cast<CheckedBody>();
+        foreach (var body in read)
+        {
+            var key = (body.Host.Path, body.Syntax.Text);
+            var typed = TagRoles.Of(body, tree);
+            if (!roles.TryGetValue(key, out var merged))
+            {
+                roles[key] = new Dictionary<int, TagRole>(typed);
+                reads[key] = body.Syntax.Outputs.GroupBy(o => o.Tag.Start).ToDictionary(g => g.Key, g => g.First().Path ?? g.First().Head);
+                continue;
+            }
+
+            foreach (var (start, role) in typed)
+                merged[start] = merged.TryGetValue(start, out var other) ? TagRoles.Merge(other, role) : TagRole.Statement;
+        }
+    }
+
+    /// <summary>
+    /// The role of each tag of <paramref name="text"/>, the body of the file <paramref name="path"/>; every tag
+    /// <see cref="TagRole.Statement"/> when the file is refused or the checker read it nowhere with that text.
+    /// </summary>
+    public Func<TemplateTag, TagRole> Of(string path, string text)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(text);
+        if (refused.Contains(path) || !roles.TryGetValue((path, text), out var merged))
+            return _ => TagRole.Statement;
+        return tag => merged.GetValueOrDefault(tag.Start, TagRole.Statement);
+    }
+
+    /// <summary>What the output in <paramref name="tag"/> of the file <paramref name="path"/> reads, as written without its pipes; <c>null</c> for no output the checker read.</summary>
+    public string? ReadOf(string path, string text, TemplateTag tag) =>
+        reads.TryGetValue((path, text), out var outputs) ? outputs.GetValueOrDefault(tag.Start) : null;
 }

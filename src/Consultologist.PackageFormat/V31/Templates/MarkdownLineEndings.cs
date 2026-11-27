@@ -107,6 +107,67 @@ public static class MarkdownLineEndings
         return (text.ToString(), found.Count);
     }
 
+    /// <summary>
+    /// #1543 (ruling 2, D5): whether <paramref name="tag"/> (one of <see cref="TemplateTags.Scan"/>'s tags of
+    /// <paramref name="body"/>) has text before it and after it on its own line. Text is any character but a space or a
+    /// tab outside every tag and comment, or a tag whose role (<paramref name="role"/>) is <see cref="TagRole.InlineRead"/>;
+    /// a statement, a comment, a placement, a renderer or a block read beside it is not. Neither, for a body whose tags do
+    /// not close.
+    /// </summary>
+    public static (bool Before, bool After) TextBeside(string body, TemplateTag tag, Func<TemplateTag, TagRole> role)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(tag);
+        ArgumentNullException.ThrowIfNull(role);
+        var (scanned, unclosed) = TemplateTags.Scan(body);
+        if (unclosed is not null)
+            return (false, false);
+        var tags = scanned.Select(t => (Tag: t, Asked: true)).Concat(TemplateTags.Comments(body).Select(c => (Tag: c, Asked: false))).ToList();
+        var byStart = tags.GroupBy(t => t.Tag.Start).ToDictionary(g => g.Key, g => g.First());
+        var byEnd = tags.GroupBy(t => t.Tag.End).ToDictionary(g => g.Key, g => g.First());
+        bool IsText((TemplateTag Tag, bool Asked) other) => other.Asked && role(other.Tag) == TagRole.InlineRead;
+
+        var before = false;
+        for (var i = tag.Start; i > 0 && !before;)
+        {
+            if (byEnd.TryGetValue(i, out var other) && other.Tag.Start < i)
+            {
+                before = IsText(other);
+                i = other.Tag.Start;
+            }
+            else if (body[i - 1] is '\n' or '\r')
+            {
+                break;
+            }
+            else
+            {
+                before = body[i - 1] is not (' ' or '\t');
+                i--;
+            }
+        }
+
+        var after = false;
+        for (var i = tag.End; i < body.Length && !after;)
+        {
+            if (byStart.TryGetValue(i, out var other) && other.Tag.End > i)
+            {
+                after = IsText(other);
+                i = other.Tag.End;
+            }
+            else if (body[i] is '\n' or '\r')
+            {
+                break;
+            }
+            else
+            {
+                after = body[i] is not (' ' or '\t');
+                i++;
+            }
+        }
+
+        return (before, after);
+    }
+
     /// <summary>Whether <paramref name="inline"/> sits in a paragraph's inlines (not a heading's, a table cell's or any other leaf's).</summary>
     private static bool InParagraph(Inline inline)
     {

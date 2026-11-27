@@ -165,6 +165,17 @@ public static class DialectSentences
     public static SourceRefusal SingleLineEnding(string subject, int line, string path) =>
         new("S05-065", $"{subject} has a single line ending inside a paragraph at line {Line(line)}: a single line ending is not a break; end the line with \\ or leave a blank line.", path);
 
+    /// <summary>
+    /// S05-066 (#1543 ruling 2, D5, D6): a <c>markdown_block</c> read with text before it on its line, in a Markdown body;
+    /// <paramref name="read"/> is what it reads as written, without its pipes (<c>profile.closing</c>).
+    /// </summary>
+    public static SourceRefusal TextBeforeBlockRead(string subject, string read, int line, string path) =>
+        new("S05-066", $"{subject} has text before {{{{ {read} }}}}, a markdown_block, at line {Line(line)}; a markdown_block read stands alone on its line.", path);
+
+    /// <summary>S05-067 (#1543 ruling 2, D5, D6): a <c>markdown_block</c> read with text after it on its line; the rest is S05-066's.</summary>
+    public static SourceRefusal TextAfterBlockRead(string subject, string read, int line, string path) =>
+        new("S05-067", $"{subject} has text after {{{{ {read} }}}}, a markdown_block, at line {Line(line)}; a markdown_block read stands alone on its line.", path);
+
     /// <summary>S05-037 (R-S3): a bare <c>snippet.&lt;id&gt;</c>; <paramref name="id"/> as written (<c>tone</c>, <c>standards.hpi</c>).</summary>
     public static SourceRefusal ReadsBareSnippet(string subject, string id, int line, string path) =>
         new("S05-037", $"{subject} reads snippet.{id} at line {Line(line)}; read its text as snippet.{id}.content.", path);

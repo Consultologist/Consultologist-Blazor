@@ -36,12 +36,13 @@ internal static partial class Migrate
         if (sites.Count == 0)
             return;
         var read = Read31(m);
-        var bodies = read?.Bodies.Bodies ?? [];
-        var refused = read?.Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal) ?? [];
+        var roles = read is { } typed
+            ? TagRoles.Of(typed.Bodies.Bodies, typed.Resolution.Tree, typed.Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal))
+            : null;
         foreach (var path in sites)
         {
             var file = m.Sources[path];
-            var role = read is { } typed ? TagRoles.Of(bodies, typed.Resolution.Tree, path, file.Body!, refused) : _ => TagRole.Statement;
+            var role = roles?.Of(path, file.Body!) ?? (_ => TagRole.Statement);
             var (text, count) = MarkdownLineEndings.WithHardBreaks(file.Body!, role);
             if (count == 0)
                 continue;

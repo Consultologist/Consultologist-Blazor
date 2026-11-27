@@ -18,17 +18,21 @@ public static partial class SourceTemplates
     private sealed partial class Context
     {
         /// <summary>
-        /// S05-065 for each line ending to break in each site of the package, in the order of the sites (deliverables,
-        /// rendered nodes, macros, snippets, renderers), then of the line endings; the tags' roles as
-        /// <paramref name="bodies"/> (the package's top bodies, with what they place) typed them, a file refused so far
-        /// typing none.
+        /// The roles of the tags of every site as <paramref name="bodies"/> (the package's top bodies, with what they place)
+        /// typed them, a file refused so far typing none: built once, for <see cref="LineEndings"/> and <see cref="BlockReads"/>.
         /// </summary>
-        public void LineEndings(IReadOnlyList<CheckedBody> bodies)
+        public SiteRoles Roles(IReadOnlyList<CheckedBody> bodies) =>
+            TagRoles.Of(bodies, resolution.Tree, Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal));
+
+        /// <summary>
+        /// S05-065 for each line ending to break in each site of the package, in the order of the sites (deliverables,
+        /// rendered nodes, macros, snippets, renderers), then of the line endings; the tags' roles from <paramref name="roles"/>.
+        /// </summary>
+        public void LineEndings(SiteRoles roles)
         {
-            var refused = Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal);
             foreach (var (subject, path, text) in Sites())
             {
-                foreach (var at in MarkdownLineEndings.Find(text, TagRoles.Of(bodies, resolution.Tree, path, text, refused)))
+                foreach (var at in MarkdownLineEndings.Find(text, roles.Of(path, text)))
                     Warnings.Add(DialectSentences.SingleLineEnding(subject, LineOf(text, at), path));
             }
         }
