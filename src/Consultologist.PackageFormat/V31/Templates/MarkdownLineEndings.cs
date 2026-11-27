@@ -111,28 +111,124 @@ public static class MarkdownLineEndings
     /// #1543 (ruling 2, D5): whether <paramref name="tag"/> (one of <see cref="TemplateTags.Scan"/>'s tags of
     /// <paramref name="body"/>) has text before it and after it on its own line. Text is any character but a space or a
     /// tab outside every tag and comment, or a tag whose role (<paramref name="role"/>) is <see cref="TagRole.InlineRead"/>;
-    /// a statement, a comment, a placement, a renderer or a block read beside it is not. Neither, for a body whose tags do
-    /// not close.
+    /// a statement, a comment, a placement, a renderer or a block read beside it is not, and the scan steps over it. A tag
+    /// beside it that spans lines ends the scan there: what stands past its line ending is another line's. Neither, for a
+    /// body whose tags do not close.
     /// </summary>
     public static (bool Before, bool After) TextBeside(string body, TemplateTag tag, Func<TemplateTag, TagRole> role)
     {
         ArgumentNullException.ThrowIfNull(body);
         ArgumentNullException.ThrowIfNull(tag);
         ArgumentNullException.ThrowIfNull(role);
-        var (scanned, unclosed) = TemplateTags.Scan(body);
-        if (unclosed is not null)
+        if (Neighbours.Of(body) is not { } neighbours)
             return (false, false);
-        var tags = scanned.Select(t => (Tag: t, Asked: true)).Concat(TemplateTags.Comments(body).Select(c => (Tag: c, Asked: false))).ToList();
-        var byStart = tags.GroupBy(t => t.Tag.Start).ToDictionary(g => g.Key, g => g.First());
-        var byEnd = tags.GroupBy(t => t.Tag.End).ToDictionary(g => g.Key, g => g.First());
+        var beside = Beside(body, tag, role, neighbours);
+        return (beside.Before, beside.After);
+    }
+
+    /// <summary>
+    /// #1543 (ruling 2, D5): the finder of publish's S05-066 and S05-067 and of the migration's move (D7): each tag of
+    /// <paramref name="body"/> whose role is <see cref="TagRole.BlockRead"/> and that has text before or after it on its
+    /// line (<see cref="TextBeside"/>), in order; none for a body whose tags do not close.
+    /// </summary>
+    public static IReadOnlyList<(TemplateTag Tag, bool Before, bool After)> BlockReadsBeside(string body, Func<TemplateTag, TagRole> role)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(role);
+        if (Neighbours.Of(body) is not { } neighbours)
+            return [];
+        return neighbours.Scanned.Where(t => role(t) == TagRole.BlockRead)
+            .Select(t => (Tag: t, Side: Beside(body, t, role, neighbours)))
+            .Where(t => t.Side.Before || t.Side.After)
+            .Select(t => (t.Tag, t.Side.Before, t.Side.After))
+            .ToList();
+    }
+
+    /// <summary>
+    /// #1543 (ruling 2, D7): <paramref name="body"/> with each block read <see cref="BlockReadsBeside"/> finds on a line of
+    /// its own, and those reads, in order. Nothing is dropped. Where text stands before the read, <c>\</c> and a line
+    /// ending are written directly before it, after whatever stood there, the tags the scan steps over (a statement, a
+    /// comment, a placement, a renderer, another block read) kept on the read's line, so <c>{{ if x }}{{ r }}</c> moves
+    /// whole; where text stands after it, a plain line ending is written directly after it and the tags that stay with it,
+    /// so the text starts the next line (a <c>\</c> there would itself be text after the read). Written again, it moves
+    /// nothing: no read it moved has text beside it.
+    /// </summary>
+    public static (string Text, IReadOnlyList<TemplateTag> Moved) WithBlockReadsAlone(string body, Func<TemplateTag, TagRole> role)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(role);
+        if (Neighbours.Of(body) is not { } neighbours)
+            return (body, []);
+        var moved = new List<TemplateTag>();
+        var writes = new SortedDictionary<int, string>();
+        foreach (var tag in neighbours.Scanned.Where(t => role(t) == TagRole.BlockRead))
+        {
+            var beside = Beside(body, tag, role, neighbours);
+            if (!beside.Before && !beside.After)
+                continue;
+            moved.Add(tag);
+            // Two reads moved as one (a block read stepped over beside another) write their line ending once.
+            if (beside.Before)
+                writes[beside.From] = "\\\n";
+            if (beside.After)
+                writes[beside.To] = "\n";
+        }
+
+        if (moved.Count == 0)
+            return (body, []);
+        var text = new System.Text.StringBuilder(body.Length + (writes.Count * 2));
+        var from = 0;
+        foreach (var (at, written) in writes)
+        {
+            text.Append(body, from, at - from).Append(written);
+            from = at;
+        }
+
+        text.Append(body, from, body.Length - from);
+        return (text.ToString(), moved);
+    }
+
+    /// <summary>A body's tags (<see cref="TemplateTags.Scan"/>'s, asked their role) and comments (never text), by where each starts and ends.</summary>
+    private sealed record Neighbours(
+        IReadOnlyList<TemplateTag> Scanned,
+        IReadOnlyDictionary<int, (TemplateTag Tag, bool Asked)> ByStart,
+        IReadOnlyDictionary<int, (TemplateTag Tag, bool Asked)> ByEnd)
+    {
+        /// <summary>The neighbours of <paramref name="body"/>; none for a body whose tags do not close.</summary>
+        public static Neighbours? Of(string body)
+        {
+            var (scanned, unclosed) = TemplateTags.Scan(body);
+            if (unclosed is not null)
+                return null;
+            var tags = scanned.Select(t => (Tag: t, Asked: true)).Concat(TemplateTags.Comments(body).Select(c => (Tag: c, Asked: false))).ToList();
+            return new(
+                scanned,
+                tags.GroupBy(t => t.Tag.Start).ToDictionary(g => g.Key, g => g.First()),
+                tags.GroupBy(t => t.Tag.End).ToDictionary(g => g.Key, g => g.First()));
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="tag"/> has text before and after it on its line (<see cref="TextBeside"/>), and where the
+    /// tags the scan stepped over begin before it (<c>From</c>: its own start when none) and end after it (<c>To</c>).
+    /// </summary>
+    private static (bool Before, bool After, int From, int To) Beside(string body, TemplateTag tag, Func<TemplateTag, TagRole> role, Neighbours neighbours)
+    {
         bool IsText((TemplateTag Tag, bool Asked) other) => other.Asked && role(other.Tag) == TagRole.InlineRead;
+        bool SpansLines(TemplateTag other) => body.AsSpan(other.Start, other.End - other.Start).IndexOfAny('\n', '\r') >= 0;
 
         var before = false;
+        var from = tag.Start;
         for (var i = tag.Start; i > 0 && !before;)
         {
-            if (byEnd.TryGetValue(i, out var other) && other.Tag.Start < i)
+            if (neighbours.ByEnd.TryGetValue(i, out var other) && other.Tag.Start < i)
             {
                 before = IsText(other);
+                if (before)
+                    break;
+                from = other.Tag.Start;
+                if (SpansLines(other.Tag))
+                    break;
                 i = other.Tag.Start;
             }
             else if (body[i - 1] is '\n' or '\r')
@@ -147,11 +243,17 @@ public static class MarkdownLineEndings
         }
 
         var after = false;
+        var to = tag.End;
         for (var i = tag.End; i < body.Length && !after;)
         {
-            if (byStart.TryGetValue(i, out var other) && other.Tag.End > i)
+            if (neighbours.ByStart.TryGetValue(i, out var other) && other.Tag.End > i)
             {
                 after = IsText(other);
+                if (after)
+                    break;
+                to = other.Tag.End;
+                if (SpansLines(other.Tag))
+                    break;
                 i = other.Tag.End;
             }
             else if (body[i] is '\n' or '\r')
@@ -165,7 +267,7 @@ public static class MarkdownLineEndings
             }
         }
 
-        return (before, after);
+        return (before, after, from, to);
     }
 
     /// <summary>Whether <paramref name="inline"/> sits in a paragraph's inlines (not a heading's, a table cell's or any other leaf's).</summary>

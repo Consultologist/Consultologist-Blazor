@@ -27,14 +27,10 @@ internal static partial class Migrate
     public static void HardBreaks(Migrated m)
     {
         ArgumentNullException.ThrowIfNull(m);
-        var set = FormatSet.ForPackage(m.Options.Registry, m.PackageFormats());
-        var written = m.StripNodes.Keys.Select(k => "nodes/" + k["node.".Length..].Replace('.', '/') + ".md").ToHashSet(StringComparer.Ordinal);
-        var sites = m.Sources
-            .Where(f => f.Value.Body is not null && !written.Contains(f.Key) && IsMarkdownSite(m, f.Key, f.Value, set))
-            .Select(f => f.Key)
-            .ToList();
+        var sites = MarkdownSites(m);
         if (sites.Count == 0)
             return;
+        // Read again after the block-reads pass, so each tag's offset is the moved body's.
         var read = Read31(m);
         var roles = read is { } typed
             ? TagRoles.Of(typed.Bodies.Bodies, typed.Resolution.Tree, typed.Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal))
@@ -50,6 +46,20 @@ internal static partial class Migrate
             m.HardBreaks[path] = count;
             m.Notice(MigrationSentences.ExplicitHardBreaks(path, count));
         }
+    }
+
+    /// <summary>
+    /// The files of the G-D8 sites (the class's remarks): each Markdown body site with a body (<see cref="IsMarkdownSite"/>)
+    /// but a stripping node the migration wrote.
+    /// </summary>
+    private static List<string> MarkdownSites(Migrated m)
+    {
+        var set = FormatSet.ForPackage(m.Options.Registry, m.PackageFormats());
+        var written = m.StripNodes.Keys.Select(k => "nodes/" + k["node.".Length..].Replace('.', '/') + ".md").ToHashSet(StringComparer.Ordinal);
+        return m.Sources
+            .Where(f => f.Value.Body is not null && !written.Contains(f.Key) && IsMarkdownSite(m, f.Key, f.Value, set))
+            .Select(f => f.Key)
+            .ToList();
     }
 
     /// <summary>

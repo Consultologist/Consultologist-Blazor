@@ -21,15 +21,9 @@ public static partial class SourceTemplates
         {
             foreach (var (subject, path, text) in Sites())
             {
-                var role = roles.Of(path, text);
-                var (tags, unclosed) = TemplateTags.Scan(text);
-                if (unclosed is not null)
-                    continue;
-                foreach (var tag in tags.Where(t => role(t) == TagRole.BlockRead))
+                // The migration's move (D7) reads the same finder, so what is refused here is what it moves.
+                foreach (var (tag, before, after) in MarkdownLineEndings.BlockReadsBeside(text, roles.Of(path, text)))
                 {
-                    var (before, after) = MarkdownLineEndings.TextBeside(text, tag, role);
-                    if (!before && !after)
-                        continue;
                     var read = roles.ReadOf(path, text, tag) ?? text[tag.Start..tag.End];
                     if (before)
                         Refusals.Add(DialectSentences.TextBeforeBlockRead(subject, read, tag.Line, path));

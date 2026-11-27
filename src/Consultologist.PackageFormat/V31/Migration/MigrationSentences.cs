@@ -506,6 +506,16 @@ internal static class MigrationSentences
         : $"In '{file}', {count} line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.";
 
     /// <summary>
+    /// A10-093 (#1543, ruling 2, D7): in the Markdown body <paramref name="file"/>, the migration moved each of
+    /// <paramref name="reads"/> (a <c>markdown_block</c> read, as written without its pipes) that had text beside it onto a
+    /// line of its own: after <c>\</c> where text stood before it, the text after it on the next line. One per file; one read
+    /// or several.
+    /// </summary>
+    public static string BlockReadsMoved(string file, IReadOnlyList<string> reads) => reads.Count == 1
+        ? $"In '{file}', the read {reads[0]} now stands alone on its line (after \\, an explicit hard break, where text stood before it): at specVersion 31 a markdown_block read stands alone on its line."
+        : $"In '{file}', the reads {string.Join(", ", reads)} now stand alone on their lines (after \\, an explicit hard break, where text stood before them): at specVersion 31 a markdown_block read stands alone on its line.";
+
+    /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
     /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
     /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is

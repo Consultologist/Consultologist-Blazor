@@ -208,6 +208,13 @@ public sealed record Migration31Result(
     /// byte-equivalence comparison credits those <c>\</c> only in a package that holds one (<c>explicit-hard-break</c>).
     /// </summary>
     public IReadOnlyDictionary<string, int> HardBreaks { get; init; } = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1543 (ruling 2, D7, D8): each Markdown body in which the migration moved a <c>markdown_block</c> read that had text
+    /// beside it onto a line of its own, its file to how many reads it moved. The byte-equivalence comparison credits the
+    /// line endings of the move only in a package that holds one (<c>block-read-own-line</c>).
+    /// </summary>
+    public IReadOnlyDictionary<string, int> MovedReads { get; init; } = new Dictionary<string, int>(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -341,6 +348,7 @@ public static class WorkflowPackageMigration30To31
             V31.Migration.Migrate.Checks(migrated);
             V31.Migration.Migrate.Deliverables(migrated);
             V31.Migration.Migrate.StripLoopItems(migrated);
+            V31.Migration.Migrate.BlockReads(migrated);
             V31.Migration.Migrate.HardBreaks(migrated);
             V31.Migration.Migrate.Derived(migrated);
             PastTheInstanceLimit(migrated);

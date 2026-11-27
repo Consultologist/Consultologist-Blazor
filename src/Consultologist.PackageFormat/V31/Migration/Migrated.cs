@@ -185,6 +185,12 @@ internal sealed class Migrated
     /// </summary>
     public Dictionary<string, int> HardBreaks { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// #1543 (ruling 2, D7): each Markdown body the block-reads pass (<see cref="Migrate.BlockReads"/>) moved a
+    /// <c>markdown_block</c> read in onto a line of its own, its file to how many reads it moved there.
+    /// </summary>
+    public Dictionary<string, int> MovedReads { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Each condition site's place, by the site's 30 owner id (Task 7), for <see cref="Scope"/>; none is the package's top level.</summary>
     public Dictionary<string, SitePlace> Places { get; } = new(StringComparer.Ordinal);
 
@@ -453,6 +459,7 @@ internal sealed class Migrated
             MacroIds30 = new Dictionary<string, string>(MacroIds30, StringComparer.Ordinal),
             StripNodes = new Dictionary<string, string>(StripNodes, StringComparer.Ordinal),
             HardBreaks = new Dictionary<string, int>(HardBreaks, StringComparer.Ordinal),
+            MovedReads = new Dictionary<string, int>(MovedReads, StringComparer.Ordinal),
         };
     }
 }
