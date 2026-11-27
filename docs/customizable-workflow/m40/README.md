@@ -5,8 +5,8 @@ done **while Milestone 39 is being built**, and reconciled with what M39 actuall
 `main`. This file is the handover for the agent doing the planning: read it, then `AGENTS.md`, before
 anything else.
 
-**Status (2026-11-27): the inputs group is being decided; no plan is written yet.** The decisions so
-far are in [`input-kinds.md`](input-kinds.md). Branch `m40-planning`, from `main` at
+**Status (2026-11-27): the inputs group is decided, but for #1538; no plan is written yet.** The
+decisions so far are in [`input-kinds.md`](input-kinds.md). Branch `m40-planning`, from `main` at
 `3b0e707a`, in its own clone (`~/Projects/Consultologist/app/M40`). Where the planning stands at the
 end of each session, and what the next one does first: [`SESSION-LOG.md`](SESSION-LOG.md).
 

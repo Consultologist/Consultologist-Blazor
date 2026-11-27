@@ -48,12 +48,18 @@ Everything here was read from Microsoft's documentation. Nothing was run.
 
 ## To investigate (#1538)
 
+In two halves. The reading half (documentation, pricing, regions, which libraries exist) is done in
+the next planning session. The measuring half (calls to the service and throwaway scripts, on
+fictional documents) waits for Milestone 40's building to start, as the first task of the converter
+slice.
+
 - The smallest step from the service's output to the engine's Markdown: its Markdown with the HTML
   tables rewritten and the comments removed, by an off-the-shelf library if one keeps spans; or
   Markdown built from the structured result. Measured on fictional documents.
 - Whether an option or an API version writes Markdown tables in place of HTML ones.
 - DOCX: through the layout model as well, through an off-the-shelf library, or the engine's own
-  deterministic code (the owner's answer of 2026-11-27, looked at again there).
+  deterministic code. Own code is chosen only if neither of the others keeps headings, lists and
+  tables or gives the same bytes on each run.
 - The price on the pricing page for the engine's region, and how a DOCX's pages are counted.
 - Markdown output and API version 2024-11-30 in the Canadian region.
 - Whether the same file gives the same output over time, since the output is hashed.

@@ -1,11 +1,12 @@
 # Milestone 40: inputs
 
 What the owner has decided for the inputs group: the input kinds, the file model, the converter,
-the locale and the input declaration. Decided in session 2 (2026-11-26 and 2026-11-27), in seven
+the locale and the input declaration. Decided in session 2 (2026-11-26 and 2026-11-27), in eight
 rounds. The parent issue is
 [#1442](https://github.com/Consultologist/Consultologist-Blazor/issues/1442).
 
-Nothing here is a plan yet. What is still open is at the end.
+The owner ruled the group settled enough on 2026-11-27. Nothing here is a plan yet. What is still
+open is at the end.
 
 ## The kinds
 
@@ -75,9 +76,9 @@ unasked.
   needs no file model: it changes what a document uploaded to a `markdown_block` input yields.
 - **It arrives with the next spec version,** as `effectiveInputHash` definition 8. A 31 package
   keeps "extracted text, as at 30".
-- **DOCX is converted by the engine's own deterministic code** (headings, lists, tables, emphasis),
-  pinned by golden files. #1538 looks at this again, against the layout model and off-the-shelf
-  libraries.
+- **DOCX is not settled.** #1538 compares the layout model, an off-the-shelf library and the
+  engine's own code. Own code is chosen only if neither of the others keeps headings, lists and
+  tables or gives the same bytes on each run. Whatever is chosen is pinned by golden files.
 - **PDF and scanned pages go through the OCR service's layout model,** recorded with its dated
   version, and are marked best effort. The higher price is accepted.
 - **`plaintext` does not pay for structure:** a `plaintext` extraction keeps `prebuilt-read`, and a
@@ -173,9 +174,14 @@ Decided here, so that the declaration changes once.
   PDF and the Web's previews, is `DisableHtml`, `UsePipeTables` and
   `UseSoftlineBreakAsHardlineBreak` (read at `94b66aec`). The owner carries it to the M39 build, for
   area 12 or 13. Milestone 40 plans against one pipeline.
-- **How the converter gets from the layout model's output to the engine's Markdown,** and the
-  model's price and availability in the engine's region: #1538, with the findings in
-  [`layout-model.md`](layout-model.md).
+- **How the converter gets from the layout model's output to the engine's Markdown,** what
+  converts DOCX, and the model's price and availability in the engine's region: #1538, with the
+  findings in [`layout-model.md`](layout-model.md). Its reading half is done in the next planning
+  session; its measuring half waits for building to start, as the first task of the converter
+  slice.
+- **Left for when the slices are planned:** the Create page's widgets for files, how an agent
+  declares the media types it accepts, and the limits' numbers. They depend on #1538 or on
+  Milestone 39's areas 12 and 13.
 
 ## Milestone 39 facts relied on
 

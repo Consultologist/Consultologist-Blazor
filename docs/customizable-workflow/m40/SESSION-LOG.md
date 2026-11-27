@@ -3,10 +3,11 @@
 Where the planning stands at the end of each session, newest first. Read `README.md` first, then this
 file, then re-read the milestone on GitHub: issues are added to it while M39 is built.
 
-## Session 2 (2026-11-26 and 2026-11-27): the inputs group, seven rounds
+## Session 2 (2026-11-26 and 2026-11-27): the inputs group, eight rounds
 
 Re-read the milestone, read what M39 built since 2026-11-21, and grilled the owner on the inputs
-group. The decisions are in [`input-kinds.md`](input-kinds.md). No plan is written yet.
+group. The decisions are in [`input-kinds.md`](input-kinds.md). The owner ruled the group settled
+enough; what is left waits on #1538 or on M39's areas 12 and 13. No plan is written yet.
 
 **The milestone on 2026-11-27:** 66 open issues, 3 closed.
 
@@ -63,11 +64,11 @@ specification; the closest effort is the volunteer json-logic organisation.
 **Next session:**
 
 1. Re-read the milestone and its open issues, and check `m39-build` for areas 12 and 13.
-2. Check whether M39 fixed its two Markdown pipelines, and take up #1538 (the layout model) before
-   the converter is planned.
-3. Go on with the inputs group's remaining questions (the spreadsheet door's mapping rules, limits
-   and their refusal sentences, mixed arrays, the Create page's widgets), then plan the converter
-   as the first slice.
+2. Check whether M39 fixed its two Markdown pipelines.
+3. Do #1538's reading half: documentation, pricing, regions, and which libraries exist for DOCX and
+   for HTML tables. Nothing is run; the measuring half waits for building to start.
+4. Grill the owner on the next group, extraction and production (#1438, #1439 and its sub-issues,
+   #1415, #1416, #1445), unless they choose another.
 
 ## Session 1 (2026-11-21): the milestone re-read
 
