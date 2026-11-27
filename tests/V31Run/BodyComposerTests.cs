@@ -259,13 +259,13 @@ public class BodyComposerTests
         // A chain gives one sub-row per step in pipe order, the later step's source the step before it; a renderer inside
         // a for gives one sub-row per iteration, each with the entry's number for that pipe (part 05 § 5.5, part 08 § 4.2).
         var plan = RunFixture.Plan(WithTerms(Package())
-            .WithRenderer("quote", "\"markdown_block\"", "> {{ value }}")
+            .WithRenderer("quote", "\"markdown_block\"", ">\n{{ value }}")
             .WithRenderer("tag", "\"string\"", "[{{ value }}]", "plaintext")
             .WithAgent("summary",
                 "{{ node.terms.value | renderer.concept_bullets | renderer.quote }}\n"
                 + "{{ for t in node.terms.value.concepts }}{{ t.term | renderer.tag }}{{ end }}\n"));
         var bullets = ConceptRenderers.Bullets(ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, ConceptSamples.Source));
-        var quoted = "> " + bullets;
+        var quoted = ">\n" + bullets;
 
         var composition = Compose(plan, "node.summary", Scope(("node.terms.value", Concepts())));
 

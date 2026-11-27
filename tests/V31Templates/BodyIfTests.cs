@@ -90,7 +90,7 @@ public class BodyIfTests
     {
         // Each test is read where it is written: an else if's test after the outputs of the branch before it.
         var body = "{{ if check.coverage.value.pass }}{{ node.plan.content }}"
-            + "{{ else if node.sections.state == \"completed\" }}{{ input.consult_draft.content }}{{ else }}{{ end }}\n";
+            + "{{ else if node.sections.state == \"completed\" }}\n{{ input.consult_draft.content }}\n{{ else }}{{ end }}\n";
 
         var reads = Body(Check(WithSections(body)), "deliverables/note.md").Reads;
 

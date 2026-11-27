@@ -251,7 +251,7 @@ public class SubstitutionTests
     {
         var plan = RunFixture.Plan(WithNote("## Plan\n{{ node.summary.content | renderer.bullets | renderer.quoted }}", "markdown_block")
             .WithRenderer("bullets", "\"plaintext\"", "- {{ value }}")
-            .WithRenderer("quoted", "\"markdown_block\"", "> {{ value }}"));
+            .WithRenderer("quoted", "\"markdown_block\"", ">\n{{ value }}"));
         var scope = BodyComposerTests.Scope(("node.summary.content", "Rest and fluids."));
 
         var composition = Compose(plan, scope);
@@ -340,7 +340,7 @@ public class SubstitutionTests
     [Fact]
     public void ARenderedNode_HasNoSitesOrSubstitutions()
     {
-        var plan = RunFixture.Plan(TemplateFixture.Package().WithRendered("recap", "Recap: {{ input.consult_draft.content }}\n", "\"markdown_block\""));
+        var plan = RunFixture.Plan(TemplateFixture.Package().WithRendered("recap", "Recap:\\\n{{ input.consult_draft.content }}\n", "\"markdown_block\""));
 
         var outcome = RenderTurn.Render(
             plan, new RenderCall("node.recap", "node.recap", null, BodyComposerTests.Scope(("input.consult_draft.content", "Rest.")), 100_000));

@@ -516,9 +516,9 @@ public class DialectGoldensExport
             new("pipe-renderer",
                 "A pipe into a package renderer and into a built-in one, and a chain: each renderer's body renders with the "
                 + "piped value as value, and a chain pipes each step's text into the next (chapter 5 §§ 5.5.2, 5.5.3): the package "
-                + "renderer quote writes > once, before the whole of its value.",
+                + "renderer quote writes > on a line of its own, before the whole of its value.",
                 WithTerms(Package())
-                    .WithRenderer("quote", "\"markdown_block\"", "> {{ value }}")
+                    .WithRenderer("quote", "\"markdown_block\"", ">\n{{ value }}")
                     .WithAgent("golden", "Terms:\n{{ node.terms.value | renderer.concept_bullets }}\nQuoted:\n{{ node.terms.value | renderer.concept_bullets | renderer.quote }}\n"),
                 null, Golden, Scope(("node.terms.value", Concepts())), []),
             new("renderer-if-value",

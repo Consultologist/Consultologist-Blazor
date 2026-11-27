@@ -332,7 +332,7 @@ public class MemberReadTests
 
     /// <summary><paramref name="read"/> as an output: a placement in its block form, any other read inline.</summary>
     private static string Output(string read) =>
-        read.Split('.') is ["part", _] or ["macro", _] or ["macro", _, not "content"] ? $"{{{{~ {read} }}}}" : $"Note: {{{{ {read} }}}}";
+        read.Split('.') is ["part", _] or ["macro", _] or ["macro", _, not "content"] ? $"{{{{~ {read} }}}}" : $"{{{{ {read} }}}}";
 
     /// <summary>
     /// The package with the snippet <c>tone</c>, the macro <c>follow_up</c>, the macro folder <c>notes</c> and the check
