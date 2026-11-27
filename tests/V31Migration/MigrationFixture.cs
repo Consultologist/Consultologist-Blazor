@@ -198,6 +198,7 @@ internal static class MigrationFixture
         var files = new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal);
         var keys = new Dictionary<string, string>(migrated.Keys, StringComparer.Ordinal);
         var strip = new Dictionary<string, string>(migrated.StripNodes, StringComparer.Ordinal);
+        var breaks = new Dictionary<string, int>(migrated.HardBreaks, StringComparer.Ordinal);
         foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
@@ -223,6 +224,7 @@ internal static class MigrationFixture
             {
                 var removed = relative[..^DeletedSuffix.Length];
                 Assert.True(files.Remove(removed), $"{relative} removes {removed}, which the migration did not write.");
+                breaks.Remove(removed);
                 foreach (var node in strip.Keys.Where(k => StripNodeFile(k) == removed).ToList())
                     strip.Remove(node);
                 continue;
@@ -233,11 +235,24 @@ internal static class MigrationFixture
                 manifest = text;
             else
                 files[relative] = text;
+
+            // #1510 (item 4; G-D9): an edited body holds the hard breaks the operator kept or wrote, counted again.
+            if (relative.EndsWith(".md", StringComparison.Ordinal) && HardBreaksIn(text) is var count and > 0)
+                breaks[relative] = count;
+            else
+                breaks.Remove(relative);
         }
 
         Assert.All(strip.Keys, k => Assert.True(files.ContainsKey(StripNodeFile(k)), $"{HandEditsStripNodes} names {k}, which the edited package does not hold."));
-        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip };
+        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip, HardBreaks = breaks };
     }
+
+    /// <summary>
+    /// The explicit hard breaks of a file with a header: the line endings of its body after an odd number of <c>\</c> (an even
+    /// number is escaped backslashes, which break nothing).
+    /// </summary>
+    private static int HardBreaksIn(string text) =>
+        FrontMatter.Split(text) is { } split ? System.Text.RegularExpressions.Regex.Count(split.Body, @"(?<!\\)(?:\\\\)*\\\n") : 0;
 
     /// <summary>The file of the stripping node at rooted key <paramref name="key"/> (<c>node.a.b</c> is <c>nodes/a/b.md</c>).</summary>
     private static string StripNodeFile(string key) => "nodes/" + key["node.".Length..].Replace('.', '/') + ".md";

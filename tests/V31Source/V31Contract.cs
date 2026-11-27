@@ -260,7 +260,9 @@ internal static class V31Contract
     /// their if, #1508 2026-11-26 item 1, area 12 Task F1; A10-088: a loop whose .content is read returns each item through a
     /// new node that strips it, #1509 comment 7207709261 item 1, area 13 Task F1; A10-089: a signature written through a renderer
     /// that tests its trimmed value, #1509 comment 7207709261 item 2, area 13 Task F2; A10-090: a loop whose .content is read and whose
-    /// items have more than one text format, a hand edit's reason, area 13 Task F1 fix round 1).
+    /// items have more than one text format, a hand edit's reason, area 13 Task F1 fix round 1; A10-091: a Markdown body's single
+    /// line endings inside a paragraph ended with \ by the migration, and A10-092: a body a prompt reads, shown elsewhere, whose
+    /// line endings are kept, #1509 comment 7209167166 item 4, area 13 Task G5).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -352,6 +354,8 @@ internal static class V31Contract
         ["A10-088"] = "Loop '<id>' returns each item through the new node '<new id>', which strips the item's text as specVersion 30 did.",
         ["A10-089"] = "The signature is written through renderer '<id>', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
         ["A10-090"] = "loop '<id>' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.",
+        ["A10-091"] = "In '<file>', <n> line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.",
+        ["A10-092"] = "'<file>' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>

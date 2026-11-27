@@ -506,6 +506,55 @@ public class ByteEquivalenceTests
     }
 
     /// <summary>
+    /// #1510 (the owner's third fix-first group, item 4; G-D9): composer-macros' letterhead written as an address, one line
+    /// each, which 30 broke at each line ending (its capture is the address as written). The migration ends each line with
+    /// <c>\</c>, so every letter that places it differs from 30's only by those, and each is credited to
+    /// <c>explicit-hard-break</c> alone; against the same run, a result that says it wrote no break leaves them unexplained.
+    /// </summary>
+    [Fact]
+    public async Task AHardBreakTheMigrationWrote_IsExplainedByItsRule()
+    {
+        const string Package = "composer-macros";
+        const string Scenario = "new-visit-defaults";
+        const string Letterhead = "Riverside Clinic (fictional)";
+        const string Address = "Riverside Clinic (fictional)\n12 Sample Street\nSampletown";
+        var migrated = MigrationFixture.Overlay(
+            MigrateNodesTests.Migrated(Package, _ => { }, files => files["macros/letterhead.md"] = files["macros/letterhead.md"].Replace(Letterhead, Address, StringComparison.Ordinal)),
+            MigrationFixture.HandEditsOf(Package));
+        Assert.Equal(2, migrated.HardBreaks["snippets/letterhead.md"]);
+        var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(migrated), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed);
+        Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));
+        var (plan, refusal) = RunPlan.Build(compiled!.Resolve, compiled.ResolveHash, compiled.LockHash, null);
+        Assert.True(plan != null, refusal?.Sentence);
+
+        var capture = EquivalenceFixture.Capture(Package, Scenario);
+        var placed = new List<string>();
+        foreach (var row in capture["deliverables"]!.AsArray().OfType<JsonObject>())
+        {
+            if ((string?)row["text"] is not { } text || !text.Contains(Letterhead, StringComparison.Ordinal))
+                continue;
+            row["text"] = text.Replace(Letterhead, Address, StringComparison.Ordinal);
+            row["hash"] = CanonicalJson.HashText((string)row["text"]!);
+            placed.Add($"{Package}/{Scenario}#deliverables/deliverable.{(string)row["id"]!}");
+        }
+
+        Assert.NotEmpty(placed);
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(Package, Scenario), capture, migrated, plan!);
+        var run = await OfflineRun.RunAsync(plan!, request);
+        var texts = Equivalence.Compare(Package, Scenario, capture, run, migrated, plan!, request);
+        foreach (var site in placed)
+        {
+            var text = texts.Single(t => t.Site == site);
+            Assert.True((text.Equal, text.Expected, text.Unexplained) == (false, true, false), $"{site}: equal {text.Equal}, expected {text.Expected}, rules {string.Join(",", text.Rules)}");
+            Assert.Equal(["explicit-hard-break"], text.Rules);
+        }
+
+        Assert.All(texts.Where(t => !placed.Contains(t.Site)), t => Assert.DoesNotContain("explicit-hard-break", t.Rules));
+        var unsaid = Equivalence.Compare(Package, Scenario, capture, run, migrated with { HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal) }, plan!, request);
+        Assert.All(placed, site => Assert.True(unsaid.Single(t => t.Site == site).Unexplained, site));
+    }
+
+    /// <summary>
     /// #1510 (#1509 comment 7207709261, item 2): composer-macros' profile in <c>no-signature</c> has no signature block, and
     /// 30 left the signature and the line before it out; through the renderer that tests the trimmed signature, so does 31.
     /// <c>authored</c> differs only as the plain text it holds is escaped in Markdown.
@@ -604,6 +653,7 @@ public class ByteEquivalenceTests
         ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
         ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
         ["macro-trailing-whitespace"] = "the one compared macro whose body ends in more white space than one line ending, edge-unruled-whitespace's problem_close, ends each item of a loop whose .content is read, which the migration strips as 30 trimmed it (#1510); the rule's own tests hold it on hand-made texts.",
+        ["explicit-hard-break"] = "no migrated fixture writes a Markdown body a reader sees line per line (every single line ending inside a paragraph is a prompt's), so the migration writes no \\ in any (#1510, item 4); AHardBreakTheMigrationWrote_IsExplainedByItsRule holds it on composer-macros with its letterhead written as an address.",
     };
 
     [Fact]
