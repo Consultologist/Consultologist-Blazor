@@ -8,11 +8,13 @@ using Consultologist.PackageFormat.V31.Templates;
 namespace Consultologist.Api.Tests.V31Migration;
 
 /// <summary>
-/// #1543 (ruling 2, D7): a <c>markdown_block</c> read stands alone on its line at 31, so where a 30 body has one with text
-/// beside it, the migration moves it onto a line of its own and drops nothing: the text before it ends with <c>\</c> (an
-/// explicit hard break) and the read starts the next line; the text after it starts the next line after a plain line
-/// ending. One notice per file (A10-093), no hand edit. A macro body is where 30 let a body read the profile, so most cases
-/// are example-macros' house_style macro with its one line changed. Content is fictional (Margaret Okafor, Dr A. Sample).
+/// #1543 (ruling 2, D7, as the owner amended it on 2026-11-27): a <c>markdown_block</c> read stands alone on its line at 31,
+/// so where a 30 body has one with text beside it, the migration separates it from that text by a blank line, on both
+/// sides, and drops nothing; a line of text next to a line holding only a block read gets a blank line too, never a
+/// <c>\</c>. One notice per file (A10-093). Where the text before the read is only a Markdown block marker, the line is
+/// left and is a hand edit (A10-094). A macro body is where 30 let a body read the profile, so most cases are
+/// example-macros' house_style macro with its one line changed. Content is fictional (Margaret Okafor, Dr A. Sample,
+/// Sample Oncology Clinic).
 /// </summary>
 public class MigrateBlockReadsTests
 {
@@ -31,36 +33,39 @@ public class MigrateBlockReadsTests
     private static string Notice(string file, params string[] reads) => MigrationSentences.BlockReadsMoved(file, reads);
 
     [Fact]
-    public void TextBeforeTheSignature_EndsWithABackslash_AndTheReadStartsTheNextLine()
+    public void TextBeforeTheSignature_IsFollowedByABlankLine_AndTheReadStartsItsOwnLine()
     {
         var result = WithHouseStyle("Regards, {{ profile.signature }}");
 
-        // Nothing is dropped: the line is the same but for \ and a line ending before the read.
-        Assert.Equal(Given("Regards, \\\n{{ profile.signature }}"), MigrateNodesTests.Md(result, HouseStyle).Body);
+        // Nothing is dropped: the line is the same but for the blank line before the read, and no \ is written.
+        var body = MigrateNodesTests.Md(result, HouseStyle).Body;
+        Assert.Equal(Given("Regards, \n\n{{ profile.signature }}"), body);
+        Assert.DoesNotContain("\\", body, StringComparison.Ordinal);
         Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 1 }, result.MovedReads);
-        const string Sentence = "In 'macros/house_style.md', the read profile.signature now stands alone on its line (after \\, an explicit hard break, where text stood before it): at specVersion 31 a markdown_block read stands alone on its line.";
+        Assert.Equal(["{{ profile.signature }}"], result.SeparatedReads[HouseStyle]);
+        const string Sentence = "In 'macros/house_style.md', the read profile.signature now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.";
         Assert.Equal(Sentence, Notice(HouseStyle, "profile.signature"));
         Assert.Single(result.Notices, n => n == Sentence);
         V31Contract.AssertSentence(new SourceRefusal("A10-093", Sentence, ""));
         Assert.DoesNotContain(result.HandEdits, e => e.Contains(HouseStyle, StringComparison.Ordinal));
-        // The line before the read already ends with a hard break: the hard-breaks pass writes no second \.
         Assert.False(result.HardBreaks.ContainsKey(HouseStyle));
         Assert.Empty(Judged(result, HouseStyle));
 
-        // The fixture as given moves nothing and says nothing.
+        // The fixture as given separates nothing and says nothing.
         var given = MigrateNodesTests.Migrated("example-macros");
         Assert.Empty(given.MovedReads);
-        Assert.DoesNotContain(given.Notices, n => n.Contains("now stand", StringComparison.Ordinal));
+        Assert.Empty(given.SeparatedReads);
+        Assert.DoesNotContain(given.Notices, n => n.Contains("after a blank line", StringComparison.Ordinal));
     }
 
     [Fact]
     public void TwoReadsInOneFile_AreOneNotice()
     {
-        var result = WithHouseStyle("Regards, {{ profile.signature }}\nDraft: {{ input.consult_draft }}");
+        var result = WithHouseStyle("Regards, {{ profile.signature }}\n\nDraft: {{ input.consult_draft }}");
 
-        Assert.Equal(Given("Regards, \\\n{{ profile.signature }}\nDraft: \\\n{{ input.consult_draft.content }}"), MigrateNodesTests.Md(result, HouseStyle).Body);
+        Assert.Equal(Given("Regards, \n\n{{ profile.signature }}\n\nDraft: \n\n{{ input.consult_draft.content }}"), MigrateNodesTests.Md(result, HouseStyle).Body);
         Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 2 }, result.MovedReads);
-        const string Sentence = "In 'macros/house_style.md', the reads profile.signature, input.consult_draft.content now stand alone on their lines (after \\, an explicit hard break, where text stood before them): at specVersion 31 a markdown_block read stands alone on its line.";
+        const string Sentence = "In 'macros/house_style.md', the reads profile.signature, input.consult_draft.content now start their own lines, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.";
         Assert.Equal(Sentence, Notice(HouseStyle, "profile.signature", "input.consult_draft.content"));
         Assert.Single(result.Notices, n => n.StartsWith("In 'macros/house_style.md', the read", StringComparison.Ordinal));
         Assert.Contains(Sentence, result.Notices);
@@ -69,12 +74,12 @@ public class MigrateBlockReadsTests
     }
 
     [Fact]
-    public void TextAfterTheRead_StartsTheNextLine()
+    public void TextAfterTheRead_StartsItsOwnLine_AfterABlankLine()
     {
         var result = WithHouseStyle("{{ profile.signature }} (dictated)");
 
         var body = MigrateNodesTests.Md(result, HouseStyle).Body;
-        Assert.Equal(Given("{{ profile.signature }}\n (dictated)"), body);
+        Assert.Equal(Given("{{ profile.signature }}\n\n (dictated)"), body);
         Assert.DoesNotContain("\\", body, StringComparison.Ordinal);
         Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 1 }, result.MovedReads);
         Assert.Contains(Notice(HouseStyle, "profile.signature"), result.Notices);
@@ -84,52 +89,124 @@ public class MigrateBlockReadsTests
     }
 
     [Fact]
-    public void TextOnBothSides_IsMovedOnBoth()
+    public void TextOnBothSides_IsSeparatedOnBoth()
     {
         // edge-unset-object's intake_line reads a field of an object input (a 30 text field, markdown_block at 31) behind
-        // the guard the migration writes: the guard's tags stay on the read's line, the text before ends with \, and the
-        // text after starts the next line.
+        // the guard the migration writes: the guard's tags stay on the read's line, a blank line on each side.
         const string File = "snippets/intake_line.md";
         var result = MigrateNodesTests.Migrated("edge-unset-object");
 
         Assert.Equal(
-            "Referred for: \\\n{{ if input.intake.value }}{{ input.intake.value.reason }}{{ end }}\n (from the intake form).",
+            "Referred for: \n\n{{ if input.intake.value }}{{ input.intake.value.reason }}{{ end }}\n\n (from the intake form).",
             MigrateNodesTests.Md(result, File).Body.TrimEnd('\n'));
         Assert.Equal(new Dictionary<string, int> { [File] = 1 }, result.MovedReads);
+        Assert.Equal(["{{ input.intake.value.reason }}"], result.SeparatedReads[File]);
         Assert.Contains(Notice(File, "input.intake.value.reason"), result.Notices);
         Assert.Empty(Judged(result, File));
     }
 
     [Fact]
-    public void MigratingTwice_MovesNothingMore()
+    public void ALineOfTextAboveOrBelowALineOfOnlyABlockRead_GetsABlankLine_NotABackslash()
     {
-        // Review Focus 1: trailing spaces before the read stay before the \; the pass run twice moves the read once and
-        // says the file once.
-        var m = MigrateHardBreaksTests.Passes("example-macros", files => files[HouseStyle] = files[HouseStyle].Replace(Reviewed, "Regards,   {{ profile.signature }} (dictated)", StringComparison.Ordinal));
+        // Item 3 (Task A3's case): Sincerely, above a line of only the signature, and the clinic's line below it. Each line
+        // ending beside the read's line becomes a blank line; the hard-breaks pass writes no \ there.
+        var result = WithHouseStyle("Sincerely,\n{{ profile.signature }}\nSample Oncology Clinic");
+
+        var body = MigrateNodesTests.Md(result, HouseStyle).Body;
+        Assert.Equal(Given("Sincerely,\n\n{{ profile.signature }}\n\nSample Oncology Clinic"), body);
+        Assert.DoesNotContain("\\", body, StringComparison.Ordinal);
+        Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 1 }, result.MovedReads);
+        Assert.Contains(Notice(HouseStyle, "profile.signature"), result.Notices);
+        Assert.False(result.HardBreaks.ContainsKey(HouseStyle));
+        Assert.Empty(Judged(result, HouseStyle));
+
+        // A line above a line of only an inline read keeps A3's \.
+        var name = WithHouseStyle("Sincerely,\n{{ profile.name }}");
+        Assert.StartsWith("Sincerely,\\\n{{ profile.name }}", MigrateNodesTests.Md(name, HouseStyle).Body, StringComparison.Ordinal);
+        Assert.Empty(name.MovedReads);
+    }
+
+    [Fact]
+    public void ALineOfInlineReadsAboveABlockRead_GetsABlankLine()
+    {
+        // A line of only an inline read is a line of text: the blank line stands between it and the signature's line, and
+        // the line above the name keeps its \.
+        var result = WithHouseStyle("Dictated by\n{{ profile.name }}\n{{ profile.signature }}");
+
+        Assert.Equal(Given("Dictated by\\\n{{ profile.name }}\n\n{{ profile.signature }}"), MigrateNodesTests.Md(result, HouseStyle).Body);
+        Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 1 }, result.MovedReads);
+        Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 1 }, result.HardBreaks);
+        Assert.Empty(Judged(result, HouseStyle));
+    }
+
+    [Theory]
+    [InlineData("- ")]
+    [InlineData("> ")]
+    [InlineData("# ")]
+    [InlineData("1. ")]
+    [InlineData("- > ")]
+    public void ABlockMarkerBeforeTheRead_IsAHandEdit(string marker)
+    {
+        // Item 4: a blank line would leave an empty container and move the value out of it, so the line is left as 30 wrote
+        // it and is a hand edit (A10-094); publish refuses it (S05-066) until it is made.
+        var line = marker + "{{ profile.signature }}";
+        var result = WithHouseStyle(line);
+
+        Assert.Equal(Given(line), MigrateNodesTests.Md(result, HouseStyle).Body);
+        Assert.Empty(result.MovedReads);
+        var reason = MigrationSentences.BlockMarkerBeforeARead("profile.signature", 1);
+        Assert.Equal("the line holds only a Markdown block marker before the read profile.signature at line 1, and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.", reason);
+        V31Contract.AssertSentence(new SourceRefusal("A10-094", reason, ""));
+        var edit = Assert.Single(result.HandEdits, e => e.Contains(HouseStyle, StringComparison.Ordinal));
+        Assert.Equal(MigrationSentences.HandEdit(HouseStyle, "body", reason), edit);
+        Assert.Equal("Hand edit needed in macros/house_style.md, body: " + reason, edit);
+        Assert.Contains(Judged(result, HouseStyle), r => r.Id == "S05-066");
+    }
+
+    [Fact]
+    public void ABlankLineAlreadyThere_IsLeft()
+    {
+        const string Line = "Sincerely,\n\n{{ profile.signature }}\n\nSample Oncology Clinic";
+        var result = WithHouseStyle(Line);
+
+        Assert.Equal(Given(Line), MigrateNodesTests.Md(result, HouseStyle).Body);
+        Assert.Empty(result.MovedReads);
+        Assert.DoesNotContain(result.Notices, n => n.Contains("after a blank line", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MigratingTwice_WritesNothingMore()
+    {
+        // Trailing spaces before the read stay; the pass run twice separates the read once and says the file once.
+        var m = MigrateHardBreaksTests.Passes("example-macros", files => files[HouseStyle] = files[HouseStyle].Replace(Reviewed, "Regards,   {{ profile.signature }} (dictated)\nSample Oncology Clinic", StringComparison.Ordinal));
         Migrate.BlockReads(m);
         var once = m.Sources[HouseStyle].Body;
         Migrate.BlockReads(m);
         Assert.Equal(once, m.Sources[HouseStyle].Body);
-        Assert.Contains("Regards,   \\\n{{ profile.signature }}\n (dictated)", once, StringComparison.Ordinal);
+        Assert.Contains("Regards,   \n\n{{ profile.signature }}\n\n (dictated)\nSample Oncology Clinic", once, StringComparison.Ordinal);
         Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 1 }, m.MovedReads);
         Assert.Single(m.Result([]).Notices, n => n.StartsWith("In 'macros/house_style.md', the read", StringComparison.Ordinal));
 
-        // A 30 source already in the moved form (a \ there, the text after on its own line) is migrated as written.
-        var moved = WithHouseStyle("Regards,\\\n{{ profile.signature }}\n(dictated)");
-        Assert.Equal(Given("Regards,\\\n{{ profile.signature }}\n(dictated)"), MigrateNodesTests.Md(moved, HouseStyle).Body);
-        Assert.Empty(moved.MovedReads);
+        // The hard-breaks pass then breaks the text's own line ending, and a second run of both writes nothing more.
+        Migrate.HardBreaks(m);
+        var broken = m.Sources[HouseStyle].Body;
+        Assert.Contains("\n\n (dictated)\\\nSample Oncology Clinic", broken, StringComparison.Ordinal);
+        Migrate.LineEndings(m);
+        Assert.Equal(broken, m.Sources[HouseStyle].Body);
     }
 
     [Fact]
-    public void ACrLfBody_IsMovedAsAnLfOne()
+    public void ACrLfBody_IsSeparatedAsAnLfOne()
     {
-        // Review Focus 1: the file is normalised first (part 01 § 2.4), so a \r\n body is moved as its \n one is.
-        var lf = WithHouseStyle("Regards, {{ profile.signature }}\nDraft: {{ input.consult_draft }}");
+        // The file is normalised first (part 01 § 2.4), so a \r\n body is separated as its \n one is.
+        const string Lines = "Regards, {{ profile.signature }}\nDraft: {{ input.consult_draft }}";
+        var lf = WithHouseStyle(Lines);
         var crlf = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files[HouseStyle] = files[HouseStyle]
-            .Replace(Reviewed, "Regards, {{ profile.signature }}\nDraft: {{ input.consult_draft }}", StringComparison.Ordinal)
+            .Replace(Reviewed, Lines, StringComparison.Ordinal)
             .Replace("\n", "\r\n", StringComparison.Ordinal));
 
         Assert.Equal(MigrateNodesTests.Md(lf, HouseStyle).Body, MigrateNodesTests.Md(crlf, HouseStyle).Body);
+        Assert.DoesNotContain("\r", MigrateNodesTests.Md(crlf, HouseStyle).Body, StringComparison.Ordinal);
         Assert.Equal(new Dictionary<string, int> { [HouseStyle] = 2 }, crlf.MovedReads);
     }
 
@@ -142,7 +219,7 @@ public class MigrateBlockReadsTests
 
         Assert.Equal(Given(Line), MigrateNodesTests.Md(result, HouseStyle).Body);
         Assert.Empty(result.MovedReads);
-        Assert.DoesNotContain(result.Notices, n => n.Contains("now stand", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Notices, n => n.Contains("after a blank line", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -156,7 +233,21 @@ public class MigrateBlockReadsTests
         var prompt = MigrateNodesTests.Md(result, "nodes/summary.md").Body;
         Assert.Matches(@"Consult draft: \{\{ [^\n]*input\.consult_draft[^\n]* \}\} as written\.", prompt);
         Assert.Empty(result.MovedReads);
-        Assert.DoesNotContain(result.Notices, n => n.Contains("now stand", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Notices, n => n.Contains("after a blank line", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("edge-unset-object", "intake-unset", "deliverable.note", "Referred for: ")]
+    [InlineData("edge-unruled-whitespace", "default", "deliverable.problems", "Seen at: ")]
+    public async Task AnEmptyValue_LeavesNoBackslashInTheLetter(string package, string scenario, string deliverable, string text)
+    {
+        // The read's value is empty (an unset intake, an unset clinic): the composed letter holds the text before the read
+        // and the blank lines, and no \ (a \ before an empty value was a literal one in the letter).
+        var (_, run, _) = await EquivalenceFixture.Compared(package, scenario);
+
+        var letter = run.Deliverables.Single(d => d.Key == deliverable).Text;
+        Assert.StartsWith(text, letter, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\", letter, StringComparison.Ordinal);
     }
 
     /// <summary>

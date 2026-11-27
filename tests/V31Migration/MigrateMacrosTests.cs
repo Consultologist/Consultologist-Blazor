@@ -329,9 +329,10 @@ public class MigrateMacrosTests
         Assert.Equal("Sincerely,{{ profile.signature | renderer.signature_after_blank_line }}", MigrateNodesTests.Md(closing, "snippets/closing.md").Body);
         Assert.Equal("""["signature_after_blank_line"]""", MigrateNodesTests.Json(closing, "renderers/index.json")["items"]!.ToJsonString());
 
-        // Text after the signature: as written, and no renderer.
+        // Text after the signature: no renderer, and (#1543, ruling 2 as the owner amended it on 2026-11-27, item 3) the line
+        // of text below the signature's own line is separated from it by a blank line.
         var after = MigrateNodesTests.Migrated("example-v12-constructs", _ => { }, files => files["macros/closing.md"] += "\nWith thanks.");
-        Assert.Equal("Sincerely,\n\n{{ profile.signature }}\nWith thanks.", MigrateNodesTests.Md(after, "snippets/closing.md").Body);
+        Assert.Equal("Sincerely,\n\n{{ profile.signature }}\n\nWith thanks.", MigrateNodesTests.Md(after, "snippets/closing.md").Body);
         Assert.Equal("[]", MigrateNodesTests.Json(after, "renderers/index.json")["items"]!.ToJsonString());
     }
 

@@ -263,8 +263,9 @@ internal static class V31Contract
     /// items have more than one text format, a hand edit's reason, area 13 Task F1 fix round 1; A10-091: a Markdown body's single
     /// line endings inside a paragraph ended with \ by the migration, #1509 comment 7209167166 item 4, area 13 Task G5, its count
     /// agreeing with its noun, #1543 ruling 10; A10-092, a body a prompt reads whose line endings were kept, retired by #1543
-    /// ruling 1 and unused; A10-093: a markdown_block read with text beside it moved onto a line of its own, #1543 ruling 2,
-    /// area 14 Task A5).
+    /// ruling 1 and unused; A10-093: a markdown_block read separated from the text beside it by a blank line, #1543 ruling 2
+    /// as the owner amended it on 2026-11-27, area 14 Task A5; A10-094: a markdown_block read after only a Markdown block
+    /// marker, a hand edit's reason, the same amendment's item 4, area 14 Task A5).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -357,7 +358,8 @@ internal static class V31Contract
         ["A10-089"] = "The signature is written through renderer '<id>', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
         ["A10-090"] = "loop '<id>' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.",
         ["A10-091"] = "In '<file>', <n> line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.",
-        ["A10-093"] = "In '<file>', the read <read> now stands alone on its line (after \\, an explicit hard break, where text stood before it): at specVersion 31 a markdown_block read stands alone on its line.",
+        ["A10-093"] = "In '<file>', the read <read> now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.",
+        ["A10-094"] = "the line holds only a Markdown block marker before the read <read> at line <n>, and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>
@@ -579,13 +581,13 @@ internal static class V31Contract
             pattern = pattern.Replace(plural, "(?:" + Regex.Escape("1 line ending inside a paragraph ends ") + "|(?!1 )[0-9]+" + Regex.Escape(" line endings inside a paragraph end ") + ")", StringComparison.Ordinal);
         }
 
-        // A10-093 names one read or several (#1543, ruling 2, D7): "the read <read> now stands alone on its line (… before
-        // it)", or "the reads <reads> now stand alone on their lines (… before them)".
+        // A10-093 names one read or several (#1543, ruling 2, D7): "the read <read> now starts its own line", or "the reads
+        // <reads> now start their own lines".
         if (refusal.Id == "A10-093")
         {
-            var one = ToPattern("the read <read> now stands alone on its line (after \\, an explicit hard break, where text stood before it)");
+            var one = ToPattern("the read <read> now starts its own line,");
             Assert.Contains(one, pattern, StringComparison.Ordinal);
-            pattern = pattern.Replace(one, "(?:" + one + "|" + ToPattern("the reads <reads> now stand alone on their lines (after \\, an explicit hard break, where text stood before them)") + ")", StringComparison.Ordinal);
+            pattern = pattern.Replace(one, "(?:" + one + "|" + ToPattern("the reads <reads> now start their own lines,") + ")", StringComparison.Ordinal);
         }
 
         // A10-086's last clause (", joining <term> for the others") is said only when another source has a term.

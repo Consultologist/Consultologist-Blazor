@@ -83,12 +83,16 @@ public class LineEndingWarningTests
     }
 
     [Fact]
-    public void TheLineAfterABlockReadAlone_DoesNotWarn()
+    public void ALineOnEachSideOfABlockReadAlone_Warns()
     {
-        // A \ after a block read would be text after it (S05-067), so the line ending after it is left as it is.
-        var files = Package().WithDeliverable("{{ profile.closing }}\nDr A. Sample\n\n{{ node.plan.content }}\n");
+        // #1543 (the owner's ruling of 2026-11-27, item 3): a blank line goes on each side of a line holding only a block
+        // read, so each single line ending beside it is warned: above it and below it.
+        var files = Package().WithDeliverable("Sincerely,\n{{ profile.closing }}\nDr A. Sample\n\n{{ node.plan.content }}\n");
 
-        Assert.Empty(Warned(files));
+        Assert.Equal([Sentence("Deliverable 'note'", 1), Sentence("Deliverable 'note'", 2)], Warned(files).Select(w => w.Sentence));
+        var below = Assert.Single(Warned(Package().WithDeliverable("{{ profile.closing }}\nDr A. Sample\n\n{{ node.plan.content }}\n")));
+        Assert.Equal(Sentence("Deliverable 'note'", 1), below.Sentence);
+        V31Contract.AssertSentence(below);
     }
 
     [Fact]
