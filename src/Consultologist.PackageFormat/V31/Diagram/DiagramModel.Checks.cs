@@ -24,7 +24,7 @@ public sealed partial record DiagramModel
         /// <summary>Every check, in <c>graph.order</c>, in the Checks frame; then each deliverable's gate. The frame, for the caller to place; null when it holds nothing.</summary>
         private Scope? Checks()
         {
-            var order = Strings(document["graph"]?["order"]).ToList();
+            var order = Strings((document["graph"] as JsonObject)?["order"]).ToList();
             var bodies = checks.Select(c => c.Value as JsonObject).OfType<JsonObject>().SelectMany(Children).ToHashSet(StringComparer.Ordinal);
             var frame = new Scope("checks", "Checks");
             drawingChecks = true;

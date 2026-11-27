@@ -431,6 +431,9 @@ public class DiagramModelTests
     [InlineData("""{"nodes":{"node.x":{"kind":"agent","reads":5,"label":7,"format":[]}},"inputs":[],"inputOrder":{"a":1}}""", "    node__x[\"x<br/>agent → ?\"]")]
     [InlineData("""{"nodes":{"node.l":{"kind":"for","nodes":["node.l.gone"]},"node.w":{"kind":"while"},"node.i":{"kind":"if","then":7},"node.c":{"kind":"case","branches":[1,{"when":null}]}}}""",
         "    node__l[\"l<br/>item in ?\"]", "    node__w[\"w<br/>while null — at most —\"]", "    node__i[\"i<br/>if null\"]", "    node__c[\"c<br/>case ?\"]")]
+    // graph not an object (its order, its edges and the checks' order are read through it): drawn without it
+    [InlineData("""{"nodes":{"node.x":{"kind":"agent","reads":["node.y.value"]},"node.y":{"kind":"agent"}},"checks":{"check.c":{"kind":"assert"}},"graph":[]}""", "    node__x[\"x<br/>agent → ?\"]")]
+    [InlineData("""{"nodes":{"node.x":{"kind":"agent","reads":["node.y.value"]},"node.y":{"kind":"agent"}},"checks":{"check.c":{"kind":"assert"}},"graph":"x"}""", "    node__x[\"x<br/>agent → ?\"]")]
     // A loop that lists itself is in a body, so no top-level entry: nothing is drawn.
     [InlineData("""{"nodes":{"node.a":{"kind":"for","nodes":["node.a"],"ret":"node.a","in":"node.a.items"}}}""")]
     public void AResolveWithMembersMissing_StillDraws(string resolve, params string[] boxes)

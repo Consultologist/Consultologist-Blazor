@@ -39,7 +39,7 @@ public sealed partial record DiagramModel
 
         private void Production()
         {
-            var order = Strings(document["graph"]?["order"]).ToList();
+            var order = Strings((document["graph"] as JsonObject)?["order"]).ToList();
             var bodies = nodes.Select(n => n.Value as JsonObject).OfType<JsonObject>().SelectMany(Children).ToHashSet(StringComparer.Ordinal);
             foreach (var key in InOrder(nodes, order).Where(k => !bodies.Contains(k)))
                 Node(key, root, 0);
@@ -252,7 +252,7 @@ public sealed partial record DiagramModel
         /// <summary>Whether <c>graph.edges</c> holds a <c>reads</c> edge between the boxes <paramref name="from"/> and <paramref name="to"/>; false when it holds none or is absent.</summary>
         private bool GraphReads(string from, string to)
         {
-            graphReads ??= (document["graph"]?["edges"] as JsonArray ?? []).OfType<JsonObject>()
+            graphReads ??= ((document["graph"] as JsonObject)?["edges"] as JsonArray ?? []).OfType<JsonObject>()
                 .Where(e => Text(e["kind"]) == "reads" && Text(e["from"]) != null && Text(e["to"]) != null)
                 .Select(e => (IdOf(Text(e["from"])!), IdOf(Text(e["to"])!)))
                 .ToHashSet();
