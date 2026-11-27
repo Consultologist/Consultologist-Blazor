@@ -330,9 +330,17 @@ public class MemberReadTests
         return (files, path);
     }
 
-    /// <summary><paramref name="read"/> as an output: a placement in its block form, any other read inline.</summary>
+    /// <summary>The reads of <see cref="Heads"/> that exist and are <c>markdown_block</c>, which stand alone on their line (S05-066).</summary>
+    private static readonly string[] BlockReads = ["input.consult_draft.content", "profile.signature"];
+
+    /// <summary>
+    /// <paramref name="read"/> as an output: a placement in its block form, a block read alone on its line (#1543, ruling
+    /// 2), any other read inline.
+    /// </summary>
     private static string Output(string read) =>
-        read.Split('.') is ["part", _] or ["macro", _] or ["macro", _, not "content"] ? $"{{{{~ {read} }}}}" : $"{{{{ {read} }}}}";
+        read.Split('.') is ["part", _] or ["macro", _] or ["macro", _, not "content"] ? $"{{{{~ {read} }}}}"
+        : BlockReads.Contains(read) ? $"{{{{ {read} }}}}"
+        : $"Note: {{{{ {read} }}}}";
 
     /// <summary>
     /// The package with the snippet <c>tone</c>, the macro <c>follow_up</c>, the macro folder <c>notes</c> and the check

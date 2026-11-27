@@ -156,14 +156,19 @@ public class BlockReadTests
     [Fact]
     public void ABlockReadInAPromptOrAPart_IsNotJudged()
     {
+        // The prompt's and the part's line each hold the consult draft, a markdown_block read, with text on both sides.
+        const string Line = "Draft: {{ input.consult_draft.content }} for Margaret Okafor.";
         var files = Package()
-            .WithAgent("draft", "Draft: {{ input.consult_draft.content }} for Margaret Okafor.\n\n{{ part.brief }}\n", "\"markdown_block\"")
+            .WithAgent("draft", Line + "\n\n{{ part.brief }}\n", "\"markdown_block\"")
             .WithJson("nodes/draft.md", h => h["parts"] = System.Text.Json.Nodes.JsonNode.Parse(
-                "{ \"brief\": { \"if\": null, \"text\": [\"Plan: {{ node.plan.content }} in brief.\"] } }"))
+                "{ \"brief\": { \"if\": null, \"text\": [\"Plan: {{ input.consult_draft.content }} in brief.\"] } }"))
             .WithDeliverable("{{ node.draft.content }}\n");
 
         Assert.Empty(BlockReads(files));
         Accepted(files);
+
+        // The same line in a deliverable is a block read with text beside it, and is judged.
+        Assert.Equal(["S05-066", "S05-067"], BlockReads(WithLetter(Line + "\n")).Select(r => r.Id));
     }
 
     /// <summary>One package per site, each with one block read with text before it: the subject, the file and the line.</summary>
@@ -214,8 +219,8 @@ public class BlockReadTests
     [MemberData(nameof(MigratedPackagesTests.Packages), MemberType = typeof(MigratedPackagesTests))]
     public void EveryMigratedPackage_WithNoHandEdit_IsNotRefused(string package)
     {
-        // A package as migrated, before any hand edit is made, has no block read with text beside it: the migration moves a
-        // read with text before it to its own line (Task A5, D7), and says a read with text after it as a hand edit.
+        // A package as migrated, before any hand edit is made, has no block read with text beside it: the migration moves
+        // each onto a line of its own (Task A5, D7), the text before it ending with \ and the text after it on the next line.
         var result = MigratedPackagesTests.Migrated(package);
         var upload = MigratedPackagesTests.Upload(result);
         var registry = V31Contract.PublishedTypes();
