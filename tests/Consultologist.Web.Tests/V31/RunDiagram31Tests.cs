@@ -113,12 +113,15 @@ public partial class RunDiagram31Tests
                                { "atUtc": "2026-11-16T14:00:09Z", "waitMs": 4000, "kind": "service", "error": "timeout" } ] }
                 """),
             Row("node.terms", PlanKind.Agent, RowState.Completed, "sha256:fedcba9876543210"),
+            Row("node.classify", PlanKind.Agent, RowState.Completed, "sha256:c0", """{ "retries": [] }"""),
             Row("node.stamp", PlanKind.Rendered, RowState.Failed, null, reason: "failed: the model service's limits were reached")));
 
         Assert.Equal(["Completed", "out sha256:01234…", "retries 2"], Added("macros", run, "node__plan"));
         Assert.Equal("done", ClassOf(run, "node__plan"));
         // the hash shortened as History shortens it; no retries line for a row whose retries are empty
         Assert.Equal(["Completed", "out " + ProvenanceHashes.HashPrefix("sha256:fedcba9876543210")], Added("macros", run, "node__terms"));
+        // the stored form of no retries, part 08 § 4: "retries": []
+        Assert.Equal(["Completed", "out sha256:c0…"], Added("macros", run, "node__classify"));
         Assert.Equal(["Failed"], Added("macros", run, "node__stamp"));
         Assert.Equal("failed", ClassOf(run, "node__stamp"));
     }
@@ -247,10 +250,83 @@ public partial class RunDiagram31Tests
         // a decision that reads the classifier and something else is not its answer; nor is one that reads another node
         var run = Draw("macros", Record(
             Row("node.classify", PlanKind.Agent, RowState.Completed, "sha256:c0"),
+            Row("node.plan", PlanKind.Agent, RowState.Completed, "sha256:b0"),
             Decision("node.draft", "part.close", "not (blank node.classify.value.reason)", true, null, "node.classify.value.reason", "input.consult_draft.value"),
             Decision("node.draft", "self", "node.plan.value.ready = true", false, null, "node.plan.value.ready")));
 
         Assert.Equal(["Completed", "out sha256:c0…"], Added("macros", run, "node__classify"));
+        // node.plan returns section_plan: it is no classifier, so a decision reading only its value is no answer of its own
+        Assert.Equal(["Completed", "out sha256:b0…"], Added("macros", run, "node__plan"));
+    }
+
+    [Fact]
+    public void ACaseSubject_IsAnAnswerOnlyOnAClassifiersBox()
+    {
+        // a case's subject is its one read: the node it names shows it only when that node returns judgement or classification
+        var run = Draw("macros", Record(
+            Row("node.classify", PlanKind.Agent, RowState.Completed, "sha256:c0"),
+            Row("node.plan", PlanKind.Agent, RowState.Completed, "sha256:b0"),
+            Decision("node.draft", "case", "node.plan.value.kind", null, "2", "node.plan.value.kind"),
+            Decision("node.stamp", "case", "node.classify.value.answer", null, "1", "node.classify.value.answer")));
+
+        Assert.Equal(["Completed", "out sha256:b0…"], Added("macros", run, "node__plan"));
+        Assert.Equal(["Completed", "out sha256:c0…", "node.classify.value.answer: 1"], Added("macros", run, "node__classify"));
+    }
+
+    /// <summary>
+    /// A <c>resolve.json</c> holding only what the drawing reads (no golden has a renderer or a macro inside a loop): a
+    /// <c>for</c> over <c>input.sections</c> whose body is a classifier and an agent that pipes the item through a renderer
+    /// and places a macro whose <c>if</c> names the classifier as the body names a sibling, by its bare id.
+    /// </summary>
+    private const string LoopBody = """
+        {
+          "inputs": { "sections": { "label": "sections" } },
+          "nodes": {
+            "node.each": { "id": "each", "kind": "for", "label": "Each section", "producer": "computed", "parent": null,
+                           "in": "input.sections.value", "nodes": ["node.each.classify", "node.each.draft"], "ret": "node.each.draft",
+                           "until": null, "reads": ["input.sections.value"] },
+            "node.each.classify": { "id": "classify", "kind": "agent", "label": "Needs a history line?", "producer": "generated",
+                                    "format": { "$ref": "#/$defs/judgement" }, "modelDerived": true, "parent": "node.each", "reads": ["item.value"] },
+            "node.each.draft": { "id": "draft", "kind": "agent", "label": "Drafting the section", "producer": "generated",
+                                 "format": { "$ref": "#/$defs/plaintext" }, "modelDerived": true, "parent": "node.each",
+                                 "reads": ["item.value", "node.each.classify.value.answer"], "names": { "node.classify": "node.each.classify" },
+                                 "renders": [ { "n": 1, "source": "item.value", "renderer": "renderer.bullets" } ],
+                                 "placements": [ { "site": "macro.hpi", "within": null, "form": "block", "plainConverts": [],
+                                                   "if": { "===": [ { "var": "node.classify.value.answer" }, true ] } } ] }
+          },
+          "checks": {}, "deliverables": {},
+          "renderers": { "renderer.bullets": { "id": "bullets", "input": { "$ref": "#/$defs/concept_list" }, "format": { "$ref": "#/$defs/markdown_block" } } },
+          "macros": { "macro.hpi": { "id": "hpi", "format": { "$ref": "#/$defs/plaintext" } } },
+          "graph": { "edges": [], "order": ["node.each", "node.each.classify", "node.each.draft"] }
+        }
+        """;
+
+    [Fact]
+    public void AClassifierRendererAndMacroInsideALoop_ShowTheirItemsSubRowsAndTheAnswer()
+    {
+        // the engine names the sub-rows by the row key with its items (AgentTurn), and the macro row its classifier's row key
+        var run = RunDiagram31.Build(LoopBody, Record(
+            Row("node.each", PlanKind.For, RowState.Completed),
+            Row("node.each:1", PlanKind.For, RowState.Completed),
+            Row("node.each.classify:1", PlanKind.Agent, RowState.Completed, "sha256:c0"),
+            Row("node.each.draft:1", PlanKind.Agent, RowState.Completed, "sha256:d0", """
+                { "renders": [ { "id": "node.each.draft:1/render:1", "renderer": "renderer.bullets", "templateHash": "sha256:t1", "source": "item.value",
+                                 "inputHash": "sha256:1111111111", "pass": null, "inputSize": null, "outputHash": "sha256:2222222222", "outputLength": 40, "runDependent": false } ],
+                  "macros": [ { "id": "node.each.draft:1/macro:hpi", "macro": "macro.hpi", "offered": true, "decisions": ["node.each.draft:1/if:macro.hpi"],
+                                "classifier": "node.each.classify:1", "placed": true, "form": "block", "contentHash": "sha256:c1c1c1c1c1",
+                                "runNeutralHash": null, "runSpots": [] } ] }
+                """),
+            Decision("node.each.draft:1", "macro.hpi", "node.classify.value.answer = true", true, null, "node.classify.value.answer")), linkCalls: false).Mermaid;
+        var package = PackageDiagram.Generate(LoopBody);
+        string[] Of(string id) => Label(run, id).Skip(Label(package, id).Length).ToArray();
+
+        Assert.Equal(["Completed", "out sha256:c0…", "node.classify.value.answer = true: true"], Of("node__each__classify"));
+        Assert.Equal(["in sha256:11111… · out sha256:22222…"], Of("node__each__draft__render_1"));
+        Assert.Equal("done", ClassOf(run, "node__each__draft__render_1"));
+        Assert.Equal(["offered · placed", "content sha256:c1c1c…"], Of("node__each__draft__macro_hpi"));
+        Assert.Equal("done", ClassOf(run, "node__each__draft__macro_hpi"));
+        // the drafting node reads the classifier but is none: no answer on its box
+        Assert.Equal(["Completed", "out sha256:d0…"], Of("node__each__draft"));
     }
 
     [Fact]
@@ -391,19 +467,40 @@ public partial class RunDiagram31Tests
     [Fact]
     public void AJobStillRunning_DrawsWhatHasRowsInsideItAsRunning_AndALoopWithNoItemsAsItsRow()
     {
-        // the loop's own row is written when it ends: a running job has its item rows and not its own
+        // the loop's own row is written when it ends: a running job has its item rows and not its own, and the box lists them
         var running = Draw("nested-note", Running(
             Row("node.plan", PlanKind.Agent, RowState.Completed),
-            Row("node.sections:1", PlanKind.For, RowState.Completed),
+            Row("node.sections:1", PlanKind.For, RowState.Completed, detail: """{ "itemName": "Assessment", "positionName": false }"""),
+            Row("node.sections:2", PlanKind.For, RowState.Failed, null),
             Row("node.sections.outline:1", PlanKind.Agent, RowState.Completed)));
-        Assert.Empty(Added("nested-note", running, "node__sections"));
+        Assert.Equal(["1 · Assessment: Completed", "2: Failed"], Added("nested-note", running, "node__sections"));
         Assert.Equal("running", ClassOf(running, "node__sections"));
         Assert.Equal("ranNot", ClassOf(running, "node__refine"));
         Assert.Equal("ranNot", ClassOf(running, "deliverable__note"));
 
-        // a job that ended without the row is not running
-        var failed = Draw("nested-note", Record(Row("node.sections:1", PlanKind.For, RowState.Completed)));
-        Assert.Equal("ranNot", ClassOf(failed, "node__sections"));
+        // a job that failed mid-loop: the engine writes no row for the loop (PlanRunner stops at the failure), so the same
+        var failed = Draw("nested-note", Record(Row("node.sections:1", PlanKind.For, RowState.Completed), Row("node.sections:2", PlanKind.For, RowState.Failed, null)));
+        Assert.Equal(["1: Completed", "2: Failed"], Added("nested-note", failed, "node__sections"));
+        Assert.Equal("running", ClassOf(failed, "node__sections"));
+
+        // a while's passes likewise, and the list stays bounded (D10)
+        var passes = Enumerable.Range(1, 14).Select(n => Row($"node.refine#{n}", PlanKind.While, RowState.Completed, detail: $$"""{ "pass": {{n}} }""")).ToArray();
+        var refining = Added("nested-note", Draw("nested-note", Running(passes)), "node__refine");
+        Assert.Equal(RunDiagram31.Listed + 1, refining.Length);
+        Assert.Equal("pass 1: Completed", refining[0]);
+        Assert.Equal("… and 2 more", refining[^1]);
+
+        // a nested loop's items of one instance are listed; of several instances they are no one box's items
+        var one = Draw("nested-note", Running(
+            Row("node.sections:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/2", PlanKind.For, RowState.Completed)));
+        Assert.Equal(["1: Completed", "2: Completed"], Added("nested-note", one, "node__sections__paragraphs"));
+        var several = Draw("nested-note", Running(
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Completed)));
+        Assert.Empty(Added("nested-note", several, "node__sections__paragraphs"));
+        Assert.Equal("running", ClassOf(several, "node__sections__paragraphs"));
 
         // a loop whose list was empty has its row and no item
         var empty = Draw("nested-note", Record(Row("node.sections", PlanKind.For, RowState.Completed, detail: """{ "count": 0 }""")));
