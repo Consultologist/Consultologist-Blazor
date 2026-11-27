@@ -13,11 +13,13 @@ namespace Consultologist.Web.Services.Provenance.V31;
 /// item or pass per <c>for</c> or <c>while</c> the entry sits in (a loop's item and pass rows hold one more).
 /// <para>
 /// With no row a box shows nothing and is <c>ranNot</c> (<c>running</c> while the job runs and a row inside it is
-/// written). With several (a box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
+/// written); a loop with no row of its own but item or pass rows of one instance (a running job, or one that failed in
+/// it: the engine writes the loop's row when it ends) lists them and is <c>running</c>. With several (a box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
 /// class of the worst (Failed, then Cancelled, Skipped, NotRun, Completed; D10). With exactly one, its status as stored;
 /// a node's output hash and retry count; a loop's items (a <c>while</c>'s passes), one line each, the first
 /// <see cref="Listed"/>, then <c>… and &lt;k&gt; more</c>; an <c>if</c>'s or <c>case</c>'s decision; a classifier's answer
-/// (D11: the result of a decision whose only read is the node's value); a call's argument and result hashes and, when
+/// (an agent node returning <c>judgement</c> or <c>classification</c>; D11: the result of a decision whose only read is
+/// the node's value); a call's argument and result hashes and, when
 /// <c>linkCalls</c>, its row's anchor (D12); a check's <c>pass</c> or <c>fail</c>, its counts and its <c>failWith</c>; the
 /// renderer and macro boxes their sub-rows. A deliverable shows its state. A pill and a function's boxes (keys no row
 /// carries) show nothing: the shared frame has no per-call status. Labels carry stored words, counts and hashes
@@ -44,27 +46,39 @@ public static class RunDiagram31
     {
         ArgumentNullException.ThrowIfNull(record);
         var model = DiagramModel.Build(resolve);
-        var overlay = new Overlay(Kinds(resolve), record, linkCalls).Of(model);
+        var (kinds, classifiers) = Entries(resolve);
+        var overlay = new Overlay(kinds, classifiers, record, linkCalls).Of(model);
         return DiagramWriter.Write(model, overlay, Classes);
     }
 
-    /// <summary>The <c>kind</c> of each entry of <c>nodes</c> and <c>checks</c>, by key; empty for a text that is not a JSON object.</summary>
-    private static Dictionary<string, string> Kinds(string resolve)
+    /// <summary>
+    /// The <c>kind</c> of each entry of <c>nodes</c> and <c>checks</c>, by key, and the keys of the classifiers: the
+    /// <c>agent</c> nodes returning the built-in <c>judgement</c> or the catalogue's <c>classification</c> (part 02 § 6,
+    /// part 05 § 8.2, part 07), their <c>format</c> <c>#/$defs/judgement</c> or <c>#/$defs/classification</c> (no package
+    /// format may take either name). Both empty for a text that is not a JSON object.
+    /// </summary>
+    private static (Dictionary<string, string> Kinds, HashSet<string> Classifiers) Entries(string resolve)
     {
         var kinds = new Dictionary<string, string>(StringComparer.Ordinal);
+        var classifiers = new HashSet<string>(StringComparer.Ordinal);
         try
         {
             using var document = JsonDocument.Parse(resolve ?? "");
             if (document.RootElement.ValueKind != JsonValueKind.Object)
-                return kinds;
+                return (kinds, classifiers);
             foreach (var map in new[] { "nodes", "checks" })
             {
                 if (!document.RootElement.TryGetProperty(map, out var entries) || entries.ValueKind != JsonValueKind.Object)
                     continue;
                 foreach (var entry in entries.EnumerateObject())
                 {
-                    if (entry.Value.ValueKind == JsonValueKind.Object && entry.Value.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String)
-                        kinds.TryAdd(entry.Name, kind.GetString()!);
+                    if (entry.Value.ValueKind != JsonValueKind.Object || !entry.Value.TryGetProperty("kind", out var kind) || kind.ValueKind != JsonValueKind.String)
+                        continue;
+                    kinds.TryAdd(entry.Name, kind.GetString()!);
+                    if (map == "nodes" && kind.GetString() == "agent" && entry.Value.TryGetProperty("format", out var format)
+                        && format.ValueKind == JsonValueKind.Object && format.TryGetProperty("$ref", out var reference)
+                        && reference.ValueKind == JsonValueKind.String && reference.GetString() is "#/$defs/judgement" or "#/$defs/classification")
+                        classifiers.Add(entry.Name);
                 }
             }
         }
@@ -72,10 +86,10 @@ public static class RunDiagram31
         {
         }
 
-        return kinds;
+        return (kinds, classifiers);
     }
 
-    private sealed class Overlay(Dictionary<string, string> kinds, Record31 record, bool linkCalls)
+    private sealed class Overlay(Dictionary<string, string> kinds, HashSet<string> classifiers, Record31 record, bool linkCalls)
     {
         private readonly bool terminal = JobLiveness31.IsTerminal(record.Header.Status);
         private readonly Dictionary<string, List<Row31>> instances = InstancesOf(record);
@@ -108,6 +122,10 @@ public static class RunDiagram31
             var own = kind is "for" or "while" ? all.Where(r => Tokens(r.Key) == depth).ToList() : all;
             if (own.Count == 0)
             {
+                // a loop's own row is written when it ends (none while it runs, nor when the job failed in it): its items still list
+                var listed = kind is "for" or "while" ? all.Where(r => Tokens(r.Key) == depth + 1).ToList() : [];
+                if (listed.Count > 0 && listed.Select(r => r.Key[..r.Key.LastIndexOfAny([':', '/', '#'])]).Distinct(StringComparer.Ordinal).Count() == 1)
+                    return new BoxOverlay([.. Items(listed, passes: kind == "while")], "running", null);
                 var inside = all.Count > 0 || record.Nodes.Concat(record.Checks).Any(r => r.Key.StartsWith(key + ".", StringComparison.Ordinal));
                 return new BoxOverlay([], !terminal && inside ? "running" : "ranNot", null);
             }
@@ -170,7 +188,8 @@ public static class RunDiagram31
                 case "call":
                     break;
                 default:
-                    lines.AddRange(Bounded(Answers(key)));
+                    if (classifiers.Contains(key))
+                        lines.AddRange(Bounded(Answers(key, row.Key)));
                     break;
             }
 
@@ -193,12 +212,29 @@ public static class RunDiagram31
             record.DecisionsOwnedBy(owner).Where(d => d.Text("site") == site && d.Text("condition") != null && Result(d) != null)
                 .Select(d => $"{d.Text("condition")}: {result(Result(d)!)}");
 
-        /// <summary>D11: each distinct decision (printed condition and result) whose only read is <paramref name="key"/>'s value.</summary>
-        private List<string> Answers(string key) =>
-            record.Decisions.Where(d => d.List("reads") is [var read] && Member(read, "path") is { } path
-                    && (path == key + ".value" || path.StartsWith(key + ".value.", StringComparison.Ordinal))
+        /// <summary>
+        /// D11: a classifier's answers, each distinct decision (printed condition and result) with one read: a read of the
+        /// classifier's value by its rooted <paramref name="key"/>, or the <c>if</c> of a macro whose row names the
+        /// classifier's row (<paramref name="rowKey"/>) as its <c>classifier</c> (part 08 § 4.3), however that read names it
+        /// (a loop's body names a sibling by its bare id).
+        /// </summary>
+        private List<string> Answers(string key, string rowKey)
+        {
+            var macroIfs = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var macro in record.Nodes.SelectMany(r => r.List("macros")).Where(m => Member(m, "classifier") == rowKey))
+            {
+                // the macro's own if, <placing row key>/if:macro.<id>, among the decisions its offer depended on
+                if (Member(macro, "id") is { } id && id.LastIndexOf("/macro:", StringComparison.Ordinal) is >= 0 and var at && Member(macro, "macro") is { } site
+                    && macro.TryGetProperty("decisions", out var decisions) && decisions.ValueKind == JsonValueKind.Array
+                    && decisions.EnumerateArray().Any(d => d.ValueKind == JsonValueKind.String && d.GetString() == $"{id[..at]}/if:{site}"))
+                    macroIfs.Add($"{id[..at]}/if:{site}");
+            }
+
+            return record.Decisions.Where(d => d.List("reads") is [var read] && Member(read, "path") is { } path
+                    && (path == key + ".value" || path.StartsWith(key + ".value.", StringComparison.Ordinal) || macroIfs.Contains(d.Key))
                     && d.Text("condition") != null && Result(d) != null)
                 .Select(d => $"{d.Text("condition")}: {Result(d)}").Distinct(StringComparer.Ordinal).ToList();
+        }
 
         /// <summary>A renderer or macro box (<c>&lt;entry&gt;#render:&lt;n&gt;</c>, <c>&lt;entry&gt;#macro:&lt;id&gt;</c>): its sub-rows, from the entry's one row (D10).</summary>
         private BoxOverlay? SubBox(string entry, string sub)
