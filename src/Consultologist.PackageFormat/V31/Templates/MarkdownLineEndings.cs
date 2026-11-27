@@ -15,23 +15,27 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// last line or before a list item or a heading. It is then left out when the line ends with a tag (a comment too) closed by <c>~}}</c> or
 /// <c>-}}</c> (the template removes that line ending). #1543 (ruling 2, D2; the G-D8 gap): a line of only tags and white
 /// space is judged by its tags' roles (<see cref="TagRole"/>, which the caller gives from the checker's typing;
-/// <see cref="TagRoles"/>), a comment's being a statement's. The line ending is left out when the line it ends holds only
-/// tags and any of them is not an <see cref="TagRole.InlineRead"/> (a <c>\</c> after a block read would be text after it;
-/// after a statement, a placement or a renderer it could end a paragraph), or when the line after it holds only tags and
-/// any of them is a <see cref="TagRole.Statement"/>, a <see cref="TagRole.Placement"/> or a <see cref="TagRole.Renderer"/>
-/// (its output may be nothing, which would leave the <c>\</c> at a paragraph's end). So the line above a read alone on its
-/// line (<c>Sincerely,</c> above <c>{{ profile.name }}</c>) is found, and each line of a letterhead of single reads. A line
-/// ending after a <c>\</c> or two spaces is already a hard break, so <see cref="WithHardBreaks"/> written twice writes
-/// nothing the second time.
+/// <see cref="TagRoles"/>), a comment's being a statement's. As the owner amended D2 on 2026-11-27 (item 3), a line ending
+/// between a line of text (literal text, or an <see cref="TagRole.InlineRead"/>) and a line whose only reads are
+/// <see cref="TagRole.BlockRead"/>s, on either side of it, is found as <see cref="LineEndingKind.BesideABlockRead"/>: a
+/// blank line goes there, never a <c>\</c>. Any other is a <see cref="LineEndingKind.Break"/>, left out when the line it
+/// ends holds only tags and any of them is not an <see cref="TagRole.InlineRead"/> (after a statement, a placement or a
+/// renderer the <c>\</c> could end a paragraph), or when the line after it holds only tags and any of them is a
+/// <see cref="TagRole.Statement"/>, a <see cref="TagRole.Placement"/> or a <see cref="TagRole.Renderer"/> (its output may
+/// be nothing, which would leave the <c>\</c> at a paragraph's end). So the line above an inline read alone on its line
+/// (<c>Sincerely,</c> above <c>{{ profile.name }}</c>) is a break, and each line of a letterhead of single reads. A line
+/// ending after a <c>\</c> or two spaces is already a hard break, and a blank line ends the paragraph, so
+/// <see cref="WithHardBreaks"/> and <see cref="WithBlockReadsSeparated"/> written twice write nothing the second time.
 /// </summary>
 public static class MarkdownLineEndings
 {
     /// <summary>
-    /// The offsets in <paramref name="body"/> of the line endings to break (each a <c>\n</c>, or the <c>\r</c> of a
-    /// <c>\r\n</c>), in order; none for a body whose tags do not close, or that Markdig refuses to parse (nested too deeply).
-    /// <paramref name="role"/> gives each tag's role (<see cref="TemplateTags.Scan"/>'s tags; a comment is not asked).
+    /// The line endings in <paramref name="body"/> 31 would join where 30 broke them (each a <c>\n</c>, or the <c>\r</c> of a
+    /// <c>\r\n</c>), in order, each with its kind (<see cref="LineEndingKind"/>); none for a body whose tags do not close,
+    /// or that Markdig refuses to parse (nested too deeply). <paramref name="role"/> gives each tag's role
+    /// (<see cref="TemplateTags.Scan"/>'s tags; a comment is not asked).
     /// </summary>
-    public static IReadOnlyList<int> Find(string body, Func<TemplateTag, TagRole> role)
+    public static IReadOnlyList<LineEndingHit> Find(string body, Func<TemplateTag, TagRole> role)
     {
         ArgumentNullException.ThrowIfNull(body);
         ArgumentNullException.ThrowIfNull(role);
@@ -51,7 +55,7 @@ public static class MarkdownLineEndings
 
         // Lines are read in the masked text, where a line ending inside a tag is none.
         var text = new string(masked);
-        var found = new List<int>();
+        var found = new Dictionary<int, LineEndingKind>();
         MarkdownDocument document;
         try
         {
@@ -64,35 +68,47 @@ public static class MarkdownLineEndings
             return [];
         }
 
+        // #1543 (the owner's ruling of 2026-11-27, item 3; D2's amendment): a line of text (literal text, or an inline
+        // read) next to a line whose only reads are block reads, on either side of it, is separated by a blank line.
+        bool TextLine(List<TemplateTag>? only) => only is null || only.Any(t => roles[t.Start] == TagRole.InlineRead);
+        bool BlockReadLine(List<TemplateTag>? only) =>
+            only is not null && only.Any(t => roles[t.Start] == TagRole.BlockRead) && !only.Any(t => roles[t.Start] == TagRole.InlineRead);
+
         foreach (var lineBreak in document.Descendants<LineBreakInline>())
         {
             if (lineBreak.IsHard || !InParagraph(lineBreak) || LineEndingAt(text, lineBreak.Span.Start) is not { } at)
                 continue;
             if (RemovedByATag(text, tags, at))
                 continue;
-            if (OnlyTags(text, byStart, LineStart(text, at), at) is { } before && before.Any(t => roles[t.Start] != TagRole.InlineRead))
-                continue;
+            var before = OnlyTags(text, byStart, LineStart(text, at), at);
             var next = NextLine(text, at);
-            if (OnlyTags(text, byStart, next, LineEnd(text, next)) is { } after
-                && after.Any(t => roles[t.Start] is TagRole.Statement or TagRole.Placement or TagRole.Renderer))
+            var after = OnlyTags(text, byStart, next, LineEnd(text, next));
+            if ((TextLine(before) && BlockReadLine(after)) || (BlockReadLine(before) && TextLine(after)))
             {
+                found.TryAdd(at, LineEndingKind.BesideABlockRead);
                 continue;
             }
 
-            found.Add(at);
+            if (before is not null && before.Any(t => roles[t.Start] != TagRole.InlineRead))
+                continue;
+            if (after is not null && after.Any(t => roles[t.Start] is TagRole.Statement or TagRole.Placement or TagRole.Renderer))
+                continue;
+
+            found.TryAdd(at, LineEndingKind.Break);
         }
 
-        return found.Distinct().Order().ToList();
+        return found.OrderBy(f => f.Key).Select(f => new LineEndingHit(f.Key, f.Value)).ToList();
     }
 
     /// <summary>
-    /// <paramref name="body"/> with a <c>\</c> written immediately before each line ending <see cref="Find"/> names (after any
-    /// trailing spaces), and how many it wrote, each tag's role given by <paramref name="role"/>. <c>\</c> is not white space,
-    /// so a <c>~</c> does not strip it.
+    /// <paramref name="body"/> with a <c>\</c> written immediately before each line ending <see cref="Find"/> names a
+    /// <see cref="LineEndingKind.Break"/> (after any trailing spaces), and how many it wrote, each tag's role given by
+    /// <paramref name="role"/>. <c>\</c> is not white space, so a <c>~</c> does not strip it. A line ending beside a block
+    /// read's line gets none: its blank line is the block-reads pass's (<see cref="WithBlockReadsSeparated"/>).
     /// </summary>
     public static (string Text, int Count) WithHardBreaks(string body, Func<TemplateTag, TagRole> role)
     {
-        var found = Find(body, role);
+        var found = Find(body, role).Where(h => h.Kind == LineEndingKind.Break).Select(h => h.At).ToList();
         if (found.Count == 0)
             return (body, 0);
         var text = new System.Text.StringBuilder(body.Length + found.Count);
@@ -127,7 +143,7 @@ public static class MarkdownLineEndings
     }
 
     /// <summary>
-    /// #1543 (ruling 2, D5): the finder of publish's S05-066 and S05-067 and of the migration's move (D7): each tag of
+    /// #1543 (ruling 2, D5): the finder of publish's S05-066 and S05-067 and of the migration's separation (D7): each tag of
     /// <paramref name="body"/> whose role is <see cref="TagRole.BlockRead"/> and that has text before or after it on its
     /// line (<see cref="TextBeside"/>), in order; none for a body whose tags do not close.
     /// </summary>
@@ -145,38 +161,77 @@ public static class MarkdownLineEndings
     }
 
     /// <summary>
-    /// #1543 (ruling 2, D7): <paramref name="body"/> with each block read <see cref="BlockReadsBeside"/> finds on a line of
-    /// its own, and those reads, in order. Nothing is dropped. Where text stands before the read, <c>\</c> and a line
-    /// ending are written directly before it, after whatever stood there, the tags the scan steps over (a statement, a
-    /// comment, a placement, a renderer, another block read) kept on the read's line, so <c>{{ if x }}{{ r }}</c> moves
-    /// whole; where text stands after it, a plain line ending is written directly after it and the tags that stay with it,
-    /// so the text starts the next line (a <c>\</c> there would itself be text after the read). Written again, it moves
-    /// nothing: no read it moved has text beside it.
+    /// #1543 (ruling 2, D7, as the owner amended it on 2026-11-27): <paramref name="body"/> with each block read separated
+    /// from the text beside it by a blank line, and nothing dropped. Where <see cref="BlockReadsBeside"/> finds text before
+    /// the read, two line endings are written directly before it, the tags the scan steps over (a statement, a comment, a
+    /// placement, a renderer, another block read) kept on the read's line, so <c>{{ if x }}{{ r }}</c> moves whole; where it
+    /// finds text after it, two line endings directly after it and the tags that stay with it. Then each single line ending
+    /// between a line of text and a line whose only reads are block reads (<see cref="LineEndingKind.BesideABlockRead"/>,
+    /// either side) gets one more, so a blank line stands between them. A read whose text before is only Markdown block
+    /// markers (<c>- </c>, <c>&gt; </c>, <c># </c>, <c>1. </c>, …) is not moved: a blank line would leave an empty container
+    /// and move the value out of it; it is in <c>Marked</c>. <c>Separated</c> is each block read with a blank line written
+    /// beside it, in order; both lists hold the tags of <paramref name="body"/> as given. The line endings written are
+    /// <c>\n</c> (the migration's bodies are normalised) but where one is doubled, which keeps its own. Written again, it
+    /// writes nothing: a blank line already there is left.
     /// </summary>
-    public static (string Text, IReadOnlyList<TemplateTag> Moved) WithBlockReadsAlone(string body, Func<TemplateTag, TagRole> role)
+    public static (string Text, IReadOnlyList<TemplateTag> Separated, IReadOnlyList<TemplateTag> Marked) WithBlockReadsSeparated(
+        string body, Func<TemplateTag, TagRole> role)
     {
         ArgumentNullException.ThrowIfNull(body);
         ArgumentNullException.ThrowIfNull(role);
         if (Neighbours.Of(body) is not { } neighbours)
-            return (body, []);
-        var moved = new List<TemplateTag>();
+            return (body, [], []);
+        var separated = new HashSet<TemplateTag>();
+        var marked = new List<TemplateTag>();
         var writes = new SortedDictionary<int, string>();
         foreach (var tag in neighbours.Scanned.Where(t => role(t) == TagRole.BlockRead))
         {
             var beside = Beside(body, tag, role, neighbours);
             if (!beside.Before && !beside.After)
                 continue;
-            moved.Add(tag);
-            // Two reads moved as one (a block read stepped over beside another) write their line ending once.
+            if (beside.Before && OnlyBlockMarkers(body, neighbours, LineStart(body, beside.From), beside.From))
+            {
+                marked.Add(tag);
+                continue;
+            }
+
+            separated.Add(tag);
+            // Two reads separated as one (a block read stepped over beside another) write their blank line once.
             if (beside.Before)
-                writes[beside.From] = "\\\n";
+                writes[beside.From] = "\n\n";
             if (beside.After)
-                writes[beside.To] = "\n";
+                writes[beside.To] = "\n\n";
         }
 
-        if (moved.Count == 0)
-            return (body, []);
-        var text = new System.Text.StringBuilder(body.Length + (writes.Count * 2));
+        var moved = Written(body, writes);
+
+        // The line beside a block read's line, read in the moved text, whose tags are the body's in the same order.
+        var given = neighbours.Scanned;
+        var (now, _) = TemplateTags.Scan(moved);
+        var index = now.Select((t, i) => (t.Start, i)).ToDictionary(p => p.Start, p => p.i);
+        TagRole Role(TemplateTag t) => index.TryGetValue(t.Start, out var i) && i < given.Count ? role(given[i]) : TagRole.Statement;
+        var blankLines = new SortedDictionary<int, string>();
+        var byStart = now.Concat(TemplateTags.Comments(moved)).GroupBy(t => t.Start).ToDictionary(g => g.Key, g => g.First());
+        foreach (var hit in Find(moved, Role).Where(h => h.Kind == LineEndingKind.BesideABlockRead))
+        {
+            blankLines[hit.At] = moved[hit.At] == '\r' && hit.At + 1 < moved.Length && moved[hit.At + 1] == '\n' ? "\r\n" : moved[hit.At].ToString();
+            var next = NextLine(moved, hit.At);
+            var line = OnlyTags(moved, byStart, LineStart(moved, hit.At), hit.At) is { } above && above.Any(t => Role(t) == TagRole.BlockRead) && !above.Any(t => Role(t) == TagRole.InlineRead)
+                ? above
+                : OnlyTags(moved, byStart, next, LineEnd(moved, next)) ?? [];
+            foreach (var read in line.Where(t => Role(t) == TagRole.BlockRead))
+                separated.Add(given[index[read.Start]]);
+        }
+
+        return (Written(moved, blankLines), separated.OrderBy(t => t.Start).ToList(), marked);
+    }
+
+    /// <summary><paramref name="body"/> with each of <paramref name="writes"/> inserted at its offset.</summary>
+    private static string Written(string body, SortedDictionary<int, string> writes)
+    {
+        if (writes.Count == 0)
+            return body;
+        var text = new System.Text.StringBuilder(body.Length + writes.Values.Sum(w => w.Length));
         var from = 0;
         foreach (var (at, written) in writes)
         {
@@ -185,8 +240,71 @@ public static class MarkdownLineEndings
         }
 
         text.Append(body, from, body.Length - from);
-        return (text.ToString(), moved);
+        return text.ToString();
     }
+
+    /// <summary>
+    /// Whether <paramref name="body"/> from <paramref name="start"/> to <paramref name="end"/> (a line's text before a read)
+    /// holds no tag or comment and, trimmed, only Markdown block markers separated by white space: <c>-</c>, <c>*</c>,
+    /// <c>+</c>, a list number (<c>1.</c>, <c>1)</c>), <c>&gt;</c>, <c>#</c> to <c>######</c>.
+    /// </summary>
+    private static bool OnlyBlockMarkers(string body, Neighbours neighbours, int start, int end) =>
+        !neighbours.ByStart.Values.Any(t => t.Tag.Start < end && t.Tag.End > start)
+        && BlockMarkers.IsMatch(body[start..end].Trim(' ', '\t'));
+
+    private static readonly System.Text.RegularExpressions.Regex BlockMarkers = new(
+        @"^(?:[-*+>]|[0-9]{1,9}[.)]|#{1,6})(?:[ \t]+(?:[-*+>]|[0-9]{1,9}[.)]|#{1,6}))*$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// #1543 (ruling 2, D8): where each of <paramref name="reads"/> (a tag's text as written) stands separated by a blank
+    /// line from a line of text in <paramref name="body"/>, as <see cref="WithBlockReadsSeparated"/> writes it: the read's
+    /// line holds only tags and white space, the line next to it (above or below) is blank, and the line beyond that is not.
+    /// Each with the tag's start, the span of the line endings between the text's line and the read's (<c>From</c> to
+    /// <c>To</c>), whether the text stands above, and the text's line. In order; none for a body whose tags do not close.
+    /// </summary>
+    internal static IReadOnlyList<Separation> Separations(string body, IReadOnlyCollection<string> reads)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(reads);
+        var (scanned, unclosed) = TemplateTags.Scan(body);
+        if (unclosed is not null || reads.Count == 0)
+            return [];
+        var byStart = scanned.Concat(TemplateTags.Comments(body)).GroupBy(t => t.Start).ToDictionary(g => g.Key, g => g.First());
+        bool Blank(int start, int end) => body.AsSpan(start, end - start).Trim(" \t").IsEmpty;
+
+        var found = new List<Separation>();
+        foreach (var tag in scanned.Where(t => reads.Contains(body[t.Start..t.End])))
+        {
+            var start = LineStart(body, tag.Start);
+            var end = LineEnd(body, tag.End);
+            if (OnlyTags(body, byStart, start, end) is null)
+                continue;
+
+            // Above: the line before the read's is blank, the one before that is not.
+            if (start > 0 && PreviousLine(body, start) is var blank && blank < start && Blank(blank, LineEndBefore(body, start))
+                && blank > 0 && PreviousLine(body, blank) is var text && LineEndBefore(body, blank) is var textEnd && !Blank(text, textEnd))
+            {
+                found.Add(new Separation(tag.Start, textEnd, start, true, body[text..textEnd]));
+            }
+
+            // Below: the line after the read's is blank, the one after that is not.
+            if (end < body.Length && NextLine(body, end) is var below && below < body.Length && LineEnd(body, below) is var blankEnd && Blank(below, blankEnd)
+                && blankEnd < body.Length && NextLine(body, blankEnd) is var after && after < body.Length && LineEnd(body, after) is var afterEnd && !Blank(after, afterEnd))
+            {
+                found.Add(new Separation(tag.Start, end, after, false, body[after..afterEnd]));
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>The start of the line before the one that starts at <paramref name="lineStart"/> (which is not the first).</summary>
+    private static int PreviousLine(string body, int lineStart) => LineStart(body, LineEndBefore(body, lineStart));
+
+    /// <summary>Where the line before the one that starts at <paramref name="lineStart"/> ends (its <c>\r\n</c>'s <c>\r</c>, or its <c>\n</c>).</summary>
+    private static int LineEndBefore(string body, int lineStart) =>
+        lineStart >= 2 && body[lineStart - 1] == '\n' && body[lineStart - 2] == '\r' ? lineStart - 2 : lineStart - 1;
 
     /// <summary>A body's tags (<see cref="TemplateTags.Scan"/>'s, asked their role) and comments (never text), by where each starts and ends.</summary>
     private sealed record Neighbours(
@@ -351,3 +469,26 @@ public static class MarkdownLineEndings
         return i;
     }
 }
+
+/// <summary>
+/// #1543 (D2, as the owner amended it on 2026-11-27): what a line ending <see cref="MarkdownLineEndings.Find"/> names
+/// wants: a <c>\</c> (ruling 1), or a blank line beside a line whose only reads are block reads.
+/// </summary>
+public enum LineEndingKind
+{
+    /// <summary>A single line ending inside a paragraph: the migration ends the line with <c>\</c>.</summary>
+    Break,
+
+    /// <summary>A single line ending between a line of text and a line whose only reads are block reads: the migration writes a blank line.</summary>
+    BesideABlockRead,
+}
+
+/// <summary>A line ending <see cref="MarkdownLineEndings.Find"/> names: its offset (a <c>\n</c>, or the <c>\r</c> of a <c>\r\n</c>) and its kind.</summary>
+public readonly record struct LineEndingHit(int At, LineEndingKind Kind);
+
+/// <summary>
+/// #1543 (D8): a read separated from a line of text by a blank line (<see cref="MarkdownLineEndings.Separations"/>): the
+/// read's tag's start, the line endings between the text's line and the read's (<paramref name="From"/> to
+/// <paramref name="To"/>), whether the text stands <paramref name="Above"/> the read, and the text's line.
+/// </summary>
+internal sealed record Separation(int Tag, int From, int To, bool Above, string Line);

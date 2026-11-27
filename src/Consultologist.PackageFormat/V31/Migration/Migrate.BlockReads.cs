@@ -3,40 +3,80 @@ using Consultologist.PackageFormat.V31.Templates;
 namespace Consultologist.PackageFormat.V31.Migration;
 
 /// <summary>
-/// #1543 (ruling 2, D7): a <c>markdown_block</c> read stands alone on its line at 31, and publish refuses one with text
-/// beside it (S05-066, S05-067). Where a 30 body has such a read (now a <c>markdown_block</c> value: the profile's signature
-/// and closing, a 30 <c>text</c> input and its fields), the migration moves the read onto a line of its own and drops
-/// nothing (<see cref="MarkdownLineEndings.WithBlockReadsAlone"/>): the text before it ends with <c>\</c>, an explicit hard
-/// break, and the read starts the next line (<c>Sincerely,\</c> then <c>{{ profile.closing }}</c>); the text after it starts
-/// the next line, after a plain line ending, which 31 reads as a space as 30 read its line. The sites are the hard-breaks
-/// pass's, and the reads are found as publish finds them (<see cref="MarkdownLineEndings.BlockReadsBeside"/>, each tag's
-/// role publish's own, read from the 31 set written so far: every body the checker typed, a file refused before the
-/// line rules typing none), so a migrated package with no hand edit is refused neither.
+/// #1543 (ruling 2, D7, as the owner amended it on 2026-11-27): a <c>markdown_block</c> read stands alone on its line at 31,
+/// and publish refuses one with text beside it (S05-066, S05-067). Where a 30 body has such a read (now a
+/// <c>markdown_block</c> value: the profile's signature and closing, a 30 <c>text</c> input and its fields), the migration
+/// separates it from that text by a blank line, on both sides, and drops nothing
+/// (<see cref="MarkdownLineEndings.WithBlockReadsSeparated"/>): <c>Sincerely, {{ profile.closing }}</c> becomes
+/// <c>Sincerely, </c>, an empty line, <c>{{ profile.closing }}</c>; the text after a read starts its own line after a blank
+/// line; and a line of text next to a line holding only a block read gets a blank line between them, never a <c>\</c>
+/// (<see cref="LineEndingKind.BesideABlockRead"/>). A blank line is right for every value, where <c>\</c> breaks only
+/// inside a paragraph and a value may start or end with any block. Where the text before the read is only a Markdown block
+/// marker (<c>- {{ … }}</c>, <c>&gt; {{ … }}</c>, <c># {{ … }}</c>, a list number), a blank line would leave an empty
+/// container and move the value out of it, so the line is left and is a hand edit (A10-094). The sites are the
+/// hard-breaks pass's, and the reads are found as publish finds them (<see cref="MarkdownLineEndings.BlockReadsBeside"/>,
+/// <see cref="MarkdownLineEndings.Find"/>, each tag's role publish's own, read from the 31 set written so far: every body
+/// the checker typed, a file refused before the line rules typing none), so a migrated package with no hand edit is
+/// refused and warned neither.
 /// </summary>
 internal static partial class Migrate
 {
     /// <summary>
     /// The block-reads pass, after <see cref="StripLoopItems"/> and directly before <see cref="HardBreaks"/> (which reads
-    /// the lines as moved, its roles typed again). Each site whose body has a block read with text beside it gets the read
-    /// on its own line, counted in <see cref="Migrated.MovedReads"/> and said once (A10-093). Run again, it moves nothing.
+    /// the lines as separated, its roles typed again). Each site whose body has a block read with text beside it, or a line
+    /// of text next to a line of only block reads, gets its blank lines, the reads counted in
+    /// <see cref="Migrated.MovedReads"/> and said once per file (A10-093); a read after a block marker is a hand edit
+    /// (A10-094). Run again, it writes nothing.
     /// </summary>
     public static void BlockReads(Migrated m)
     {
         ArgumentNullException.ThrowIfNull(m);
         var sites = MarkdownSites(m);
-        if (sites.Count == 0 || Read31(m)?.Roles is not { } roles)
+        if (sites.Count > 0)
+            BlockReads(m, sites, Read31(m)?.Roles);
+    }
+
+    /// <summary>
+    /// The two line-ending passes in turn (<see cref="BlockReads"/>, then <see cref="HardBreaks"/>) on one reading of the
+    /// 31 set: it is read again for the hard breaks only where the block-reads pass wrote a blank line.
+    /// </summary>
+    public static void LineEndings(Migrated m)
+    {
+        ArgumentNullException.ThrowIfNull(m);
+        var sites = MarkdownSites(m);
+        if (sites.Count == 0)
             return;
+        var read = Read31(m);
+        if (BlockReads(m, sites, read?.Roles))
+            read = Read31(m);
+        HardBreaks(m, sites, read is { } typed ? KeptRoles(typed.Bodies, typed.Resolution, typed.Refusals) : null);
+    }
+
+    /// <summary>The block-reads pass on <paramref name="sites"/> with publish's <paramref name="roles"/> (none: nothing is read); whether it wrote anything.</summary>
+    private static bool BlockReads(Migrated m, List<string> sites, SiteRoles? roles)
+    {
+        if (roles is null)
+            return false;
+        var wrote = false;
         foreach (var path in sites)
         {
             var file = m.Sources[path];
             var body = file.Body!;
-            var (text, moved) = MarkdownLineEndings.WithBlockReadsAlone(body, roles.Of(path, body));
-            if (moved.Count == 0)
+            var (text, separated, marked) = MarkdownLineEndings.WithBlockReadsSeparated(body, roles.Of(path, body));
+            string Read(TemplateTag t) => roles.ReadOf(path, body, t) ?? body[t.Start..t.End];
+            foreach (var tag in marked)
+                m.HandEdit(path, "body", MigrationSentences.BlockMarkerBeforeARead(Read(tag), tag.Line));
+            if (separated.Count == 0)
                 continue;
             file.Body = text;
-            m.MovedReads[path] = m.MovedReads.GetValueOrDefault(path) + moved.Count;
-            var reads = moved.Select(t => roles.ReadOf(path, body, t) ?? body[t.Start..t.End]).Distinct(StringComparer.Ordinal).ToList();
-            m.Notice(MigrationSentences.BlockReadsMoved(path, reads));
+            wrote = true;
+            m.MovedReads[path] = m.MovedReads.GetValueOrDefault(path) + separated.Count;
+            if (!m.SeparatedReads.TryGetValue(path, out var tags))
+                m.SeparatedReads[path] = tags = [];
+            tags.AddRange(separated.Select(t => body[t.Start..t.End]));
+            m.Notice(MigrationSentences.BlockReadsMoved(path, separated.Select(Read).Distinct(StringComparer.Ordinal).ToList()));
         }
+
+        return wrote;
     }
 }

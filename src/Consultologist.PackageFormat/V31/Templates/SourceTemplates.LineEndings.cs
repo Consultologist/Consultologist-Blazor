@@ -11,7 +11,9 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// 1): a body a prompt reads or places is warned like any other, with no exception, and the migration writes the <c>\</c> in
 /// each of these sites, so a migrated package with no hand edit is warned nowhere. A prompt and a part are never sites.
 /// #1543 (ruling 2, D2): each tag's role is the checker's own typing of the site's body wherever it read it
-/// (<see cref="TagRoles"/>), as the migration's is.
+/// (<see cref="TagRoles"/>), as the migration's is. As the owner amended D2 on 2026-11-27, a line ending beside a line whose
+/// only reads are block reads, on either side, is warned too (<see cref="LineEndingKind.BesideABlockRead"/>): the migration
+/// writes a blank line there, so a migrated package is still warned nowhere.
 /// </summary>
 public static partial class SourceTemplates
 {
@@ -32,8 +34,8 @@ public static partial class SourceTemplates
         {
             foreach (var (subject, path, text) in Sites())
             {
-                foreach (var at in MarkdownLineEndings.Find(text, roles.Of(path, text)))
-                    Warnings.Add(DialectSentences.SingleLineEnding(subject, LineOf(text, at), path));
+                foreach (var hit in MarkdownLineEndings.Find(text, roles.Of(path, text)))
+                    Warnings.Add(DialectSentences.SingleLineEnding(subject, LineOf(text, hit.At), path));
             }
         }
 

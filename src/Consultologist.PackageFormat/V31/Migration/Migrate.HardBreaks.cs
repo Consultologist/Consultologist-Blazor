@@ -30,11 +30,17 @@ internal static partial class Migrate
         var sites = MarkdownSites(m);
         if (sites.Count == 0)
             return;
-        // Read again after the block-reads pass, so each tag's offset is the moved body's.
-        var read = Read31(m);
-        var roles = read is { } typed
-            ? TagRoles.Of(typed.Bodies.Bodies, typed.Resolution.Tree, typed.Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal))
-            : null;
+        // Read again after the block-reads pass, so each tag's offset is the separated body's.
+        HardBreaks(m, sites, Read31(m) is { } typed ? KeptRoles(typed.Bodies, typed.Resolution, typed.Refusals) : null);
+    }
+
+    /// <summary>
+    /// The hard-breaks pass on <paramref name="sites"/> with <paramref name="roles"/> (<see cref="KeptRoles"/>; none: every tag
+    /// a <see cref="TagRole.Statement"/>). Only a <see cref="LineEndingKind.Break"/> gets a <c>\</c>: beside a block read's line
+    /// the block-reads pass wrote a blank line.
+    /// </summary>
+    private static void HardBreaks(Migrated m, List<string> sites, SiteRoles? roles)
+    {
         foreach (var path in sites)
         {
             var file = m.Sources[path];
@@ -47,6 +53,10 @@ internal static partial class Migrate
             m.Notice(MigrationSentences.ExplicitHardBreaks(path, count));
         }
     }
+
+    /// <summary>The roles of the bodies the dialect read and kept (<see cref="Read31"/>'s), a refused file typing none.</summary>
+    private static SiteRoles KeptRoles(PackageTemplates bodies, Resolution resolution, IReadOnlyList<SourceRefusal> refusals) =>
+        TagRoles.Of(bodies.Bodies, resolution.Tree, refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal));
 
     /// <summary>
     /// The files of the G-D8 sites (the class's remarks): each Markdown body site with a body (<see cref="IsMarkdownSite"/>)

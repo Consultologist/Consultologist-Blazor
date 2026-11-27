@@ -506,14 +506,23 @@ internal static class MigrationSentences
         : $"In '{file}', {count} line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.";
 
     /// <summary>
-    /// A10-093 (#1543, ruling 2, D7): in the Markdown body <paramref name="file"/>, the migration moved each of
-    /// <paramref name="reads"/> (a <c>markdown_block</c> read, as written without its pipes) that had text beside it onto a
-    /// line of its own: after <c>\</c> where text stood before it, the text after it on the next line. One per file; one read
-    /// or several.
+    /// A10-093 (#1543, ruling 2, D7, as the owner amended it on 2026-11-27): in the Markdown body <paramref name="file"/>, the
+    /// migration separated each of <paramref name="reads"/> (a <c>markdown_block</c> read, as written without its pipes) from
+    /// the text beside it by a blank line: text on the read's line, or a line of text next to the read's own. One per file;
+    /// one read or several.
     /// </summary>
     public static string BlockReadsMoved(string file, IReadOnlyList<string> reads) => reads.Count == 1
-        ? $"In '{file}', the read {reads[0]} now stands alone on its line (after \\, an explicit hard break, where text stood before it): at specVersion 31 a markdown_block read stands alone on its line."
-        : $"In '{file}', the reads {string.Join(", ", reads)} now stand alone on their lines (after \\, an explicit hard break, where text stood before them): at specVersion 31 a markdown_block read stands alone on its line.";
+        ? $"In '{file}', the read {reads[0]} now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line."
+        : $"In '{file}', the reads {string.Join(", ", reads)} now start their own lines, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.";
+
+    /// <summary>
+    /// A10-094 (#1543, ruling 2, D7, as the owner amended it on 2026-11-27, item 4): a reason: the text before the
+    /// <c>markdown_block</c> read <paramref name="read"/> at line <paramref name="line"/> of the body is only Markdown block
+    /// markers (a list item's, a quote's, a heading's), and a blank line would leave the container empty and move the value
+    /// out of it, so the migration leaves the line as 30 wrote it. S10-002 gives it.
+    /// </summary>
+    public static string BlockMarkerBeforeARead(string read, int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"the line holds only a Markdown block marker before the read {read} at line {line}, and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.");
 
     /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the

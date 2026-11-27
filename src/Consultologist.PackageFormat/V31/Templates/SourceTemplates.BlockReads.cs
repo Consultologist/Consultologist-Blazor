@@ -21,7 +21,7 @@ public static partial class SourceTemplates
         {
             foreach (var (subject, path, text) in Sites())
             {
-                // The migration's move (D7) reads the same finder, so what is refused here is what it moves.
+                // The migration's separation (D7) reads the same finder, so what is refused here is what it separates.
                 foreach (var (tag, before, after) in MarkdownLineEndings.BlockReadsBeside(text, roles.Of(path, text)))
                 {
                     var read = roles.ReadOf(path, text, tag) ?? text[tag.Start..tag.End];
