@@ -66,6 +66,19 @@ public class TemplateRewriterTests
     }
 
     [Fact]
+    public void ADateAlreadyPiped_InATest_OrAField_IsLeftAsToday()
+    {
+        var m = Working("example-conditional-documents");
+        var node = m.Keys.Keys.First(k => k.EndsWith("consult_note_section", StringComparison.Ordinal));
+
+        Assert.Equal("{{ input.seen_on.value | date.to_string \"%d %B %Y\" }}\n",
+            Prompt(m, node, "{{ input.seen_on | date.to_string \"%d %B %Y\" }}\n").Text);
+        var test = Prompt(m, node, "{{ if input.seen_on }}x{{ end }}\n");
+        Assert.DoesNotContain("date.to_string", test.Text + test.Parts.ToJsonString(), StringComparison.Ordinal);
+        Assert.Equal("{{ input.seen_on.value | date.to_string \"%d %b %Y\" }}\n", Prompt(m, node, "{{ input.seen_on }}\n").Text);
+    }
+
+    [Fact]
     public void ABareInputWrittenWhole_IsAHandEdit()
     {
         var m = Working("example-structured-intake");

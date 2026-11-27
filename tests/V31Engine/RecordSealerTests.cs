@@ -467,6 +467,23 @@ public class RecordSealerTests
     }
 
     [Fact]
+    public async Task ARecordWrittenBeforeTheMove_IsStillRead()
+    {
+        // R5 (#1509): a record only at the old place (the kind's outputs container) is not found at the new one; the restore
+        // path assembles it from the rows, and writes it to the new place because it hashes to the stamped recordHash
+        var job = V31Job.Of("checked-note");
+        await V31Job.RunAsync(job.Context());
+        var original = await DocumentOf(job);
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+        var oldContainer = Consultologist.Api.Jobs.JobOutputsBlobStore.ContainerFor(V31Job.AccountKind);
+        await job.Blobs.Blobs.PutAsync(oldContainer, BlobRecordStore.RecordName(UserId, V31Job.JobId), original, true, CancellationToken.None);
+
+        Assert.Equal(original, await job.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None));
+
+        Assert.Equal(original, await job.Blobs.Blobs.GetAsync(BlobRecordStore.RecordContainer, BlobRecordStore.RecordName(UserId, V31Job.JobId), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ReadSealed_SealsAJobNotSealedYet_AndIsNullForOneThatCannotBe()
     {
         var job = V31Job.Of("nested-note");
@@ -661,7 +678,7 @@ public class RecordSealerTests
         ?? throw new Xunit.Sdk.XunitException("No record.json was written.");
 
     private static bool HasRecordBlob(V31Job job) =>
-        job.Blobs.Blobs.Names().Any(n => n.Name == BlobRecordStore.RecordName(UserId, V31Job.JobId));
+        job.Blobs.Blobs.Names().Any(n => n.Container == BlobRecordStore.RecordContainer && n.Name == BlobRecordStore.RecordName(UserId, V31Job.JobId));
 
     private static ConsultGenerationJobInitialize Initialize(int specVersion) => new(
         V31Job.JobId, UserId, Array.Empty<IReadOnlyDictionary<string, string>>(), "nested-note@1.0.0", PackageSpecVersion: specVersion);
@@ -682,6 +699,9 @@ public class RecordSealerTests
 
         public Task<bool> WriteRecordAsync(string? accountKind, string appUserId, string jobId, string document, CancellationToken ct) =>
             inner.WriteRecordAsync(accountKind, appUserId, jobId, document, ct);
+
+        public Task DeleteAccountRecordsAsync(string appUserId, CancellationToken ct) =>
+            inner.DeleteAccountRecordsAsync(appUserId, ct);
 
         public Task<string?> ReadRecordAsync(string? accountKind, string appUserId, string jobId, CancellationToken ct)
         {

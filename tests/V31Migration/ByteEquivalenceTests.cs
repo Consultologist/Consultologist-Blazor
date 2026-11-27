@@ -52,12 +52,81 @@ public class ByteEquivalenceTests
         }
     }
 
+    /// <summary>#1508 (item 7): a migrated classifier's prompt ends with its format's instruction alone; 30's answer line is credited to <c>sent-format</c>.</summary>
+    [Fact]
+    public async Task AClassifiersPrompt_IsExpected()
+    {
+        var (_, _, texts) = await EquivalenceFixture.Compared("example-classifier-scope", "in-scope");
+        var scope = texts.Single(t => t.Site == "example-classifier-scope/in-scope#prompts/node.scope");
+        Assert.Equal(["sent-format"], scope.Rules);
+        Assert.True(scope.Expected);
+
+        var (_, _, edge) = await EquivalenceFixture.Compared("edge-answer-outside-set", "answer-outside-set");
+        var triage = edge.Single(t => t.Site.EndsWith("#prompts/node.triage", StringComparison.Ordinal));
+        Assert.Equal(["sent-format"], triage.Rules);
+    }
+
+    /// <summary>
+    /// #1508 (item 1; PR #1532's unexpected difference 1): 30 ran only what an applicable deliverable needed; the
+    /// migration gates the rest, so 31 sends no prompt 30 did not.
+    /// </summary>
+    [Theory]
+    [InlineData("example-classifier-scope")]
+    [InlineData("example-conditional-documents")]
+    [InlineData("example-structured-intake")]
+    public async Task TheGatedPackages_SendOnlyThePrompts30Sent(string package)
+    {
+        // A scenario 30 refused before any model call (example-structured-intake's all-optional-inputs-unset, the empty-fan
+        // refusal) sent no prompt at all: its 31 run is another difference (empty-input-list-runs), not a gate's.
+        var compared = 0;
+        foreach (var scenario in EquivalenceFixture.Scenarios(package))
+        {
+            var (capture, _, texts) = await EquivalenceFixture.Compared(package, scenario);
+            if ((string?)capture["status"] != "Completed")
+                continue;
+            compared++;
+            var alone = texts.Where(t => t.Site.Contains("#prompts/", StringComparison.Ordinal)
+                && t.OldHash == PackageFormat.V31.Harness.ByteEquivalence.EmptyHash && t.NewHash != PackageFormat.V31.Harness.ByteEquivalence.EmptyHash).Select(t => t.Site).ToList();
+            Assert.True(alone.Count == 0, "31 alone sent:\n" + string.Join("\n", alone));
+        }
+
+        Assert.True(compared > 0);
+    }
+
+    [Fact]
+    public async Task AMigratedDate_RendersAs30Did()
+    {
+        // #1508 (item 2): the migration writes 30's "%d %b %Y", so the dated prompt and render are equal.
+        var (_, _, billing) = await EquivalenceFixture.Compared("example-conditional-documents", "new-patient-billing");
+        var date = billing.Single(t => t.Site.EndsWith("#prompts/node.sections_consult_note_section.consult_note_section:assessment", StringComparison.Ordinal));
+        Assert.True(date.Equal);
+        Assert.Equal(date.OldHash, date.NewHash);
+
+        var (_, _, v12) = await EquivalenceFixture.Compared("example-v12-constructs", "default");
+        var header = v12.Single(t => t.Site.EndsWith("#renders/node.patient_header", StringComparison.Ordinal));
+        Assert.True(header.Equal);
+    }
+
     [Fact]
     public async Task ADifferenceNoRuleExplains_IsUnexpected()
     {
-        // 30 wrote the encounter date as Scriban's default "09 Nov 2026"; 31 writes the date ISO (part 05 § 1): no ruling.
-        var (_, _, texts) = await EquivalenceFixture.Compared("example-conditional-documents", "new-patient-no-billing");
-        var date = texts.Single(t => t.Site.EndsWith("#prompts/node.sections_consult_note_section.consult_note_section:assessment", StringComparison.Ordinal));
+        // A prompt 30 sent with a line 31 does not write, which no rule explains (the encounter date's form was one; #1508 item 2
+        // made it equal).
+        var package = "example-conditional-documents";
+        var capture = EquivalenceFixture.Capture(package, "new-patient-no-billing");
+        var site = "#prompts/node.sections_consult_note_section.consult_note_section:assessment";
+        var prompt = capture["prompts"]!.AsArray().OfType<JsonObject>().Single(p =>
+            KeyMap.To31((string)p["key"]!, EquivalenceFixture.Migrated(package), EquivalenceFixture.Plan(package)) == site["#prompts/".Length..]);
+        var text = (string)prompt["text"]! + "\nAn extra line only 30 wrote.";
+        prompt["text"] = text;
+        prompt["hash"] = CanonicalJson.HashText(text);
+
+        var migrated = EquivalenceFixture.Migrated(package);
+        var plan = EquivalenceFixture.Plan(package);
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(package, "new-patient-no-billing"), capture, migrated, plan);
+        var run = await OfflineRun.RunAsync(plan, request);
+        var texts = Equivalence.Compare(package, "new-patient-no-billing", capture, run, migrated, plan, request);
+        var date = texts.Single(t => t.Site.EndsWith(site, StringComparison.Ordinal));
 
         Assert.Equal((false, false, (string?)null), (date.Equal, date.Expected, date.Explanation));
         Assert.NotEqual(date.OldHash, date.NewHash);
@@ -87,10 +156,10 @@ public class ByteEquivalenceTests
     [Fact]
     public async Task ATextOneSideLacks_HasTheEmptyTextsHash()
     {
-        // D11: a prompt only 31 sent (30 ran only the nodes an applicable deliverable needed), and the deliverable only 31
-        // composed in R2's capture.
-        var (_, _, texts) = await EquivalenceFixture.Compared("example-classifier-scope", "in-scope");
-        var only31 = texts.Single(t => t.Site.EndsWith("#prompts/node.letter_decline_letter.decline_letter:letter", StringComparison.Ordinal));
+        // D11: a prompt only 31 sent (30 refused the job before any model call: the empty fan, empty-input-list-runs; a node
+        // only an unreleased deliverable needs is gated since #1508 item 1), and the deliverable only 31 composed in R2's capture.
+        var (_, _, texts) = await EquivalenceFixture.Compared("example-structured-intake", "all-optional-inputs-unset");
+        var only31 = texts.Single(t => t.Site.EndsWith("#prompts/node.sections_note_section.note_section:assessment", StringComparison.Ordinal));
         Assert.Equal((Equivalence.EmptyHash, false), (only31.OldHash, only31.Equal));
 
         var (_, _, ran) = await EquivalenceFixture.Compared("example-prior-letters", "no-prior-letters");
@@ -352,6 +421,28 @@ public class ByteEquivalenceTests
         Assert.Equal(["item-ids-from-one", "sent-format"], read.Rules);
         Assert.Equal((true, false), (read.Expected, read.Unexplained));
         Assert.All(texts.Where(t => t.Equal), t => Assert.Equal((0, false), (t.Rules.Count, t.Unexplained)));
+    }
+
+    [Fact]
+    public async Task EachComposedSource_IsTrimmedAs30Did()
+    {
+        // #1508 (item 3): 30's composer trimmed each source; the migration writes string.strip on each.
+        var (_, _, macros) = await EquivalenceFixture.Compared("composer-macros", "new-visit-defaults");
+        var prepended = macros.Single(t => t.Site == "composer-macros/new-visit-defaults#deliverables/deliverable.prepended");
+        Assert.True(prepended.Equal || prepended.Expected && prepended.Rules.All(r => r == "escaped-plain-text"), string.Join(",", prepended.Rules));
+        // Every deliverable over letter_body but the three whose macros are hand edits (gated, optional, echoes: their text is
+        // the edit's to give).
+        string[] edited = ["gated", "optional", "echoes"];
+        Assert.All(macros.Where(t => t.Site.Contains("#deliverables/deliverable.", StringComparison.Ordinal) && !edited.Any(e => t.Site.EndsWith("deliverable." + e, StringComparison.Ordinal))),
+            t => Assert.False(t.Unexplained));
+
+        var (_, _, sources) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
+        Assert.True(sources.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.pair").Equal);
+
+        // The escaped-plain-text credit still finds the value a stripped read holds (tally; example-v12-constructs' consult).
+        Assert.Contains("escaped-plain-text", sources.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally").Rules);
+        var (_, _, v12) = await EquivalenceFixture.Compared("example-v12-constructs", "tone-friendly");
+        Assert.Contains("escaped-plain-text", v12.Single(t => t.Site == "example-v12-constructs/tone-friendly#deliverables/deliverable.consult").Rules);
     }
 
     [Fact]

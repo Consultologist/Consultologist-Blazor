@@ -1,0 +1,77 @@
+@using System.Text.Json
+@using Consultologist.Web.Services.Provenance.V31
+@implements IDisposable
+@inject NavigationManager Navigation
+@*
+    #1509 (Task 20; part 09 § 6.4 "Deliverables", part 08 § 10; R1): one row per deliverable by its key, in key order, its
+    destinations (the delivery rows) inside it. As in Nodes31 and Checks31 every row starts collapsed, its body and its text
+    fetch happen once it is opened, and a `#row-<key>` link to a deliverable or one of its destinations (a banner's, a
+    check's), on arrival, on LocationChanged or through RowLinks31, opens the row and lands on it.
+*@
+@if (_tree.Count == 0)
+{
+    <p class="history31-deliverables__none">No deliverables were recorded.</p>
+}
+else
+{
+    <ul class="history31-deliverables">
+        @foreach (var node in _tree)
+        {
+            <DeliverableRow31 @key="node.Key" Node="node" View="_view" />
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public Record31 Record { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public RowText31 Texts { get; set; } = default!;
+
+    /// <summary>The job's <c>resolve.json</c> (the package content's <c>Resolve</c>), for each template and bundle; null when it was not read.</summary>
+    [Parameter]
+    public JsonElement? Resolve { get; set; }
+
+    /// <summary>Follows a link to a deliverable or one of its destinations; false when this section holds none.</summary>
+    public bool Reveal(string target) => _view.Reveal(target);
+
+    /// <summary>What every deliverable row shares (<see cref="Disclosure31"/>), and the pinned version's <c>resolve.json</c>.</summary>
+    public sealed class View(NavigationManager navigation, Action changed) : Disclosure31(navigation, changed)
+    {
+        public JsonElement? Resolve { get; set; }
+    }
+
+    private IReadOnlyList<TreeNode31> _tree = [];
+    private Record31? _built;
+    private View _view = default!;
+
+    protected override void OnInitialized() => _view = new View(Navigation, () => InvokeAsync(StateHasChanged));
+
+    protected override void OnParametersSet()
+    {
+        _view.Texts = Texts;
+        _view.Resolve = Resolve;
+        if (!ReferenceEquals(_built, Record))
+        {
+            _built = Record;
+            _tree = Build(Record);
+            _view.SetTree(Record, _tree);
+        }
+
+        _view.Arrive();
+    }
+
+    /// <summary>A flat tree: each deliverable, named by its label (its key when it has none), holding its destinations.</summary>
+    private static IReadOnlyList<TreeNode31> Build(Record31 record) =>
+        record.Deliverables
+            .Select(row => new TreeNode31(row.Key, row.Text("label") is { Length: > 0 } label ? label : row.Key, "deliverable",
+                row.Text("state") ?? "", row, record.DecisionsOwnedBy(row.Key),
+                record.DeliveriesOf(row.Key)
+                    .Select(delivery => new TreeNode31(delivery.Key, delivery.Text("kind") ?? delivery.Key, "delivery",
+                        delivery.Text("result") ?? "", delivery, [], []))
+                    .ToList()))
+            .ToList();
+
+    public void Dispose() => _view.Dispose();
+}

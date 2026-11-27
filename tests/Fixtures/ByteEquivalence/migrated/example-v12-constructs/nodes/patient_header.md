@@ -3,4 +3,4 @@
 ---
 {{ snippet.disclaimer.content }}
 
-Prepared regarding the consultation of {{ input.seen_on.value }}.
+Prepared regarding the consultation of {{ input.seen_on.value | date.to_string "%d %b %Y" }}.

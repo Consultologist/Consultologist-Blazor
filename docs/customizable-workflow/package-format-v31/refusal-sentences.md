@@ -487,3 +487,17 @@ The build's area sentences for area 11, which are not rows of `sentences.json` a
 A11-013 is said of a `judgement` node whose prompt, with its parts' text, the text of the snippets it places and of the
 snippet folder items it reads as `item.content`, holds nothing outside its tags but white space: a question only an
 input or a node gives at run time is not one the package asks, so such a prompt is refused (part 05 § 8.2).
+
+## 12 Create and History
+
+The build's area sentences for area 12, which are not rows of `sentences.json` and are not counted above. Each is added by the task that first says it.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A12-001 | [6.2 The job header](09-engine-and-pages.md#62-the-job-header) | *"This job stopped before it finished, so it has no record. Run the workflow again."* | clinician | |
+| A12-002 | [11. Retention](08-record.md#11-retention) | *"The text was deleted 7 days after the job finished. Its hash is kept."* | clinician | |
+| A12-003 | [6.4 The sections, in the order the job runs](09-engine-and-pages.md#64-the-sections-in-the-order-the-job-runs) | *"Part of this text comes from run facts, such as the date, so it differs from run to run."* | clinician | |
+| A12-004 | [5.3 Checks before submission](09-engine-and-pages.md#53-checks-before-submission) | *"The workflow's checks couldn't be run. Reload the page to try again."* | clinician | |
+| A12-005 | [6. History](09-engine-and-pages.md#6-history) | *"The record couldn't be checked: \<what could not be read\>."* | clinician | |
+| A12-006 | [5.1 Inputs](09-engine-and-pages.md#51-inputs) | *"This workflow can't be filled in here: this page has no field for '\<input label\>'. Tell the operator."* | clinician | |
+| A12-007 | [6.4 The sections, in the order the job runs](09-engine-and-pages.md#64-the-sections-in-the-order-the-job-runs) | *"The template this job ran couldn't be read, so it isn't shown."* | clinician | |

@@ -27,6 +27,9 @@ public interface IRecordBlobStore
     Task<bool> WriteRecordAsync(string? accountKind, string appUserId, string jobId, string document, CancellationToken ct);
 
     Task<string?> ReadRecordAsync(string? accountKind, string appUserId, string jobId, CancellationToken ct);
+
+    /// <summary>R5 (#1509): every blob under <c>{appUserId}/</c> in the records container (account closure).</summary>
+    Task DeleteAccountRecordsAsync(string appUserId, CancellationToken ct);
 }
 
 /// <summary>The few blob calls <see cref="BlobRecordStore"/> makes; the tests drive the store over an in-memory one.</summary>
@@ -40,31 +43,68 @@ internal interface IRecordBlobs
     Task DeleteByPrefixAsync(string container, string prefix, CancellationToken ct);
 }
 
-internal sealed class FactoryRecordBlobs(TextBlobClientFactory factory) : IRecordBlobs
+/// <summary>The text account's client for the text blobs; <paramref name="records"/> (the records account's, else the text account's) for <see cref="BlobRecordStore.RecordContainer"/>.</summary>
+internal sealed class FactoryRecordBlobs(TextBlobClientFactory text, TextBlobClientFactory records) : IRecordBlobs
 {
-    public Task<bool> PutAsync(string container, string name, string content, bool onlyIfAbsent, CancellationToken ct) =>
-        factory.WriteTextAsync(container, name, content, onlyIfAbsent, ct);
+    private TextBlobClientFactory For(string container) =>
+        string.Equals(container, BlobRecordStore.RecordContainer, StringComparison.Ordinal) ? records : text;
+
+    private volatile bool _recordsContainerEnsured;
+
+    public async Task<bool> PutAsync(string container, string name, string content, bool onlyIfAbsent, CancellationToken ct)
+    {
+        if (!_recordsContainerEnsured && string.Equals(container, BlobRecordStore.RecordContainer, StringComparison.Ordinal))
+        {
+            // made on the first write, as the row table is
+            await records.EnsureContainerAsync(container, ct);
+            _recordsContainerEnsured = true;
+        }
+
+        return await For(container).WriteTextAsync(container, name, content, onlyIfAbsent, ct);
+    }
 
     public Task<string?> GetAsync(string container, string name, CancellationToken ct) =>
-        factory.ReadTextAsync(container, name, ct);
+        For(container).ReadTextAsync(container, name, ct);
 
     public async Task DeleteByPrefixAsync(string container, string prefix, CancellationToken ct) =>
-        await factory.DeleteByPrefixAsync(container, prefix, ct);
+        await For(container).DeleteByPrefixAsync(container, prefix, ct);
 }
 
 /// <summary>
 /// #1506 (D10): text at <c>{appUserId}/{jobId}/text/{sha256 hex of the key}.{part}.json</c>, the document at
-/// <c>{appUserId}/{jobId}/record.json</c>, in the account kind's outputs container. Constructing it touches no storage.
+/// <c>{appUserId}/{jobId}/record.json</c>. The text is in the account kind's outputs container of the text account; the
+/// document (permanent, no patient data; R5, #1509) is in <see cref="RecordContainer"/> of the records account
+/// (<c>ConsultGenerationRecordStorage:BlobServiceUri</c>, else the text account's, with a warning). Constructing it touches no storage.
 /// </summary>
 public sealed class BlobRecordStore : IRecordBlobStore
 {
+    /// <summary>R5 (#1509): the records account's container for <c>record.json</c>; no lifecycle rule applies to it.</summary>
+    public const string RecordContainer = "job-records";
+
+    internal const string RecordServiceSetting = "ConsultGenerationRecordStorage:BlobServiceUri";
+
     private static readonly string[] Parts = ["produced", "settled"];
 
     private readonly IRecordBlobs _blobs;
 
     public BlobRecordStore(IConfiguration configuration, TokenCredential credential, ILogger<BlobRecordStore> logger)
-        : this(new FactoryRecordBlobs(new TextBlobClientFactory(configuration, credential, logger, "Record store")))
+        : this(Blobs(configuration, credential, logger))
     {
+    }
+
+    private static FactoryRecordBlobs Blobs(IConfiguration configuration, TokenCredential credential, ILogger logger)
+    {
+        var text = new TextBlobClientFactory(configuration, credential, logger, "Record store");
+        var uri = configuration[RecordServiceSetting];
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            logger.LogWarning(
+                "{Setting} is not set: record.json is written to the text account, whose lifecycle rule deletes it after 30 days (it is restored from the rows on the next read).",
+                RecordServiceSetting);
+            return new FactoryRecordBlobs(text, text);
+        }
+
+        return new FactoryRecordBlobs(text, new TextBlobClientFactory(uri, credential, logger, "Record store (records account)", RecordServiceSetting));
     }
 
     internal BlobRecordStore(IRecordBlobs blobs) => _blobs = blobs;
@@ -114,9 +154,15 @@ public sealed class BlobRecordStore : IRecordBlobStore
     public Task<bool> WriteRecordAsync(string? accountKind, string appUserId, string jobId, string document, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(document);
-        return _blobs.PutAsync(JobOutputsBlobStore.ContainerFor(accountKind), RecordName(appUserId, jobId), document, true, ct);
+        return _blobs.PutAsync(RecordContainer, RecordName(appUserId, jobId), document, true, ct);
     }
 
     public Task<string?> ReadRecordAsync(string? accountKind, string appUserId, string jobId, CancellationToken ct) =>
-        _blobs.GetAsync(JobOutputsBlobStore.ContainerFor(accountKind), RecordName(appUserId, jobId), ct);
+        _blobs.GetAsync(RecordContainer, RecordName(appUserId, jobId), ct);
+
+    public Task DeleteAccountRecordsAsync(string appUserId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(appUserId);
+        return _blobs.DeleteByPrefixAsync(RecordContainer, $"{appUserId}/", ct);
+    }
 }

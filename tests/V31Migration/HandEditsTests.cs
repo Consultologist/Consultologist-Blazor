@@ -170,6 +170,32 @@ public class HandEditsTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(EditedPackages))]
+    public void EachHandEditedNode_KeepsTheMigrationsGate(string package)
+    {
+        // #1508 (item 1): a node file the operator edited keeps the if the migration gave it (the deliverables that need
+        // it), so the edit does not run what 30 did not.
+        var migrated = MigratedPackagesTests.Migrated(package);
+        var folder = MigrationFixture.HandEditsOf(package);
+        var nodes = Path.Combine(folder, "nodes");
+        if (!Directory.Exists(nodes))
+            return;
+        foreach (var path in Directory.EnumerateFiles(nodes, "*.md", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
+            if (!migrated.Files.TryGetValue(relative, out var written) || FrontMatter.Split(written) is not { } split
+                || JsonNode.Parse(split.Header)!["if"] is not { } gate)
+            {
+                continue;
+            }
+
+            var edited = FrontMatter.Split(ByteEquivalenceFixtures.ReadText(path));
+            Assert.True(edited is not null, $"{relative} has no header.");
+            Assert.Equal(gate.ToJsonString(), JsonNode.Parse(edited!.Header)!["if"]?.ToJsonString());
+        }
+    }
+
     [Fact]
     public void AMovedNode_IsComparedThroughItsKeys()
     {

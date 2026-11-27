@@ -1,4 +1,4 @@
 ---
 {"label":"Patient summary","kind":"rendered","description":null,"format":"markdown_block","if":null,"check":null,"whenEmpty":"release"}
 ---
-{{ node.patient_summaries.content }}
+{{ node.patient_summaries.content | string.strip }}

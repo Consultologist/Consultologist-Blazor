@@ -62,10 +62,32 @@ public class RecordRoutesTests
         Assert.False(json.ContainsKey("SignatureChosen"));
     }
 
+    // Task 17: History's Inputs section needs each input's origin and hash, which only the header's `inputs` array holds.
+    [Fact]
+    public async Task A31JobsResponse_ShowsItsInputs_AsTheHeaderWritesThem()
+    {
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var state = job.State;
+        state.InputHashes = new Dictionary<string, string> { ["consult_draft"] = "sha256:" + new string('a', 64) };
+        state.InputDocumentOrigins = new Dictionary<string, List<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = [new ConsultInputOrigin(ConsultInputOriginKinds.Document, Extractor: "docx@1", FileSha256: "sha256:f")],
+        };
+
+        var json = JsonNode.Parse(JsonSerializer.Serialize(state.ToResponse()))!.AsObject();
+
+        var input = Assert.Single(json["Inputs"]!.AsArray())!.AsObject();
+        Assert.Equal("consult_draft", (string?)input["id"]);
+        Assert.Equal("document", (string?)input["origin"]);
+        Assert.Equal("sha256:" + new string('a', 64), (string?)input["hash"]);
+        Assert.Equal("docx@1", (string?)input["extractor"]);
+    }
+
     private static readonly string[] HeaderNames =
     [
         "ResolveHash", "LockHash", "VersionsRan", "RunFacts", "Limits", "SignatureBlockId", "SignatureChosen", "RecordHash",
-        "Rows", "RowStates", "Decisions", "CurrentKey",
+        "Rows", "RowStates", "Decisions", "CurrentKey", "Inputs",
     ];
 
     [Fact]

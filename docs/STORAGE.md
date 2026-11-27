@@ -249,22 +249,33 @@ which is only ever in blobs:
   larger than a table row holds (1 MiB, in UTF-16) is not written, and its job fails with A09-002 naming its key. The
   job index row of a storage-12 job carries `RecordStorage` (12), which the sweep and closure read instead of the
   job's entity; a 5–30 job's index row has no such property.
-- **The blobs**, in `<kind>-job-outputs` beside the job's output blob, under `{appUserId}/{jobId}/`:
-  - `text/{sha256 hex of the row key}.produced.json` and `….settled.json`: the retained text (replies, prompts as sent,
-    renderer inputs and outputs, composed deliverables, item names from inputs or models, a `check_result`'s lists,
-    run-spot and substitution text);
-  - `record.json`: the canonical record document, sealed at the job's end with `recordHash` stamped on the entity.
+- **The text blobs**, in `<kind>-job-outputs` beside the job's output blob, on the text account, under
+  `{appUserId}/{jobId}/text/`: `{sha256 hex of the row key}.produced.json` and `….settled.json`: the retained text
+  (replies, prompts as sent, renderer inputs and outputs, composed deliverables, item names from inputs or models, a
+  `check_result`'s lists, run-spot and substitution text).
+- **`record.json`**, in the container `job-records` of the **records account** (`consultjobrecscaeast`), named
+  `{appUserId}/{jobId}/record.json`: the canonical record document, sealed at the job's end with `recordHash` stamped on
+  the entity. It is permanent and holds no patient data, so **no lifecycle rule applies to the container** (the 30-day
+  rule is the text account's). The container is created on the first write. Account closure deletes the account's
+  `{appUserId}/` prefix there. The blob service is `ConsultGenerationRecordStorage__BlobServiceUri`; unset, the document
+  goes to a `job-records` container of the text account, where its 30-day rule deletes it (the next read restores it from
+  the rows), and the host says so once at startup in a warning naming the setting.
+  **To do on each Function App (operator):** set `ConsultGenerationRecordStorage__BlobServiceUri` to
+  `https://consultjobrecscaeast.blob.core.windows.net`, and give its user-assigned identity Storage Blob Data Contributor
+  on the records account (it may hold it already, for the tables). A document written before this change stays in
+  `<kind>-job-outputs` of the text account until the 30-day rule removes it; it is not moved, and the next read
+  assembles it from the rows into `job-records`.
 
 **What deletes what.** The 7-day text sweep seals the job if it is not yet sealed, then deletes the `text/` blobs
 (`DropText` follows), and rewrites no row, so `recordHash` holds after the drop; a job it cannot seal keeps its text for
-the next pass. It never deletes `record.json` or a row. The 30-day lifecycle policy above is a blunt ceiling over every
-blob of the container, `record.json` included, so it removes the sealed document at 30 days. The document is a
-materialisation (decided in the build, #1506): the next read (`GET …/Record`) assembles it again from the rows and the
-header, checks it against the stamped `recordHash`, and writes it back only if it matches (a mismatch is an engine
-fault, logged with both hashes, and nothing is written). What must outlive the policy is the table's rows and the
-entity's stamp, and both do: neither is in the text account. Account closure (#559)
-deletes every row of every job of the account (`DeleteJobAsync`, after the job's events) and, with the account's
-`{appUserId}/` prefix, every blob. A 5–30 job has none of this.
+the next pass. It never deletes `record.json` or a row. `record.json` is in the records account (above), which the 30-day lifecycle
+policy does not reach. The document is still a materialisation (decided in the build, #1506): if it is gone (a
+deployment without the records setting, or a record sealed before the move), the next read (`GET …/Record`)
+assembles it again from the rows and the header, checks it against the stamped `recordHash`, and writes it back only if
+it matches (a mismatch is an engine fault, logged with both hashes, and nothing is written). Account closure (#559)
+deletes every row of every job of the account (`DeleteJobAsync`, after the job's events), the text blobs with the
+account's `{appUserId}/` prefix in the text account, and the `{appUserId}/` prefix of `job-records` in the records
+account. A 5–30 job has none of this.
 
 ## After Setup
 

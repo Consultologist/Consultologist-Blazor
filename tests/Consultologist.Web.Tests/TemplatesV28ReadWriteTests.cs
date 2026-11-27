@@ -190,20 +190,17 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheVersionAfter_31_IsRefusedAtPublish()
+    public void TheVersionAfter_31_OpensReadOnly()
     {
-        CapturePublish();
         var fixture = EditorFixtures.V28();
         var root = System.Text.Json.Nodes.JsonNode.Parse(fixture.Manifest.GetRawText())!.AsObject();
         root["specVersion"] = 31;
         var page = RenderEditor(fixture with { SpecVersion = 31, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() });
         Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Trim().StartsWith("Upgrade to specVersion", StringComparison.Ordinal));
 
-        Select(page, "node:assessment");
-        var area = page.FindAll(".node-section").Single(s => s.QuerySelector(".node-section__head")?.TextContent.Trim() == "Prompt text").QuerySelector("fluent-text-area")!;
-        area.Change(area.GetAttribute("current-value") + "\nOne more line.");
-        Publish(page);
-        Assert.Null(sent);
-        Assert.Contains(Refusals(page), r => r.Contains("is specVersion 31; this engine runs specVersion", StringComparison.Ordinal));
+        // #1509 (Task 23; part 09 § 8.1, D14): a package at 31 opens read-only — no prompt to edit, no publish to refuse.
+        Assert.Single(page.FindComponents<Consultologist.Web.Shared.WorkflowEditor.V31.V31PackageView>());
+        Assert.Empty(page.FindAll("fluent-text-area"));
+        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Contains("Publish", StringComparison.Ordinal));
     }
 }

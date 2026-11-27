@@ -1,0 +1,268 @@
+@inherits DisclosureRow31<Nodes31.View>
+@using System.Globalization
+@using System.Text.Json
+@using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 18; part 09 § 6.4 "Nodes", part 08 §§ 4, 4.1, 4.4, 7): one node of the tree, its line always shown: its
+    title (an item by its name, else by position; a pass as Pass <n>), its key with root, its kind and its status as
+    stored, a call's function, the run-dependent mark, and its stateReason as stored (a failure by the model service's
+    limits followed by "Run the workflow again later."). Opened, its body: its hashes, the agent and binding, the keywords
+    not sent, the model-derived mark, the onInvalid outcome, retries, tokens, a loop's or call's own members, profile reads,
+    its sub-rows (SubRows31), its decisions (Decision31), its text while retained (else A12-002 beside the hashes) and the
+    rows inside it. Its text is fetched when it is first opened, once.
+*@
+<li class="history31-node" id="row-@Node.Key" tabindex="-1" data-kind="@Node.Kind" @ref="Element">
+    <div class="history31-node__line">
+        <button type="button" class="history31-node__toggle" aria-expanded="@(IsOpen ? "true" : "false")" aria-controls="@ControlsId"
+                @onclick="() => View.Toggle(Node.Key)">
+            <span class="history31-node__title">@Title</span>
+        </button>
+        <code class="history31-node__key">@Node.Key</code>
+        @if (Node.Kind is { Length: > 0 } kind)
+        {
+            <span class="history31-node__kind">@kind</span>
+        }
+        <span class="history31-node__status">@Node.Status</span>
+        @if (Row?.Text("function") is { Length: > 0 } function)
+        {
+            <span class="history31-node__function">@(Node.Kind == "call" ? "calls" : "in function") <code>@function</code></span>
+        }
+        @if (Row?.Flag("runDependent") == true)
+        {
+            <span class="history31-node__run-dependent">run-dependent</span>
+        }
+        @if (Row?.Text("stateReason") is { Length: > 0 } reason)
+        {
+            <span class="history31-node__reason">@HistorySentences31.StateReason(reason)</span>
+        }
+    </div>
+    @if (IsOpen)
+    {
+        <div class="history31-node__body" id="@BodyId">
+            @if (Row is { } row)
+            {
+                @if (Hashes(row) is { Count: > 0 } hashes)
+                {
+                    <dl class="history31-node__hashes">
+                        @foreach (var (label, hash) in hashes)
+                        {
+                            <dt>@label</dt>
+                            <dd><code class="hash-text">@hash</code></dd>
+                        }
+                    </dl>
+                }
+                @if (row.Object("agent") is { } agent)
+                {
+                    <p class="history31-node__agent">
+                        agent <code>@Str(agent, "name")</code> version @Number(agent, "version")
+                        @if (Member(agent, "binding") is { } binding)
+                        {
+                            <span>, bound by format <code>@Str(binding, "format")</code>, producer <code>@Str(binding, "producer")</code>, via <code>@Str(binding, "via")</code></span>
+                        }
+                    </p>
+                }
+                @if (Strings(row.List("notSent")) is { Count: > 0 } notSent)
+                {
+                    <p class="history31-node__not-sent">@HistorySentences31.NotSentToTheModel(notSent)</p>
+                }
+                @if (row.Flag("modelDerived") == true && Node.Kind != "agent")
+                {
+                    var sources = View.ModelSources(row);
+                    <p class="history31-node__model-derived">@(sources.Count > 0 ? HistorySentences31.ComputedFromModelText(sources) : "model-derived")</p>
+                }
+                @if (row.Object("invalid") is { } invalid)
+                {
+                    <p class="history31-node__invalid">
+                        invalid reply: <span class="history31-node__invalid-reason">@Str(invalid, "reason")</span>,
+                        action <span class="history31-node__invalid-action">@Str(invalid, "action")</span>,
+                        <span class="history31-node__invalid-attempts">@Number(invalid, "attempts")</span> attempts
+                    </p>
+                }
+                @if (Retries(row) is { } retries)
+                {
+                    <p class="history31-node__retries">@retries</p>
+                }
+                @if (row.Object("tokens") is { } tokens)
+                {
+                    <p class="history31-node__tokens">tokens: @Number(tokens, "input") in, @Number(tokens, "output") out, @Number(tokens, "total") in all</p>
+                }
+                @if (Own(row) is { Count: > 0 } own)
+                {
+                    <p class="history31-node__own">
+                        @foreach (var (name, value) in own)
+                        {
+                            <span class="history31-node__member">@name <code>@value</code></span>
+                        }
+                    </p>
+                }
+                @if (row.Text("reason") is { Length: > 0 } loopReason)
+                {
+                    <p class="history31-node__loop-reason">@loopReason</p>
+                }
+                @if (Pairs(row.List("arguments"), "param") is { Count: > 0 } arguments)
+                {
+                    <ul class="history31-node__arguments">
+                        @foreach (var (param, hash) in arguments)
+                        {
+                            <li class="history31-node__argument"><code>@param</code> <code class="hash-text">@hash</code></li>
+                        }
+                    </ul>
+                }
+                @if (Pairs(row.List("profileReads"), "field") is { Count: > 0 } reads)
+                {
+                    <ul class="history31-node__profile-reads">
+                        @foreach (var (field, hash) in reads)
+                        {
+                            <li class="history31-node__profile-read"><code>@field</code> <code class="hash-text">@hash</code></li>
+                        }
+                    </ul>
+                }
+                <SubRows31 Row="row" View="View" />
+                @if (Fetched is { TextDeleted: true })
+                {
+                    <p class="history31-node__dropped">@HistorySentences31.TextDeleted</p>
+                }
+                else if (Shown(Fetched) is { } text)
+                {
+                    <pre class="history31-node__text">@text</pre>
+                }
+                @if (FetchFailed)
+                {
+                    <p class="history31-node__unavailable">@HistorySentences31.RecordNotAvailable</p>
+                }
+            }
+            @if (Node.Decisions.Count > 0)
+            {
+                <ul class="history31-decisions">
+                    @foreach (var decision in Node.Decisions)
+                    {
+                        <Decision31 @key="decision.Key" Decision="decision" />
+                    }
+                </ul>
+            }
+            @if (Node.Children.Count > 0)
+            {
+                <ul class="history31-node__children">
+                    @foreach (var child in Node.Children)
+                    {
+                        <NodeRow31 @key="child.Key" Node="child" View="View" />
+                    }
+                </ul>
+            }
+        </div>
+    }
+</li>
+
+@code {
+    /// <summary>An item retitled by the name its retained text holds, once fetched; any other row as the tree names it.</summary>
+    private string Title =>
+        Node.IsItem && Row is { } row ? NodeTree31.ItemTitle(row, RetainedName(Fetched), Node.LoopLabel) : Node.Title;
+
+    /// <summary>The fetched text: its <c>content</c>, else its <c>value</c>'s JSON; null when none was offered.</summary>
+    private static string? Shown(RecordRowText? fetched)
+    {
+        if (RowText31.Content(fetched) is { } content)
+        {
+            return content;
+        }
+
+        return fetched is { TextDeleted: false, Text: { ValueKind: JsonValueKind.Object } text }
+               && text.TryGetProperty("value", out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+            ? value.GetRawText()
+            : null;
+    }
+
+    private static string? RetainedName(RecordRowText? fetched) =>
+        fetched is { TextDeleted: false, Text: { ValueKind: JsonValueKind.Object } text }
+        && text.TryGetProperty("itemName", out var name) && name.ValueKind == JsonValueKind.String
+            ? name.GetString()
+            : null;
+
+    private static readonly (string Member, string Label)[] HashMembers =
+    [
+        ("inputHash", "input hash"),
+        ("outputHash", "output hash"),
+        ("runNeutralHash", "run-neutral hash"),
+        ("formatHash", "format hash"),
+        ("typeHash", "type hash"),
+        ("sentFormatHash", "sent format hash"),
+        ("itemNameHash", "item name hash"),
+    ];
+
+    private static List<(string Label, string Hash)> Hashes(Row31 row) =>
+        HashMembers.Where(member => row.Text(member.Member) is { Length: > 0 })
+            .Select(member => (member.Label, row.Text(member.Member)!))
+            .ToList();
+
+    /// <summary>A loop's, a pass's and a call's own members (part 08 §§ 4.4, 7), as stored; the ones not written are left out.</summary>
+    private static readonly string[] OwnMembers = ["count", "stopped", "passes", "max", "checkFirst", "parallel", "maxParallel", "itemLabel", "depth"];
+
+    private List<(string Name, string Value)> Own(Row31 row)
+    {
+        var own = new List<(string, string)>();
+        foreach (var name in OwnMembers)
+        {
+            // depth is written on every row: shown for a call and the rows inside a function only
+            if (name == "depth" && row.Text("function") is null)
+            {
+                continue;
+            }
+
+            if (row.Json.ValueKind == JsonValueKind.Object && row.Json.TryGetProperty(name, out var value)
+                && value.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
+            {
+                own.Add((name, value.ValueKind == JsonValueKind.String ? value.GetString()! : value.GetRawText()));
+            }
+        }
+
+        return own;
+    }
+
+    /// <summary>
+    /// Part 09 § 6.4: how many retries, of which kind (the stored words, <c>capacity</c> and <c>service</c>, a service
+    /// failure's kind beside it) and the total wait; null for none.
+    /// </summary>
+    private static string? Retries(Row31 row)
+    {
+        var retries = row.List("retries").Where(retry => retry.ValueKind == JsonValueKind.Object).ToList();
+        if (retries.Count == 0)
+        {
+            return null;
+        }
+
+        var kinds = retries
+            .GroupBy(retry => Str(retry, "kind") ?? "", StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var errors = group.Select(retry => Str(retry, "error")).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+                var name = group.Key.Length > 0 ? group.Key : "unknown";
+                return errors.Count > 0 ? $"{group.Count()} {name} ({string.Join(", ", errors)})" : $"{group.Count()} {name}";
+            });
+        var waited = retries.Sum(retry => retry.TryGetProperty("waitMs", out var wait) && wait.ValueKind == JsonValueKind.Number && wait.TryGetInt64(out var ms) ? ms : 0L);
+        var seconds = (waited / 1000.0).ToString("0.#", CultureInfo.InvariantCulture);
+        return $"{retries.Count} {(retries.Count == 1 ? "retry" : "retries")}: {string.Join(", ", kinds)}; waited {seconds} s in all";
+    }
+
+    private static List<string> Strings(IEnumerable<JsonElement> list) =>
+        list.Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString()!).ToList();
+
+    /// <summary>Each <c>{ &lt;name&gt;, hash }</c> of a list, as stored; an element of another shape is left out.</summary>
+    private static List<(string Name, string Hash)> Pairs(IEnumerable<JsonElement> list, string name) =>
+        list.Where(item => Str(item, name) is not null)
+            .Select(item => (Str(item, name)!, Str(item, "hash") ?? ""))
+            .ToList();
+
+    private static JsonElement? Member(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object ? value : null;
+
+    private static string? Str(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static string? Number(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetRawText()
+            : null;
+}

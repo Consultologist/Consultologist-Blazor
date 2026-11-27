@@ -11,6 +11,8 @@
 @using ItemPath = Consultologist.PackageFormat.WorkflowItemPath
 @using Consultologist.Web.Services.Documents
 @using Consultologist.Web.Services.Forms
+@using Consultologist.Web.Services.Workflow.V31
+@using Consultologist.Web.Shared.Create31
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IAIEndpointService AIService
@@ -86,9 +88,13 @@
                             @* #882: a content-shaped skeleton for the section-standards load. *@
                             <SkeletonText Lines="4" />
                         }
-                        else if (!string.IsNullOrEmpty(blocksLoadError))
+                        else if (!string.IsNullOrEmpty(blocksLoadError) || currentRefusal31 != null)
                         {
-                            <FluentMessageBar Intent="MessageIntent.Error">@blocksLoadError</FluentMessageBar>
+                            @* #1509 (Task 11): a 31 load refusal (Current's 400) is said above Start, as written; the picker stays. *@
+                            @if (!string.IsNullOrEmpty(blocksLoadError))
+                            {
+                                <FluentMessageBar Intent="MessageIntent.Error">@blocksLoadError</FluentMessageBar>
+                            }
                             @* Escape hatch: a pin to an unloadable package must stay
                                correctable from here — the picker loads independently. *@
                             <div class="setup-context">
@@ -194,7 +200,32 @@
                         }
                         @foreach (var field in ShownInputFields)
                         {
-                            <label class="input-field" @key="field.Id">
+                            @* #1509 (Task 9): at 31 an input whose format has no widget is named and holds the run
+                               (A12-006); a data input (a select, date, boolean, number, group or rows) is Input31. A
+                               text input, and any input with a channel, keeps the slot below. *@
+                            @if (field.Unsupported31)
+                            {
+                                <div class="input-field" @key="field.Id" data-input-id="@field.Id">
+                                    <span>@field.Label</span>
+                                    <span class="input-field__error">@Create31Sentences.CannotBeFilledInHere(field.Label)</span>
+                                </div>
+                                continue;
+                            }
+                            @if (field.Value31 is { } value31 && !field.TakesQuestionnaireFile)
+                            {
+                                <div class="input-field" @key="field.Id" data-input-id="@field.Id">
+                                    @* A channel on a data input is refused at publish (part 02 § 8.3); its chip is
+                                       still shown, and Input31 draws what is sent. *@
+                                    @if (field.ChannelLabel is { } dataChannel)
+                                    {
+                                        <span class="input-field__channel">@dataChannel</span>
+                                    }
+                                    <Input31 Shape="@(field.Shape31!)" Value="@value31" Label="@field.Label" Help="@Help31(field)"
+                                             Required="@field.Required" SnippetItems="@snippetSet.Items" Changed="@OnInput31Changed" />
+                                </div>
+                                continue;
+                            }
+                            <label class="input-field" @key="field.Id" data-input-id="@(field.Is31 ? field.Id : null)">
                                 <span>
                                     @field.Label
                                     @if (field.Required)
@@ -222,6 +253,11 @@
                                         <span class="input-field__channel">@union</span>
                                     }
                                 </span>
+                                @if (Help31(field) is { } help)
+                                {
+                                    @* #1509 (D4): a 31 input's description, as help text. *@
+                                    <span class="input-field__help">@help</span>
+                                }
                                 @* #236: a single-value input holds either typed
                                    text or an attached document, never both —
                                    the text is kept underneath so removing the
@@ -335,7 +371,17 @@
                                                 </span>
                                             }
                                         }
-                                        @StructureControl(field.Root)
+                                        @if (field.Value31 is { } formValue)
+                                        {
+                                            @* #1509: a form-channel group at 31 keeps this slot (chip, questionnaire
+                                               door); its fields are drawn from the format. *@
+                                            <Input31 Shape="@(field.Shape31!)" Value="@formValue" Label="@field.Label" Required="@field.Required"
+                                                     ShowLabel="false" SnippetItems="@snippetSet.Items" Changed="@OnInput31Changed" />
+                                        }
+                                        else
+                                        {
+                                            @StructureControl(field.Root)
+                                        }
                                     </div>
                                 }
                                 else if (field.Type == WorkflowInputTypes.Array)
@@ -597,11 +643,12 @@
                                         @LinkDocumentControl(field)
                                     }
                                 }
-                                @if (field.Problem is { } problem)
+                                @if (field.Value31 is null && field.Problem is { } problem)
                                 {
                                     <span class="input-field__error">@problem</span>
                                 }
-                                @if (attemptedSubmit && field.Required && !field.IsFilled)
+                                @* #1509: at 31 a blank required input holds Start (part 09 § 5.1), so it is named at once. *@
+                                @if ((attemptedSubmit || field.Is31) && field.Required && !field.IsFilled && field.Value31 is null)
                                 {
                                     @* #683: after a submit attempt, name the empty required
                                        field inline; clears itself once the field is filled. *@
@@ -668,6 +715,17 @@
                             </FluentMessageBar>
                         }
 
+                        @if (asksStartChecks31 || currentRefusal31 != null)
+                        {
+                            @* #1509 (Task 11; part 09 §§ 5.2, 5.3): what holds a 31 start, and the signature choice. *@
+                            <StartChecks31 Sentences="StartSentences31"
+                                           LinksToProfile="StartSentencesAreTheAccounts31"
+                                           Blocks="SignatureChoice31"
+                                           Pick="@signaturePick31"
+                                           PickChanged="PickSignature31Async"
+                                           Disabled="@(isAiRequestLoading || isSchedulingRequest || askingBeforeStart31)" />
+                        }
+
                         <div class="action-row">
                             <FluentSwitch @bind-Value="RunOvernight"
                                           Label="Run overnight"
@@ -701,7 +759,7 @@
                             }
                             <FluentButton Appearance="Appearance.Accent"
                                           @onclick="CreateConsultAsync"
-                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || HasUnacknowledgedShortInput || packageBlocks.Count == 0)">
+                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || HasUnacknowledgedShortInput || packageBlocks.Count == 0 || StartHeldBy31)">
                                 @(runOvernight ? "Schedule consult" : (queueMultiple ? "Create & next" : "Create consult"))
                             </FluentButton>
                         </div>
@@ -771,6 +829,27 @@
                 </details>
 
                 <div class="consult-run__grid">
+                    @if (IsRun31)
+                    {
+                        @* #1509 (Task 12, D15): a 31 job (record storage 12) is followed by its finished rows. *@
+                        <RunView31 JobId="@(lastAppliedJobId ?? string.Empty)"
+                                   Status="@jobStatus31"
+                                   Error="@(latestRunResponse?.RuntimeFailureError ?? latestRunResponse?.StartFailure)"
+                                   Notice="@(rowsError31 ?? aiRequestError)"
+                                   Blocks="runBlocks31"
+                                   Results="declaredResults"
+                                   Finished="rowsFinished31.Values"
+                                   CurrentKey="@(IsRunFinished ? null : currentKey31)"
+                                   RowStates="latestRunResponse?.RowStates"
+                                   Texts="deliverableRows31"
+                                   TextErrors="deliverableErrors31"
+                                   CopyLabel="CopyLabel31"
+                                   OnCopy="CopyDeliverable31Async"
+                                   InFlight="RunInFlight"
+                                   Heading="@RunHeading" />
+                    }
+                    else
+                    {
                     <section class="result-panel">
                         @* #933: said before the text, not after — a block produced from a
                            user-defined schema is unattested (#760): never to be read as a
@@ -1230,6 +1309,7 @@
                             }
                         </div>
                     </section>
+                    }
                 </div>
             </div>
         }
@@ -1347,12 +1427,33 @@
       }
       else
       {
+        @if (input.SingleLine)
+        {
+          @* #1509: a 31 `string` is a single-line field (part 09 § 5.1). *@
+          <input type="text"
+                 class="node-field__input"
+                 value="@input.Value"
+                 @onchange="args => input.Value = args.Value?.ToString() ?? string.Empty"
+                 placeholder="@input.Placeholder"
+                 aria-label="@input.Label" />
+        }
+        else if (input.IsMarkdown)
+        {
+          @* #1509 (D5): a 31 Markdown input replaces only the text control; the slot's documents, runs and snippets stay. *@
+          <MarkdownInput Value="@input.Value"
+                         ValueChanged="@(text => input.Value = text ?? string.Empty)"
+                         Label="@input.Label" Required="@input.Required" Rows="@input.Rows"
+                         Placeholder="@input.Placeholder" />
+        }
+        else
+        {
         @* Bound to the input's own property: Blazor's expression formatter
            cannot parse an indexer whose argument is a property access. *@
         <FluentTextArea @ref="input.TextArea"
                         @bind-Value="input.Value"
                         Placeholder="@input.Placeholder"
                         Rows="@input.Rows" />
+        }
         @* #561: the snippet road — rendered only when the library is
            non-empty (an empty library adds nothing to every text field;
            discoverability lives on the profile card). Inserted text is
@@ -1916,6 +2017,217 @@
   private SseAttemptState? activeSseAttempt;
   private IReadOnlyList<PackageBlock> activeBlockSnapshots = Array.Empty<PackageBlock>();
 
+  // #1509 (Task 12, D15): a 31 job (record storage 12) reports by rows, not NodeOutputs or Blocks: each stored row is
+  // announced by row-finished (or read from the Rows listing on attaching), and a released deliverable's text is fetched
+  // once by its key. The 5–30 run view's state is untouched by any of it.
+  private bool IsRun31 => latestRunResponse is { SchemaVersion: >= 12 };
+  private string? jobStatus31;
+  private string? currentKey31;
+  private string? rowsError31;
+  private int? rowsListed31;
+  private IReadOnlyList<WorkflowPackageBlockResponse> runBlocks31 = Array.Empty<WorkflowPackageBlockResponse>();
+  private Dictionary<string, Consultologist.Web.Services.Provenance.V31.RowFinished> rowsFinished31 = new(StringComparer.Ordinal);
+  private Dictionary<string, RecordRowText> deliverableRows31 = new(StringComparer.Ordinal);
+  private Dictionary<string, string> deliverableErrors31 = new(StringComparer.Ordinal);
+  private Dictionary<string, Task> deliverableFetches31 = new(StringComparer.Ordinal);
+
+  // Moves on each ResetRun31, so an answer started for an earlier run (a fetch still in flight when the next run starts)
+  // is recognised when it lands and dropped.
+  private int run31Token;
+
+  /// <summary>
+  /// Whether an answer awaited for <paramref name="jobId"/> under <paramref name="token"/> still belongs to the run on
+  /// screen: the page is not disposed, no run was started since, and the job shown is that job.
+  /// </summary>
+  private bool IsCurrentRun31(int token, string jobId) =>
+    !disposed31 && token == run31Token && string.Equals(jobId, lastAppliedJobId, StringComparison.Ordinal);
+
+  private void ResetRun31()
+  {
+    run31Token++;
+    jobStatus31 = null;
+    currentKey31 = null;
+    rowsError31 = null;
+    rowsListed31 = null;
+    runBlocks31 = Array.Empty<WorkflowPackageBlockResponse>();
+    rowsFinished31 = new(StringComparer.Ordinal);
+    deliverableRows31 = new(StringComparer.Ordinal);
+    deliverableErrors31 = new(StringComparer.Ordinal);
+    deliverableFetches31 = new(StringComparer.Ordinal);
+    copiedKey31 = null;
+  }
+
+  /// <summary>One stored row, as row-finished announces it or the listing holds it; a decision is never a rail row.</summary>
+  private void NoteRowFinished31(Consultologist.Web.Services.Provenance.V31.RowFinished row)
+  {
+    if (string.Equals(row.Section, "decision", StringComparison.Ordinal))
+    {
+      return;
+    }
+
+    rowsFinished31[row.Key] = row;
+  }
+
+  /// <summary>
+  /// The rows stored so far, from <c>GET …/Rows</c>: on attaching to a 31 job, and on a poll whose row count moved (a poll
+  /// carries no row events). A failure is said in the rail; the stream's events still arrive.
+  /// </summary>
+  private async Task LoadRows31Async(string jobId)
+  {
+    var token = run31Token;
+    try
+    {
+      var listed = await AIService.GetJobRowsAsync(jobId);
+      if (!IsCurrentRun31(token, jobId))
+      {
+        return;
+      }
+
+      foreach (var row in listed)
+      {
+        NoteRowFinished31(new(row.Key, row.Section, Consultologist.Web.Services.Provenance.V31.RunRail31.StatusOf(row.Section, row.Row)));
+      }
+
+      rowsListed31 = latestRunResponse?.Rows;
+      rowsError31 = null;
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+      return;
+    }
+    catch (Exception ex)
+    {
+      if (!IsCurrentRun31(token, jobId))
+      {
+        return;
+      }
+
+      rowsError31 = ex.Message;
+    }
+
+    await FetchReleasedDeliverables31Async(jobId);
+  }
+
+  /// <summary>
+  /// The Api's sentence for a record or row it cannot give yet (<c>RecordRoutes.NotAvailable</c>), said for a released
+  /// deliverable whose row was not found, whose text is not written yet, or whose fetch failed without the route's words.
+  /// </summary>
+  private const string RowNotAvailable31 = "The record isn't available yet. Try again.";
+
+  /// <summary>
+  /// Starts a fetch of each released deliverable's row and text that is not yet held (its text, or its drop) and not in
+  /// flight; never awaited here, so the SSE handler is not held up. Each renders when it lands. A blocked deliverable is
+  /// never fetched: its text is History's to show (R1), and the run view links there.
+  /// </summary>
+  private void StartDeliverableFetches31(string jobId)
+  {
+    var pending = rowsFinished31.Values
+      .Where(row => row.Section == "deliverable" && row.Status == "released"
+        && !deliverableRows31.ContainsKey(row.Key)
+        && !(deliverableFetches31.TryGetValue(row.Key, out var inFlight) && !inFlight.IsCompleted))
+      .Select(row => row.Key)
+      .ToList();
+
+    foreach (var key in pending)
+    {
+      deliverableFetches31[key] = FetchDeliverable31Async(jobId, key);
+    }
+  }
+
+  /// <summary>
+  /// On a listing, a poll and <c>done</c>: waits for the fetches in flight, then asks again for any released deliverable
+  /// still without its text (not found, not yet written, or failed).
+  /// </summary>
+  private async Task FetchReleasedDeliverables31Async(string jobId)
+  {
+    await Task.WhenAll(deliverableFetches31.Values.ToList());
+    StartDeliverableFetches31(jobId);
+    await Task.WhenAll(deliverableFetches31.Values.ToList());
+  }
+
+  /// <summary>
+  /// One deliverable's row, run un-awaited from the SSE handler: it never throws, and once its answer lands it writes and
+  /// re-renders only while the run it was started for is still the one on screen (<see cref="IsCurrentRun31"/>).
+  /// </summary>
+  private async Task FetchDeliverable31Async(string jobId, string key)
+  {
+    var token = run31Token;
+    try
+    {
+      var fetched = await AIService.GetJobRowAsync(jobId, key);
+      if (!IsCurrentRun31(token, jobId))
+      {
+        return;
+      }
+
+      if (fetched is { TextDeleted: true } || (fetched is not null && Content31(fetched) is not null))
+      {
+        deliverableRows31[key] = fetched;
+        deliverableErrors31.Remove(key);
+      }
+      else
+      {
+        deliverableErrors31[key] = RowNotAvailable31;
+      }
+    }
+    catch (AccessTokenNotAvailableException exception) when (IsCurrentRun31(token, jobId))
+    {
+      exception.Redirect();
+      return;
+    }
+    catch (ConsultGenerationRefusedException refusal) when (IsCurrentRun31(token, jobId))
+    {
+      deliverableErrors31[key] = refusal.Message;
+    }
+    catch (Exception) when (IsCurrentRun31(token, jobId))
+    {
+      deliverableErrors31[key] = RowNotAvailable31;
+    }
+    catch (Exception)
+    {
+      // an answer for a run no longer on screen, or a page that went: nothing to say
+      return;
+    }
+
+    try
+    {
+      if (IsCurrentRun31(token, jobId))
+      {
+        await InvokeAsync(StateHasChanged);
+      }
+    }
+    catch (ObjectDisposedException)
+    {
+      // the page went between the check and the render
+    }
+  }
+
+  private static string? Content31(RecordRowText row) =>
+    row.Text is { ValueKind: JsonValueKind.Object } text
+      && text.TryGetProperty("content", out var content)
+      && content.ValueKind == JsonValueKind.String
+        ? content.GetString()
+        : null;
+
+  // The deliverable whose Copy was pressed last; its button carries the shared feedback (#768's words).
+  private string? copiedKey31;
+
+  private string CopyLabel31(string key) =>
+    key == copiedKey31 && copyFeedbackTarget == CopyTarget.Document && copyFeedback is not null ? copyFeedback : "Copy note";
+
+  /// <summary>Copies a released deliverable's text, as the 5–30 view's Copy note does; only a held text is offered.</summary>
+  private Task CopyDeliverable31Async(string key)
+  {
+    if (deliverableRows31.GetValueOrDefault(key) is not { TextDeleted: false } row || Content31(row) is not { } text)
+    {
+      return Task.CompletedTask;
+    }
+
+    copiedKey31 = key;
+    return CopyTextAsync(text, CopyTarget.Document);
+  }
+
   [Parameter]
   public string? JobId { get; set; }
 
@@ -1928,6 +2240,30 @@
       if (scalar.TextArea?.Element is { } area)
       {
         await area.FocusAsync();
+      }
+    }
+
+    // #1509 (Task 11, Review Focus 5): once a 31 package is open, one window-focus listener asks its checks again.
+    if (asksStartChecks31 && windowFocusReference31 is null)
+    {
+      windowFocusReference31 = DotNetObjectReference.Create(this);
+      try
+      {
+        var listener = await JS.InvokeAsync<int>("consultologistWindowFocus.listen", windowFocusReference31);
+        if (disposed31)
+        {
+          // The page went while the listener was registering: DisposeAsync could not stop it, so stop it here.
+          await StopWindowFocusListenerAsync(listener);
+        }
+        else
+        {
+          windowFocusListener31 = listener;
+        }
+      }
+      catch (Exception exception) when (exception is JSException or InvalidOperationException)
+      {
+        // No script costs only the re-ask on focus; the checks are still asked before submission.
+        Logger.LogWarning(exception, "Window focus listener could not start");
       }
     }
   }
@@ -2021,6 +2357,12 @@
 
       await LoadJobResultLabelsAsync(snapshot.WorkflowPackage);
 
+      // #1509 (Task 12): a 31 job's rail is built from the rows stored so far; the stream's row events follow.
+      if (IsRun31)
+      {
+        await LoadRows31Async(targetJobId);
+      }
+
       // #202: Cancelled is terminal too. Without it a re-attach would open an
       // SSE stream against an orchestration that has been terminated.
       if (snapshot.Status is "Completed" or "Failed" or "Cancelled")
@@ -2056,9 +2398,12 @@
   // not any collection's item list.
   private async Task LoadWorkflowNodesAsync()
   {
+    inputHelp31 = new Dictionary<string, string>();
     try
     {
       var content = await WorkflowService.GetCurrentPackageContentAsync();
+      // #1509 (D4): read first, so a 31 manifest the 30 readers below cannot read still gives its help text.
+      inputHelp31 = InputHelp31.From(content.Resolve);
       workflowNodes = WorkflowManifestReader.ReadNodes(content.Manifest, content.Files);
       workflowCollections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
 
@@ -2222,6 +2567,7 @@
   {
     isBlocksLoading = true;
     blocksLoadError = null;
+    ResetStartChecks31();
 
     try
     {
@@ -2240,19 +2586,36 @@
       // groups by. Null on v5/v6 — the fields then fall back to the frozen
       // consult_draft input.
       declaredResults = package.Results;
+      packageSpecVersion = package.SpecVersion;
       SyncInputFields(package.Inputs);
       inputsDeclared = true;
 
       // v12 § 3 (#621): the optional-macro choices, offered at 12 alone and
       // reset to the NEW package's declared defaults on every (re)load —
       // unlike inputs, nothing carries across packages: the defaults win.
-      macroChoices = package.SpecVersion >= 12 && package.Macros is { Count: > 0 }
+      // #1509 (part 09 § 5.1, R4): no macro panel at 31 — a per-run choice is a boolean input.
+      macroChoices = package.SpecVersion is >= 12 and < 31 && package.Macros is { Count: > 0 }
         ? package.Macros.Select(m => new MacroChoice(m.Id, m.Label, m.Default) { Value = m.Default }).ToList()
         : new List<MacroChoice>();
+
+      // #1509 (Task 11; part 09 § 5.3, D1): a 31 package's start checks are asked before the clinician can start.
+      asksStartChecks31 = package.SpecVersion >= 31;
+      if (asksStartChecks31)
+      {
+        await AskStartChecks31Async();
+      }
     }
     catch (AccessTokenNotAvailableException exception)
     {
       exception.Redirect();
+    }
+    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+    {
+      // #1509 (Task 11): only a 31 load answers Current with a 400 (requires, the lock, S09-001); its sentence is said
+      // above Start as written, and no input is drawn for a package that cannot run.
+      packageBlocks = new();
+      inputsDeclared = false;
+      currentRefusal31 = ex.Message;
     }
     catch (Exception ex)
     {
@@ -2268,6 +2631,12 @@
 
   private async Task CreateConsultAsync()
   {
+    // #1509 (Task 11): a second click while the checks are asked again before a 31 start starts nothing.
+    if (askingBeforeStart31)
+    {
+      return;
+    }
+
     editingDraft = false;
     runEventSeen = false;
     runTerminalStatus = null;
@@ -2276,6 +2645,7 @@
     completedNodeItems = new();
     nodeStatuses = new(StringComparer.Ordinal);
     latestRunResponse = null;
+    ResetRun31();
     railOpen = new(StringComparer.Ordinal);
     unattestedNodes = new Dictionary<string, UnattestedNodes.Entry>(StringComparer.Ordinal);
     showRunDiagram = false;
@@ -2323,6 +2693,31 @@
       return;
     }
 
+    // #1509 (Task 11; part 09 § 5.3, Review Focus 5): the account may have changed since the checks were asked (another
+    // tab); they are asked again, and a refusal holds the start, said above Start.
+    if (asksStartChecks31)
+    {
+      // Decided by this ask's own answer: one replaced, failed or refused starts nothing.
+      bool cleared;
+      askingBeforeStart31 = true;
+      try
+      {
+        cleared = await AskStartChecks31Async();
+      }
+      finally
+      {
+        askingBeforeStart31 = false;
+      }
+
+      if (!cleared || StartHeldBy31)
+      {
+        return;
+      }
+    }
+
+    // D6: the job's signature pick, sent only when it differs from the account's chosen block.
+    var signatureBlockId = SignatureBlockIdToSend31;
+
     // #157: a scheduled submit never enters the run phase — the job sleeps
     // server-side and History (plus the completion email) is its surface.
     if (runOvernight)
@@ -2336,7 +2731,7 @@
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices(),
-          SuppliedAcknowledgedShortInputs(), SuppliedFormFiles());
+          SuppliedAcknowledgedShortInputs(), SuppliedFormFiles(), signatureBlockId);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
@@ -2376,7 +2771,7 @@
         isSchedulingRequest = true;
         await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, files: SuppliedFiles(), refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
-          acknowledgedShortInputs: SuppliedAcknowledgedShortInputs(), formFiles: SuppliedFormFiles());
+          acknowledgedShortInputs: SuppliedAcknowledgedShortInputs(), formFiles: SuppliedFormFiles(), signatureBlockId: signatureBlockId);
         ClearInputs();
         queuedThisSession++;
         // Set AFTER ClearInputs — ClearInputs nulls scheduleConfirmation — so the
@@ -2423,7 +2818,7 @@
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
         inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
-        acknowledgedShortInputs: acknowledgedShortSnapshot, formFiles: formFileSnapshot);
+        acknowledgedShortInputs: acknowledgedShortSnapshot, formFiles: formFileSnapshot, signatureBlockId: signatureBlockId);
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
@@ -2679,6 +3074,18 @@
         var response = await AIService.GetConsultGenerationJobAsync(jobId);
 
         ApplyConsultGenerationJobResponse(response, blockSnapshots);
+
+        // #1509 (Task 12): a poll carries no row events, so a 31 job's rows are listed again when their count moved.
+        if (IsRun31 && response.Rows != rowsListed31)
+        {
+          await LoadRows31Async(jobId);
+        }
+        else if (IsRun31)
+        {
+          // a deliverable still without its text (not found, not yet written, failed) is asked again
+          await FetchReleasedDeliverables31Async(jobId);
+        }
+
         await InvokeAsync(StateHasChanged);
 
         if (response.Status is "Completed" or "Failed" or "Cancelled")
@@ -2704,7 +3111,7 @@
     try
     {
       // #1332: output of any kind means a Scheduled run has started.
-      if (scheduledFor is not null && eventName is "block-completed" or "block-skipped" or "block-failed" or "node-completed" or "item-step" or "count-resolved")
+      if (scheduledFor is not null && eventName is "block-completed" or "block-skipped" or "block-failed" or "node-completed" or "item-step" or "count-resolved" or "row-finished")
       {
         NoteScheduledStatus("Running", scheduledFor, startedAtUtc: null);
       }
@@ -2734,6 +3141,25 @@
           if (heartbeat != null && !string.IsNullOrWhiteSpace(heartbeat.Status))
           {
             NoteScheduledStatus(heartbeat.Status, scheduledFor, startedAtUtc: null);
+            if (IsRun31)
+            {
+              jobStatus31 = heartbeat.Status;
+            }
+          }
+          break;
+
+        // #1509 (Task 12, D15): one stored row of a 31 job, { key, section, status }; the rail is set from it with no
+        // fetch, and a released deliverable's text is fetched by its key, once.
+        case "row-finished":
+          var row = JsonSerializer.Deserialize<Consultologist.Web.Services.Provenance.V31.RowFinished>(json, SseJsonOptions);
+          if (row is { Key: not null, Section: not null })
+          {
+            NoteRowFinished31(row);
+            currentKey31 = row.Key;
+            if (lastAppliedJobId is { } rowJobId)
+            {
+              StartDeliverableFetches31(rowJobId);
+            }
           }
           break;
 
@@ -2840,6 +3266,13 @@
               final.FailedBlockCount);
 
             ApplyConsultGenerationJobResponse(final, GetActiveBlockSnapshots());
+
+            // #1509 (Task 12): the rows are listed once more, catching up a lost event, and a deliverable still
+            // without its text is asked again.
+            if (IsRun31)
+            {
+              await LoadRows31Async(final.JobId);
+            }
           }
 
           runTerminalStatus = final?.Status ?? "Completed";
@@ -2931,6 +3364,13 @@
     runEventSeen = true;
     // #642: the run diagram draws from the whole latest response.
     latestRunResponse = response;
+    if (IsRun31)
+    {
+      // #1509 (Task 12): the rail's blocks are the run's top-level node keys; the status and last row are the job's own.
+      runBlocks31 = blockSnapshots.Select(block => new WorkflowPackageBlockResponse(block.Id, block.Name)).ToList();
+      jobStatus31 = response.Status;
+      currentKey31 = response.CurrentKey ?? currentKey31;
+    }
     NoteScheduledStatus(response.Status, response.ScheduledAtUtc, response.StartedAtUtc);
     unattestedNodes = UnattestedNodes.Of(response);
     generatedBlocks = response.GeneratedBlocks;
@@ -3072,7 +3512,7 @@
   }
 
   // v10 (#496): a deciding job has no count yet and is still a run.
-  private bool IsRunPhase => !editingDraft && (isAiRequestLoading || totalBlockCount > 0 || deciding);
+  private bool IsRunPhase => !editingDraft && (isAiRequestLoading || totalBlockCount > 0 || deciding || IsRun31);
 
   // The frozen v5/v6 input, synthesized when a package declares nothing: one
   // required input labelled as the page always labelled it.
@@ -3107,7 +3547,9 @@
     inputFields = declared
       .Select(input =>
       {
-        var field = new ConsultInputField(input, textRows: declared.Count == 1 ? 16 : 6);
+        // #1509 (Task 9): at 31 each input is drawn from its Format.
+        var shape31 = packageSpecVersion >= 31 && input.Format is { } format ? InputShapes.Of(format, input.Fields, input.Items) : null;
+        var field = new ConsultInputField(input, textRows: declared.Count == 1 ? 16 : 6, shape31);
         // #1063: the door's sentence names a recording when the engine transcribes one.
         field.AcceptsRecordings = acceptsRecordings;
 
@@ -3432,7 +3874,8 @@
       }
 
       field.Restore(value);
-      formFills[field.Id] = (new ConsultInputFormRef(values.FormId, values.ResponseId), value);
+      // #1509: as the questionnaire fill does, a 31 data input compares with what it holds after the fill.
+      formFills[field.Id] = (new ConsultInputFormRef(values.FormId, values.ResponseId), field.Value31 is not null ? field.Supplied ?? value : value);
       filled++;
     }
 
@@ -3518,8 +3961,15 @@
 
     // The file becomes the fields — editable, like a held response's fill.
     field.Restore(value);
-    questionnaireFills[field.Id] = (bytes, value, value.Fields?.Count ?? 0);
+    // #1509: a 31 group writes every field (a blank one as null, D3), so what it holds after the fill is the
+    // value an untouched fill compares with.
+    questionnaireFills[field.Id] = (bytes, field.Value31 is not null ? field.Supplied ?? value : value, value.Fields?.Count ?? 0);
   }
+
+  private bool FormFillIntact(ConsultInputField field) =>
+    formFills.TryGetValue(field.Id, out var fill)
+    && field is { HasFile: false, HasLoaded: false, Supplied: { } supplied }
+    && System.Text.Json.JsonSerializer.Serialize(supplied) == System.Text.Json.JsonSerializer.Serialize(fill.Value);
 
   private bool QuestionnaireIntact(ConsultInputField field) =>
     questionnaireFills.TryGetValue(field.Id, out var fill)
@@ -3625,10 +4075,13 @@
   // deliverables via SuppliedRefs() — and the engine combines them into one
   // array. A single-value input stays one-or-the-other: its typed value only
   // travels when it has no file and no loaded deliverable.
+  // #1509: a 31 data input still as its questionnaire file or form response filled it sends no value beside
+  // them: the 31 start fills a left-out input from its form, and a value sent beside must equal the form's own.
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
       .Where(field => field.Supplied is not null
-        && (field.TakesSeveralDocuments || (!field.HasLoaded && !field.HasFile)))
+        && (field.TakesSeveralDocuments || (!field.HasLoaded && !field.HasFile))
+        && !(field.Value31 is not null && (QuestionnaireIntact(field) || FormFillIntact(field))))
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #510: the references. The server copies each run's text and records the
@@ -3685,7 +4138,182 @@
 
   // #429: a value that is present and wrong — on an optional input as much as
   // a required one — must not be quietly omitted. Named, and the run waits.
-  private bool HasNoInputProblems => inputFields.All(entry => entry.Problem is null);
+  // #1509 (part 09 § 5.1, D2): at 31 a required input left blank holds Start as well.
+  private bool HasNoInputProblems => inputFields.All(entry => entry.Problem is null && !(entry.Is31 && entry.Required && !entry.IsFilled));
+
+  // #1509 (Task 9): the spec version of the package the form was drawn from; 31 draws inputs from their formats.
+  private int packageSpecVersion;
+
+  // #1509 (Task 11; part 09 §§ 5.2, 5.3; D1, D6): the start's account checks, asked before a 31 start.
+  private const string ChecksUnreachable31 = "The workflow's checks couldn't be run. Reload the page to try again."; // A12-004
+
+  // Current's 400: the package cannot run here (requires, the lock, S09-001).
+  private string? currentRefusal31;
+  private bool asksStartChecks31;
+  private WorkflowPackageStartChecksResponse? startChecks31;
+  // The checks' own 400: the package's load refusal, as Current gives it.
+  private string? startChecksLoadRefusal31;
+  private bool startChecksUnreachable31;
+  // Only the latest answer is kept: a focus and a pick may ask at once.
+  private int startChecksAsked31;
+  // The checks are being asked again before a start; Start waits.
+  private bool askingBeforeStart31;
+  private SignatureBlocks.SignatureBlockSet signatureSet31 = SignatureBlocks.Empty();
+  // The block this job signs with; never saved to the account (part 09 § 5.2).
+  private string? signaturePick31;
+  private DotNetObjectReference<Consults>? windowFocusReference31;
+  private int? windowFocusListener31;
+  // Set by DisposeAsync, so a listener that finishes registering afterwards is stopped.
+  private bool disposed31;
+
+  private IReadOnlyList<string> StartSentences31 =>
+    currentRefusal31 is { } refusal ? [refusal]
+    : startChecksLoadRefusal31 is { } loadRefusal ? [loadRefusal]
+    : startChecksUnreachable31 ? [ChecksUnreachable31]
+    : startChecks31?.Refusals ?? Array.Empty<string>();
+
+  // The account's sentences (a profile field, the signature, the time zone) are set on Profile.
+  private bool StartSentencesAreTheAccounts31 =>
+    currentRefusal31 is null && startChecksLoadRefusal31 is null && !startChecksUnreachable31 && startChecks31?.Refusals is { Count: > 0 };
+
+  // Start waits for an answer, and for every refusal to clear.
+  private bool StartHeldBy31 =>
+    currentRefusal31 != null || (asksStartChecks31 && (askingBeforeStart31 || startChecks31 is null || StartSentences31.Count > 0));
+
+  private string? ChosenSignature31 => SignatureBlocks.Chosen(signatureSet31)?.Id;
+
+  // D6: offered when the package reads the signature and the account has more than one block.
+  private IReadOnlyList<SignatureBlocks.SignatureBlock>? SignatureChoice31 =>
+    asksStartChecks31 && startChecks31?.NeedsProfile?.Contains("signature") == true && signatureSet31.Blocks.Count > 1
+      ? signatureSet31.Blocks
+      : null;
+
+  private string? SignatureBlockIdToSend31 =>
+    SignatureChoice31 is not null && !string.IsNullOrEmpty(signaturePick31) && signaturePick31 != ChosenSignature31
+      ? signaturePick31
+      : null;
+
+  private void ResetStartChecks31()
+  {
+    // An ask still out is for the package being replaced: its answer is not current.
+    startChecksAsked31++;
+    currentRefusal31 = null;
+    asksStartChecks31 = false;
+    startChecks31 = null;
+    startChecksLoadRefusal31 = null;
+    startChecksUnreachable31 = false;
+    signatureSet31 = SignatureBlocks.Empty();
+    signaturePick31 = null;
+  }
+
+  private async Task PickSignature31Async(string? choice)
+  {
+    // A FluentSelect pick can arrive twice (AGENTS.md). The same pick asks nothing more; nor does one during the ask before a start, which decides that start.
+    if (choice == signaturePick31 || askingBeforeStart31)
+    {
+      return;
+    }
+
+    signaturePick31 = choice;
+    await AskStartChecks31Async();
+  }
+
+  // Reads the account's blocks afresh (one removed in another tab falls back to the chosen one), then asks the checks
+  // with the pick. True only when this ask was answered, is still the latest, and nothing is refused. A failed ask keeps
+  // the last answer's NeedsProfile (so the signature choice and the pick stay) and says A12-004.
+  private async Task<bool> AskStartChecks31Async()
+  {
+    var asked = ++startChecksAsked31;
+    var followedDefault = signaturePick31 == ChosenSignature31;
+
+    SignatureBlocks.SignatureBlockSet? read = null;
+    try
+    {
+      var setting = await AccountService.GetSettingAsync(SignatureBlocks.SettingKey);
+      read = SignatureBlocks.Parse(setting?.Value);
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+      return false;
+    }
+    catch
+    {
+      // The blocks last read stand; the start reads the account itself.
+    }
+
+    // A newer ask (a pick, a focus, a package switch) owns the blocks and the pick from here.
+    if (asked != startChecksAsked31)
+    {
+      return false;
+    }
+
+    if (read is not null)
+    {
+      signatureSet31 = read;
+    }
+
+    if (followedDefault || !signatureSet31.Blocks.Any(block => block.Id == signaturePick31))
+    {
+      signaturePick31 = ChosenSignature31;
+    }
+
+    try
+    {
+      var answer = await WorkflowService.GetStartChecksAsync(currentPackageRef, SignatureBlockIdToSend31);
+      if (asked != startChecksAsked31)
+      {
+        return false;
+      }
+
+      if (answer is null)
+      {
+        startChecksLoadRefusal31 = null;
+        startChecksUnreachable31 = true;
+        return false;
+      }
+
+      startChecks31 = answer;
+      startChecksLoadRefusal31 = null;
+      startChecksUnreachable31 = false;
+      return (answer.Refusals?.Count ?? 0) == 0;
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+      return false;
+    }
+    catch (HttpRequestException exception) when (exception.StatusCode == System.Net.HttpStatusCode.BadRequest)
+    {
+      if (asked == startChecksAsked31)
+      {
+        startChecksLoadRefusal31 = exception.Message;
+        startChecksUnreachable31 = false;
+      }
+
+      return false;
+    }
+    catch (Exception exception)
+    {
+      Logger.LogWarning(exception, "Start checks could not be asked");
+      if (asked == startChecksAsked31)
+      {
+        startChecksLoadRefusal31 = null;
+        startChecksUnreachable31 = true;
+      }
+
+      return false;
+    }
+  }
+
+  // #1509 (D4): each 31 input's help text, from the content the rail loads; empty when it cannot be read.
+  private IReadOnlyDictionary<string, string> inputHelp31 = new Dictionary<string, string>();
+
+  private string? Help31(ConsultInputField field) =>
+    field.Is31 && inputHelp31.TryGetValue(field.Id, out var help) ? help : null;
+
+  // An edit inside Input31 is an edit of what runs, as a typed one is.
+  private void OnInput31Changed() => scheduleConfirmation = null;
 
   private bool HasAnyInput => inputFields.Any(entry => entry.IsFilled);
 
@@ -3694,9 +4322,11 @@
   // loaded, so one predicate covers every fill road. Prose only (text or an
   // array of text), mirroring InputContent.IsProse: a date, enum, boolean or
   // number is short by nature and its own type constrains it — the engine does
-  // not floor it, and neither do we.
+  // not floor it, and neither do we. #1509: a 31 start applies no referral
+  // floor (V31JobStarter), so neither does a 31 form.
   private static bool IsBelowFloor(ConsultInputField entry) =>
-    entry.Required
+    !entry.Is31
+    && entry.Required
     && entry.IsFilled
     && IsProseInput(entry)
     && InputTextFloor.IsBelowFloor(entry.EffectiveText);
@@ -4275,6 +4905,12 @@
     /// </summary>
     public FluentTextArea? TextArea { get; set; }
 
+    /// <summary>#1509: a 31 `string` (InputWidget.Line) draws a single-line field in place of the text area.</summary>
+    public bool SingleLine { get; set; }
+
+    /// <summary>#1509 (D5): a 31 `markdown_block` draws MarkdownInput in place of the plain text area.</summary>
+    public bool IsMarkdown { get; set; }
+
     public bool IsTouched => Type == WorkflowInputTypes.Boolean ? Flag.HasValue : !string.IsNullOrWhiteSpace(Value);
 
     /// <summary>What this input sends, or null when nothing was chosen — or, for a number, nothing parseable.</summary>
@@ -4470,9 +5106,16 @@
         ? string.Join("\n", Fields.Where(member => member.IsFilled).Select(member => $"{member.Label}: {member.EffectiveText}"))
         : string.Join(Element?.Type == WorkflowInputTypes.Object ? "\n\n" : "\n", Rows.Where(row => !row.IsEmpty).Select(row => row.EffectiveText));
 
+    /// <summary>#1509: the rows of a 31 array of `string` are single-line fields.</summary>
+    public bool RowsSingleLine { get; set; }
+    /// <summary>#1509 (D5): the rows of a 31 array of `markdown_block` draw MarkdownInput, as <see cref="RowsSingleLine"/> does for lines.</summary>
+    public bool RowsMarkdown { get; set; }
+
     public ConsultInputNode AddRow()
     {
       var row = new ConsultInputNode(Id, Label, true, Element?.Type, Element?.Values, Element?.Items, Element?.Fields, Depth + 1);
+      row.Scalar.SingleLine = RowsSingleLine;
+      row.Scalar.IsMarkdown = RowsMarkdown;
       Rows.Add(row);
       return row;
     }
@@ -4603,7 +5246,7 @@
   /// </summary>
   private sealed class ConsultInputField
   {
-    public ConsultInputField(WorkflowPackageInputResponse input, int textRows)
+    public ConsultInputField(WorkflowPackageInputResponse input, int textRows, InputShape? shape31 = null)
     {
       Declaration = input;
       Id = input.Id;
@@ -4611,6 +5254,17 @@
       Required = input.Required;
       Type = WorkflowInputTypes.Of(input);
       Items = input.Items?.Type ?? WorkflowInputTypes.Text;
+      // #1509 (Task 9): at 31 the format decides. A text input, or an array of text, keeps this slot's controls; a
+      // data input holds an InputValue31 and is drawn by Input31.
+      Shape31 = shape31;
+      if (shape31 is not null)
+      {
+        Type = TypeOf31(shape31);
+        Items = shape31.Items is { } element ? TypeOf31(element) : WorkflowInputTypes.Text;
+        Value31 = InputValue31.IsSupported(shape31) && !IsText31(shape31) && !(Type == WorkflowInputTypes.Array && Items == WorkflowInputTypes.Text)
+          ? InputValue31.For(shape31)
+          : null;
+      }
       // #728: the declared content channel — the setup form labels the input.
       // A transcript input is a text input, so it already shows the file upload;
       // the engine stamps the transcript origin from the declaration.
@@ -4623,8 +5277,43 @@
       var placeholder = Id == "consult_draft"
         ? "Enter referral details, clinical context, and the consult question..."
         : null;
-      Root = new ConsultInputNode(Id, Label, Required, Type, input.Values, input.Items, input.Fields, depth: 0, textRows, placeholder);
+      Root = shape31 is null
+        ? new ConsultInputNode(Id, Label, Required, Type, input.Values, input.Items, input.Fields, depth: 0, textRows, placeholder)
+        : new ConsultInputNode(Id, Label, Required, Type, null,
+            Type == WorkflowInputTypes.Array ? new WorkflowPackageElementResponse(Items) : null, null, depth: 0, textRows, placeholder);
+      if (shape31 is not null)
+      {
+        Root.Scalar.SingleLine = shape31.Widget == InputWidget.Line;
+        Root.Scalar.IsMarkdown = shape31.Widget == InputWidget.Markdown;
+        Root.RowsSingleLine = shape31.Items?.Widget == InputWidget.Line;
+        Root.RowsMarkdown = shape31.Items?.Widget == InputWidget.Markdown;
+      }
     }
+
+    /// <summary>#1509: the input's shape at 31, read from its Format; null below 31.</summary>
+    public InputShape? Shape31 { get; }
+
+    /// <summary>#1509: a 31 data input's value (Input31); null for a text input and below 31.</summary>
+    public InputValue31? Value31 { get; }
+
+    public bool Is31 => Shape31 is not null;
+
+    /// <summary>#1509 (A12-006): a 31 input whose format has a part with no widget; it holds the run.</summary>
+    public bool Unsupported31 => Shape31 is { } shape && !InputValue31.IsSupported(shape);
+
+    private static bool IsText31(InputShape shape) => shape.Widget is InputWidget.Line or InputWidget.Area or InputWidget.Markdown;
+
+    /// <summary>The 30 type name a 31 widget stands for, which the slot's document and floor rules read.</summary>
+    private static string TypeOf31(InputShape shape) => shape.Widget switch
+    {
+      InputWidget.Line or InputWidget.Area or InputWidget.Markdown => WorkflowInputTypes.Text,
+      InputWidget.Select => WorkflowInputTypes.Enum,
+      InputWidget.Date => WorkflowInputTypes.Date,
+      InputWidget.Boolean => WorkflowInputTypes.Boolean,
+      InputWidget.Number or InputWidget.Integer => WorkflowInputTypes.Number,
+      InputWidget.Rows => WorkflowInputTypes.Array,
+      _ => WorkflowInputTypes.Object,
+    };
 
     /// <summary>#991: the declaration as served — what the library coerces a held or filed answer against.</summary>
     public WorkflowPackageInputResponse Declaration { get; }
@@ -4839,8 +5528,13 @@
     public bool TakesSeveralDocuments => Type == WorkflowInputTypes.Array && Items == WorkflowInputTypes.Text;
     public bool TakesOneDocument => Type == WorkflowInputTypes.Text;
 
-    /// <summary>What this input sends, or null when nothing was chosen (the tree's rules, from the root).</summary>
-    public ConsultInputValue? Supplied => Root.Supplied();
+    /// <summary>
+    /// What this input sends, or null when nothing was chosen (the tree's rules, from the root). #1509 (D3): a 31 data
+    /// input sends its value's JSON through the same wire value, a blank field inside it as JSON null.
+    /// </summary>
+    public ConsultInputValue? Supplied => Value31 is { } value31
+      ? value31.ToJson() is { } json ? ConsultInputValue.FromJson(json.ToJsonString()) : null
+      : Root.Supplied();
 
     /// <summary>
     /// What this input contributes, whichever way it was filled — the one
@@ -4858,6 +5552,17 @@
     {
       get
       {
+        // #1509: a 31 input with no widget, or a 31 data input's own problem (a blank required value is one, D2).
+        if (Unsupported31)
+        {
+          return Create31Sentences.CannotBeFilledInHere(Label);
+        }
+
+        if (Value31 is { } value31)
+        {
+          return value31.Problem(Shape31!, Required) is { } problem31 ? $"{Label}: {problem31}" : null;
+        }
+
         // #872/#874: a several (array<text>) input mixes typed rows with
         // documents and previous-run deliverables, so neither an attached file
         // nor a loaded deliverable silences a row problem underneath it — an
@@ -4919,6 +5624,11 @@
           return string.Join("\n\n", Loaded.Select(loaded => loaded.Text));
         }
 
+        if (Value31 is not null)
+        {
+          return Supplied is { } supplied ? (supplied.HasCanonical ? supplied.Canonical : supplied.AsJson()) : string.Empty;
+        }
+
         return Root.EffectiveText;
       }
     }
@@ -4936,6 +5646,7 @@
     public void Clear()
     {
       Root.Clear();
+      Value31?.Clear();
       Documents.Clear();
       Loaded.Clear();
       entries.Clear();
@@ -4952,6 +5663,18 @@
     /// </summary>
     public void AdoptFrom(ConsultInputField previous)
     {
+      // #1509: a 31 data input carries its answer into an input written with the same format.
+      if (Value31 is not null || previous.Value31 is not null)
+      {
+        if (Value31 is { } value31 && previous.Value31 is { } earlier
+            && Declaration.Format?.GetRawText() == previous.Declaration.Format?.GetRawText())
+        {
+          value31.Restore(earlier.ToJson());
+        }
+
+        return;
+      }
+
       if (previous.Root.Shape != Root.Shape)
       {
         return;
@@ -5009,6 +5732,12 @@
     public void Restore(ConsultInputValue value)
     {
       Clear();
+      if (Value31 is { } value31)
+      {
+        value31.Restore(System.Text.Json.Nodes.JsonNode.Parse(value.AsJson()));
+        return;
+      }
+
       Root.Restore(value);
     }
 
@@ -5016,6 +5745,14 @@
     public void RestoreText(string text)
     {
       Clear();
+
+      if (Value31 is { } value31)
+      {
+        // #1509: the text that ran (EffectiveText) — a scalar's canonical text, a structure's JSON — read back into
+        // the 31 value when it is that shape's value; anything else leaves the input blank.
+        value31.RestoreText(text);
+        return;
+      }
 
       if (Type == WorkflowInputTypes.Boolean)
       {
@@ -5169,14 +5906,47 @@
     }
   }
 
-  public ValueTask DisposeAsync()
+  /// <summary>#1509 (Task 11, Review Focus 5): the window regained focus; the account may have changed in another tab.</summary>
+  [JSInvokable]
+  public async Task OnWindowFocusAsync()
   {
+    // The ask before a start is the one that decides it; a focus during it asks nothing.
+    if (!asksStartChecks31 || isBlocksLoading || isAiRequestLoading || isSchedulingRequest || askingBeforeStart31)
+    {
+      return;
+    }
+
+    await AskStartChecks31Async();
+    await InvokeAsync(StateHasChanged);
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    disposed31 = true;
     Navigation.LocationChanged -= HandleLocationChanged;
     CancelActiveEventStream("component-disposed");
     activeEventStreamCancellationTokenSource?.Dispose();
     elapsedTicker?.Cancel();
     elapsedTicker?.Dispose();
-    return ValueTask.CompletedTask;
+
+    if (windowFocusListener31 is { } listener)
+    {
+      await StopWindowFocusListenerAsync(listener);
+    }
+
+    windowFocusReference31?.Dispose();
+  }
+
+  private async Task StopWindowFocusListenerAsync(int listener)
+  {
+    try
+    {
+      await JS.InvokeVoidAsync("consultologistWindowFocus.stop", listener);
+    }
+    catch (Exception exception) when (exception is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
+    {
+      // The page is going; a listener the browser already dropped needs no stopping.
+    }
   }
 
   // #684: mark when the run started and re-render once a second so the elapsed

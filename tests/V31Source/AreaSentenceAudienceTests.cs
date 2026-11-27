@@ -31,4 +31,20 @@ public class AreaSentenceAudienceTests
         Assert.Equal(audience, V31Contract.AreaSentenceAudiences[id]);
         Assert.Equal(audience, V31Contract.RefusalSentencesAudience(id));
     }
+
+    [Fact]
+    public void A12004_IsTheClinicians_InTheContractAndInRefusalSentences()
+    {
+        // #1509 (Task 11): the Create page says it when the start checks cannot be asked.
+        Assert.Equal("clinician", V31Contract.AreaSentenceAudiences["A12-004"]);
+        Assert.Equal("clinician", V31Contract.RefusalSentencesAudience("A12-004"));
+    }
+
+    [Fact]
+    public void A12006_IsTheClinicians_InTheContractAndInRefusalSentences()
+    {
+        // #1509 (Task 9): the Create page says it of an input it has no field for.
+        Assert.Equal("clinician", V31Contract.AreaSentenceAudiences["A12-006"]);
+        Assert.Equal("clinician", V31Contract.RefusalSentencesAudience("A12-006"));
+    }
 }

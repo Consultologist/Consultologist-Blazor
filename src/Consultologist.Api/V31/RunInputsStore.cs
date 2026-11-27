@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
+using Consultologist.PackageFormat;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -22,6 +23,34 @@ public interface IRunInputsStore
 
     /// <summary>The document, or null when it is gone (dropped, or never written).</summary>
     Task<JsonObject?> ReadAsync(ConsultInputsBlobPointer pointer, CancellationToken ct);
+}
+
+/// <summary>
+/// #1509 (D8): a 31 job's held inputs document, read for History and for a rerun: each supplied input's <c>value</c> (the
+/// document's <c>inputs.&lt;id&gt;.value</c>), as the typed value a request carries. Never the profile half, which is the
+/// account's and is read afresh by every start.
+/// </summary>
+public static class RunInputsDocument
+{
+    /// <summary>
+    /// The value of each input the document holds, by id. An input with no value (an absent optional one, or a JSON null)
+    /// is left out, as a 5–30 job's held <c>Supplied</c> leaves it out.
+    /// </summary>
+    public static IReadOnlyDictionary<string, ConsultInputValue> ValuesOf(JsonObject document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        var values = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
+        if (document["inputs"] is not JsonObject inputs)
+            return values;
+
+        foreach (var (id, readForm) in inputs)
+        {
+            if (readForm is JsonObject form && form["value"] is { } value)
+                values[id] = ConsultInputValue.FromJson(value.ToJsonString());
+        }
+
+        return values;
+    }
 }
 
 /// <summary>

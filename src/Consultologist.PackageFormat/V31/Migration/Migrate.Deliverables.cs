@@ -12,7 +12,7 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <c>check.&lt;id&gt;</c> or <c>null</c>, and <c>whenEmpty</c> from <see cref="Migration31Options.WhenEmpty"/>
 /// (§ 1.10, D7; <c>"release"</c> when unsaid). Its body is the composition template D8 names: the prepended macros, the
 /// sources, the appended macros and the signature, in that order, one blank line between each. A source is read as its
-/// <c>.content</c> (a loop's is 30's blocks, part 05 § 5.3); a macro with no condition is a snippet read
+/// <c>.content | string.strip</c> (a loop's is 30's blocks, part 05 § 5.3; #1508 item 3); a macro with no condition is a snippet read
 /// (<c>{{ snippet.&lt;id&gt;.content }}</c>, D4: the snippet the macros pass wrote, or one written here from the macro's
 /// body when a prompt also places the macro); a macro with a condition (its own <c>if</c>, the placement's, or an
 /// optional one) is a hand edit (D3, A10-002), written <c>{{ macro.&lt;id&gt;.fixed_text }}</c>, which 31 refuses; 30's
@@ -52,11 +52,20 @@ internal static partial class Migrate
     /// <summary>
     /// #1508 (ruled by the owner, Q3 of 2026-11-26; R15): the deliverable's <c>if</c>. 30 skipped a deliverable none of
     /// whose sources ran; at 31 it would be composed empty and released (A11-010 warns of it in a new package). So when
-    /// every source may not run (<see cref="ConversionRead.AlwaysValued"/> false for each: an <c>if</c> with no
-    /// <c>else</c>, a <c>case</c> with an empty branch), the <c>if</c> says that one ran:
-    /// <c>{ "===": [ { "var": "&lt;source&gt;.state" }, "completed" ] }</c> for each, joined by <c>or</c>, after 30's own
-    /// <paramref name="rule"/> by <c>and</c> (A10-079 says it). A deliverable with no sources, a source the migration does
-    /// not read, or one that always runs keeps <paramref name="rule"/>. A rule the converter refused (30's text with its
+    /// every source may not run (30's always-valued false for each, <see cref="Migrated.AlwaysValued30"/>: an <c>if</c> with no
+    /// <c>else</c>, a <c>case</c> with an empty branch; a leaf gated by deliverables' conditions runs whenever this one
+    /// applies, F-D4), the <c>if</c> says that one ran: for each source the term
+    /// <see cref="RanTerm"/> gives, the first the deliverable's <c>if</c> can read, by asking its typing
+    /// (<see cref="ConditionTyping.ReadsAtDeliverableIf"/> over the top-level scope):
+    /// <c>{ "===": [ { "var": "&lt;source&gt;.state" }, "completed" ] }</c>, else R15's fallback
+    /// <c>{ "!==": [ { "var": "&lt;source&gt;.value" }, null ] }</c> (#1508, 2026-11-26, item 8), joined by <c>or</c>, after
+    /// 30's own <paramref name="rule"/> by <c>and</c> (A10-079 says it). A source the migration does not read (no
+    /// <see cref="Migrated.NodeReads"/> entry, or a read where neither term types at a deliverable's <c>if</c>, as a
+    /// <c>check.*</c> read would not) leaves whether the deliverable is empty unread, so then, unless another source always
+    /// runs, the <c>if</c> keeps <paramref name="rule"/> and is a hand edit (A10-086, item 8) naming the unread sources and
+    /// the others' term, so nothing is released empty without a notice. A deliverable with no sources, or one with a source
+    /// that always runs (or is a <c>while</c>), keeps <paramref name="rule"/> and is said nothing: it is never empty. A rule
+    /// the converter refused (30's text with its
     /// hand edit) is kept too, since nothing is joined to a condition not yet written; where every source may not run it
     /// gets a second hand edit on the same <c>if</c> naming the term to join to it by <c>and</c>, verbatim (A10-084, the
     /// final review of Part F), so the condition the operator writes still skips the deliverable as 30 did. A <c>while</c> source counts as one that runs: 30
@@ -70,20 +79,33 @@ internal static partial class Migrate
         if (sources.Count == 0)
             return rule;
         var reads = new List<string>();
+        var ran = new List<JsonNode>();
+        var unread = new List<string>();
+        var scope = m.Scope((string?)null);
         foreach (var source in sources)
         {
             var id = source.StartsWith("node.", StringComparison.Ordinal) ? source["node.".Length..] : source;
-            if (!m.NodeReads.TryGetValue(id, out var read) || read.AlwaysValued
-                || m.Manifest30.Nodes?.FirstOrDefault(n => n.Id == id)?.While is not null)
+            var known = m.NodeReads.TryGetValue(id, out var read);
+            if (m.AlwaysValued30.Contains(id) || m.Manifest30.Nodes?.FirstOrDefault(n => n.Id == id)?.While is not null)
                 return rule;
-            reads.Add(read.Path);
+            if (known && RanTerm(read!.Path, t => ConditionTyping.ReadsAtDeliverableIf(t, scope)) is { } one)
+            {
+                reads.Add(read.Path);
+                ran.Add(one);
+            }
+            else
+            {
+                unread.Add(known ? read!.Path : "node." + id);
+            }
         }
 
-        var ran = reads.Select(r => (JsonNode)new JsonObject
+        JsonNode? term = ran.Count switch { 0 => null, 1 => ran[0], _ => new JsonObject { ["or"] = new JsonArray([.. ran]) } };
+        if (unread.Count > 0 || term is null)
         {
-            ["==="] = new JsonArray(new JsonObject { ["var"] = r + ".state" }, "completed"),
-        }).ToList();
-        JsonNode term = ran.Count == 1 ? ran[0] : new JsonObject { ["or"] = new JsonArray([.. ran]) };
+            m.HandEdit(file, "if", MigrationSentences.SourceRunNotRead(unread, term?.ToJsonString()));
+            return rule;
+        }
+
         if (rule is JsonValue)
         {
             m.HandEdit(file, "if", MigrationSentences.JoinASourceRan(term.ToJsonString()));
@@ -103,6 +125,22 @@ internal static partial class Migrate
     }
 
     /// <summary>
+    /// #1508 (2026-11-26, item 8; R15's fallback, F-D12): the term that says the source at <paramref name="path"/> ran, the
+    /// first <paramref name="readable"/> accepts: <c>{ "===": [ { "var": "&lt;path&gt;.state" }, "completed" ] }</c>, else
+    /// <c>{ "!==": [ { "var": "&lt;path&gt;.value" }, null ] }</c>, else null (the migration cannot read whether it ran).
+    /// </summary>
+    internal static JsonNode? RanTerm(string path, Func<JsonNode, bool> readable)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(readable);
+        JsonNode state = new JsonObject { ["==="] = new JsonArray(new JsonObject { ["var"] = path + ".state" }, "completed") };
+        if (readable(state))
+            return state;
+        JsonNode value = new JsonObject { ["!=="] = new JsonArray(new JsonObject { ["var"] = path + ".value" }, null) };
+        return readable(value) ? value : null;
+    }
+
+    /// <summary>
     /// A deliverable's entry in <see cref="Migrated.Keys"/> (D1): <c>deliverable.&lt;id&gt;</c> by its 30 key, so that a
     /// deliverable never takes the entry of a node with the same id (<c>composer-sources</c>' <c>plan</c>).
     /// </summary>
@@ -119,7 +157,8 @@ internal static partial class Migrate
 
     /// <summary>
     /// D8: the template, its pieces one blank line apart: each prepended macro (placement order), each source's
-    /// <c>.content</c> (<c>sources</c> order), each appended macro, then <c>{{ profile.signature }}</c> when 30 signed it.
+    /// <c>.content | string.strip</c> (<c>sources</c> order; #1508 item 3, F-D8: 30's composer trimmed each part, never the
+    /// whole, and never a macro's snippet, R5), each appended macro, then <c>{{ profile.signature }}</c> when 30 signed it.
     /// </summary>
     private static string Composition(Migrated m, WorkflowDeliverableSpec deliverable, string file, Dictionary<string, string> copies)
     {
@@ -129,7 +168,7 @@ internal static partial class Migrate
         foreach (var placement in macros.Where(x => x?.At == WorkflowDeliverableMacroSpec.Prepend))
             pieces.Add(DeliverableMacro(m, placement, file, said, copies));
         foreach (var source in deliverable.Sources ?? [])
-            pieces.Add($"{{{{ {SourceRead(m, source)}.content }}}}");
+            pieces.Add($"{{{{ {SourceRead(m, source)}.content | string.strip }}}}");
         foreach (var placement in macros.Where(x => x is not null && x.At != WorkflowDeliverableMacroSpec.Prepend))
             pieces.Add(DeliverableMacro(m, placement, file, said, copies));
         if (deliverable.Signature == true)

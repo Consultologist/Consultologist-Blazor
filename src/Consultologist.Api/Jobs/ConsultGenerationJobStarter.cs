@@ -37,7 +37,11 @@ public sealed record ConsultGenerationJobOrigin(
     string? RerunOfJobId = null,
     // #582: the source's hashes, captured by the rerun door beside the id —
     // the verdict's evidence, seeded onto the new job's record at Initialize.
-    ConsultRerunBaseline? RerunBaseline = null);
+    ConsultRerunBaseline? RerunBaseline = null,
+    // #1509 (D8; part 08 § 5.1): at 31 only, set by the rerun door and never read from a request: the source job's origins of
+    // the inputs that held an earlier run's text, by input id, which the rerun's record repeats so that text stays
+    // model-derived. Absent for every other start.
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InheritedInputOrigins = null);
 
 public enum ConsultGenerationJobStartError
 {
@@ -339,7 +343,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         if (_v31 != null
             && await _v31.StartAsync(
                 client, request, appUserId, origin, packageRef!, jobId,
-                (v31Request, manifest) => ExtractFor31Async(v31Request, manifest, origin, appUserId, cancellationToken),
+                (v31Request, manifest) => ExtractFor31Async(client.Entities, v31Request, manifest, origin, appUserId, cancellationToken),
                 cancellationToken) is { } started31)
         {
             return started31;
@@ -1192,18 +1196,97 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     /// <summary>
     /// #1503 (specVersion 31): a 31 request's documents read as today's start reads them — the account's OCR and
-    /// speech-to-text gates, the door's wait — against <paramref name="manifest"/>, the plan's inputs.
+    /// speech-to-text gates, the door's wait — against <paramref name="manifest"/>, the plan's inputs. #1509 (area 12,
+    /// R2): its references first, as today's start reads them and in its order (<see cref="ResolveInputRefsAsync(DurableEntityClient, IJobOutputsBlobStore, ConsultGenerationRequest, string, IReadOnlyDictionary{string, DeclaredInput31}, CancellationToken)"/>,
+    /// then <see cref="VerifyInputFormRefsAsync(ConsultGenerationRequest, IReadOnlyDictionary{string, DeclaredInput31}, string, CancellationToken)"/> and
+    /// <see cref="VerifyInputFormFiles(ConsultGenerationRequest, IReadOnlyDictionary{string, DeclaredInput31})"/>): each fills
+    /// its input in the request's <c>Inputs</c>, an earlier run's elements combined with typed rows and documents at their
+    /// positions, and the earlier runs' origins join the documents'. A refusal is today's, outcome and words, with no
+    /// sender-safe sentence, as today's start answers it, and is logged here, once, as what it refused.
     /// </summary>
     private async Task<InputFileExtraction> ExtractFor31Async(
-        ConsultGenerationRequest request, WorkflowPackageManifest manifest, ConsultGenerationJobOrigin origin, string appUserId, CancellationToken cancellationToken)
+        DurableEntityClient entities, ConsultGenerationRequest request, WorkflowPackageManifest manifest, ConsultGenerationJobOrigin origin, string appUserId,
+        CancellationToken cancellationToken)
     {
+        var declared = DeclaredInput31.Of(manifest);
+        var resolution = await ResolveInputRefsAsync(entities, _outputsBlobs, request, appUserId, declared, cancellationToken);
+        if (resolution.Error != null)
+        {
+            _logger.LogWarning("Rejected 31 job start: a previous-run reference was refused. Kind={Kind}", resolution.ErrorKind);
+            return new InputFileExtraction(request, null, resolution.Error, null, resolution.ErrorKind);
+        }
+
+        request = resolution.Request;
+        var formVerification = await VerifyInputFormRefsAsync(request, declared, appUserId, cancellationToken);
+        if (formVerification.Error != null)
+        {
+            _logger.LogWarning("Rejected 31 job start: a form-response reference was refused. Kind={Kind}", formVerification.ErrorKind);
+            return new InputFileExtraction(request, null, formVerification.Error, null, formVerification.ErrorKind!.Value);
+        }
+
+        request = WithValues(request, formVerification.Values) with { InputFormRefs = null };
+        var formFileVerification = VerifyInputFormFiles(request, declared);
+        if (formFileVerification.Error != null)
+        {
+            _logger.LogWarning("Rejected 31 job start: a questionnaire file was refused. Kind={Kind}", formFileVerification.ErrorKind);
+            return new InputFileExtraction(request, null, formFileVerification.Error, null, formFileVerification.ErrorKind!.Value);
+        }
+
+        request = WithValues(request, formFileVerification.Values) with { InputFormFiles = null };
+
+        // As today's start: a standalone reference and a form-filled id are excluded from the combine; a reference beside
+        // typed rows or documents rides in RefGroups and is combined, at its position, by the extraction.
+        var refResolvedIds = (resolution.Origins?.Keys ?? Enumerable.Empty<string>())
+            .Concat(formVerification.Refs?.Keys ?? Enumerable.Empty<string>())
+            .Concat(formFileVerification.FileHashes?.Keys ?? Enumerable.Empty<string>())
+            .ToHashSet(StringComparer.Ordinal);
+
         var ocrGate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrConfidenceGate, cancellationToken);
         var ocrMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
         var sttGate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttConfidenceGate, cancellationToken);
         var sttMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttMinConfidence, cancellationToken);
-        return await ExtractInputFilesAsync(
+        var extraction = await ExtractInputFilesAsync(
             request, manifest, GateWaitFor(origin), _ocr, OcrConfidenceSettings.EffectiveMinConfidence(ocrGate?.Value, ocrMin?.Value), cancellationToken,
+            refResolvedIds.Count > 0 ? refResolvedIds : null, resolution.RefGroups,
             speechToText: _speechToText, sttMinConfidence: SttConfidenceSettings.EffectiveMinConfidence(sttGate?.Value, sttMin?.Value));
+        if (extraction.Error != null)
+        {
+            _logger.LogWarning("Rejected 31 job start: attached documents were refused. Kind={Kind}, Outcome={Outcome}", extraction.ErrorKind, extraction.Outcome);
+            return extraction;
+        }
+
+        return extraction with { Origins = MergeOrigins(resolution.Origins, extraction.Origins, refResolvedIds) };
+    }
+
+    /// <summary><paramref name="request"/> with <paramref name="values"/> written into its <c>Inputs</c>, by id.</summary>
+    private static ConsultGenerationRequest WithValues(ConsultGenerationRequest request, IReadOnlyDictionary<string, ConsultInputValue>? values)
+    {
+        if (values is not { Count: > 0 })
+            return request;
+        var inputs = request.Inputs is { Count: > 0 } given
+            ? new Dictionary<string, ConsultInputValue>(given, StringComparer.Ordinal)
+            : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
+        foreach (var (id, value) in values)
+            inputs[id] = value;
+        return request with { Inputs = inputs };
+    }
+
+    /// <summary>
+    /// #1509 (specVersion 31, area 12; R2): what a 31 start's references are read against, of one input of the plan: its
+    /// id, whether its format is an array of a text format, and whether its channel is <c>form</c> (part 02 § 8.3: an
+    /// object). Today's resolvers read these of a <see cref="WorkflowPackageManifest"/>; a 31 plan has no 5–30 declaration.
+    /// </summary>
+    internal sealed record DeclaredInput31(string Id, bool ArrayOfText, bool FormChannel)
+    {
+        /// <summary>Each input of <paramref name="manifest"/> (the plan's, as <c>V31JobStarter.ManifestOf</c> makes it), by id.</summary>
+        internal static IReadOnlyDictionary<string, DeclaredInput31> Of(WorkflowPackageManifest manifest) =>
+            (manifest.Inputs ?? []).ToDictionary(
+                input => input.Id,
+                input => new DeclaredInput31(
+                    input.Id,
+                    WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Text,
+                    input.ExpectedContent == WorkflowExpectedContent.Form),
+                StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -1996,6 +2079,33 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             RefGroups: refGroups.Count > 0 ? refGroups : null);
     }
 
+    /// <summary>
+    /// #1509 (specVersion 31, area 12; R2): <see cref="ResolveInputRefsAsync(DurableEntityClient, IJobOutputsBlobStore, ConsultGenerationRequest, string, CancellationToken)"/>
+    /// for a 31 plan's <paramref name="declared"/> inputs: the same reads and refusals, and a reference standing alone in an
+    /// input whose format is an array of text is a list of one, the value that format takes.
+    /// </summary>
+    internal static async Task<InputRefResolution> ResolveInputRefsAsync(
+        DurableEntityClient entities,
+        IJobOutputsBlobStore outputsBlobs,
+        ConsultGenerationRequest request,
+        string appUserId,
+        IReadOnlyDictionary<string, DeclaredInput31> declared,
+        CancellationToken cancellationToken)
+    {
+        var resolution = await ResolveInputRefsAsync(entities, outputsBlobs, request, appUserId, cancellationToken);
+        if (resolution.Error != null || resolution.Origins is not { Count: > 0 } origins)
+            return resolution;
+
+        var inputs = new Dictionary<string, ConsultInputValue>(resolution.Request.Inputs!, StringComparer.Ordinal);
+        foreach (var id in origins.Keys)
+        {
+            if (declared.GetValueOrDefault(id)?.ArrayOfText == true && inputs[id].Kind == ConsultInputKind.Text)
+                inputs[id] = ConsultInputValue.OfArray([inputs[id]]);
+        }
+
+        return resolution with { Request = resolution.Request with { Inputs = inputs } };
+    }
+
     private static string ShortRunId(string jobId) => jobId.Length > 8 ? jobId[..8] + "…" : jobId;
 
     /// <summary>
@@ -2005,7 +2115,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     internal sealed record FormRefVerification(
         Dictionary<string, ConsultInputFormRef>? Refs,
         ConsultGenerationJobStartError? ErrorKind = null,
-        string? Error = null);
+        string? Error = null,
+        // #1509 (specVersion 31): the value each verified reference fills its input with; null on today's path.
+        Dictionary<string, ConsultInputValue>? Values = null);
 
     /// <summary>
     /// v12 #618 (design § 3): the optional macros' resolutions, or the
@@ -2364,7 +2476,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     internal sealed record FormFileVerification(
         Dictionary<string, string>? FileHashes,
         ConsultGenerationJobStartError? ErrorKind = null,
-        string? Error = null);
+        string? Error = null,
+        // #1509 (specVersion 31): the value each verified file fills its input with; null on today's path.
+        Dictionary<string, ConsultInputValue>? Values = null);
 
     /// <summary>
     /// #991: a questionnaire file is a bare JSON object keyed by the input's
@@ -2396,8 +2510,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             if (!declarations.TryGetValue(inputId, out var declaration))
             {
-                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
-                    $"Input '{inputId}' is not declared by the package.");
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid, NotDeclared(inputId));
             }
 
             // The door is for one shape only: an object input declared
@@ -2406,31 +2519,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 || declaration.Type is { IsUnion: true }
                 || declaration.ExpectedContent != WorkflowExpectedContent.Form)
             {
-                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
-                    $"Input '{inputId}' does not take a questionnaire file; only an object input declared expectedContent 'form' does.");
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid, TakesNoQuestionnaireFile(inputId));
             }
 
-            System.Text.Json.JsonDocument document;
-            try
+            var (document, unreadable) = ReadQuestionnaireFile(inputId, file);
+            if (unreadable != null)
             {
-                document = System.Text.Json.JsonDocument.Parse(
-                    StripUtf8Bom(file.Content),
-                    new System.Text.Json.JsonDocumentOptions { MaxDepth = ConsultInputValueConverter.MaxDepth + 1 });
-            }
-            catch (System.Text.Json.JsonException)
-            {
-                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
-                    $"The questionnaire file for input '{inputId}' is not JSON.");
+                return unreadable;
             }
 
             using (document)
             {
-                var root = document.RootElement;
-                if (root.ValueKind != System.Text.Json.JsonValueKind.Object)
-                {
-                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
-                        $"The questionnaire file for input '{inputId}' must be a JSON object; got {JsonKindWord(root.ValueKind)}.");
-                }
+                var root = document!.RootElement;
 
                 // The one coercion the run-at-once door and the held-response
                 // verification make, so a file and a held response fill identically.
@@ -2449,17 +2549,122 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
                 if (System.Text.Json.JsonSerializer.Serialize(coerced) != System.Text.Json.JsonSerializer.Serialize(submitted))
                 {
-                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileMismatch,
-                        $"Input '{inputId}' does not equal the questionnaire file's value.");
+                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileMismatch, NotTheFilesValue(inputId));
                 }
             }
 
-            // Over the bytes as received — BOM and all — the InputFiles rule.
-            verified[inputId] = ConsultGenerationProvenance.Sha256Hex(file.Content);
+            verified[inputId] = QuestionnaireFileHash(file);
         }
 
         return new FormFileVerification(verified);
     }
+
+    /// <summary>
+    /// #1509 (specVersion 31, area 12; R2): <see cref="VerifyInputFormFiles(ConsultGenerationRequest, WorkflowPackageManifest)"/>
+    /// for a 31 plan's <paramref name="declared"/> inputs. Only an input whose channel is <c>form</c> takes a questionnaire
+    /// file. The file's object is the input's value, held to its format by <c>RunInputsBuilder</c> as a typed value is (a 31
+    /// format has no 5–30 declaration to coerce by); a value the request sends beside it must equal it. A refusal is
+    /// today's, outcome and words.
+    /// </summary>
+    internal static FormFileVerification VerifyInputFormFiles(
+        ConsultGenerationRequest request,
+        IReadOnlyDictionary<string, DeclaredInput31> declared)
+    {
+        if (request.InputFormFiles is not { Count: > 0 })
+        {
+            return new FormFileVerification(null);
+        }
+
+        var verified = new Dictionary<string, string>(StringComparer.Ordinal);
+        var values = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
+        foreach (var (inputId, file) in request.InputFormFiles)
+        {
+            if (!declared.TryGetValue(inputId, out var declaration))
+            {
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid, NotDeclared(inputId));
+            }
+
+            if (!declaration.FormChannel)
+            {
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid, TakesNoQuestionnaireFile(inputId));
+            }
+
+            var (document, unreadable) = ReadQuestionnaireFile(inputId, file);
+            if (unreadable != null)
+            {
+                return unreadable;
+            }
+
+            using (document)
+            {
+                var root = document!.RootElement;
+                if (!root.EnumerateObject().Any())
+                {
+                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                        $"The questionnaire file for input '{inputId}' holds no value.");
+                }
+
+                if (request.Inputs?.TryGetValue(inputId, out var submitted) == true && !SameJson(root, submitted))
+                {
+                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileMismatch, NotTheFilesValue(inputId));
+                }
+
+                values[inputId] = ConsultInputValue.FromJson(root.GetRawText());
+            }
+
+            verified[inputId] = QuestionnaireFileHash(file);
+        }
+
+        return new FormFileVerification(verified, Values: values);
+    }
+
+    /// <summary>
+    /// #991, shared by the 5–30 and the 31 door (#1509): a questionnaire file read as UTF-8 JSON (a BOM tolerated), which
+    /// must be an object; the caller disposes the document. Or the refusal, in the one set of words both doors say.
+    /// </summary>
+    private static (System.Text.Json.JsonDocument? Document, FormFileVerification? Refusal) ReadQuestionnaireFile(string inputId, InputFilePayload file)
+    {
+        System.Text.Json.JsonDocument document;
+        try
+        {
+            document = System.Text.Json.JsonDocument.Parse(
+                StripUtf8Bom(file.Content),
+                new System.Text.Json.JsonDocumentOptions { MaxDepth = ConsultInputValueConverter.MaxDepth + 1 });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return (null, new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                $"The questionnaire file for input '{inputId}' is not JSON."));
+        }
+
+        var kind = document.RootElement.ValueKind;
+        if (kind != System.Text.Json.JsonValueKind.Object)
+        {
+            document.Dispose();
+            return (null, new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                $"The questionnaire file for input '{inputId}' must be a JSON object; got {JsonKindWord(kind)}."));
+        }
+
+        return (document, null);
+    }
+
+    /// <summary>A questionnaire file's digest: over the bytes as received — BOM and all — the InputFiles rule.</summary>
+    private static string QuestionnaireFileHash(InputFilePayload file) => ConsultGenerationProvenance.Sha256Hex(file.Content);
+
+    private static string NotDeclared(string inputId) => $"Input '{inputId}' is not declared by the package.";
+
+    private static string TakesNoQuestionnaireFile(string inputId) =>
+        $"Input '{inputId}' does not take a questionnaire file; only an object input declared expectedContent 'form' does.";
+
+    private static string NotTheFilesValue(string inputId) => $"Input '{inputId}' does not equal the questionnaire file's value.";
+
+    private static string NotTheHeldValue(string inputId) => $"Input '{inputId}' does not equal the held response's value.";
+
+    /// <summary>Whether <paramref name="held"/> and <paramref name="submitted"/> are the same JSON value (members in any order).</summary>
+    private static bool SameJson(System.Text.Json.JsonElement held, ConsultInputValue submitted) =>
+        System.Text.Json.Nodes.JsonNode.DeepEquals(
+            System.Text.Json.Nodes.JsonNode.Parse(held.GetRawText()),
+            System.Text.Json.Nodes.JsonNode.Parse(submitted.AsJson()));
 
     private static ReadOnlyMemory<byte> StripUtf8Bom(byte[] bytes) =>
         bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? bytes.AsMemory(3) : bytes;
@@ -2501,46 +2706,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             if (!declarations.TryGetValue(inputId, out var declaration))
             {
-                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
-                    $"Input '{inputId}' is not declared by the package.");
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch, NotDeclared(inputId));
             }
 
-            var row = await _formResponses.TryGetAsync(appUserId, reference.FormId, reference.ResponseId, cancellationToken);
-            if (row == null)
+            var (answer, unread) = await ReadHeldAnswerAsync(inputId, reference, appUserId, payloads, cancellationToken);
+            if (unread != null)
             {
-                // Foreign and absent are one answer, never a 403 — the
-                // store is keyed by this account, so a foreign response
-                // simply is not found.
-                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefNotFound,
-                    $"Input '{inputId}' refers to a held response that does not exist.");
+                return unread;
             }
 
-            if (row.DeletedAtUtc is { } deleted)
-            {
-                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefValuesDeleted,
-                    $"Input '{inputId}' refers to a response whose {Forms.FormsIntake.ValuesDeletedComplaint(deleted)}.");
-            }
-
-            var key = (reference.FormId, reference.ResponseId);
-            if (!payloads.TryGetValue(key, out var payload))
-            {
-                payload = await _formResponseBlobs.ReadAsync(
-                    new Forms.FormResponseBlobPointer(row.BlobContainer, row.BlobName), cancellationToken);
-                payloads[key] = payload;
-            }
-
-            if (payload == null)
-            {
-                // The sweep between the row read and this one.
-                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefValuesDeleted,
-                    $"Input '{inputId}' refers to a response whose values were deleted.");
-            }
-
-            if (!payload.Inputs.TryGetValue(inputId, out var held))
-            {
-                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
-                    $"The response does not carry input '{inputId}'.");
-            }
+            var held = answer!.Value;
 
             // v25 (B6 #1005): the same coercion the run-at-once door makes —
             // union-aware; a held JSON object fills an object input's declared
@@ -2562,14 +2737,135 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // own convention: each value serialized through the converter.
             if (System.Text.Json.JsonSerializer.Serialize(coerced) != System.Text.Json.JsonSerializer.Serialize(submitted))
             {
-                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
-                    $"Input '{inputId}' does not equal the held response's value.");
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch, NotTheHeldValue(inputId));
             }
 
             verified[inputId] = reference;
         }
 
         return new FormRefVerification(verified);
+    }
+
+    /// <summary>
+    /// #1509 (specVersion 31, area 12; R2): <see cref="VerifyInputFormRefsAsync(ConsultGenerationRequest, WorkflowPackageManifest, string, CancellationToken)"/>
+    /// for a 31 plan's <paramref name="declared"/> inputs: the held response is read and refused by today's own read
+    /// (<see cref="ReadHeldAnswerAsync"/>). Only an input whose channel is <c>form</c> (an object) is filled from one; another
+    /// is refused first, before any store read, in today's words for an answer a form cannot fill. The held answer is the input's value, held to its format by
+    /// <c>RunInputsBuilder</c> as a typed value is (a 31 format has no 5–30 declaration to coerce by); an answer that is not
+    /// an object is refused in today's words for it; a value the request sends beside the reference must equal it.
+    /// </summary>
+    internal async Task<FormRefVerification> VerifyInputFormRefsAsync(
+        ConsultGenerationRequest request,
+        IReadOnlyDictionary<string, DeclaredInput31> declared,
+        string appUserId,
+        CancellationToken cancellationToken)
+    {
+        if (request.InputFormRefs is not { Count: > 0 })
+        {
+            return new FormRefVerification(null);
+        }
+
+        var payloads = new Dictionary<(string FormId, string ResponseId), Forms.FormResponsePayload?>();
+        var verified = new Dictionary<string, ConsultInputFormRef>(StringComparer.Ordinal);
+        var values = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
+
+        foreach (var (inputId, reference) in request.InputFormRefs)
+        {
+            if (!declared.TryGetValue(inputId, out var declaration))
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch, NotDeclared(inputId));
+            }
+
+            // Answered before any store read: only a form-channel input (an object, part 02 § 8.3) is filled from a response.
+            if (!declaration.FormChannel)
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    $"The response's answer for input '{inputId}' cannot be filled from a form answer.");
+            }
+
+            var (answer, unread) = await ReadHeldAnswerAsync(inputId, reference, appUserId, payloads, cancellationToken);
+            if (unread != null)
+            {
+                return unread;
+            }
+
+            var held = answer!.Value;
+
+            if (held.ValueKind != System.Text.Json.JsonValueKind.Object || !held.EnumerateObject().Any())
+            {
+                // Today's coercion of an answer that is no object, against an object input: its words, or none held.
+                var (_, misfit) = held.ValueKind == System.Text.Json.JsonValueKind.Object
+                    ? (null, null)
+                    : FormResponseCoercion.CoerceDeclared(new WorkflowInputSpec(inputId, inputId, false, Type: WorkflowInputTypes.Object), held);
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    misfit != null
+                        ? $"The response's answer for input '{inputId}' {misfit}."
+                        : $"The response holds no value for input '{inputId}'.");
+            }
+
+            if (request.Inputs?.TryGetValue(inputId, out var submitted) == true && !SameJson(held, submitted))
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch, NotTheHeldValue(inputId));
+            }
+
+            verified[inputId] = reference;
+            values[inputId] = ConsultInputValue.FromJson(held.GetRawText());
+        }
+
+        return new FormRefVerification(verified, Values: values);
+    }
+
+    /// <summary>
+    /// #540, shared by the 5–30 and the 31 door (#1509): the account's held answer for <paramref name="inputId"/> in the
+    /// response <paramref name="reference"/> names (each response's values read once, through <paramref name="payloads"/>), or
+    /// the refusal: a response that does not exist (a foreign one is not found, never a 403), one whose values were deleted
+    /// (by the row's stamp, or by the sweep between the row read and the blob read), one that does not carry the input.
+    /// </summary>
+    private async Task<(System.Text.Json.JsonElement? Held, FormRefVerification? Refusal)> ReadHeldAnswerAsync(
+        string inputId,
+        ConsultInputFormRef reference,
+        string appUserId,
+        Dictionary<(string FormId, string ResponseId), Forms.FormResponsePayload?> payloads,
+        CancellationToken cancellationToken)
+    {
+        var row = await _formResponses.TryGetAsync(appUserId, reference.FormId, reference.ResponseId, cancellationToken);
+        if (row == null)
+        {
+            // Foreign and absent are one answer, never a 403 — the
+            // store is keyed by this account, so a foreign response
+            // simply is not found.
+            return (null, new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefNotFound,
+                $"Input '{inputId}' refers to a held response that does not exist."));
+        }
+
+        if (row.DeletedAtUtc is { } deleted)
+        {
+            return (null, new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefValuesDeleted,
+                $"Input '{inputId}' refers to a response whose {Forms.FormsIntake.ValuesDeletedComplaint(deleted)}."));
+        }
+
+        var key = (reference.FormId, reference.ResponseId);
+        if (!payloads.TryGetValue(key, out var payload))
+        {
+            payload = await _formResponseBlobs.ReadAsync(
+                new Forms.FormResponseBlobPointer(row.BlobContainer, row.BlobName), cancellationToken);
+            payloads[key] = payload;
+        }
+
+        if (payload == null)
+        {
+            // The sweep between the row read and this one.
+            return (null, new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefValuesDeleted,
+                $"Input '{inputId}' refers to a response whose values were deleted."));
+        }
+
+        if (!payload.Inputs.TryGetValue(inputId, out var held))
+        {
+            return (null, new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                $"The response does not carry input '{inputId}'."));
+        }
+
+        return (held, null);
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOrigins(

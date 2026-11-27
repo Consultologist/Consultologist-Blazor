@@ -36,4 +36,18 @@ public class ProfileSectioningTests : ClientRenderTestContext
         Assert.NotEmpty(page.FindAll(".signature-card"));        // Workflow preferences
         Assert.NotEmpty(page.FindAll(".usage-card"));            // Account
     }
+
+    [Fact]
+    public void TheLetterDetailsCard_SitsUnderWorkflowPreferences_AfterTheSignatureCard()
+    {
+        WithAccount();
+
+        var page = Render<Profile>();
+
+        var next = page.Find(".signature-card").NextElementSibling;
+        Assert.NotNull(next);
+        Assert.Contains("letter-details-card", next!.ClassName);
+        Assert.Equal("Workflow preferences",
+            page.Find(".signature-card").ParentElement!.QuerySelector(".profile-group__title")!.TextContent.Trim());
+    }
 }

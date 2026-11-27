@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Publish;
+using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api.V31;
 
@@ -23,12 +24,14 @@ public static class V31PackageContent
 
     /// <summary>
     /// The stored version <paramref name="name"/>@<paramref name="version"/> (D14): its source files and the stored
-    /// <c>dag.mmd</c> (never the evidence, <c>migration-report.json</c> or the lock blob beside the folder), <c>Resolve</c>,
+    /// <c>dag.mmd</c> (never the evidence, <c>migration-report.json</c> or the lock blob beside the folder), <c>MigrationReport</c> (D10: the stored
+    /// <c>migration-report.json</c> parsed, null when there is none or it is not JSON, which is logged as a warning naming the
+    /// package and version only), <c>Resolve</c>,
     /// <c>Lock</c> and <c>PublishReport</c> parsed from the stored bytes, and <c>MigratedFrom</c> from the stamp (D5). Null
     /// when the folder has no 31 stamp or no <c>manifest.json</c> that is a JSON object: not a version for any reader. A
     /// registry failure is thrown, as the read threw it.
     /// </summary>
-    public static async Task<WorkflowPackageContentResponse?> ReadAsync(IRegistryFiles registry, string name, string version, CancellationToken ct)
+    public static async Task<WorkflowPackageContentResponse?> ReadAsync(IRegistryFiles registry, string name, string version, CancellationToken ct, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(name);
@@ -48,12 +51,17 @@ public static class V31PackageContent
             .OrderBy(f => f.Key, StringComparer.Ordinal)
             .ToDictionary(f => f.Key, f => Text(f.Value), StringComparer.Ordinal);
 
+        var migrationReport = Element(stored, PackagePublish.MigrationReportFile);
+        if (migrationReport == null && stored.ContainsKey(PackagePublish.MigrationReportFile))
+            logger?.LogWarning("The stored migration report is not JSON and is not served. Package={Package}, Version={Version}", name, version);
+
         return new WorkflowPackageContentResponse(
             name, version, PublishedStamp.SpecVersion, manifest, files,
             Resolve: Element(stored, CompiledPackage.ResolveFile),
             Lock: Element(stored, ResolveCompiler.LockFile),
             PublishReport: Element(stored, PublishReport.FileName),
-            MigratedFrom: MigratedFrom(stampText!));
+            MigratedFrom: MigratedFrom(stampText!),
+            MigrationReport: migrationReport);
     }
 
     /// <summary>

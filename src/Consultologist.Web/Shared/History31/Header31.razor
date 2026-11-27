@@ -1,0 +1,149 @@
+@using System.Globalization
+@using System.Text.Json.Nodes
+@using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 16; part 09 § 6.2, part 08 § 3): what a storage 12 job's header holds beyond the lines both storage families
+    share (the page's chips, with the resolve and lock hashes beside the package, and its Provenance list): the operator's
+    migration line (S09-004, linking to the Editor, D10), the status, the times, the link to a rerun's source (D8), the
+    record's hash, the signature block by id, the tokens, the ten limits by their names and the versions that ran. The status
+    is the stored word, but "delivering" reads "Delivering…" (S09-019), and a job that is not terminal long after it began
+    reads "Stopped" with A12-001 (D9). Every value is the header's own.
+*@
+<div class="history31-header">
+    <dl class="history31-header__list">
+        @if (Content?.MigratedFrom is { Length: > 0 } oldVersion)
+        {
+            @* D10: the Editor's 31 view of this version shows the report's compared texts and hand edits *@
+            <dt>Version</dt>
+            <dd><a class="history31-migrated" href="/editor">@HistorySentences31.MigratedFrom(oldVersion)</a></dd>
+        }
+
+        <dt>Status</dt>
+        <dd>
+            <span class="history31-status">@StatusText</span>
+            @if (Stopped)
+            {
+                <span class="history31-stopped">@HistorySentences31.Stopped</span>
+            }
+        </dd>
+
+        @if ((Detail.RuntimeFailureError ?? Detail.StartFailure) is { Length: > 0 } error)
+        {
+            <dt>Error</dt>
+            <dd class="history31-error">@error</dd>
+        }
+
+        <dt>Times</dt>
+        <dd class="history31-times">
+            created @When(Detail.CreatedAtUtc) · started @When(Detail.StartedAtUtc) · finished @When(Detail.CompletedAtUtc)
+        </dd>
+
+        @if (Detail.RerunOf is { Length: > 0 } source)
+        {
+            @* D8: at 31 the link between the two jobs only; no comparison of node hashes *@
+            <dt>Rerun of</dt>
+            <dd><a class="history31-rerun-of" href="/history/@source">@(source.Length > 8 ? source[..8] + "…" : source)</a></dd>
+        }
+
+        <dt>Record hash</dt>
+        <dd><code class="hash-text history31-record-hash">@(Detail.RecordHash ?? "—")</code></dd>
+
+        @if (Detail.SignatureBlockId is { Length: > 0 } signature)
+        {
+            <dt>Signature</dt>
+            <dd class="history31-signature"><code>@signature</code>@(Detail.SignatureChosen is { Length: > 0 } chosen ? $" ({chosen})" : "")</dd>
+        }
+
+        @if (Detail.Tokens is { } tokens)
+        {
+            <dt>Tokens</dt>
+            <dd>@($"{tokens.Input:N0} in · {tokens.Output:N0} out")</dd>
+        }
+
+        @if (Detail.Limits is { Count: > 0 } limits)
+        {
+            <dt>Limits</dt>
+            <dd>
+                <ul class="history31-limits">
+                    @foreach (var (name, value) in InOrder(limits))
+                    {
+                        <li class="history31-limit"><code class="history31-limit__name">@name</code> <span class="history31-limit__value">@value.ToString(CultureInfo.InvariantCulture)</span></li>
+                    }
+                </ul>
+            </dd>
+        }
+
+        @if (Detail.VersionsRan is { Count: > 0 } versionsRan)
+        {
+            <dt>Versions that ran</dt>
+            <dd>
+                <details class="history31-versions">
+                    <summary>@VersionsCount(versionsRan)</summary>
+                    <ul>
+                        @foreach (var (path, value) in Flatten(versionsRan))
+                        {
+                            <li><code>@path</code> @value</li>
+                        }
+                    </ul>
+                </details>
+            </dd>
+        }
+    </dl>
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConsultGenerationJobResponse Detail { get; set; } = default!;
+
+    [Parameter]
+    public Consultologist.Web.Services.Workflow.WorkflowPackageContentResponse? Content { get; set; }
+
+    /// <summary>D9: the job is not terminal long after it began (<see cref="JobLiveness31.IsStopped"/>).</summary>
+    [Parameter]
+    public bool Stopped { get; set; }
+
+    /// <summary>What follows the header's lines: the record's actions.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Part 08 § 3's order of the ten limits; a limit the header holds beyond them follows, in ordinal order.</summary>
+    private static readonly string[] LimitOrder =
+    [
+        "maxAgentCalls", "capacityWaitMinutes", "serviceAttempts", "jobMinutes", "deliveryMinutes",
+        "deliveryAttempts", "loopItems", "jobAgentCalls", "jobInstances", "renderSteps",
+    ];
+
+    private string StatusText => Stopped ? "Stopped" : HistorySentences31.StatusText(Detail.Status);
+
+    private static string VersionsCount(JsonObject versionsRan) =>
+        Flatten(versionsRan).Count() is var count && count == 1 ? "1 version" : $"{count} versions";
+
+    private static string When(DateTimeOffset? at) =>
+        at is { } value ? value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture) : "—";
+
+    private static IEnumerable<(string Name, int Value)> InOrder(IReadOnlyDictionary<string, int> limits) =>
+        LimitOrder.Where(limits.ContainsKey).Select(name => (name, limits[name]))
+            .Concat(limits.Keys.Where(name => !LimitOrder.Contains(name)).Order(StringComparer.Ordinal).Select(name => (name, limits[name])));
+
+    /// <summary>Each leaf of <c>versionsRan</c> by its dotted path, as written (a <c>null</c> reads <c>null</c>).</summary>
+    private static IEnumerable<(string Path, string Value)> Flatten(JsonObject node, string prefix = "")
+    {
+        foreach (var (name, value) in node)
+        {
+            var path = prefix.Length == 0 ? name : $"{prefix}.{name}";
+            if (value is JsonObject inner)
+            {
+                foreach (var leaf in Flatten(inner, path))
+                {
+                    yield return leaf;
+                }
+            }
+            else
+            {
+                yield return (path, value is JsonValue scalar && scalar.TryGetValue<string>(out var text) ? text : value?.ToJsonString() ?? "null");
+            }
+        }
+    }
+}

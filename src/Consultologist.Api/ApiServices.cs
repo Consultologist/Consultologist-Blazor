@@ -235,6 +235,7 @@ public static class ApiServices
         // #403: what the terminology server says about itself, read once per cache window.
         services.AddSingleton<ITerminologyAttestationSource, TerminologyAttestationClient>();
         services.AddScoped<WorkflowPackages>();
+        services.AddScoped<Consultologist.Api.V31.V31StartChecksRoute>();
         services.AddHttpClient();
         services.AddHostedService<AgentAttestationService>();
         services.AddSingleton<PinHealthReporter>();

@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Drafting the senior review request","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
+{"kind":"agent","producer":"generated","label":"Drafting the senior review request","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":{">=":[{"var":"input.patient.value.age"},65]},"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
 ---
 You are drafting one section of a senior review request for a patient aged {{ if input.patient.value }}{{ input.patient.value.age }}{{ end }}{{ if input.patient.value.sex }} ({{ if input.patient.value }}{{ input.patient.value.sex }}{{ end }}){{ end }}.
 

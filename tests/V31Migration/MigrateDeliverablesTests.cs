@@ -7,6 +7,7 @@ using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Migration;
 
 namespace Consultologist.Api.Tests.V31Migration;
 
@@ -115,22 +116,51 @@ public class MigrateDeliverablesTests
     }
 
     [Theory]
-    [InlineData("single", "{{ node.opening.content }}")]                                     // one scalar source
-    [InlineData("pair", "{{ node.opening.content }}\n\n{{ node.closing.content }}")]          // two, one blank line between
-    [InlineData("topics", "{{ node.topic_loop.content }}")]                                   // a for: its .content, 30's blocks
-    [InlineData("sections", "{{ node.section_loop.content }}")]                               // a for with a for inside
-    [InlineData("summary", "{{ node.refine.content }}")]                                      // a while
-    [InlineData("plan", "{{ node.plan_gate.content }}")]                                      // an if
-    [InlineData("tone_line", "{{ node.tone_case.content }}")]                                 // a case
-    [InlineData("tally", "{{ node.topic_tally.content }}")]                                   // a let of type text
-    [InlineData("summary_then_opening", "{{ node.refine.content }}\n\n{{ node.opening.content }}")]
-    [InlineData("topics_then_opening", "{{ node.topic_loop.content }}\n\n{{ node.opening.content }}")]
+    [InlineData("single", "{{ node.opening.content | string.strip }}")]                                     // one scalar source
+    [InlineData("pair", "{{ node.opening.content | string.strip }}\n\n{{ node.closing.content | string.strip }}")]          // two, one blank line between
+    [InlineData("topics", "{{ node.topic_loop.content | string.strip }}")]                                   // a for: its .content, 30's blocks
+    [InlineData("sections", "{{ node.section_loop.content | string.strip }}")]                               // a for with a for inside
+    [InlineData("summary", "{{ node.refine.content | string.strip }}")]                                      // a while
+    [InlineData("plan", "{{ node.plan_gate.content | string.strip }}")]                                      // an if
+    [InlineData("tone_line", "{{ node.tone_case.content | string.strip }}")]                                 // a case
+    [InlineData("tally", "{{ node.topic_tally.content | string.strip }}")]                                   // a let of type text
+    [InlineData("summary_then_opening", "{{ node.refine.content | string.strip }}\n\n{{ node.opening.content | string.strip }}")]
+    [InlineData("topics_then_opening", "{{ node.topic_loop.content | string.strip }}\n\n{{ node.opening.content | string.strip }}")]
     public void EachSource_IsReadAsItsContent_InSourcesOrder(string deliverable, string template)
     {
         var result = MigrateNodesTests.Migrated("composer-sources");
 
         Assert.Equal(template, Template(result, deliverable));
         Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(result, $"deliverables/{deliverable}.md").Header["format"]);
+    }
+
+    [Fact]
+    public void ASnippetPiece_IsNotStripped()
+    {
+        // #1508 (item 3, F-D8): a macro placed bare stays R5's snippet read; only the source is stripped.
+        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content | string.strip }}",
+            Template(MigrateNodesTests.Migrated("composer-macros"), "prepended"));
+    }
+
+    [Fact]
+    public void AGatedSource_AddsNoStateTerm()
+    {
+        // #1508 (item 1, F-D4): opening is gated by the deliverables that need it, single among them, so it runs whenever
+        // single applies; R15 judges it by 30's always-valued, and single keeps 30's if with no .state term (no A10-079).
+        var result = MigrateNodesTests.Migrated("composer-sources", root =>
+        {
+            MigrateNodesTests.DeliverableIf(root, "single", "input.tone == \"formal\"");
+            MigrateNodesTests.DeliverableIf(root, "pair", "input.tone == \"plain\"");
+            MigrateNodesTests.DeliverableIf(root, "summary_then_opening", "input.include_plan == true");
+            MigrateNodesTests.DeliverableIf(root, "topics_then_opening", "input.redraft == true");
+        });
+
+        var opening = MigrateNodesTests.Md(result, "nodes/opening.md").Header["if"]!;
+        var single = MigrateNodesTests.Md(result, "deliverables/single.md").Header["if"]!;
+        Assert.Equal(opening["or"]![0]!.ToJsonString(), single.ToJsonString());
+        Assert.DoesNotContain(".state", single.ToJsonString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("deliverables/single.md, if: written to skip", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.HandEdits, e => e.Contains("deliverables/single.md", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -227,6 +257,117 @@ public class MigrateDeliverablesTests
     }
 
     [Fact]
+    public void RanTerm_PrefersState_ThenTheValue_ThenNothing()
+    {
+        // #1508 (2026-11-26, item 8; F-D12): R15's term is the source's state where the deliverable's if can read it, else
+        // its value not null (the fallback), else none: the source is one the migration does not read.
+        Assert.Equal("""{"===":[{"var":"node.x.state"},"completed"]}""", Migrate.RanTerm("node.x", _ => true)!.ToJsonString());
+        Assert.Equal(
+            """{"!==":[{"var":"node.x.value"},null]}""",
+            Migrate.RanTerm("node.x", t => !t.ToJsonString().Contains(".state", StringComparison.Ordinal))!.ToJsonString());
+        Assert.Null(Migrate.RanTerm("node.x", _ => false));
+    }
+
+    [Fact]
+    public void TheStateTerm_TypesAtADeliverableIf_AndACheckReadDoesNot()
+    {
+        // F-D12: the migration's typing scope reads a node's .state as ScopeTree types it, and a deliverable's if may read it
+        // (ExpressionChecker's site rule refuses only .content and check.* there, S03's).
+        var scope = TemplateRewriterTests.Working("composer-sources").Scope((string?)null);
+        Assert.True(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"===":[{"var":"node.plan_gate.state"},"completed"]}""")!, scope));
+        Assert.True(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"!==":[{"var":"node.plan_gate.value"},null]}""")!, scope));
+        Assert.False(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"===":[{"var":"check.note_coverage.state"},"completed"]}""")!, scope));
+
+        // Near misses: a read of .content is refused at the site, and a state that is not compared is no condition.
+        Assert.False(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"===":[{"var":"node.plan_gate.content"},"x"]}""")!, scope));
+        Assert.False(ConditionTyping.ReadsAtDeliverableIf(JsonNode.Parse("""{"var":"node.plan_gate.state"}""")!, scope));
+    }
+
+    /// <summary>
+    /// <c>composer-sources</c> with <c>plan</c>'s 30 condition and sources set, migrated through the deliverables pass with
+    /// <paramref name="unread"/> taken out of <see cref="Migrated.NodeReads"/> first: the seam where a source is one the
+    /// migration does not read (30 refuses a source naming no node, so no package given reaches it).
+    /// </summary>
+    private static Migration31Result WithUnread(string? condition, string[] sources, params string[] unread)
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-sources");
+        var root = JsonNode.Parse(json)!.AsObject();
+        var plan = root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan");
+        plan["if"] = condition;
+        plan["sources"] = new JsonArray([.. sources.Select(s => (JsonNode)s)]);
+        var (given, refusals) = Migrated.Read(root.ToJsonString(), new Dictionary<string, string>(files, StringComparer.Ordinal), MigrationFixture.Options("composer-sources"));
+        Assert.True(given is not null, string.Join("\n", refusals));
+        var (m, renames) = Migrate.Renames.Apply(given!);
+        Assert.True(m is not null, string.Join("\n", renames));
+        Migrate.Layout(m!);
+        Migrate.Inputs(m!);
+        Migrate.Nodes(m!);
+        Migrate.Templates(m!);
+        Migrate.Macros(m!);
+        Migrate.Checks(m!);
+        foreach (var id in unread)
+            Assert.True(m!.NodeReads.Remove(id));
+        Migrate.Deliverables(m!);
+        return m!.Result([]);
+    }
+
+    [Fact]
+    public void ASourceTheMigrationDoesNotRead_IsAHandEdit()
+    {
+        // #1508 (2026-11-26, item 8; F-D13): every source may not run and the migration cannot read whether one ran, so it
+        // writes no if that would leave it out: a hand edit (A10-086), so nothing is released empty without a notice. 30's
+        // condition is kept as converted, and the term of the sources it can read is named for the operator to join.
+        const string start = "Hand edit needed in deliverables/plan.md, if: ";
+        var two = WithUnread("input.tone == \"formal\"", ["node.plan_gate", "node.tone_case"], "tone_case");
+        Assert.Equal("""{"===":[{"var":"input.tone.value"},"formal"]}""", MigrateNodesTests.Md(two, "deliverables/plan.md").Header["if"]!.ToJsonString());
+        AssertHandEdit(two, "deliverables/plan.md", "if", "A10-086",
+            "every source may not run, and the migration cannot read whether node.tone_case ran; write the if that skips the deliverable "
+            + """when none of its sources ran, as 30 skipped it, joining {"===":[{"var":"node.plan_gate.state"},"completed"]} for the others.""");
+        Assert.Single(two.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+        Assert.DoesNotContain(two.Notices, n => n.StartsWith("deliverables/plan.md, if: written to skip", StringComparison.Ordinal));
+
+        // Every source unread: the clause for the others is not said, and the if stays as 30 wrote it (none).
+        var all = WithUnread(null, ["node.plan_gate", "node.tone_case"], "plan_gate", "tone_case");
+        Assert.Null(MigrateNodesTests.Md(all, "deliverables/plan.md").Header["if"]);
+        AssertHandEdit(all, "deliverables/plan.md", "if", "A10-086",
+            "every source may not run, and the migration cannot read whether node.plan_gate, node.tone_case ran; write the if that "
+            + "skips the deliverable when none of its sources ran, as 30 skipped it.");
+
+        // The near miss: beside a source that always runs, the deliverable is never empty: no if, no hand edit, as today.
+        var always = WithUnread(null, ["node.plan_gate", "node.tone_case", "node.opening"], "tone_case");
+        Assert.Null(MigrateNodesTests.Md(always, "deliverables/plan.md").Header["if"]);
+        Assert.DoesNotContain(always.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+
+        // Every source read, through the same seam: today's if, no hand edit.
+        var read = WithUnread(null, ["node.plan_gate", "node.tone_case"]);
+        Assert.Equal(
+            """{"or":[{"===":[{"var":"node.plan_gate.state"},"completed"]},{"===":[{"var":"node.tone_case.state"},"completed"]}]}""",
+            MigrateNodesTests.Md(read, "deliverables/plan.md").Header["if"]!.ToJsonString());
+        Assert.DoesNotContain(read.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NoPackage30Accepts_HasASourceTheMigrationDoesNotRead()
+    {
+        // Why ASourceTheMigrationDoesNotRead_IsAHandEdit works at the seam: 30 refuses a source that names no node and one
+        // that is a check (whose check.* read no deliverable if can hold), and every other source is a node whose .state the
+        // deliverable's if reads. So A10-086 and R15's .value fallback guard what 30 never let through (item 8, F-D12).
+        static string Refused(string source)
+        {
+            var (json, files) = ByteEquivalenceFixtures.ReadPackage("composer-gates");
+            var root = JsonNode.Parse(json)!.AsObject();
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "patient_copy")["sources"] =
+                new JsonArray("node.patient_line", source);
+            var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), new Dictionary<string, string>(files, StringComparer.Ordinal), MigrationFixture.Options("composer-gates"));
+            Assert.False(result.Succeeded);
+            return string.Join("\n", result.Refusals);
+        }
+
+        Assert.Contains("Deliverable 'patient_copy' source names unknown node 'nowhere'.", Refused("node.nowhere"), StringComparison.Ordinal);
+        Assert.Contains("Deliverable 'patient_copy' source node.note_coverage is a check;", Refused("node.note_coverage"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AWhileWithNoPass_KeepsItsSeparator()
     {
         // #1508 (R15; PR #1532's difference 8, now expected under part 10 § 3.2's while-no-pass-separator): with every branch not taken, 30 skipped plan and tone_line and
@@ -248,9 +389,9 @@ public class MigrateDeliverablesTests
     {
         var result = MigrateNodesTests.Migrated("composer-macros");
 
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ profile.signature }}", Template(result, "signed_only"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ profile.signature }}", Template(result, "signed_only"));
         // After an appended macro: the signature is last.
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ snippet.cc_line.content }}\n\n{{ profile.signature }}", Template(result, "signed_letter"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ snippet.cc_line.content }}\n\n{{ profile.signature }}", Template(result, "signed_letter"));
         Assert.DoesNotContain(result.HandEdits, e => e.Contains("deliverables/signed", StringComparison.Ordinal));
     }
 
@@ -260,15 +401,15 @@ public class MigrateDeliverablesTests
         var result = MigrateNodesTests.Migrated("composer-macros");
 
         // D4: a prepend before the sources, an append after them, each where 30 placed it.
-        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content }}", Template(result, "prepended"));
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ snippet.closing_line.content }}", Template(result, "appended"));
+        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content | string.strip }}", Template(result, "prepended"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ snippet.closing_line.content }}", Template(result, "appended"));
         Assert.Equal(
-            "{{ snippet.letterhead.content }}\n\n{{ snippet.reference_line.content }}\n\n{{ node.letter_body.content }}\n\n"
+            "{{ snippet.letterhead.content }}\n\n{{ snippet.reference_line.content }}\n\n{{ node.letter_body.content | string.strip }}\n\n"
             + "{{ snippet.closing_line.content }}\n\n{{ snippet.second_closing.content }}",
             Template(result, "both"));
         // A deliverable's own if does not make its macros conditional (review_summary's letterhead).
-        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content }}", Template(result, "review_summary"));
-        Assert.Equal("{{ node.section_loop.content }}", Template(result, "sections_note"));
+        Assert.Equal("{{ snippet.letterhead.content }}\n\n{{ node.letter_body.content | string.strip }}", Template(result, "review_summary"));
+        Assert.Equal("{{ node.section_loop.content | string.strip }}", Template(result, "sections_note"));
         // Task 15 fix round 1 (R5, D4): a snippet only deliverables read keeps 30's bytes, its trailing white space trimmed
         // as 30's composer trimmed a placed macro (ConsultMacroExpander's TrimEnd()), where 31 reads a snippet whole.
         Assert.Equal("Riverside Clinic (fictional)", MigrateNodesTests.Md(result, "snippets/letterhead.md").Body);
@@ -294,14 +435,14 @@ public class MigrateDeliverablesTests
 
         // A macro if (new_visit_note), a placement if (review_note); review_leaflet and closing_line have none.
         Assert.Equal(
-            "{{ node.letter_body.content }}\n\n{{ macro.new_visit_note.fixed_text }}\n\n{{ macro.review_note.fixed_text }}\n\n"
+            "{{ node.letter_body.content | string.strip }}\n\n{{ macro.new_visit_note.fixed_text }}\n\n{{ macro.review_note.fixed_text }}\n\n"
             + "{{ snippet.review_leaflet.content }}\n\n{{ snippet.closing_line.content }}",
             Template(result, "gated"));
         AssertHandEdit(result, "deliverables/gated.md", "body", "A10-002", Conditioned("new_visit_note"));
         AssertHandEdit(result, "deliverables/gated.md", "body", "A10-002", Conditioned("review_note"));
 
         // Optional macros, default on and default off.
-        Assert.Equal("{{ node.letter_body.content }}\n\n{{ macro.followup_offer.fixed_text }}\n\n{{ macro.leaflet_offer.fixed_text }}", Template(result, "optional"));
+        Assert.Equal("{{ node.letter_body.content | string.strip }}\n\n{{ macro.followup_offer.fixed_text }}\n\n{{ macro.leaflet_offer.fixed_text }}", Template(result, "optional"));
         AssertHandEdit(result, "deliverables/optional.md", "body", "A10-002", Conditioned("followup_offer"));
         AssertHandEdit(result, "deliverables/optional.md", "body", "A10-002", Conditioned("leaflet_offer"));
 
@@ -313,7 +454,7 @@ public class MigrateDeliverablesTests
         // macro if (brief_plan), an optional macro (follow_up_reminder); closing is fixed text.
         var macros = MigrateNodesTests.Migrated("example-macros");
         var consult = Template(macros, "consult_note");
-        Assert.StartsWith("{{ macro.header_line.fixed_text }}\n\n{{ node.requested_sections.content }}\n\n", consult, StringComparison.Ordinal);
+        Assert.StartsWith("{{ macro.header_line.fixed_text }}\n\n{{ node.requested_sections.content | string.strip }}\n\n", consult, StringComparison.Ordinal);
         Assert.EndsWith("{{ macro.followup_only.fixed_text }}\n\n{{ macro.brief_plan.fixed_text }}\n\n{{ macro.follow_up_reminder.fixed_text }}", consult, StringComparison.Ordinal);
         foreach (var macro in new[] { "header_line", "followup_only", "brief_plan", "follow_up_reminder" })
             AssertHandEdit(macros, "deliverables/consult_note.md", "body", "A10-002", Conditioned(macro));
@@ -333,7 +474,7 @@ public class MigrateDeliverablesTests
         var result = MigrateNodesTests.Migrated("test/general");
 
         // D6: the macro test, fixed text appended, is the snippet test_snippet, read last.
-        Assert.Equal("{{ node.standards.content }}\n\n{{ snippet.test_snippet.content }}", Template(result, "consult"));
+        Assert.Equal("{{ node.standards.content | string.strip }}\n\n{{ snippet.test_snippet.content }}", Template(result, "consult"));
         Assert.True(result.Files.ContainsKey("snippets/test_snippet.md"));
         Assert.False(result.Files.ContainsKey("macros/test.md"));
         Assert.Equal(
@@ -628,7 +769,7 @@ public class MigrateDeliverablesTests
             var check = SourceCheck.Run(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes());
             Assert.True(check.Refusals.Count == 0, string.Join("\n", check.Refusals.Select(r => $"{r.Id} {r.Path}: {r.Sentence}")));
             Assert.Empty(MigratedPackagesTests.Publish(result));
-            Assert.StartsWith("{{ node.topic_loop.content }}", Template(result, "topics"), StringComparison.Ordinal);
+            Assert.StartsWith("{{ node.topic_loop.content | string.strip }}", Template(result, "topics"), StringComparison.Ordinal);
             Assert.Empty(check.Templates!.Escapes("deliverable.topics"));
             return;
         }
@@ -717,7 +858,7 @@ public class MigrateDeliverablesTests
 
         foreach (var (id, loop) in new[] { ("topics", "topic_loop"), ("sections", "section_loop"), ("topics_then_opening", "topic_loop") })
         {
-            Assert.StartsWith($"{{{{ node.{loop}.content }}}}", Template(result, id), StringComparison.Ordinal);
+            Assert.StartsWith($"{{{{ node.{loop}.content | string.strip }}}}", Template(result, id), StringComparison.Ordinal);
             Assert.Empty(check.Templates!.Escapes($"deliverable.{id}"));
         }
     }

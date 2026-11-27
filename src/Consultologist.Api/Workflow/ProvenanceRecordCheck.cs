@@ -1,5 +1,12 @@
+using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Consultologist.Api.V31;
 using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Run;
 
 namespace Consultologist.Api.Workflow;
 
@@ -20,6 +27,21 @@ public static class ProvenanceRecordCheck
         IReadOnlyDictionary<string, ConsultInputValue>? inputs = null,
         string? draft = null)
     {
+        // #1509 (Task 6): a storage 12 record's hashes live in its sealed document, not on the header.
+        if (record.SchemaVersion >= 12)
+        {
+            var through = new List<HashCheck>
+            {
+                new("recordHash", null, record.RecordHash, null, null, "storage 12 is checked through the record: fetch /Record")
+            };
+            if (inputs != null || draft != null)
+            {
+                through.Add(InputHash(record, inputs, draft));
+            }
+
+            return through;
+        }
+
         // #368: after the retention policy deleted the text nothing can be
         // recomputed; every hash is attested, not checkable.
         if (record.TextDroppedAtUtc is { } droppedAt)
@@ -47,6 +69,126 @@ public static class ProvenanceRecordCheck
         }
 
         return checks;
+    }
+
+    /// <summary>
+    /// #1509 (Task 6; part 08 § 1.2, § 10): a storage 12 record, checked through its sealed document. <c>recordHash</c> is the
+    /// SHA-256 of <paramref name="recordBytes"/> against the header's; each deliverable in the document gets its
+    /// <c>composedHash</c> against the hash of its retained text (<paramref name="composedTexts"/>, by deliverable key) and a
+    /// replay of its substitutions (<see cref="RecordReplay.Verify"/>). A text that is <c>null</c> (dropped, or not given) is
+    /// attested, not a failure: its hash is kept.
+    /// </summary>
+    public static IReadOnlyList<HashCheck> CheckRecord(
+        ConsultGenerationJobResponse header, ReadOnlySpan<byte> recordBytes, IReadOnlyDictionary<string, string?> composedTexts)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        ArgumentNullException.ThrowIfNull(composedTexts);
+        // a job that has not finished has no record to check; say so, and check nothing
+        if (header.RecordHash == null && !ConsultGenerationJobEntity.IsTerminal(header.Status))
+        {
+            return [new HashCheck("recordHash", null, null, null, null, "the job has not finished: it has no record yet, so nothing was checked")];
+        }
+
+        var recomputed = "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(recordBytes));
+        var checks = new List<HashCheck>
+        {
+            new("recordHash", null, header.RecordHash, recomputed,
+                header.RecordHash != null && string.Equals(header.RecordHash, recomputed, StringComparison.Ordinal),
+                header.RecordHash == null ? "a finished job at storage 12 carries no recordHash" : null)
+        };
+
+        JsonNode? document;
+        try
+        {
+            document = JsonNode.Parse(recordBytes);
+        }
+        catch (JsonException)
+        {
+            document = null;
+        }
+
+        if (document is not JsonObject root || root["deliverables"] is not JsonArray deliverables)
+        {
+            checks.Add(new HashCheck("deliverables", null, null, null, false, "the record is not a canonical document with a deliverables array"));
+            return checks;
+        }
+
+        foreach (var node in deliverables)
+        {
+            if (node is not JsonObject row || SourceLayout.Text(row["key"]) is not { } key)
+            {
+                checks.Add(new HashCheck("deliverables[?]", null, null, null, false, "a deliverable row without a key"));
+                continue;
+            }
+
+            var composedName = $"deliverables[{key}].composedHash";
+            var replayName = $"deliverables[{key}].replay";
+            var substitutions = row["substitutions"] as JsonArray;
+
+            // composedHash: the member is always written; null only for a deliverable that was never composed
+            var recorded = SourceLayout.Text(row["composedHash"]);
+            var state = SourceLayout.Text(row["state"]);
+            var text = composedTexts.TryGetValue(key, out var held) ? held : null;
+            if (!row.ContainsKey("composedHash") || (recorded == null && state is not ("skipped" or "failed")))
+            {
+                checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, null, null, false,
+                    row.ContainsKey("composedHash") ? $"the row has no composedHash, and a {state ?? "stateless"} deliverable is composed" : "the row has no composedHash member"));
+            }
+            else if (recorded == null)
+            {
+                checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, null, null, null, $"never composed ({state})"));
+            }
+            else if (text == null)
+            {
+                checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, recorded, null, null, "text deleted; hash kept"));
+            }
+            else
+            {
+                var textHash = CanonicalJson.HashText(text);
+                checks.Add(new HashCheck(composedName, RecordRows.DeliverableHashVersion, recorded, textHash,
+                    string.Equals(recorded, textHash, StringComparison.Ordinal), null));
+            }
+
+            // replay: the substitutions member is never absent (part 08 § 10)
+            if (substitutions == null)
+            {
+                checks.Add(new HashCheck(replayName, null, null, null, false, "the row has no substitutions array"));
+            }
+            else if (text != null)
+            {
+                var replays = RecordReplay.Verify(text, substitutions, out var fault);
+                checks.Add(new HashCheck(replayName, null, null, null, replays, replays ? null : fault));
+            }
+        }
+
+        return checks;
+    }
+
+    /// <summary>
+    /// #1509 (final review A1): a deliverable's retained text from a <c>Rows?key=</c> answer. The route offers
+    /// <c>text.content</c> only when it hashes to the row's <c>composedHash</c>, so an absent content is a dropped text only
+    /// when the answer says <c>textDeleted: true</c>; otherwise the text is missing or altered and <paramref name="failure"/>
+    /// fails the deliverable's <c>composedHash</c>. A row never composed (<c>composedHash</c> null) owes no text.
+    /// </summary>
+    public static string? OfferedRowText(string key, JsonNode? answer, out HashCheck? failure)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        failure = null;
+        var content = answer?["text"] is JsonObject text ? SourceLayout.Text(text["content"]) : null;
+        if (content != null)
+        {
+            return content;
+        }
+
+        var deleted = answer?["textDeleted"] is JsonValue flag && flag.TryGetValue<bool>(out var value) && value;
+        var composed = answer?["row"] is JsonObject row && SourceLayout.Text(row["composedHash"]) != null;
+        if (!deleted && composed)
+        {
+            failure = new HashCheck($"deliverables[{key}].composedHash", RecordRows.DeliverableHashVersion, null, null, false,
+                "the row's text was not offered: missing, or it does not hash to composedHash");
+        }
+
+        return null;
     }
 
     /// <summary>The deliverable hash, by the definition the record names — the same dispatch the engine's response uses.</summary>
@@ -92,6 +234,11 @@ public static class ProvenanceRecordCheck
         {
             switch (definition)
             {
+                // #1509: definition 7, by the function the 31 start stamps EffectiveInputHash with: each input's value.
+                case 7 when inputs != null:
+                    recomputed = V31JobStarter.EffectiveInputHash(
+                        inputs.ToDictionary(pair => pair.Key, pair => JsonSerializer.SerializeToNode(pair.Value), StringComparer.Ordinal));
+                    break;
                 // #574: the arm #499 forgot — the one definition every v10+
                 // job stamps. Definition 6 is 5 recursed; the writer is the
                 // same, the number names the wider value set.

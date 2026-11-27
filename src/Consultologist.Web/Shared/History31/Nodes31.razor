@@ -1,0 +1,141 @@
+@using System.Text.Json
+@using Consultologist.Web.Services.Provenance.V31
+@implements IDisposable
+@inject NavigationManager Navigation
+@*
+    #1509 (Task 18; part 09 § 6.4 "Nodes", part 08 §§ 4, 5, 7): one row per node by its key with root, built by
+    NodeTree31: a loop expands per item, a `while` per pass, a `call` into the rows keyed under it, and a node that never
+    ran is a row of its own holding its decisions (R4). Every row starts collapsed; a row's children, decisions, sub-rows
+    and text are drawn only once it is opened, and its text is fetched then, once (RowText31). Each row's element is
+    `id="row-<key>"`; a link to a row (`#row-<key>`: a row, a decision or a sub-row id) opens the rows it sits in and
+    the row itself, whether it is followed on this page or the page is opened at it.
+*@
+@if (_tree.Count == 0)
+{
+    <p class="history31-nodes__none">No nodes were recorded.</p>
+}
+else
+{
+    <ul class="history31-nodes">
+        @foreach (var node in _tree)
+        {
+            <NodeRow31 @key="node.Key" Node="node" View="_view" />
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public Record31 Record { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public RowText31 Texts { get; set; } = default!;
+
+    /// <summary>The job's <c>resolve.json</c> (the package content's <c>Resolve</c>), for the sources of a model-derived value; null when it was not read.</summary>
+    [Parameter]
+    public JsonElement? Resolve { get; set; }
+
+    /// <summary>Follows a link to a row, a decision or a sub-row of this section (<see cref="RowLinks31"/>); false when it holds none.</summary>
+    public bool Reveal(string target) => _view.Reveal(target);
+
+    /// <summary>What every row of the section shares (<see cref="Disclosure31"/>), and the model-derived sources of a row's value.</summary>
+    public sealed class View(NavigationManager navigation, Action changed, Func<Row31, IReadOnlyList<string>> sources)
+        : Disclosure31(navigation, changed)
+    {
+        /// <summary>
+        /// The model-derived nodes a row's value is computed from, by the package's graph (<c>resolve.json</c>'s
+        /// <c>graph.edges</c> into the row's rooted key): empty when the graph was not read or names none.
+        /// </summary>
+        public IReadOnlyList<string> ModelSources(Row31 row) => sources(row);
+    }
+
+    private IReadOnlyList<TreeNode31> _tree = [];
+    private Record31? _built;
+    private JsonElement? _resolveRead;
+    private List<(string From, string To)> _edges = [];
+    private Dictionary<string, bool> _resolveDerived = new(StringComparer.Ordinal);
+    private View _view = default!;
+
+    private static readonly HashSet<string> SourceKinds = new(["reads", "for", "ret"], StringComparer.Ordinal);
+
+    protected override void OnInitialized() =>
+        _view = new View(Navigation, () => InvokeAsync(StateHasChanged), ModelSources);
+
+    protected override void OnParametersSet()
+    {
+        _view.Texts = Texts;
+        if (!ReferenceEquals(_built, Record))
+        {
+            _built = Record;
+            _tree = NodeTree31.Build(Record);
+            _view.SetTree(Record, _tree);
+        }
+
+        if (!Equals(_resolveRead, Resolve))
+        {
+            _resolveRead = Resolve;
+            ReadGraph(Resolve);
+        }
+
+        _view.Arrive();
+    }
+
+    private void ReadGraph(JsonElement? resolve)
+    {
+        _edges = [];
+        _resolveDerived = new Dictionary<string, bool>(StringComparer.Ordinal);
+        if (resolve is not { ValueKind: JsonValueKind.Object } root)
+        {
+            return;
+        }
+
+        if (root.TryGetProperty("graph", out var graph) && graph.ValueKind == JsonValueKind.Object
+            && graph.TryGetProperty("edges", out var edges) && edges.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var edge in edges.EnumerateArray())
+            {
+                if (Str(edge, "from") is { } from && Str(edge, "to") is { } to && Str(edge, "kind") is { } kind && SourceKinds.Contains(kind))
+                {
+                    _edges.Add((from, to));
+                }
+            }
+        }
+
+        if (root.TryGetProperty("nodes", out var nodes) && nodes.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var node in nodes.EnumerateObject())
+            {
+                if (node.Value.ValueKind == JsonValueKind.Object && node.Value.TryGetProperty("modelDerived", out var flag)
+                    && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                {
+                    _resolveDerived[node.Name] = flag.GetBoolean();
+                }
+            }
+        }
+    }
+
+    private IReadOnlyList<string> ModelSources(Row31 row)
+    {
+        var rooted = row.Text("nodeId") ?? row.Key;
+        return _edges
+            .Where(edge => string.Equals(edge.To, rooted, StringComparison.Ordinal) && edge.From.StartsWith("node.", StringComparison.Ordinal))
+            .Select(edge => edge.From)
+            .Where(IsModelDerived)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>A node is model-derived as <c>resolve.json</c> declares it, else as any of its rows in the record says.</summary>
+    private bool IsModelDerived(string rootedKey) =>
+        _resolveDerived.TryGetValue(rootedKey, out var declared)
+            ? declared
+            : Record.Nodes.Any(row => string.Equals(row.Text("nodeId") ?? row.Key, rootedKey, StringComparison.Ordinal) && row.Flag("modelDerived") == true);
+
+    private static string? Str(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    public void Dispose() => _view.Dispose();
+}

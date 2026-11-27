@@ -1,0 +1,95 @@
+/* #1509 (Task 9): a 31 input's controls, in the Create page's own look (Consults.razor.css's .input-field rules). */
+.input31 {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.input31__label {
+	font-weight: 600;
+}
+
+.input31__required {
+	color: var(--error-foreground, #a4262c);
+	margin-left: 0.15rem;
+}
+
+.input31__optional {
+	color: var(--consultologist-text-muted, #616161);
+	font-weight: 400;
+	margin-left: 0.25rem;
+}
+
+/* D4: the description's lines are joined by line ends. */
+.input-field__help {
+	white-space: pre-line;
+	color: var(--consultologist-text-muted, #616161);
+	font-size: 0.85rem;
+}
+
+.input31__control {
+	width: 100%;
+	max-width: 32rem;
+}
+
+.input31__number {
+	max-width: 10rem;
+}
+
+.input31__group,
+.input31__rows {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.5rem 0.6rem;
+	border: 1px solid var(--consultologist-border, #d0d0d0);
+	border-radius: var(--consultologist-radius-sm, 4px);
+}
+
+.input31__field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	font-size: 0.85rem;
+}
+
+.input31__field-label {
+	font-weight: 500;
+}
+
+.input31__row {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+}
+
+.input31__row-number {
+	padding-top: 0.4rem;
+	min-width: 1.4rem;
+	text-align: right;
+	color: var(--consultologist-text-muted, #616161);
+}
+
+.input31__row-body {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	min-width: 0;
+}
+
+.input31__row-buttons {
+	display: flex;
+	gap: 0.25rem;
+	padding-top: 0.3rem;
+}
+
+.input31__add-wrap {
+	align-self: flex-start;
+}
+
+.input31__problem {
+	color: var(--error-foreground, #a4262c);
+	font-size: 0.8rem;
+	font-weight: 500;
+}

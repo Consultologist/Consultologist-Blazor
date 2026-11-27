@@ -5,7 +5,7 @@
 
 {{ snippet.reference_line.content }}
 
-{{ node.letter_body.content }}
+{{ node.letter_body.content | string.strip }}
 
 {{ snippet.closing_line.content }}
 

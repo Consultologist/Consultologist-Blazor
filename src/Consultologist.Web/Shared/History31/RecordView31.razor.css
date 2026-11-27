@@ -1,0 +1,353 @@
+/* #1509 (Task 16): History's view of a storage 12 job. */
+.history31 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+/* Header31's lines */
+.history31 ::deep .history31-header__list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+}
+
+.history31 ::deep .history31-header__list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-stopped {
+    display: block;
+    color: var(--error, #b00020);
+}
+
+.history31 ::deep .history31-limits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.history31-download-error,
+.history31-verify-error {
+    color: var(--error, #b00020);
+    margin: 0.25rem 0 0;
+}
+
+.history31-verified--ok .history31-verified__summary {
+    color: var(--success, #107c10);
+}
+
+.history31-verified--failed .history31-verified__summary {
+    color: var(--error, #b00020);
+}
+
+.history31-check-lines {
+    list-style: none;
+    margin: 0.25rem 0 0;
+    padding: 0;
+}
+
+.history31-check-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+}
+
+.history31-check-line__detail {
+    overflow-wrap: anywhere;
+}
+
+.history31-banners {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history31-banner {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid var(--warning, #c87400);
+    background: var(--neutral-layer-2, #f5f5f5);
+}
+
+.history31-banner--blocked,
+.history31-banner--failed,
+.history31-banner--delivery-failed {
+    border-left-color: var(--error, #b00020);
+}
+
+.history31-section__title {
+    margin: 0.5rem 0 0.25rem;
+    font-size: 1rem;
+}
+
+/* Nodes31 (Task 18): one row per node, collapsed until opened */
+.history31 ::deep .history31-nodes,
+.history31 ::deep .history31-node__children,
+.history31 ::deep .history31-decisions,
+.history31 ::deep .history31-renders,
+.history31 ::deep .history31-macros,
+.history31 ::deep .history31-units,
+.history31 ::deep .history31-node-spots,
+.history31 ::deep .history31-node__arguments,
+.history31 ::deep .history31-node__profile-reads,
+.history31 ::deep .history31-decision__reads {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31 ::deep .history31-node__children {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--neutral-stroke-rest, #d1d1d1);
+}
+
+.history31 ::deep .history31-node__line,
+.history31 ::deep .history31-decision,
+.history31 ::deep .history31-render,
+.history31 ::deep .history31-macro,
+.history31 ::deep .history31-unit,
+.history31 ::deep .history31-node-spot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    align-items: baseline;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-node__toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+}
+
+.history31 ::deep .history31-node__toggle::before {
+    content: "▸ ";
+}
+
+.history31 ::deep .history31-node__toggle[aria-expanded="true"]::before {
+    content: "▾ ";
+}
+
+.history31 ::deep .history31-node:focus {
+    outline: 2px solid var(--accent-fill-rest, #0f6cbd);
+}
+
+.history31 ::deep .history31-node__body {
+    margin: 0.25rem 0 0.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history31 ::deep .history31-node__body p {
+    margin: 0;
+}
+
+.history31 ::deep .history31-node__hashes {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0 1rem;
+    margin: 0;
+}
+
+.history31 ::deep .history31-node__hashes dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-node__text {
+    white-space: pre-wrap;
+    margin: 0;
+    padding: 0.5rem;
+    background: var(--neutral-layer-2, #f5f5f5);
+}
+
+.history31 ::deep .history31-node__run-dependent,
+.history31 ::deep .history31-decision__run-dependent,
+.history31 ::deep .history31-render__run-dependent,
+.history31 ::deep .history31-node__model-derived,
+.history31 ::deep .history31-decision__model-derived,
+.history31 ::deep .history31-unit__not-sent {
+    font-style: italic;
+}
+
+.history31 ::deep .history31-node__invalid {
+    color: var(--error, #b00020);
+}
+
+/* Checks31 (Task 19): one row per check, collapsed until opened; shares Nodes31's look */
+.history31 ::deep .history31-checks,
+.history31 ::deep .history31-check__children,
+.history31 ::deep .history31-check__reads ul,
+.history31 ::deep .history31-check__list ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31 ::deep .history31-check__children {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--neutral-stroke-rest, #d1d1d1);
+}
+
+.history31 ::deep .history31-check__line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    align-items: baseline;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-check__toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+}
+
+.history31 ::deep .history31-check__toggle::before {
+    content: "▸ ";
+}
+
+.history31 ::deep .history31-check__toggle[aria-expanded="true"]::before {
+    content: "▾ ";
+}
+
+.history31 ::deep .history31-check:focus {
+    outline: 2px solid var(--accent-fill-rest, #0f6cbd);
+}
+
+.history31 ::deep .history31-check__body {
+    margin: 0.25rem 0 0.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history31 ::deep .history31-check__lines {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+}
+
+.history31 ::deep .history31-check__lines dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+/* Deliverables31 (Task 20): one row per deliverable, collapsed until opened; shares Checks31's look */
+.history31 ::deep .history31-deliverables,
+.history31 ::deep .history31-sites,
+.history31 ::deep .history31-site__passes,
+.history31 ::deep .history31-deliverable__profile-reads,
+.history31 ::deep .history31-deliveries,
+.history31 ::deep .history31-delivery__attempts,
+.history31 ::deep .history31-deliverable__left-out ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31 ::deep .history31-site__passes,
+.history31 ::deep .history31-delivery__attempts {
+    padding-left: 1.25rem;
+}
+
+.history31 ::deep .history31-deliverable__line,
+.history31 ::deep .history31-site__line,
+.history31 ::deep .history31-substitution,
+.history31 ::deep .history31-profile-read,
+.history31 ::deep .history31-delivery,
+.history31 ::deep .history31-deliverable__left-out li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    align-items: baseline;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-deliverable__toggle,
+.history31 ::deep .history31-site__toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.history31 ::deep .history31-deliverable__toggle {
+    font-weight: 600;
+}
+
+.history31 ::deep .history31-deliverable__toggle::before {
+    content: "▸ ";
+}
+
+.history31 ::deep .history31-deliverable__toggle[aria-expanded="true"]::before {
+    content: "▾ ";
+}
+
+.history31 ::deep .history31-deliverable:focus,
+.history31 ::deep .history31-delivery:focus {
+    outline: 2px solid var(--accent-fill-rest, #0f6cbd);
+}
+
+.history31 ::deep .history31-deliverable__body {
+    margin: 0.25rem 0 0.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history31 ::deep .history31-deliverable__body p {
+    margin: 0;
+}
+
+.history31 ::deep .history31-deliverable__hashes {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0 1rem;
+    margin: 0;
+}
+
+.history31 ::deep .history31-deliverable__hashes dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-deliverable__template,
+.history31 ::deep .history31-deliverable__text {
+    white-space: pre-wrap;
+    margin: 0;
+    padding: 0.5rem;
+    background: var(--neutral-layer-2, #f5f5f5);
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-delivery__could-not-send {
+    color: var(--error, #b00020);
+}

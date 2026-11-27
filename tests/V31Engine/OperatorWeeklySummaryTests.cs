@@ -141,6 +141,27 @@ public class OperatorWeeklySummaryTests
     }
 
     [Fact]
+    public async Task TheMigrationLine_CountsAtTheConfiguredJobInstances()
+    {
+        // example-nested-note opens 80,614 instances: past the default 10,000 (A10-081's hand edit), within 100,000
+        const string pin = "example-nested-note@v2026.11.1";
+        var (accounts, pins) = Accounts(("user-1", pin));
+        var sources = Substitute.For<IWorkflowPackageSources>();
+        Source(sources, pin, Fixture("example-nested-note", pin));
+
+        var atTheDefault = Substitute.For<IGraphMailClient>();
+        Assert.True(await Summary(accounts, pins, sources, mail: atTheDefault).RunOnceAsync(Now, CancellationToken.None));
+        Assert.EndsWith("Outstanding migration hand edits: 1 in 1 packages; 0 packages do not migrate\n", SentBody(atTheDefault), StringComparison.Ordinal);
+
+        var configured = new EngineLimitSettings(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConsultGeneration:JobInstances"] = "100000" })
+            .Build());
+        var atTheLimit = Substitute.For<IGraphMailClient>();
+        Assert.True(await Summary(accounts, pins, sources, mail: atTheLimit, limits: configured).RunOnceAsync(Now, CancellationToken.None));
+        Assert.EndsWith("Outstanding migration hand edits: 0 in 0 packages; 0 packages do not migrate\n", SentBody(atTheLimit), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task APackageThatDoesNotMigrate_IsCountedApart()
     {
         // a manifest below 5 (A10-012) and one that does not read (A10-016) are refusals: each a package that does not
@@ -360,7 +381,8 @@ public class OperatorWeeklySummaryTests
         PublishedTypeRegistry? registry = null,
         IConsultGenerationJobIndexStore? index = null,
         IGraphMailClient? mail = null,
-        SpecVersionAdmission? admission = null)
+        SpecVersionAdmission? admission = null,
+        EngineLimitSettings? limits = null)
     {
         if (pins == null)
         {
@@ -382,7 +404,7 @@ public class OperatorWeeklySummaryTests
 
         var handEdits = new OutstandingHandEdits(
             pins, sources, registry ?? Registry(), V31Job.Toolchain.Value, TestFormats.Catalog, OutputContractCatalog.Load(),
-            NullLogger<OutstandingHandEdits>.Instance);
+            limits ?? new EngineLimitSettings(new ConfigurationBuilder().Build()), NullLogger<OutstandingHandEdits>.Instance);
         return new OperatorWeeklySummary(
             admission ?? SpecVersionAdmissionTests.With("31"), accounts, index, handEdits, mail ?? Substitute.For<IGraphMailClient>(),
             Configuration(), NullLogger<OperatorWeeklySummary>.Instance);

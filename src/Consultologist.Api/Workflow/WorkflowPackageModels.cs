@@ -202,6 +202,14 @@ public sealed record WorkflowPackageResponse(
 public sealed record WorkflowPackageMacroResponse(string Id, string Label, bool Default);
 
 /// <summary>
+/// #1509 (specVersion 31, area 12; D1): what <c>WorkflowPackages/Current/StartChecks</c> answers: the sentences the account
+/// would be refused a start with (the signature block named but not in the profile, then each profile field the package needs
+/// and the account lacks, then the time zone), in a start's order, and the profile fields the package reads
+/// (<c>needs.profile</c>). Below 31 both are empty. No value from the profile is in it.
+/// </summary>
+public sealed record WorkflowPackageStartChecksResponse(IReadOnlyList<string> Refusals, IReadOnlyList<string> NeedsProfile);
+
+/// <summary>
 /// The pin-resolved package's full editable content: the manifest plus every
 /// source file the store downloaded — prompts (incl. preludes), schemas, and data
 /// files including each collection's index.json. The editor's load half of the
@@ -227,7 +235,10 @@ public sealed record WorkflowPackageContentResponse(
     JsonElement? Lock = null,
     JsonElement? PublishReport = null,
     string? MigratedFrom = null,
-    IReadOnlyList<string>? Notices = null)
+    IReadOnlyList<string>? Notices = null,
+    // #1509 (area 12; D10): the stored migration-report.json of a version the operator migrated, parsed from its bytes; else null.
+    // Not written when null, so a 5–30 response keeps its bytes.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonElement? MigrationReport = null)
 {
     /// <summary>
     /// The response for a resolved manifest and its files; the manifest serialized once, canonically.

@@ -1,6 +1,11 @@
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
+using System.Text;
+using System.Text.Json.Nodes;
+using Consultologist.Api.Tests.V31Engine;
 using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Run;
 
 namespace Consultologist.Api.Tests;
 
@@ -164,5 +169,317 @@ public class ProvenanceRecordCheckTests
 
         Assert.Null(check.Matches);
         Assert.Contains("--inputs", check.Note);
+    }
+
+    // ---- #1509 (Task 6): record storage 12 ----
+
+    private sealed record Sealed(string Document, Dictionary<string, string?> Texts);
+
+    private static async Task<Sealed> SealedRecord()
+    {
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        var document = await job.Blobs.ReadRecordAsync(V31Job.AccountKind, "user-1", V31Job.JobId, CancellationToken.None)
+            ?? throw new Xunit.Sdk.XunitException("No record.json was written.");
+        var texts = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var d in JsonNode.Parse(document)!["deliverables"]!.AsArray())
+        {
+            var key = (string)d!["key"]!;
+            var text = await job.Blobs.ReadTextAsync(V31Job.AccountKind, "user-1", V31Job.JobId, key, CancellationToken.None);
+            texts[key] = SourceLayout.Text(text?["content"]);
+        }
+
+        return new Sealed(document, texts);
+    }
+
+    private static ConsultGenerationJobResponse Header12(string document, int? inputVersion = 7, string? inputHash = null) =>
+        Record(inputVersion: inputVersion, inputHash: inputHash) with { SchemaVersion = 12, RecordHash = RecordDocument.Hash(document) };
+
+    private static string Changed(string document, Action<JsonObject> change)
+    {
+        var node = JsonNode.Parse(document)!.AsObject();
+        change(node);
+        return CanonicalJson.Write(node);
+    }
+
+    private static JsonObject FirstDeliverable(JsonObject document) => document["deliverables"]!.AsArray().First(d => d is JsonObject)!.AsObject();
+
+    private static IReadOnlyList<HashCheck> CheckIt(string document, ConsultGenerationJobResponse header, IReadOnlyDictionary<string, string?> texts) =>
+        ProvenanceRecordCheck.CheckRecord(header, Encoding.UTF8.GetBytes(document), texts);
+
+    [Fact]
+    public async Task ASealedRecord_ChecksOut()
+    {
+        var sealedRecord = await SealedRecord();
+        Assert.NotEmpty(sealedRecord.Texts);
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document), sealedRecord.Texts);
+
+        Assert.Equal("recordHash", checks[0].Name);
+        Assert.All(checks, c => Assert.True(c.Matches, $"{c.Name}: {c.Note}"));
+        Assert.Equal(1 + 2 * sealedRecord.Texts.Count, checks.Count);
+    }
+
+    [Fact]
+    public async Task AByteChanged_FailsRecordHash()
+    {
+        var sealedRecord = await SealedRecord();
+        var header = Header12(sealedRecord.Document);
+        var altered = sealedRecord.Document.Replace("\"status\"", "\"statuS\"", StringComparison.Ordinal);
+        Assert.NotEqual(sealedRecord.Document, altered);
+
+        var checks = CheckIt(altered, header, sealedRecord.Texts);
+
+        var line = checks.Single(c => c.Name == "recordHash");
+        Assert.False(line.Matches);
+        Assert.Equal(header.RecordHash, line.Recorded);
+        Assert.Equal(RecordDocument.Hash(altered), line.Recomputed);
+    }
+
+    [Fact]
+    public async Task ADeliverablesTextChanged_FailsComposedHash_AndNamesTheDeliverableKey()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var texts = new Dictionary<string, string?>(sealedRecord.Texts) { [key] = sealedRecord.Texts[key] + " (edited)" };
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document), texts);
+
+        var failed = Assert.Single(checks, c => c.Matches == false);
+        Assert.Contains(key, failed.Name, StringComparison.Ordinal);
+        Assert.Contains("composedHash", failed.Name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASubstitutionMoved_FailsTheReplay_WithRecordReplaysFault()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var text = sealedRecord.Texts[key]!;
+        // one substitution over the text's first five runes, its hash right; then moved one rune along
+        var hash = CanonicalJson.HashText(string.Concat(text.EnumerateRunes().Take(5).Select(r => r.ToString())));
+        string With(int start) => Changed(sealedRecord.Document, d =>
+            FirstDeliverable(d)["substitutions"] = new JsonArray(new JsonObject { ["start"] = start, ["size"] = 5, ["hash"] = hash }));
+        var good = With(0);
+        var moved = With(1);
+
+        Assert.All(CheckIt(good, Header12(good), sealedRecord.Texts), c => Assert.True(c.Matches, $"{c.Name}: {c.Note}"));
+        var checks = CheckIt(moved, Header12(moved), sealedRecord.Texts);
+
+        var failed = Assert.Single(checks, c => c.Matches == false);
+        Assert.Contains("replay", failed.Name, StringComparison.Ordinal);
+        Assert.True(RecordReplay.Verify(text, (JsonArray)JsonNode.Parse($"[{{\"start\":1,\"size\":5,\"hash\":\"{hash}\"}}]")!, out var fault) is false);
+        Assert.Equal(fault, failed.Note);
+    }
+
+    [Fact]
+    public async Task DroppedText_IsNotAFailure()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var texts = new Dictionary<string, string?>(sealedRecord.Texts) { [key] = null };
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document), texts);
+
+        Assert.DoesNotContain(checks, c => c.Matches == false);
+        var line = Assert.Single(checks, c => c.Name.Contains(key, StringComparison.Ordinal) && c.Matches == null);
+        Assert.Contains("text deleted; hash kept", line.Note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Definition7_WithInputs_IsRecomputed()
+    {
+        var inputs = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["history"] = ConsultInputValue.OfText("Margaret Okafor, 61."),
+            ["urgent"] = ConsultInputValue.OfBoolean(true),
+        };
+        var expected = Consultologist.Api.V31.V31JobStarter.EffectiveInputHash(new Dictionary<string, JsonNode?>
+        {
+            ["history"] = JsonValue.Create("Margaret Okafor, 61."),
+            ["urgent"] = JsonValue.Create(true),
+        });
+
+        var good = ProvenanceRecordCheck.InputHash(Record(inputVersion: 7, inputHash: expected), inputs, null);
+        var bad = ProvenanceRecordCheck.InputHash(Record(inputVersion: 7, inputHash: "sha256:00"), inputs, null);
+
+        Assert.True(good.Matches);
+        Assert.Equal(expected, good.Recomputed);
+        Assert.False(bad.Matches);
+    }
+
+    [Fact]
+    public void Definition7_WithoutInputs_AsksForThem()
+    {
+        var check = ProvenanceRecordCheck.InputHash(Record(inputVersion: 7, inputHash: "sha256:00"), null, null);
+
+        Assert.Null(check.Matches);
+        Assert.Contains("--inputs", check.Note);
+    }
+
+    [Fact]
+    public async Task AStorage12Record_WithoutItsBytes_SaysWhereToFetchThem()
+    {
+        var sealedRecord = await SealedRecord();
+
+        var checks = ProvenanceRecordCheck.Check(Header12(sealedRecord.Document));
+
+        var line = Assert.Single(checks);
+        Assert.Null(line.Matches);
+        Assert.Equal("storage 12 is checked through the record: fetch /Record", line.Note);
+    }
+
+    // ---- fix round 1: the checker never reports success without having checked ----
+
+    [Fact]
+    public async Task NotJson_FailsWithALine_NeverThrows()
+    {
+        var sealedRecord = await SealedRecord();
+        var garbage = "not json {";
+
+        var checks = CheckIt(garbage, Header12(garbage), sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Matches == false);
+    }
+
+    [Fact]
+    public async Task NoDeliverablesMember_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+        var document = Changed(sealedRecord.Document, d => d.Remove("deliverables"));
+
+        var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Matches == false && c.Name == "deliverables");
+    }
+
+    [Fact]
+    public async Task ADeliverableWithoutSubstitutions_FailsTheReplay()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var document = Changed(sealedRecord.Document, d => FirstDeliverable(d).Remove("substitutions"));
+
+        var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+
+        var failed = Assert.Single(checks, c => c.Matches == false);
+        Assert.Equal($"deliverables[{key}].replay", failed.Name);
+        Assert.Equal("the row has no substitutions array", failed.Note);
+    }
+
+    [Fact]
+    public async Task ARowWithoutAKey_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+        var document = Changed(sealedRecord.Document, d => FirstDeliverable(d).Remove("key"));
+
+        var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Matches == false);
+    }
+
+    [Fact]
+    public async Task ADeliverableWithoutComposedHash_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var missing = Changed(sealedRecord.Document, d => FirstDeliverable(d).Remove("composedHash"));
+        var releasedNull = Changed(sealedRecord.Document, d => { FirstDeliverable(d)["state"] = "released"; FirstDeliverable(d)["composedHash"] = null; });
+
+        foreach (var document in new[] { missing, releasedNull })
+        {
+            var checks = CheckIt(document, Header12(document), sealedRecord.Texts);
+            Assert.Contains(checks, c => c.Matches == false && c.Name == $"deliverables[{key}].composedHash");
+            // and with the text dropped the hash is still owed
+            var dropped = sealedRecord.Texts.ToDictionary(p => p.Key, _ => (string?)null);
+            Assert.Contains(CheckIt(document, Header12(document), dropped), c => c.Matches == false && c.Name == $"deliverables[{key}].composedHash");
+        }
+    }
+
+    [Fact]
+    public async Task ASkippedDeliverablesNullComposedHash_IsNotAFailure()
+    {
+        var sealedRecord = await SealedRecord();
+        var key = sealedRecord.Texts.Keys.First();
+        var document = Changed(sealedRecord.Document, d => { FirstDeliverable(d)["state"] = "skipped"; FirstDeliverable(d)["composedHash"] = null; });
+        var texts = new Dictionary<string, string?>(sealedRecord.Texts) { [key] = null };
+
+        var checks = CheckIt(document, Header12(document), texts);
+
+        Assert.DoesNotContain(checks, c => c.Matches == false);
+        Assert.Contains(checks, c => c.Name == $"deliverables[{key}].composedHash" && c.Matches == null);
+    }
+
+    [Fact]
+    public async Task ANullRecordHash_OnATerminalJob_Fails()
+    {
+        var sealedRecord = await SealedRecord();
+
+        var checks = CheckIt(sealedRecord.Document, Header12(sealedRecord.Document) with { RecordHash = null }, sealedRecord.Texts);
+
+        Assert.Contains(checks, c => c.Name == "recordHash" && c.Matches == false);
+    }
+
+    // ---- final review A1: the --host path reads Rows?key= and tells a dropped text from one not offered ----
+
+    private static JsonNode RowsAnswer(string? composedHash, string? content, bool textDeleted) => new JsonObject
+    {
+        ["key"] = "deliverable.letter",
+        ["section"] = "deliverable",
+        ["row"] = new JsonObject { ["key"] = "deliverable.letter", ["state"] = "released", ["composedHash"] = composedHash },
+        ["text"] = content == null ? null : new JsonObject { ["content"] = content },
+        ["textDeleted"] = textDeleted,
+    };
+
+    [Fact]
+    public void ARowText_NotOffered_AndNotDeleted_FailsComposedHash()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer("sha256:00", null, textDeleted: false), out var failure);
+
+        Assert.Null(text);
+        Assert.NotNull(failure);
+        Assert.Equal("deliverables[deliverable.letter].composedHash", failure!.Name);
+        Assert.False(failure.Matches);
+        Assert.Equal("the row's text was not offered: missing, or it does not hash to composedHash", failure.Note);
+    }
+
+    [Fact]
+    public void ARowText_Deleted_IsNotAFailure()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer("sha256:00", null, textDeleted: true), out var failure);
+
+        Assert.Null(text);
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public void ARowText_NeverComposed_IsNotAFailure()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer(null, null, textDeleted: false), out var failure);
+
+        Assert.Null(text);
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public void ARowText_Offered_IsTheText()
+    {
+        var text = ProvenanceRecordCheck.OfferedRowText("deliverable.letter", RowsAnswer("sha256:00", "Dear Dr A. Sample,", textDeleted: false), out var failure);
+
+        Assert.Equal("Dear Dr A. Sample,", text);
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public async Task ANullRecordHash_OnAJobThatIsNotTerminal_IsNotCheckedAndSaysSo()
+    {
+        var sealedRecord = await SealedRecord();
+        var header = Header12(sealedRecord.Document) with { RecordHash = null, Status = "Running" };
+
+        var checks = CheckIt(sealedRecord.Document, header, sealedRecord.Texts);
+
+        var line = Assert.Single(checks);
+        Assert.Null(line.Matches);
+        Assert.Contains("has not finished", line.Note);
     }
 }

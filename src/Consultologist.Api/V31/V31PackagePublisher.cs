@@ -226,7 +226,8 @@ public sealed class V31PackagePublisher(
             types.Registry, toolchain.Current(), limits.PublishLimits, publishedBy, clock,
             MigrationReport: request.MigrationReport?.GetRawText(),
             MigratedFrom: request.MigrationReport is { } migration ? MigratedFrom(migration) : null,
-            MatchTimeLimit: limits.RegexLimit);
+            MatchTimeLimit: limits.RegexLimit,
+            RunLimits: limits.Limits);
     }
 
     /// <summary>

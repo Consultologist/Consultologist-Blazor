@@ -1,4 +1,4 @@
 ---
 {"label":"Clinic letter","kind":"rendered","description":null,"format":"markdown_block","if":null,"check":null,"whenEmpty":"release"}
 ---
-{{ node.letter.content }}
+{{ node.letter.content | string.strip }}

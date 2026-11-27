@@ -3,4 +3,4 @@
 ---
 {{ snippet.letterhead.content }}
 
-{{ node.letter_body.content }}
+{{ node.letter_body.content | string.strip }}

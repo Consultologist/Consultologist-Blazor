@@ -24,7 +24,7 @@
   "expect": {
     "prompts": {
       "node.triage": {
-        "hash": "sha256:0fa7b6b961d1f466fc910c63700f35361a71d7db9d4cf63e2123445eaf14bcab"
+        "hash": "sha256:289b7b989e948fae38f6f4e2e2bea2b2da746a4f127df1691ed2b18c61e95cd5"
       },
       "node.problem_loop.problem_draft:1": {
         "hash": "sha256:a21d5c86590df796e051d8fadaca2b022fb05d0578105bfd597bfcc2571c779f"

@@ -71,6 +71,9 @@ public abstract class ClientRenderTestContext : BunitContext
         // editor keeps its open pane here so a page switch returns to it.
         Services.AddSingleton(EditorSession);
 
+        // #1509 (D9): History reads its time here; a test registers its own clock after this one to set the time.
+        Services.AddSingleton(TimeProvider.System);
+
         // History.LoadAgentNamesAsync and WorkflowPackagePicker.OnInitializedAsync
         // have no try/catch around these, so a throwing substitute fails the
         // render outright. Null is a value both handle.
@@ -85,6 +88,10 @@ public abstract class ClientRenderTestContext : BunitContext
         WorkflowService.GetMyPackagesAsync().Returns((IReadOnlyList<PublicPackageView>?)null);
         // v25 (C1 #1007): the formats catalogue is absent unless a test supplies one.
         WorkflowService.GetFormatsAsync().Returns((WorkflowFormatsView?)null);
+        // #1509 (Task 11): a 31 Create page asks the start checks before Start; nothing refused unless a test says so.
+        // A 5–30 page never asks.
+        WorkflowService.GetStartChecksAsync(Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(new WorkflowPackageStartChecksResponse([], []));
     }
 
     /// <summary>

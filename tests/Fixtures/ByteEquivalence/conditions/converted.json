@@ -1167,7 +1167,11 @@
       "logic": {
         "in": [
           {
-            "var": "input.reason.content"
+            "trim": [
+              {
+                "var": "input.reason.content"
+              }
+            ]
           },
           [
             "Breathlessness"
@@ -1184,7 +1188,7 @@
       "textLiterals": [
         {
           "written": "input.reason.content = \"Breathlessness\"",
-          "printed": "input.reason.content in [\"Breathlessness\"]"
+          "printed": "trim(input.reason.content) in [\"Breathlessness\"]"
         }
       ],
       "emptyComparisons": [],
@@ -1195,7 +1199,11 @@
       "logic": {
         "in": [
           {
-            "var": "input.patient.value.name"
+            "trim": [
+              {
+                "var": "input.patient.value.name"
+              }
+            ]
           },
           [
             "Margaret Okafor"
@@ -1212,7 +1220,7 @@
       "textLiterals": [
         {
           "written": "input.patient.value.name = \"Margaret Okafor\"",
-          "printed": "input.patient.value.name in [\"Margaret Okafor\"]"
+          "printed": "trim(input.patient.value.name) in [\"Margaret Okafor\"]"
         }
       ],
       "emptyComparisons": [],
@@ -1951,7 +1959,11 @@
           {
             "lower": [
               {
-                "var": "input.reason.content"
+                "trim": [
+                  {
+                    "var": "input.reason.content"
+                  }
+                ]
               }
             ]
           },
@@ -1970,7 +1982,7 @@
       "textLiterals": [
         {
           "written": "lower(input.reason.content) = \"breathlessness\"",
-          "printed": "lower(input.reason.content) in [\"breathlessness\"]"
+          "printed": "lower(trim(input.reason.content)) in [\"breathlessness\"]"
         }
       ],
       "emptyComparisons": [],

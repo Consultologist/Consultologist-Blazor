@@ -1,0 +1,51 @@
+@using System.Text.Json
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 18; part 08 §§ 5.1, 5.2; R8): one condition decision, under the row it concerns: its site, the condition as
+    printed (a `case`'s subject), its result as stored (`true`, `false`, or a `case`'s arm: its 1-based position as text,
+    or `else`), the paths it read with their hashes, and its own flags. The flags are the decision's only: what it chose
+    is not marked for them.
+*@
+<li class="history31-decision" id="row-@Decision.Key">
+    <code class="history31-decision__site">@Decision.Text("site")</code>
+    <code class="history31-decision__condition">@Decision.Text("condition")</code>
+    <span class="history31-decision__arrow" aria-hidden="true">→</span>
+    <span class="history31-decision__result">@Result</span>
+    @if (Decision.Flag("runDependent") == true)
+    {
+        <span class="history31-decision__run-dependent">run-dependent</span>
+    }
+    @if (Decision.Flag("modelDerived") == true)
+    {
+        <span class="history31-decision__model-derived">model-derived</span>
+    }
+    @if (Reads.Count > 0)
+    {
+        <ul class="history31-decision__reads">
+            @foreach (var (path, hash) in Reads)
+            {
+                <li class="history31-decision__read"><code>@path</code> <code class="hash-text">@hash</code></li>
+            }
+        </ul>
+    }
+</li>
+
+@code {
+    [Parameter, EditorRequired]
+    public Row31 Decision { get; set; } = default!;
+
+    /// <summary>The stored result: a boolean as JSON writes it, a <c>case</c>'s arm as its text.</summary>
+    private string Result => Decision.Flag("result") switch
+    {
+        true => "true",
+        false => "false",
+        null => Decision.Text("result") ?? "",
+    };
+
+    private IReadOnlyList<(string Path, string Hash)> Reads =>
+        Decision.List("reads")
+            .Where(read => read.ValueKind == JsonValueKind.Object && read.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.String)
+            .Select(read => (read.GetProperty("path").GetString()!,
+                read.TryGetProperty("hash", out var hash) && hash.ValueKind == JsonValueKind.String ? hash.GetString()! : "null"))
+            .ToList();
+}

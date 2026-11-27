@@ -1,0 +1,39 @@
+/* #1509 (D5): the Markdown input, in the Create page's own look. */
+.markdown-input {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.markdown-input__toolbar {
+	display: flex;
+	gap: 0.25rem;
+	align-items: center;
+}
+
+.markdown-input__button {
+	min-width: 2rem;
+	padding: 0.2rem 0.5rem;
+	border: 1px solid var(--neutral-stroke-rest, #d1d1d1);
+	border-radius: 4px;
+	background: var(--neutral-layer-1, #fff);
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.markdown-input__button[aria-pressed="true"] {
+	background: var(--neutral-fill-secondary-rest, #f0f0f0);
+}
+
+.markdown-input__toggle {
+	margin-left: auto;
+}
+
+.markdown-input__preview {
+	min-height: 6rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--neutral-stroke-rest, #d1d1d1);
+	border-radius: 4px;
+	overflow-wrap: anywhere;
+}

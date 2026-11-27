@@ -1268,4 +1268,75 @@ public static class EditorFixtures
         };
         return new(at26.Name, at26.Version, 27, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
     }
+
+    // ----- v31 (#1509, area 12, Task 23; D14) -----
+
+    /// <summary>
+    /// A small fictional 31 manifest as <c>Current/Content</c> serves it: the stored <c>manifest.json</c>, member for
+    /// member, the <c>null</c>s its author wrote kept (part 09 § 8.2).
+    /// </summary>
+    public const string V31ManifestJson = """
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.12.1",
+          "specVersion": 31,
+          "derivedFrom": null,
+          "title": "Nested note",
+          "description": null,
+          "tags": [],
+          "inputs": {
+            "consult_draft": { "label": "Consult draft", "description": null, "format": "markdown_block", "required": true, "channel": null }
+          }
+        }
+        """;
+
+    /// <summary>
+    /// Task 23: a published 31 version the account owns — its source files, and the evidence the content endpoint adds
+    /// (<c>Resolve</c>, <c>Lock</c>, <c>PublishReport</c>), each written compact so a pretty-printed view differs from it.
+    /// </summary>
+    public static WorkflowPackageContentResponse V31(string name = "acct-1234567890ab", bool withDiagram = false)
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["nodes/index.json"] = "[\n  { \"id\": \"summary\", \"file\": \"summary.md\" }\n]\n",
+            ["nodes/summary.md"] = "Summarise the referral for Margaret Okafor:\n{{ input.consult_draft }}\n",
+            ["deliverables/index.json"] = "[\n  { \"id\": \"note\", \"file\": \"note.md\" }\n]\n",
+            ["deliverables/note.md"] = "{{ node.summary.content }}\n\nDr A. Sample, Sample Oncology Clinic\n",
+        };
+        if (withDiagram)
+        {
+            files["dag.mmd"] = "graph TD\n  summary --> note\n";
+        }
+
+        return new(
+            name,
+            "v2026.12.1",
+            31,
+            JsonDocument.Parse(V31ManifestJson.Replace("\"acct-1234567890ab\"", $"\"{name}\"")).RootElement.Clone(),
+            files,
+            Resolve: Json("""{"inputs":{"consult_draft":{"description":null}},"inputOrder":["consult_draft"]}"""),
+            Lock: Json("""{"engine":{"scriban":"7.2.5"},"formats":{"markdown_block":"sha256:aa11"}}"""),
+            PublishReport: Json("""{"outcome":"published","publishedBy":"acct-1234567890ab","warnings":[],"tests":[]}"""));
+    }
+
+    /// <summary>Task 23: <see cref="V31"/> as the operator migrated it from 30 — its old version and its migration report.</summary>
+    public static WorkflowPackageContentResponse V31Migrated() => V31() with
+    {
+        MigratedFrom = "v2026.11.1",
+        MigrationReport = Json("""{"handEdits":[],"notices":[],"texts":[]}"""),
+    };
+
+    /// <summary>
+    /// Task 23: a 31 zip as the ingest answers it — source files, no evidence (an import's <c>resolve.json</c> and
+    /// <c>lock.json</c> are ignored) and S07-016 once in <c>Notices</c>.
+    /// </summary>
+    public static WorkflowPackageContentResponse V31Imported() => V31() with
+    {
+        Resolve = null,
+        Lock = null,
+        PublishReport = null,
+        Notices = ["This package's resolve.json and lock.json were ignored; publishing writes new ones."],
+    };
+
+    private static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 }

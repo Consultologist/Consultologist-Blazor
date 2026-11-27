@@ -16,7 +16,8 @@ internal static partial class Migrate
     /// <summary>
     /// The nodes pass: the tree and the nodes a deliverable composes (<see cref="ComposedNodes"/>, R9), then every
     /// node's key, read and place (<see cref="PlaceNodes"/>), the cases' branches (<see cref="CaseBranches"/>, after
-    /// which what is always valued is known), then each top-level node in 30's order
+    /// which what is always valued is known), the leaves only deliverables with a condition need and their gates
+    /// (<see cref="DeliverableGates"/>, #1508 item 1, after which a gated leaf is not always valued), then each top-level node in 30's order
     /// (listed in <c>nodes/index.json</c>), each flow's children inside it; then each single snippet's <c>if</c>.
     /// </summary>
     public static void Nodes(Migrated m)
@@ -31,7 +32,16 @@ internal static partial class Migrate
         foreach (var (id, shape) in CaseBranches(m, tree))
             cases[id] = shape;
         foreach (var id in tree.ById.Keys)
-            m.NodeReads[id] = m.NodeReads[id] with { AlwaysValued = AlwaysValued(tree, id, cases, 0) };
+            m.NodeReads[id] = m.NodeReads[id] with { AlwaysValued = AlwaysValued(tree, id, cases, 0, NoGates) };
+
+        // #1508 (item 1; F-D4): R15 judges a source by 30's always-valued; the checker and the rewriter see a gated leaf
+        // as nullable.
+        foreach (var id in tree.ById.Keys.Where(id => m.NodeReads[id].AlwaysValued))
+            m.AlwaysValued30.Add(id);
+        DeliverableGates(m, tree);
+        var gated = m.DeliverableGates.Keys.ToHashSet(StringComparer.Ordinal);
+        foreach (var id in tree.ById.Keys)
+            m.NodeReads[id] = m.NodeReads[id] with { AlwaysValued = AlwaysValued(tree, id, cases, 0, gated) };
 
         foreach (var id in tree.Top)
         {
@@ -68,8 +78,10 @@ internal static partial class Migrate
             ["modelDerived"] = false,
             ["runDependent"] = false,
             ["profileCarrying"] = false,
-            ["if"] = null,
+            ["if"] = m.DeliverableGates.GetValueOrDefault(id)?.DeepClone(),
         };
+        if (m.GatingDeliverables.TryGetValue(id, out var gating))
+            m.Notice(MigrationSentences.RunsOnlyWhen(file, gating));
 
         switch (kind)
         {
@@ -86,38 +98,21 @@ internal static partial class Migrate
 
         // D16: a member 31 has no counterpart for is dropped with a notice: a node's with (a classifier's values); a
         // computed or rendered node's onInvalid and failIfEmpty (only an agent node has them at 31).
-        var trailer = kind == "computed" ? "" : ClassifierTrailer(node, kind);
         if (node.With is { Count: > 0 })
-            m.Notice(trailer.Length > 0
-                ? MigrationSentences.ValuesInPrompt(id)
+            m.Notice(kind == "agent" && ClassifierValues(node) is not null
+                ? MigrationSentences.ValuesInAnswerFormat(id)
                 : MigrationSentences.MemberDropped(id, "with"));
         if (kind != "agent" && node.OnInvalid is not null)
             m.Notice(MigrationSentences.MemberDropped(id, "onInvalid"));
         if (kind != "agent" && node.FailIfEmpty is not null)
             m.Notice(MigrationSentences.MemberDropped(id, "failIfEmpty"));
 
-        m.Put(file, header, kind == "computed" ? "" : PromptOf(m, node) + trailer);
+        m.Put(file, header, kind == "computed" ? "" : PromptOf(m, node));
     }
 
     /// <summary>
-    /// #1507 (Task 15 and its fix round 1; part 10 § 3.1; D16): what 30's engine appended to a classifier's rendered prompt,
-    /// its <c>with</c> values in declared order (<c>ClassificationOutputContract.Trailer</c>: a blank line, then <c>Answer
-    /// with exactly one of: &lt;values joined by ", "&gt;.</c>), written at the end of the 31 body as package text: 31 has no
-    /// <c>with</c>, so the model is told the values as at 30 and the body keeps 30's bytes (A10-064). The 31 engine then
-    /// appends, after this line, the answer format's own instruction (<c>Answer with one JSON object…</c> and the schema of
-    /// the classifier's <c>&lt;id&gt;_answer</c> enum, bound through <c>custom</c>, #1508 R12, Task 31): the values are sent
-    /// twice, an expected difference under <c>sent-format</c>.
-    /// A value is written only when it is a 30 id (snake_case, as 30's validator holds every classifier value, so it holds no
-    /// brace, no <c>%</c> and no line ending, and the dialect reads it as text); a package whose values are not is refused at
-    /// 30 before this pass (A10-017), and should one reach it, nothing is written and A10-030 says the values were dropped.
-    /// <c>""</c> for any other node.
-    /// </summary>
-    private static string ClassifierTrailer(WorkflowNodeSpec node, string kind) =>
-        kind == "agent" && ClassifierValues(node) is { } names ? $"\n\nAnswer with exactly one of: {string.Join(", ", names)}." : "";
-
-    /// <summary>
     /// A 30 classifier's answers: its <c>with</c> values in written order, when <paramref name="node"/> is a leaf of the
-    /// <c>classification</c> format whose values are all 30 ids (as <see cref="ClassifierTrailer"/> writes them); else null.
+    /// <c>classification</c> format whose values are all 30 ids (the enum of its answer format; 30's answer line is not written, #1508 item 7); else null.
     /// </summary>
     internal static IReadOnlyList<string>? ClassifierValues(WorkflowNodeSpec node)
     {

@@ -46,7 +46,7 @@ public class V31JobStartTests
     private static readonly Lazy<EngineCapabilities> ThisEngine =
         new(() => V31Job.Factory().Current());
 
-    private const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
+    internal const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
 
     private const string Zone = "America/Toronto";
 
@@ -703,6 +703,369 @@ public class V31JobStartTests
         Assert.Equal(nameof(ConsultGenerationOrchestratorV31), Assert.Single(start.Scheduled).Name);
     }
 
+    // ---- inputs sent by reference (#1509, area 12; R2, D7; part 08 § 3.1) ----------------------------------------
+
+    internal const string SourceJob = "0123456789abcdef0123456789abcdef";
+
+    private const string Earlier = "Dear Dr A. Sample, Margaret Okafor was seen in clinic.\r\nShe is well.  ";
+
+    private const string EarlierRead = "Dear Dr A. Sample, Margaret Okafor was seen in clinic.\nShe is well.";
+
+    private const string IntakeJson = """{"reason":"Second opinion on her anaemia (fictional).","urgent":false}""";
+
+    [Fact]
+    public async Task AnInputRef_ToAnEarlierRunsDeliverable_FillsATextInput_WithThatText()
+    {
+        var start = new Start(preview: "31");
+        start.WithSourceRun(SourceRun());
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+
+        Assert.Null(outcome.Error);
+        var held = Assert.Single(start.Inputs.Documents).Value;
+        Assert.Equal(
+            $$$"""{"value":"{{{EarlierRead.Replace("\n", "\\n", StringComparison.Ordinal)}}}","content":"{{{EarlierRead.Replace("\n", "\\n", StringComparison.Ordinal)}}}","title":null}""",
+            held["inputs"]!["consult_draft"]!.ToJsonString());
+        Assert.Equal("""["consult_draft"]""", held["modelDerived"]!.ToJsonString());
+
+        // the run's inputs know the input holds an earlier run's text
+        var inputs = ConsultGenerationOrchestratorV31.InputsOf(held, new JsonObject());
+        Assert.Equal(["consult_draft"], inputs.ModelDerivedInputs);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        Assert.Equal(CanonicalJson.Hash(new JsonObject { ["consult_draft"] = EarlierRead }), initialize.EffectiveInputHash);
+    }
+
+    [Fact]
+    public async Task ARequiredInputSentOnlyByRef_IsNoLongerA06011()
+    {
+        // consult_draft is required; the request sends it only as a reference, and no typed input at all
+        var start = new Start(preview: "31");
+        start.WithSourceRun(SourceRun());
+        var request = new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult")));
+        Assert.Null(request.Inputs);
+
+        var outcome = await start.RunAsync(request);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(nameof(ConsultGenerationOrchestratorV31), Assert.Single(start.Scheduled).Name);
+    }
+
+    [Fact]
+    public async Task InputRefs_InAnArray_KeepTheirPositionAmongTypedRowsAndDocuments()
+    {
+        var start = new Start(preview: "31");
+        start.WithSourceRun(SourceRun());
+        var inputs = Text(Draft);
+        inputs["prior_letters"] = ConsultInputValue.OfArray([ConsultInputValue.OfText("Typed letter (fictional).")]);
+        var request = new ConsultGenerationRequest(
+            null,
+            RefText(start.PutPriorLetters()),
+            Inputs: inputs,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["prior_letters"] = [new InputFilePayload("text/plain", Encoding.UTF8.GetBytes("Uploaded letter (fictional)."), Position: 0)],
+            },
+            InputRefs: Refs("prior_letters", new ConsultInputRef(SourceJob, "consult", Position: 2)));
+
+        var outcome = await start.RunAsync(request);
+
+        Assert.Null(outcome.Error);
+        var held = Assert.Single(start.Inputs.Documents).Value;
+        Assert.Equal(
+            ["Uploaded letter (fictional).", "Typed letter (fictional).", EarlierRead],
+            held["inputs"]!["prior_letters"]!["value"]!.AsArray().Select(e => (string?)e));
+        Assert.Equal("""["prior_letters"]""", held["modelDerived"]!.ToJsonString());
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        Assert.Equal(
+            [ConsultInputOriginKinds.Document, ConsultInputOriginKinds.Typed, ConsultInputOriginKinds.PreviousRun],
+            initialize.InputDocumentOrigins!["prior_letters"].Select(o => o.Kind));
+
+        // a lone reference to an array of text is a list of one
+        var alone = new Start(preview: "31");
+        alone.WithSourceRun(SourceRun());
+        var lone = await alone.RunAsync(new ConsultGenerationRequest(
+            null, RefText(alone.PutPriorLetters()), Inputs: Text(Draft), InputRefs: Refs("prior_letters", new ConsultInputRef(SourceJob, "consult"))));
+        Assert.Null(lone.Error);
+        Assert.Equal($"[{JsonSerializer.Serialize(EarlierRead)}]", Assert.Single(alone.Inputs.Documents).Value["inputs"]!["prior_letters"]!["value"]!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task APreviousRunElement_IsRecordedWithItsOriginAndSourceJob()
+    {
+        // a text input one reference filled: the input is the previous-run element
+        var start = new Start(preview: "31");
+        start.WithSourceRun(SourceRun());
+        Assert.Null((await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))))).Error);
+
+        var input = Assert.Single(await RecordedInputsAsync(start))!.AsObject();
+        Assert.Equal(["id", "origin", "hash", "jobId", "resultId", "modelDerived"], input.Select(m => m.Key));
+        Assert.Equal("previous-run", (string?)input["origin"]);
+        Assert.Equal(SourceJob, (string?)input["jobId"]);
+        Assert.Equal("consult", (string?)input["resultId"]);
+        Assert.True((bool?)input["modelDerived"]);
+        Assert.Equal(CanonicalJson.Hash(JsonValue.Create(EarlierRead)), (string?)input["hash"]);
+        Assert.DoesNotContain("Okafor", input.ToJsonString(), StringComparison.Ordinal);
+
+        // an element of an array: each element its own origin, the previous-run one with its source
+        var mixed = new Start(preview: "31");
+        mixed.WithSourceRun(SourceRun());
+        var inputs = Text(Draft);
+        inputs["prior_letters"] = ConsultInputValue.OfArray([ConsultInputValue.OfText("Typed letter (fictional).")]);
+        Assert.Null((await mixed.RunAsync(new ConsultGenerationRequest(
+            null, RefText(mixed.PutPriorLetters()), Inputs: inputs, InputRefs: Refs("prior_letters", new ConsultInputRef(SourceJob, "consult"))))).Error);
+
+        var letters = (await RecordedInputsAsync(mixed)).Single(i => (string?)i!["id"] == "prior_letters")!.AsObject();
+        Assert.Equal(
+            """[{"origin":"typed"},{"origin":"previous-run","jobId":"0123456789abcdef0123456789abcdef","resultId":"consult","modelDerived":true}]""",
+            letters["elements"]!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task A31StartFromAnEarlierRun_WritesTheLineageLink_As30Does()
+    {
+        var start = new Start(preview: "31");
+        start.WithSourceRun(SourceRun());
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+        Assert.Null(outcome.Error);
+
+        var written = Assert.Single(start.Links.ReceivedCalls(), c => c.GetMethodInfo().Name == nameof(IConsultGenerationLinkStore.WriteAsync));
+        var rows = (IReadOnlyList<ConsultGenerationLink>)written.GetArguments()[0]!;
+        var link = Assert.Single(rows);
+        Assert.Equal(SourceJob, link.SourceJobId);
+        Assert.Equal(outcome.JobId, link.ConsumerJobId);
+        Assert.Equal(ConsultInputOriginKinds.PreviousRun, link.Kind);
+        Assert.Equal("consult_draft", link.InputId);
+        Assert.Equal("consult", link.ResultId);
+
+        // the rows a 5-30 start writes from the same origins
+        var as30 = ConsultGenerationJobStarter.LinksFrom(
+            outcome.JobId!, "user-1",
+            new Dictionary<string, IReadOnlyList<ConsultInputOrigin>> { ["consult_draft"] = [new ConsultInputOrigin(ConsultInputOriginKinds.PreviousRun, SourceJobId: SourceJob, SourceResultId: "consult")] },
+            null, link.CreatedAtUtc);
+        Assert.Equal(as30, rows);
+    }
+
+    [Fact]
+    public async Task A31StartWithNoRefs_WritesNone()
+    {
+        var start = new Start(preview: "31");
+        Assert.Null((await start.RunAsync(new ConsultGenerationRequest(null, RefText(start.Put("nested-note")), Inputs: Text(Draft)))).Error);
+
+        await start.Links.DidNotReceiveWithAnyArgs().WriteAsync(default!, default);
+    }
+
+    [Theory]
+    [InlineData("user-2", "Completed", false)]
+    [InlineData("user-1", "Completed", true)]
+    [InlineData("user-1", "Failed", false)]
+    public async Task AnInputRef_ToAnotherAccountsJob_IsRefusedAs30RefusesIt(string owner, string status, bool noSuchDeliverable)
+    {
+        // another account's run (not found, never forbidden), a deliverable it lacks, a run that did not complete
+        var reference = new ConsultInputRef(SourceJob, noSuchDeliverable ? "letter" : "consult");
+        var (at30, at31) = await BothAsync(SourceRun(owner, status), reference);
+
+        Assert.NotNull(at30.Error);
+        Assert.Equal((at30.JobId, at30.Error, at30.ErrorDetail, at30.SenderSafeDetail), (at31.Outcome.JobId, at31.Outcome.Error, at31.Outcome.ErrorDetail, at31.Outcome.SenderSafeDetail));
+        Assert.Contains("refers to run 01234567…", at31.Outcome.ErrorDetail, StringComparison.Ordinal);
+        Assert.Empty(at31.Start.Scheduled);
+        Assert.Empty(at31.Start.Inputs.Documents);
+    }
+
+    [Fact]
+    public async Task AnInputRef_WhoseTextWasDropped_IsRefusedAs30RefusesIt()
+    {
+        var dropped = SourceRun();
+        dropped.TextDroppedAtUtc = new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero);
+
+        var (at30, at31) = await BothAsync(dropped, new ConsultInputRef(SourceJob, "consult"));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefTextDeleted, at31.Outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, whose produced text was deleted on 2026-11-03 under the retention policy.", at31.Outcome.ErrorDetail);
+        Assert.Equal((at30.JobId, at30.Error, at30.ErrorDetail, at30.SenderSafeDetail), (at31.Outcome.JobId, at31.Outcome.Error, at31.Outcome.ErrorDetail, at31.Outcome.SenderSafeDetail));
+        Assert.Empty(at31.Start.Scheduled);
+    }
+
+    [Fact]
+    public async Task AFormRef_FillsAFormChannelObjectInput()
+    {
+        // the held response's answer is the input's value; the request need not repeat it
+        var start = new Start(preview: "31");
+        start.WithHeldResponse("intake", IntakeJson);
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.PutIntake()), Inputs: Text(Draft),
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["intake"] = new("triage-intake", "17") }));
+
+        Assert.Null(outcome.Error);
+        var held = Assert.Single(start.Inputs.Documents).Value;
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(IntakeJson), held["inputs"]!["intake"]!["value"]));
+        Assert.False(held.ContainsKey("modelDerived"));
+
+        // sent with it, the same value is accepted; another is refused as 30 refuses it
+        var same = new Start(preview: "31");
+        same.WithHeldResponse("intake", IntakeJson);
+        Assert.Null((await same.RunAsync(Intake(same, ConsultInputValue.FromJson(IntakeJson), formRef: true))).Error);
+
+        var other = new Start(preview: "31");
+        other.WithHeldResponse("intake", IntakeJson);
+        var refused = await other.RunAsync(Intake(other, ConsultInputValue.FromJson("""{"reason":"Another reason (fictional).","urgent":false}"""), formRef: true));
+        Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, refused.Error);
+        Assert.Equal("Input 'intake' does not equal the held response's value.", refused.ErrorDetail);
+        Assert.Null(refused.JobId);
+        Assert.Empty(other.Scheduled);
+
+        // the answer is held to the input's format like a typed value (A06-012)
+        var misfit = new Start(preview: "31");
+        misfit.WithHeldResponse("intake", """{"reason":"Second opinion (fictional).","urgent":"soon"}""");
+        var unfit = await misfit.RunAsync(new ConsultGenerationRequest(
+            null, RefText(misfit.PutIntake()), Inputs: Text(Draft),
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["intake"] = new("triage-intake", "17") }));
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, unfit.Error);
+        Assert.Equal("Input 'intake' was given a value that isn't its format.", unfit.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AFormFile_FillsAFormChannelObjectInput()
+    {
+        var start = new Start(preview: "31");
+
+        var outcome = await start.RunAsync(Intake(start, null, formRef: false));
+
+        Assert.Null(outcome.Error);
+        var held = Assert.Single(start.Inputs.Documents).Value;
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(IntakeJson), held["inputs"]!["intake"]!["value"]));
+
+        // a value sent beside the file must be the file's
+        var other = new Start(preview: "31");
+        var refused = await other.RunAsync(Intake(other, ConsultInputValue.FromJson("""{"reason":"Another reason (fictional).","urgent":true}"""), formRef: false));
+        Assert.Equal(ConsultGenerationJobStartError.InputFormFileMismatch, refused.Error);
+        Assert.Equal("Input 'intake' does not equal the questionnaire file's value.", refused.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AFormFile_OnAnInputThatIsNotAFormObject_IsRefusedAs30RefusesIt()
+    {
+        // a questionnaire file sent to a text input: the 30 start's outcome and words
+        var file = new Dictionary<string, InputFilePayload> { ["consult_draft"] = new("application/json", Encoding.UTF8.GetBytes(IntakeJson)) };
+        var package = ByteEquivalenceFixtures.Load("example-prior-letters");
+        var at30 = new Start(preview: null, package30: package);
+        var outcome30 = await at30.RunAsync(new ConsultGenerationRequest(null, RefText(PackageRefOf(package)), Inputs: Text(Draft), InputFormFiles: file));
+        var at31 = new Start(preview: "31");
+        var outcome31 = await at31.RunAsync(new ConsultGenerationRequest(null, RefText(at31.Put("nested-note")), Inputs: Text(Draft), InputFormFiles: file));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormFileInvalid, outcome31.Error);
+        Assert.Equal("Input 'consult_draft' does not take a questionnaire file; only an object input declared expectedContent 'form' does.", outcome31.ErrorDetail);
+        Assert.Equal((outcome30.JobId, outcome30.Error, outcome30.ErrorDetail), (outcome31.JobId, outcome31.Error, outcome31.ErrorDetail));
+    }
+
+    [Fact]
+    public async Task AFormRef_OnAnInputThatIsNotAFormObject_IsRefusedAt31_BeforeAnyStoreRead()
+    {
+        // part 02 § 8.3 allows channel form only on an object, and a 31 start fills only such an input from a held response
+        // (30 would coerce a text answer into a text input; 31 has no declaration to coerce by). The refusal comes first:
+        // neither the response's row nor its values are read.
+        var byRef = new Start(preview: "31");
+        byRef.WithHeldResponse("consult_draft", JsonSerializer.Serialize(Draft));
+        var refused = await byRef.RunAsync(new ConsultGenerationRequest(
+            null, RefText(byRef.Put("nested-note")), Inputs: Text(Draft),
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["consult_draft"] = new("triage-intake", "17") }));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, refused.Error);
+        Assert.Equal("The response's answer for input 'consult_draft' cannot be filled from a form answer.", refused.ErrorDetail);
+        Assert.Null(refused.JobId);
+        Assert.Empty(byRef.Scheduled);
+        _ = byRef.FormResponses.DidNotReceiveWithAnyArgs().TryGetAsync(default!, default!, default!, default);
+        _ = byRef.FormResponseBlobs.DidNotReceiveWithAnyArgs().ReadAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task A5To30Start_ResolvesItsRefsExactlyAsBefore()
+    {
+        // a 30 package's reference is resolved by today's path, the preview on or off, to the same Initialize and payload
+        var package = ByteEquivalenceFixtures.Load("example-prior-letters");
+        var request = new ConsultGenerationRequest(
+            null,
+            RefText(PackageRefOf(package)),
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["prior_letters"] = ConsultInputValue.OfArray([ConsultInputValue.OfText("Typed letter (fictional).")]),
+            },
+            InputRefs: new Dictionary<string, List<ConsultInputRef>>
+            {
+                ["consult_draft"] = [new ConsultInputRef(SourceJob, "consult")],
+                ["prior_letters"] = [new ConsultInputRef(SourceJob, "consult", Position: 0)],
+            });
+
+        var off = new Start(preview: null, package30: package);
+        off.WithSourceRun(SourceRun());
+        var offOutcome = await off.RunAsync(request);
+        var on = new Start(preview: "31", package30: package);
+        on.WithSourceRun(SourceRun());
+        var onOutcome = await on.RunAsync(request);
+
+        Assert.Null(offOutcome.Error);
+        Assert.Null(onOutcome.Error);
+        Assert.Equal(nameof(ConsultGenerationOrchestrator), Assert.Single(on.Scheduled).Name);
+        Assert.Equal(Masked(off, offOutcome.JobId!), Masked(on, onOutcome.JobId!));
+        var payload = Assert.IsType<ConsultGenerationOrchestrationInput>(Assert.Single(on.Scheduled).Input);
+        Assert.Equal(
+            [ConsultInputOriginKinds.PreviousRun, ConsultInputOriginKinds.Typed],
+            payload.InputDocumentOrigins!["prior_letters"].Select(o => o.Kind));
+        Assert.Empty(on.Inputs.Documents);
+    }
+
+    /// <summary>The account's completed run <see cref="SourceJob"/>, its deliverable <c>consult</c> holding <see cref="Earlier"/>.</summary>
+    internal static ConsultGenerationJobState SourceRun(string appUserId = "user-1", string status = "Completed") => new()
+    {
+        JobId = SourceJob,
+        AppUserId = appUserId,
+        Status = status,
+        AssembledDocuments = [new() { ResultId = "consult", Label = "Consultation note", Text = Earlier, Ordinal = 0 }],
+    };
+
+    internal static Dictionary<string, List<ConsultInputRef>> Refs(string id, params ConsultInputRef[] refs) =>
+        new(StringComparer.Ordinal) { [id] = [.. refs] };
+
+    /// <summary>A request filling <c>intake</c> by the held response (<paramref name="formRef"/>) or a questionnaire file, with <paramref name="value"/> sent beside it.</summary>
+    private static ConsultGenerationRequest Intake(Start start, ConsultInputValue? value, bool formRef)
+    {
+        var inputs = Text(Draft);
+        if (value != null)
+            inputs["intake"] = value;
+        return new ConsultGenerationRequest(
+            null, RefText(start.PutIntake()), Inputs: inputs,
+            InputFormRefs: formRef ? new Dictionary<string, ConsultInputFormRef> { ["intake"] = new("triage-intake", "17") } : null,
+            InputFormFiles: formRef ? null : new Dictionary<string, InputFilePayload> { ["intake"] = new("application/json", Encoding.UTF8.GetBytes(IntakeJson)) });
+    }
+
+    /// <summary>The same reference to <paramref name="source"/> started on a 30 package and on a 31 one, each its <c>consult_draft</c>.</summary>
+    private static async Task<(ConsultGenerationJobStartOutcome At30, (ConsultGenerationJobStartOutcome Outcome, Start Start) At31)> BothAsync(
+        ConsultGenerationJobState source, ConsultInputRef reference)
+    {
+        var package = ByteEquivalenceFixtures.Load("example-prior-letters");
+        var at30 = new Start(preview: null, package30: package);
+        at30.WithSourceRun(source);
+        var outcome30 = await at30.RunAsync(new ConsultGenerationRequest(null, RefText(PackageRefOf(package)), InputRefs: Refs("consult_draft", reference)));
+
+        var at31 = new Start(preview: "31");
+        at31.WithSourceRun(source);
+        var outcome31 = await at31.RunAsync(new ConsultGenerationRequest(null, RefText(at31.Put("nested-note")), InputRefs: Refs("consult_draft", reference)));
+        return (outcome30, (outcome31, at31));
+    }
+
+    /// <summary>The record header's inputs of the job <paramref name="start"/> initialised.</summary>
+    private static async Task<JsonArray> RecordedInputsAsync(Start start)
+    {
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(
+            Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload)));
+        return StateOf(entity).ToRecordHeader()["inputs"]!.AsArray();
+    }
+
     // ---- the header of a 31 job (#1506, area 09; part 08 §§ 1, 3, 3.1, 13; D14, D15) ----------------------------
 
     [Fact]
@@ -942,7 +1305,7 @@ public class V31JobStartTests
         Assert.Equal("""{"input":130,"output":35,"total":165}""", StateOf(entity).ToRecordHeader()["tokens"]!.ToJsonString());
     }
 
-    private static ConsultGenerationJobState StateOf(ConsultGenerationJobEntity entity) => (ConsultGenerationJobState)StateProperty.GetValue(entity)!;
+    internal static ConsultGenerationJobState StateOf(ConsultGenerationJobEntity entity) => (ConsultGenerationJobState)StateProperty.GetValue(entity)!;
 
     private const string Billed = "{ \"===\": [{ \"var\": \"input.include_billing.value\" }, true] }";
 
@@ -951,7 +1314,7 @@ public class V31JobStartTests
     private const string WardBlock = "Dr A. Sample\nWard 4, Sample Oncology Clinic";
 
     /// <summary>The account's signature blocks as the Web stores them: <c>sig-1</c> (the clinic), <c>sig-2</c> (the ward), <c>sig-3</c> (blank), <paramref name="chosen"/> chosen.</summary>
-    private static string Blocks(string? chosen = "sig-1") => JsonSerializer.Serialize(new SignatureBlocks.SignatureBlockSet(
+    internal static string Blocks(string? chosen = "sig-1") => JsonSerializer.Serialize(new SignatureBlocks.SignatureBlockSet(
         [
             new("sig-1", "Clinic", ClinicBlock, DateTimeOffset.UnixEpoch),
             new("sig-2", "Ward", WardBlock, DateTimeOffset.UnixEpoch),
@@ -959,7 +1322,7 @@ public class V31JobStartTests
         ],
         chosen));
 
-    private static ConsultGenerationRequest Signed(WorkflowPackageRef packageRef, string? block) =>
+    internal static ConsultGenerationRequest Signed(WorkflowPackageRef packageRef, string? block) =>
         new(null, RefText(packageRef), Inputs: Text(Draft), SignatureBlockId: block);
 
     /// <summary>
@@ -983,10 +1346,10 @@ public class V31JobStartTests
         new(null, RefText(packageRef), Inputs: inputs,
             MacroChoices: choices.ToDictionary(c => c.Id, c => c.Choice, StringComparer.Ordinal));
 
-    private static Dictionary<string, ConsultInputValue> Text(string draft) =>
+    internal static Dictionary<string, ConsultInputValue> Text(string draft) =>
         new(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText(draft) };
 
-    private static string RefText(WorkflowPackageRef packageRef) => $"{packageRef.Name}@{packageRef.Version}";
+    internal static string RefText(WorkflowPackageRef packageRef) => $"{packageRef.Name}@{packageRef.Version}";
 
     private static WorkflowPackageRef PackageRefOf(WorkflowPackage package) =>
         WorkflowPackageRef.TryParse(package.Ref, out var parsed) ? parsed! : throw new InvalidOperationException(package.Ref);
@@ -1008,12 +1371,12 @@ public class V31JobStartTests
             .Replace(jobId, "<job>", StringComparison.Ordinal)
             .Replace(jobId[..8], "<job8>", StringComparison.Ordinal);
 
-    private static ConsultGenerationJobEntity Entity() => new(
+    internal static ConsultGenerationJobEntity Entity() => new(
         Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
         Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
 
     /// <summary>The real starter over substituted stores, a <see cref="FakeRegistry"/> and the real 31 store (counted).</summary>
-    private sealed class Start
+    internal sealed class Start
     {
         private readonly ConsultGenerationJobStarter _starter;
 
@@ -1042,7 +1405,7 @@ public class V31JobStartTests
             rateLimiter.TryAcquireAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                 .Returns(new RateLimitDecision(true, 60, 59, TimeSpan.FromMinutes(37)));
 
-            var entities = Substitute.For<DurableEntityClient>("test");
+            var entities = Entities;
             Client.Entities.Returns(entities);
             entities.SignalEntityAsync(Arg.Any<EntityInstanceId>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<SignalEntityOptions?>(), Arg.Any<CancellationToken>())
                 .Returns(call =>
@@ -1075,15 +1438,18 @@ public class V31JobStartTests
                 settings,
                 Substitute.For<IJobOutputsBlobStore>(),
                 Substitute.For<IJobInputsBlobStore>(),
-                Substitute.For<IConsultGenerationLinkStore>(),
-                Substitute.For<Consultologist.Api.Forms.IFormResponseStore>(),
-                Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>(),
+                Links,
+                FormResponses,
+                FormResponseBlobs,
                 Ocr,
                 TestFormats.Catalog,
                 null,
                 null,
-                new V31JobStarter(admission, Store, Inputs, limits, accounts, settings, engine, NullLogger<V31JobStarter>.Instance));
+                new V31JobStarter(admission, Store, Inputs, limits, accounts, settings, engine, NullLogger<V31JobStarter>.Instance, null, Links));
         }
+
+        /// <summary>#1509: the lineage index both starts write to.</summary>
+        public IConsultGenerationLinkStore Links { get; } = Substitute.For<IConsultGenerationLinkStore>();
 
         public FakeRegistry Registry { get; } = new();
 
@@ -1097,6 +1463,30 @@ public class V31JobStartTests
         public IWorkflowPackageStore PackageStore { get; } = Substitute.For<IWorkflowPackageStore>();
 
         public DurableTaskClient Client { get; } = Substitute.For<DurableTaskClient>("test");
+
+        /// <summary>The entity client: the start's signals, and the earlier runs a reference reads (#510).</summary>
+        public DurableEntityClient Entities { get; } = Substitute.For<DurableEntityClient>("test");
+
+        public Consultologist.Api.Forms.IFormResponseStore FormResponses { get; } = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
+
+        public Consultologist.Api.Forms.IFormResponseBlobStore FormResponseBlobs { get; } = Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>();
+
+        /// <summary>The earlier run every reference names is <paramref name="state"/>.</summary>
+        public void WithSourceRun(ConsultGenerationJobState state) =>
+            Entities.GetEntityAsync<ConsultGenerationJobState>(Arg.Any<EntityInstanceId>(), Arg.Any<CancellationToken>())
+                .Returns(new EntityMetadata<ConsultGenerationJobState>(new EntityInstanceId(nameof(ConsultGenerationJobEntity), SourceJob), state));
+
+        /// <summary>The account's held response <c>triage-intake</c>/<c>17</c>, answering <paramref name="input"/> with the JSON <paramref name="answer"/>.</summary>
+        public void WithHeldResponse(string input, string answer)
+        {
+            var submitted = new DateTimeOffset(2026, 11, 2, 14, 2, 11, TimeSpan.Zero);
+            FormResponses.TryGetAsync("user-1", "triage-intake", "17", Arg.Any<CancellationToken>()).Returns(new Consultologist.Api.Forms.FormResponseRow(
+                "user-1", "triage-intake", "17", submitted, [input], "org-form-responses", "user-1/triage-intake-17.json", null));
+            FormResponseBlobs.ReadAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>()).Returns(
+                new Consultologist.Api.Forms.FormResponsePayload(
+                    Consultologist.Api.Forms.FormResponsePayload.CurrentVersion, "triage-intake", "17", submitted,
+                    new Dictionary<string, JsonElement> { [input] = JsonDocument.Parse(answer).RootElement.Clone() }));
+        }
 
         /// <summary>Each entity signal: the operation and its payload, in order.</summary>
         public List<(string Operation, object? Payload)> Signals { get; } = new();
@@ -1122,6 +1512,16 @@ public class V31JobStartTests
             Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Sentence}")));
             return Registry.Put(compiled!.Resolve, compiled.Lock);
         }
+
+        /// <summary>
+        /// Publishes <see cref="SourceFixture.Minimal"/> with the required object input <c>intake</c> on the channel
+        /// <c>form</c>: its <c>reason</c> a text, and <c>urgent</c> a boolean or <c>null</c>.
+        /// </summary>
+        public WorkflowPackageRef PutIntake() => Publish(SourceFixture.Minimal().WithJson("manifest.json", m => m["inputs"]!["intake"] = JsonNode.Parse(
+            "{ \"label\": \"Intake form\", \"description\": null, \"format\": { \"type\": \"object\", \"required\": [\"reason\", \"urgent\"], "
+            + "\"additionalProperties\": false, \"properties\": { \"reason\": { \"title\": \"Reason for referral\", \"$ref\": \"plaintext\" }, "
+            + "\"urgent\": { \"title\": \"Urgent\", \"type\": [\"boolean\", \"null\"] } } }, "
+            + "\"required\": true, \"channel\": \"form\" }")));
 
         /// <summary>Publishes <see cref="Choices"/>.</summary>
         public WorkflowPackageRef PutChoices() => Publish(Choices());
@@ -1168,7 +1568,7 @@ public class V31JobStartTests
     }
 
     /// <summary>The 31 store, its calls counted.</summary>
-    private sealed class CountingStore(ICompiledPackageStore inner) : ICompiledPackageStore
+    internal sealed class CountingStore(ICompiledPackageStore inner) : ICompiledPackageStore
     {
         private int _calls;
 

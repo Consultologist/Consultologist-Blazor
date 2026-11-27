@@ -76,22 +76,21 @@ public class MigrateNodesTests
     }
 
     /// <summary>
-    /// #1507 (Task 15; D16, part 10 § 3.1): 30's engine appended its classifier trailer to the rendered prompt
-    /// (<c>ClassificationOutputContract.Trailer</c>, the <c>with</c> values in order); 31 drops <c>with</c> (A10-030) and
-    /// appends nothing, so the migration writes the trailer at the end of the body, and the prompt keeps 30's bytes.
+    /// #1508 (item 7, ruled 2026-11-26; A10-064): 30's engine appended its answer line to a classifier's rendered prompt
+    /// (<c>ClassificationOutputContract.Trailer</c>); 31 sends the answers' format's instruction after the prompt, so the
+    /// migration drops 30's line and the body ends with the last line of 30's prompt.
     /// </summary>
     [Fact]
-    public void AClassifiersPrompt_Ends_WithThe30Trailer()
+    public void AClassifiersPrompt_HasNo30AnswerLine()
     {
         var result = Migrated("example-classifier-scope");
 
         var (_, body) = Md(result, "nodes/scope.md");
-        Assert.EndsWith(
-            "{{ input.consult_draft.content }}\n"
-            + Consultologist.Api.Workflow.ClassificationOutputContract.Trailer(["in_scope", "out_of_scope", "needs_information"]),
-            body,
-            StringComparison.Ordinal);
-        Assert.Contains("Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.", result.Notices);
+        Assert.DoesNotContain("Answer with exactly one of", body, StringComparison.Ordinal);
+        Assert.EndsWith("{{ input.consult_draft.content }}\n", body, StringComparison.Ordinal);
+        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.";
+        Assert.Contains(notice, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-064", notice, ""));
 
         // Only a classifier's: a prose node's prompt is 30's text.
         Assert.DoesNotContain("Answer with exactly one of", Md(result, "nodes/plan_sections/plan_section.md").Body, StringComparison.Ordinal);
@@ -107,8 +106,8 @@ public class MigrateNodesTests
             { "kind": "rendered", "producer": "computed", "label": "Patient header", "description": null, "format": "plaintext",
               "reproducible": true, "modelDerived": false, "runDependent": false, "profileCarrying": false, "if": null }
             """), header.ToJsonString());
-        // The templates pass rewrites its reads (a date input is read as its value); the rest is 30's template.
-        Assert.Equal(files["prompts/patient_header.md"].Replace("{{ input.seen_on }}", "{{ input.seen_on.value }}", StringComparison.Ordinal), body);
+        // The templates pass rewrites its reads (a date input is read as its value, in 30's form); the rest is 30's template.
+        Assert.Equal(files["prompts/patient_header.md"].Replace("{{ input.seen_on }}", "{{ input.seen_on.value | date.to_string \"%d %b %Y\" }}", StringComparison.Ordinal), body);
     }
 
     [Fact]
@@ -300,14 +299,14 @@ public class MigrateNodesTests
     }
 
     [Fact]
-    public void AClassifiersWith_IsWrittenInItsPrompt_WithANotice()
+    public void AClassifiersWith_IsTheEnumOfItsFormat_WithANotice()
     {
-        // D16: 31 has no with; the values are written at the end of the prompt (Task 15), and A10-064 says so, not A10-030.
+        // D16: 31 has no with; its values are the enum of the answer format (item 7), and A10-064 says so, not A10-030.
         var result = Migrated("example-classifier-scope");
 
         var (header, _) = Md(result, "nodes/scope.md");
         Assert.False(header.ContainsKey("with"));
-        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.";
+        const string notice = "Node 'scope' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.";
         Assert.Contains(notice, result.Notices);
         Assert.DoesNotContain(result.Notices, n => n.StartsWith("Node 'scope' declared with at 30", StringComparison.Ordinal) && n.EndsWith("it was dropped.", StringComparison.Ordinal));
         V31Contract.AssertSentence(new SourceRefusal("A10-064", notice, ""));
@@ -332,8 +331,8 @@ public class MigrateNodesTests
         Assert.Equal(Compact("""{ "description": null, "items": ["letter_item", "plan_sections_item", "scope_answer"] }"""),
             Json(result, "formats/index.json").ToJsonString());
 
-        // The 30 trailer stays in the prompt (A10-064), and the migrated package publishes with the reads kept at .value.value.
-        Assert.EndsWith("Answer with exactly one of: in_scope, out_of_scope, needs_information.", Md(result, "nodes/scope.md").Body, StringComparison.Ordinal);
+        // 30's answer line is dropped (A10-064), and the migrated package publishes with the reads kept at .value.value.
+        Assert.DoesNotContain("Answer with exactly one of", Md(result, "nodes/scope.md").Body, StringComparison.Ordinal);
         Assert.Contains("node.scope.value.value", Md(result, "nodes/letter_decline_letter/decline_letter.md").Body, StringComparison.Ordinal);
         var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes(), V31Resolve.CompiledGoldenTests.Fixed);
         Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));
@@ -703,7 +702,9 @@ public class MigrateNodesTests
 
     /// <summary>
     /// #1508 (comment 5, item 2): in a migration, a size of a list that can be null is written with its null test, so it
-    /// answers as 30 did, and A10-027 is still said; text compared with a literal becomes <c>in</c>, said with A10-074.
+    /// answers as 30 did, and A10-027 is still said; text compared with a literal becomes <c>in</c> on the input trimmed
+    /// (#1508, 2026-11-26, item 6), said with A10-074, as is an item's text of an input's list
+    /// (<c>composer-macros</c>' <c>section_close</c>).
     /// </summary>
     [Fact]
     public void ANullableSizeAndATextLiteral_AreWrittenAs30Meant_AndSaid()
@@ -715,15 +716,69 @@ public class MigrateNodesTests
         });
 
         Assert.Equal(
-            """{"and":[{"and":[{"!==":[{"var":"input.topics.value"},null]},{">":[{"size":[{"var":"input.topics.value"}]},0]}]},{"!":[{"in":[{"var":"input.consult_draft.content"},["none"]]}]}]}""",
+            """{"and":[{"and":[{"!==":[{"var":"input.topics.value"},null]},{">":[{"size":[{"var":"input.topics.value"}]},0]}]},{"!":[{"in":[{"trim":[{"var":"input.consult_draft.content"}]},["none"]]}]}]}""",
             CanonicalJson.Write(Json(result, "nodes/plan_gate/index.json")["if"]));
         Assert.DoesNotContain(result.HandEdits, e => e.Contains("plan_gate", StringComparison.Ordinal));
         const string size = "nodes/plan_gate/index.json, if: size(input.topics.value) is null when input.topics.value is null, where 30 counted 0.";
-        const string literal = "nodes/plan_gate/index.json, if: 'input.consult_draft.content ≠ \"none\"' became not (input.consult_draft.content in [\"none\"]); text is compared with a literal by in at 31.";
+        const string literal = "nodes/plan_gate/index.json, if: 'input.consult_draft.content ≠ \"none\"' became not (trim(input.consult_draft.content) in [\"none\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
         Assert.Contains(size, result.Notices);
         Assert.Contains(literal, result.Notices);
         V31Contract.AssertSentence(new SourceRefusal("A10-027", size, ""));
         V31Contract.AssertSentence(new SourceRefusal("A10-074", literal, ""));
+
+        // section_loop iterates input.sections, whose element's text 30 trimmed (per element, per field) as it trimmed
+        // every input's.
+        var macros = Migrated("composer-macros", _ => { });
+        Assert.Equal("""{"!":[{"in":[{"trim":[{"var":"item.value.title"}]},["Plan"]]}]}""", CanonicalJson.Write(Md(macros, "macros/section_close.md").Header["if"]));
+        const string item = "macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (trim(item.value.title) in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.";
+        Assert.Contains(item, macros.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-074", item, ""));
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 6: an item of a node's list (model output, which 30 compared as it was) gets no trim (a
+    /// fixture node's field is a string at 31, so it stays <c>!==</c>; the converter test pins a text field's case); an
+    /// item of a list field of an outer loop's input item is an input's text, trimmed, as 30 trimmed it.
+    /// </summary>
+    [Fact]
+    public void AnItemsText_IsTrimmedOnlyWhereTheListIsAnInputs()
+    {
+        // composer-sources' point_loop iterates node.outline.value.points, inside section_loop over node.plan.value.sections.
+        var sources = Migrated("composer-sources", root =>
+        {
+            Node(root, "point_loop")["nodes"] = new JsonArray("point_gate");
+            Node(root, "point_loop")["ret"] = "node.point_gate";
+            root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_gate","label":"Points not on the plan","if":"item.value.heading != \"Plan\"","then":{"nodes":["draft_point"],"ret":"node.draft_point"}}"""));
+        });
+        // A node's list field of free text is a string at 31, compared by !== as written: no in, no trim, nothing said.
+        Assert.Equal("""{"!==":[{"var":"item.value.heading"},"Plan"]}""", CanonicalJson.Write(Json(sources, "nodes/section_loop/point_loop/point_gate/index.json")["if"]));
+        Assert.DoesNotContain(sources.Notices, n => n.Contains("item.value.heading", StringComparison.Ordinal) && n.Contains(" by in at 31", StringComparison.Ordinal));
+
+        // composer-macros with a list of points on each section, and a loop over it inside a loop over the sections.
+        var nested = Migrated(
+            "composer-macros",
+            root =>
+            {
+                var sections = root["inputs"]!.AsArray().OfType<JsonObject>().Single(i => (string?)i["id"] == "sections");
+                sections["fields"]!.AsArray().Add(JsonNode.Parse("""{"id":"points","label":"Points","required":true,"type":"array","items":"text"}"""));
+                root["deliverables"]![0]!["sources"]!.AsArray().Add("node.outline_loop");
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"outline_loop","label":"Outlines","for":"item in input.sections","nodes":["point_loop"],"ret":"node.point_loop"}"""));
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_loop","label":"Points","for":"item in item.value.points","nodes":["point_gate"],"ret":"node.point_gate"}"""));
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_gate","label":"Points not on the plan","if":"item.value != \"Plan\"","then":{"nodes":["point_note"],"ret":"node.point_note"}}"""));
+                root["nodes"]!.AsArray().Add(JsonNode.Parse("""{"id":"point_note","label":"A point","format":"prose"}"""));
+            },
+            files => files["prompts/point_note.md"] = "Write the point {{ item.value }}.");
+        var said = Assert.Single(nested.Notices, n => n.Contains("'item.value ≠ \"Plan\"' became", StringComparison.Ordinal));
+        Assert.Equal("""{"!":[{"in":[{"trim":[{"var":"item.value"}]},["Plan"]]}]}""", CanonicalJson.Write(IfOf(nested, said)));
+        Assert.EndsWith("became not (trim(item.value) in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.", said, StringComparison.Ordinal);
+        V31Contract.AssertSentence(new SourceRefusal("A10-074", said, ""));
+
+        // The if of the file the notice names (its text up to ", if: ").
+        static JsonNode? IfOf(Migration31Result result, string notice)
+        {
+            var file = notice[..notice.IndexOf(", if: ", StringComparison.Ordinal)];
+            return file.EndsWith(".json", StringComparison.Ordinal) ? Json(result, file)["if"] : Md(result, file).Header["if"];
+        }
     }
 
     /// <summary>
@@ -804,6 +859,168 @@ public class MigrateNodesTests
 
         Assert.True(checkedFiles > 0);
         Assert.Empty(refusals);
+    }
+
+    /// <summary>The header <c>if</c> of <paramref name="path"/> in <paramref name="result"/>, compact (<c>null</c> written as null).</summary>
+    private static string? IfOf(Migration31Result result, string path) => Md(result, path).Header["if"]?.ToJsonString();
+
+    /// <summary>The A10-087 notice for <paramref name="file"/> gated by <paramref name="deliverables"/> (F-D6's words).</summary>
+    private static string GateNotice(string file, params string[] deliverables) =>
+        $"{file}, if: written so that the node runs only when deliverable {string.Join(" or ", deliverables)} applies, as 30 ran only what an applicable deliverable needed.";
+
+    /// <summary>
+    /// #1508 (2026-11-26, item 1; F-D1, F-D2, F-D6): 30 ran only what an applicable deliverable needed (its fire set), so a
+    /// node only a deliverable with a condition needs ran only when that deliverable applied. 31 runs every node, so the
+    /// migration writes the deliverable's <c>if</c> on each leaf of such a node: a <c>for</c> has no <c>if</c> member, so
+    /// its body's leaves take it, and the loop's <c>index.json</c> is as before. Each gated file is said once (A10-087).
+    /// </summary>
+    [Fact]
+    public void ANodeOnlyAConditionalDeliverableNeeds_GetsItsIf()
+    {
+        var result = Migrated("example-structured-intake");
+
+        Assert.Equal(Compact("""{">=":[{"var":"input.patient.value.age"},65]}"""), IfOf(result, "deliverables/senior_review.md"));
+        foreach (var (file, deliverable) in new[]
+        {
+            ("nodes/sections_senior_review_section/senior_review_section.md", "senior_review"),
+            ("nodes/sections_long_stay_section/long_stay_section.md", "long_stay_summary"),
+            ("nodes/prior_notes_index_note/index_note.md", "notes_index"),
+        })
+        {
+            Assert.NotNull(IfOf(result, $"deliverables/{deliverable}.md"));
+            Assert.Equal(IfOf(result, $"deliverables/{deliverable}.md"), IfOf(result, file));
+            var notice = GateNotice(file, deliverable);
+            Assert.Single(result.Notices, n => n == notice);
+            Assert.Single(result.Notices, n => n.StartsWith(file + ", if: written so that", StringComparison.Ordinal));
+            V31Contract.AssertSentence(new SourceRefusal("A10-087", notice, ""));
+        }
+
+        foreach (var loop in new[] { "sections_senior_review_section", "sections_long_stay_section", "prior_notes_index_note" })
+        {
+            var index = Json(result, $"nodes/{loop}/index.json");
+            Assert.Equal(SourceShapes.FlowFor.Members.Select(s => s.Name), index.Select(member => member.Key));
+            Assert.False(index.ContainsKey("if"));
+        }
+    }
+
+    [Fact]
+    public void ALoopsBodyLeaves_EachTakeTheGate()
+    {
+        var scope = Migrated("example-classifier-scope");
+        foreach (var (file, deliverable) in new[]
+        {
+            ("nodes/plan_sections/plan_section.md", "plan"),
+            ("nodes/letter_decline_letter/decline_letter.md", "decline_letter"),
+            ("nodes/letter_information_request/information_request.md", "information_request"),
+        })
+        {
+            Assert.Contains("node.scope.value.value", IfOf(scope, file), StringComparison.Ordinal);
+            Assert.Equal(IfOf(scope, $"deliverables/{deliverable}.md"), IfOf(scope, file));
+            Assert.Contains(GateNotice(file, deliverable), scope.Notices);
+        }
+
+        var documents = Migrated("example-conditional-documents");
+        foreach (var (file, deliverable) in new[]
+        {
+            ("nodes/sections_consult_note_section/consult_note_section.md", "consult_note"),
+            ("nodes/sections_progress_note_section/progress_note_section.md", "progress_note"),
+        })
+        {
+            Assert.NotNull(IfOf(documents, file));
+            Assert.Equal(IfOf(documents, $"deliverables/{deliverable}.md"), IfOf(documents, file));
+        }
+    }
+
+    [Fact]
+    public void AClassifierAndWhatADeliverablesConditionReads_AreNeverGated()
+    {
+        // F-D2: 30 always ran a classifier and what a condition reads, whatever the deliverables.
+        Assert.Null(IfOf(Migrated("example-classifier-scope"), "nodes/scope.md"));
+
+        // A node no classifier, read by a deliverable's condition: closing, which only pair (a condition) composes, is
+        // gated; once tally's condition reads it, 30 ran it whatever the deliverables, and it is not.
+        var gated = Migrated("composer-sources", root => DeliverableIf(root, "pair", "input.tone == \"formal\""));
+        Assert.NotNull(IfOf(gated, "nodes/closing.md"));
+        var read = Migrated("composer-sources", root =>
+        {
+            DeliverableIf(root, "pair", "input.tone == \"formal\"");
+            DeliverableIf(root, "tally", "node.closing.content != \"\"");
+        });
+        Assert.Contains("node.closing", IfOf(read, "deliverables/tally.md"), StringComparison.Ordinal);
+        Assert.Null(IfOf(read, "nodes/closing.md"));
+    }
+
+    [Fact]
+    public void ANodeAnUnconditionalDeliverableNeeds_IsNotGated()
+    {
+        var result = Migrated("example-structured-intake");
+
+        Assert.Null(IfOf(result, "nodes/sections_note_section/note_section.md"));
+        Assert.Null(IfOf(result, "nodes/prior_notes_summarise_note/summarise_note.md"));
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("nodes/sections_note_section/", StringComparison.Ordinal) && n.Contains("runs only when", StringComparison.Ordinal));
+    }
+
+    /// <summary>Sets deliverable <paramref name="id"/>'s 30 <c>if</c> in <paramref name="root"/>.</summary>
+    internal static void DeliverableIf(JsonObject root, string id, string condition) =>
+        root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == id)["if"] = condition;
+
+    /// <summary>Removes deliverables <paramref name="ids"/> from <paramref name="root"/>.</summary>
+    internal static void WithoutDeliverables(JsonObject root, params string[] ids)
+    {
+        var list = root["deliverables"]!.AsArray();
+        foreach (var d in list.OfType<JsonObject>().Where(d => ids.Contains((string?)d["id"])).ToList())
+            list.Remove(d);
+    }
+
+    [Fact]
+    public void TwoConditionalDeliverables_GateTheirSharedNode_ByOr()
+    {
+        // opening is also a source of single and summary_then_opening, which have no condition; without them, pair and
+        // topics_then_opening are the deliverables that need it, each with a condition on an input.
+        var result = Migrated("composer-sources", root =>
+        {
+            WithoutDeliverables(root, "single", "summary_then_opening");
+            DeliverableIf(root, "pair", "input.tone == \"formal\"");
+            DeliverableIf(root, "topics_then_opening", "input.include_plan == true");
+        });
+
+        var pair = Md(result, "deliverables/pair.md").Header["if"]!;
+        var topics = Md(result, "deliverables/topics_then_opening.md").Header["if"]!;
+        Assert.Equal(new JsonObject { ["or"] = new JsonArray(pair.DeepClone(), topics.DeepClone()) }.ToJsonString(), IfOf(result, "nodes/opening.md"));
+        Assert.Equal(pair.ToJsonString(), IfOf(result, "nodes/closing.md"));
+        var notice = GateNotice("nodes/opening.md", "pair", "topics_then_opening");
+        Assert.Single(result.Notices, n => n == notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-087", notice, ""));
+
+        // topics (no condition) needs topic_loop: its body is not gated.
+        Assert.Null(IfOf(result, "nodes/topic_loop/topic_gate/draft_topic.md"));
+    }
+
+    [Fact]
+    public void AHandEditedDeliverableCondition_GatesNothing()
+    {
+        // Converted, plan's condition gates plan_gate's leaf; refused by the converter (a hand edit), it gates nothing,
+        // since nothing is joined to a condition not yet written (F-D2).
+        var converted = Migrated("composer-sources", root => DeliverableIf(root, "plan", "input.tone == \"formal\""));
+        Assert.NotNull(IfOf(converted, "nodes/plan_gate/draft_plan.md"));
+
+        var refused = Migrated("composer-sources", root => DeliverableIf(root, "plan", "(input.consult_draft | string.upcase) == \"\""));
+        Assert.Null(IfOf(refused, "nodes/plan_gate/draft_plan.md"));
+        Assert.DoesNotContain(refused.Notices, n => n.Contains("runs only when", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AWhile_IsNeverGated()
+    {
+        // F-D3: a gated body would leave the while's condition reading skipped nodes.
+        var result = Migrated("composer-sources", root =>
+        {
+            DeliverableIf(root, "summary", "input.tone == \"formal\"");
+            DeliverableIf(root, "summary_then_opening", "input.tone == \"plain\"");
+        });
+
+        Assert.Null(IfOf(result, "nodes/refine/draft_summary.md"));
+        Assert.Null(IfOf(result, "nodes/refine/judge.md"));
     }
 
     [Theory]

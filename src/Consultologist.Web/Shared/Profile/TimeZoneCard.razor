@@ -1,0 +1,164 @@
+@inject IAccountEndpointService AccountService
+@inject IJSRuntime JS
+@* #1509 (Task 22; part 09 § 7.2; D12): the account's time zone, a select of IANA names that starts empty. "Use this
+   browser's zone" fills the select only when clicked, and only with a zone the list holds; nothing is saved until Save.
+   Clearing the select and saving deletes the setting. Until a zone is set the card says S06-008;
+   after a failed read it says nothing about what is set until a Save writes one. *@
+
+<section class="content-card time-zone-card">
+    <div class="form-stack">
+        <h3 class="panel-title">
+            Time zone
+        </h3>
+
+        <p class="panel-description">
+            Sets the date a workflow prints for today: the day a job starts, in this zone.
+        </p>
+
+        @if (message != null)
+        {
+            <FluentMessageBar Intent="@messageIntent" AllowDismiss="false" Class="time-zone-message">
+                @message
+            </FluentMessageBar>
+        }
+
+        @if (loaded)
+        {
+            <div class="state-panel">
+                <span class="muted-text">Time zone</span>
+                <strong class="time-zone-state">@(saved ?? TimeZones.NotSet)</strong>
+            </div>
+        }
+
+        <div class="action-row">
+            <select class="node-field__input time-zone-select"
+                    aria-label="Time zone"
+                    value="@selected"
+                    @onchange="args => selected = args.Value?.ToString() ?? string.Empty"
+                    disabled="@requestInProgress">
+                <option value="">Choose a time zone…</option>
+                @foreach (var id in Options)
+                {
+                    <option value="@id" selected="@(id == selected)">@id</option>
+                }
+            </select>
+            <FluentButton Appearance="Appearance.Neutral"
+                          Class="time-zone-browser"
+                          Disabled="@requestInProgress"
+                          @onclick="UseBrowserZoneAsync">
+                Use this browser's zone
+            </FluentButton>
+            <FluentButton Appearance="Appearance.Accent"
+                          Class="time-zone-save"
+                          Disabled="@requestInProgress"
+                          @onclick="SaveAsync">
+                Save
+            </FluentButton>
+        </div>
+    </div>
+</section>
+
+@code {
+    private static readonly IReadOnlyList<string> Zones = TimeZones.Iana();
+
+    private string? saved;
+    // Whether the card knows what is saved: the read succeeded, or a Save wrote. Until then it says nothing about it.
+    private bool loaded;
+    private string selected = string.Empty;
+    private bool requestInProgress;
+    private string? message;
+    private MessageIntent messageIntent = MessageIntent.Info;
+
+    // A zone the Api accepts that this list lacks stays selectable, so saving does not clear it by accident.
+    private IEnumerable<string> Options =>
+        saved != null && !Zones.Contains(saved, StringComparer.Ordinal) ? Zones.Prepend(saved) : Zones;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            saved = (await AccountService.GetSettingAsync(TimeZones.SettingKey))?.Value;
+            loaded = true;
+        }
+        catch (HttpRequestException)
+        {
+            message = "We couldn't load your time zone.";
+            messageIntent = MessageIntent.Warning;
+        }
+
+        if (string.IsNullOrWhiteSpace(saved))
+        {
+            saved = null;
+        }
+
+        selected = saved ?? string.Empty;
+    }
+
+    private async Task UseBrowserZoneAsync()
+    {
+        message = null;
+        string? zone = null;
+        try
+        {
+            zone = await JS.InvokeAsync<string?>("consultologistBrowserTimeZone");
+        }
+        catch (JSException)
+        {
+            // Treated as a browser that did not say.
+        }
+
+        if (zone != null && Zones.Contains(zone, StringComparer.Ordinal))
+        {
+            selected = zone;
+        }
+        else
+        {
+            message = "This browser's time zone isn't one we can offer. Choose one from the list.";
+            messageIntent = MessageIntent.Warning;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        requestInProgress = true;
+        message = null;
+        try
+        {
+            if (string.IsNullOrEmpty(selected))
+            {
+                if (saved != null)
+                {
+                    await AccountService.DeleteSettingAsync(TimeZones.SettingKey);
+                    saved = null;
+                }
+            }
+            else if (!string.Equals(selected, saved, StringComparison.Ordinal))
+            {
+                await AccountService.SaveSettingAsync(TimeZones.SettingKey, selected, TimeZones.ContentType);
+                saved = selected;
+                loaded = true;
+            }
+
+            if (loaded)
+            {
+                message = saved == null ? "Your time zone is not set." : "Your time zone is saved.";
+                messageIntent = saved == null ? MessageIntent.Info : MessageIntent.Success;
+            }
+        }
+        catch (HttpRequestException exception) when (exception.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            // The Api's refusal names the key, never the value.
+            message = exception.Message;
+            messageIntent = MessageIntent.Error;
+        }
+        catch (HttpRequestException)
+        {
+            message = "We couldn't save your time zone. Please try again.";
+            messageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            requestInProgress = false;
+        }
+    }
+}

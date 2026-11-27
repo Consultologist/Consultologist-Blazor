@@ -18,6 +18,7 @@ public sealed record HashCheck(string Name, string? Recorded, string? Recomputed
 /// deliverable hashes from the texts the record carries. A mirror of the
 /// engine's ConsultGenerationProvenance, pinned to the same published worked
 /// examples by ProvenanceHashMirrorTests — two implementations, one document.
+/// A record at storage 12 is not checked here: it is checked through its sealed document by <see cref="V31.RecordCheck31"/>.
 /// </summary>
 public static class ProvenanceHashes
 {

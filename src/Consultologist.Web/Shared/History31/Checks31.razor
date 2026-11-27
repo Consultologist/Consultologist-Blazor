@@ -1,0 +1,55 @@
+@using Consultologist.Web.Services.Provenance.V31
+@implements IDisposable
+@inject NavigationManager Navigation
+@*
+    #1509 (Task 19; part 09 § 6.4 "Checks", part 08 § 6; R8): one row per check by its key, in the order the record gives
+    (NodeTree31.BuildChecks, never re-sorted by key): a check loop expands per item beside the production item it is aligned
+    with, a gate's row comes after its deliverables as recorded. As in Nodes31 every row starts collapsed, its body and its
+    text fetch happen once it is opened, and a `#row-<key>` link, on arrival or on LocationChanged or through
+    RowLinks31, opens the row and the rows it sits in.
+*@
+@if (_tree.Count == 0)
+{
+    <p class="history31-checks__none">No checks were recorded.</p>
+}
+else
+{
+    <ul class="history31-checks">
+        @foreach (var node in _tree)
+        {
+            <CheckRow31 @key="node.Key" Node="node" View="_view" />
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public Record31 Record { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public RowText31 Texts { get; set; } = default!;
+
+    /// <summary>Follows a link to a check row (or a decision of one); false when this section holds none.</summary>
+    public bool Reveal(string target) => _view.Reveal(target);
+
+    private IReadOnlyList<TreeNode31> _tree = [];
+    private Record31? _built;
+    private Disclosure31 _view = default!;
+
+    protected override void OnInitialized() => _view = new Disclosure31(Navigation, () => InvokeAsync(StateHasChanged));
+
+    protected override void OnParametersSet()
+    {
+        _view.Texts = Texts;
+        if (!ReferenceEquals(_built, Record))
+        {
+            _built = Record;
+            _tree = NodeTree31.BuildChecks(Record);
+            _view.SetTree(Record, _tree);
+        }
+
+        _view.Arrive();
+    }
+
+    public void Dispose() => _view.Dispose();
+}

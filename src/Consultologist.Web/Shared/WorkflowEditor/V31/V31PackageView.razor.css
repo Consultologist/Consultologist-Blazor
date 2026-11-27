@@ -1,0 +1,61 @@
+/* #1509 (Task 23): the Editor's read-only view of a specVersion 31 package. */
+.v31-package__bar {
+    margin: 0 0 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid var(--accent-fill-rest, #0f6cbd);
+    background: var(--neutral-layer-2, #f5f5f5);
+}
+
+.v31-package__notices {
+    margin: 0 0 0.75rem;
+    padding-left: 1.25rem;
+}
+
+.v31-package__panes {
+    display: grid;
+    grid-template-columns: minmax(12rem, 18rem) 1fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+.v31-package__files {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.v31-package__file {
+    display: block;
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    background: none;
+    text-align: left;
+    font-family: var(--monospace-font, monospace);
+    cursor: pointer;
+}
+
+.v31-package__file:hover,
+.v31-package__file:focus-visible {
+    background: var(--neutral-fill-stealth-hover, #eaeaea);
+}
+
+.v31-package__file--selected {
+    font-weight: 600;
+    background: var(--neutral-fill-stealth-active, #e0e0e0);
+}
+
+.v31-package__text {
+    margin: 0;
+    padding: 0.75rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--neutral-layer-2, #f5f5f5);
+}
+
+@media (max-width: 48rem) {
+    .v31-package__panes {
+        grid-template-columns: 1fr;
+    }
+}

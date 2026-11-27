@@ -106,7 +106,7 @@ public static class ExpectedDifferences
         },
         new("reply-never-a-template",
             "#1508, comment 5, item 7, #5, ruled by the owner on 2026-11-25; part 05 § 1; part 10 § 3.2",
-            "a reply is never rendered as a template at 31, where 30 rendered one that held '{{': 31's text holds the reply as written where 30's holds it rendered, and a job 30 failed because a reply did not render completes")
+            "a reply is never rendered as a template at 31, where 30 rendered one that held '{{': 31's text holds the reply as written, or stripped as a migrated deliverable reads a source (#1508, item 3), where 30's holds it rendered, and a job 30 failed because a reply did not render completes")
         {
             Case = ReplyNotRendered,
             Bytes = RenderedReplies,
@@ -130,8 +130,8 @@ public static class ExpectedDifferences
             Bytes = PositionNames,
         },
         new("sent-format",
-            "part 10 § 1.8 (every property required, an optional one nullable); R12 and #1508, comment 5, item 7, #3, ruled by the owner on 2026-11-25 (a format's description sent; a classifier's answers sent as its format); part 10 § 3.2",
-            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order, with the descriptions 31 sends where 30's had none; or a classifier's answers, the values 30 listed, sent as its format after them")
+            "part 10 § 1.8 (every property required, an optional one nullable); R12 and #1508, comment 5, item 7, #3, ruled by the owner on 2026-11-25 (a format's description sent; a classifier's answers sent as its format); #1508, 2026-11-26, item 7 (30's answer line dropped); part 10 § 3.2",
+            "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order, with the descriptions 31 sends where 30's had none; or a classifier's answers sent as its format, where 30 listed them in its prompt's last line, which the migration drops")
         {
             Bytes = SentFormat,
         },
@@ -164,6 +164,24 @@ public static class ExpectedDifferences
             "a while that ran no pass composes as empty text at both, but 30's composer dropped its part with its separator, where 31's template keeps the blank line between it and the source beside it")
         {
             Bytes = WhileNoPassSeparator,
+        },
+        new("loop-item-not-run",
+            "#1508, 2026-11-26, item 4, ruled by the owner (Q4 stands; both differences expected); part 10 §§ 1.2, 3.2",
+            "an item of a loop that did not run (past its max, or its body skipped) writes nothing at 31, where 30's template loop wrote its fixed text for it with its reads empty; that text is 30's alone")
+        {
+            Bytes = LoopItemNotRun,
+        },
+        new("chosen-macro-final-line-ending",
+            "#1508, 2026-11-26, item 5, ruled by the owner; R5; part 05 § 8.6; part 10 § 3.2",
+            "a macro the model chose whose body ends in a line ending loses that one line ending at 31, where 30 wrote the body whole")
+        {
+            Bytes = ChosenMacroLineEnding,
+        },
+        new("empty-read-trailing-space",
+            "#1508, 2026-11-26, item 5, ruled by the owner; part 10 § 3.2",
+            "a read that rendered empty at a line's end leaves the white space before it at 31, which 31's snippet keeps and 30's macro trimmed")
+        {
+            Bytes = EmptyReadTrailingSpace,
         },
         new("macro-choice-classifier",
             "#1508, comment 6, items 1 and 2, ruled by the owner on 2026-11-25 (R13, R14); part 10 §§ 1.2, 1.4, 3.2",
@@ -540,14 +558,22 @@ public static class ExpectedDifferences
 
         foreach (var (_, output) in c.Run31.Outputs)
             Leaves(output);
+        // #1508, 2026-11-26, item 3: a deliverable composes each source stripped (| string.strip), so a rendered or computed
+        // node's text counts trimmed as well as whole.
         foreach (var render in c.Run31.Renders)
+        {
             values.Add(render.Text);
+            values.Add(render.Text.Trim());
+        }
 
         // #1508 (comment 5, item 7, #13): a computed node's text (a let of text), as the run held it.
         foreach (var row in c.Run31.Rows.Where(r => r.Kind == PlanKind.Computed))
         {
             if (SourceLayout.Text(row.Text?["content"]) is { } content)
+            {
                 values.Add(content);
+                values.Add(content.Trim());
+            }
         }
         values.Remove("");
         return [.. values.OrderByDescending(v => v.Length).ThenBy(v => v, StringComparer.Ordinal)];
@@ -784,10 +810,10 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// #1508 (R12; comment 5, item 7, #3): 30 sent no format to a classifier and ended its prompt with its values
-    /// (<c>Answer with exactly one of: &lt;values&gt;.</c>, kept by the migration); 31 sends its answers' format, bound
+    /// (<c>Answer with exactly one of: &lt;values&gt;.</c>, a last line the migration drops, #1508 item 7); 31 sends its answers' format, bound
     /// <c>custom</c>, after the custom trailer (<see cref="WorkflowCustomPrompt.Compose"/>). Explained when that format is
     /// exactly the answers' (<c>{ value: enum }</c>, closed, nothing else but a description, #3: no title or <c>$id</c>) and
-    /// its values are the ones 30's last line lists, in order; the trailer and format are then taken off 31's text.
+    /// its values are the ones 30's last line lists, in order; 30's line is then taken off 30's text, and the trailer and format off 31's.
     /// </summary>
     private static (string Old, string New)? AnswersSent(string old, string now, int at31, string marker)
     {
@@ -811,7 +837,10 @@ public static class ExpectedDifferences
             return null;
         var listed = $"Answer with exactly one of: {string.Join(", ", values.Select(SourceLayout.Text))}.";
         var before = now[..(at31 - joint.Length)];
-        return before.EndsWith(listed, StringComparison.Ordinal) && old.EndsWith(listed, StringComparison.Ordinal) ? (old, before) : null;
+        var line = joint + listed;
+        // 31 composes the trailer after the rendered prompt with its end trimmed (WorkflowCustomPrompt.Compose), so 30's text
+        // before its line is read with its end trimmed too: the prompt's own last line ending is not a difference.
+        return old.EndsWith(line, StringComparison.Ordinal) ? (old[..^line.Length].TrimEnd(), before) : null;
     }
 
     /// <summary>
@@ -1059,6 +1088,130 @@ public static class ExpectedDifferences
         }
 
         return kept;
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 5 (no migration change): a macro the model chose (<see cref="ChoiceClassifiers"/>, R13) whose
+    /// body ends in a line ending stands, at 31, where the reply's marker stood with that one line ending dropped (R5, part
+    /// 05 § 8.6), where 30 wrote the body whole. Only such a macro the compared row's text can hold counts
+    /// (<see cref="PlacedMacros"/>), whose file is a 30 macro's body (<c>macros/**</c> in
+    /// <see cref="Migration31Result.MacroBodies"/>). A white-space run of 31's text that follows the body's last word (its
+    /// text after its last white space; a body that ends in a tag has no word to find) and is 30's aligned run less that one
+    /// line ending is written as 30's run (<see cref="Aligned"/>); every other run is left as 31 wrote it (R19).
+    /// </summary>
+    private static (string Old, string New)? ChosenMacroLineEnding(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status)
+            return null;
+        var placed = PlacedMacros(c);
+        var bodies = new List<(string Kept, string Ending, string LastWord)>();
+        foreach (var site in ChoiceClassifiers.Of(c.Migrated).Select(k => "macro." + k.Macro).Distinct(StringComparer.Ordinal).Where(placed.Contains))
+        {
+            if (!c.Migrated.MacroBodies.Contains("macros/" + site["macro.".Length..].Replace('.', '/') + ".md")
+                || MacroFile(c.Migrated, site)?.Body is not { } body || !body.EndsWith('\n'))
+                continue;
+            var ending = body.EndsWith("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+            var rendered = body[..^ending.Length];
+            var text = rendered.TrimEnd();
+            var word = text[(text.LastIndexOfAny([' ', '\t', '\n', '\r']) + 1)..];
+            if (word.Length > 0 && !word.EndsWith("}}", StringComparison.Ordinal))
+                bodies.Add((rendered[text.Length..], ending, word));
+        }
+
+        if (bodies.Count == 0)
+            return null;
+        var a = WhiteSpaceRuns(old);
+        var b = WhiteSpaceRuns(now);
+        return Undo(old, now, a, b, (i, j) =>
+            b[j].Space && j > 0 && bodies.Any(k => b[j - 1].Text.EndsWith(k.LastWord, StringComparison.Ordinal)
+                && b[j].Text.StartsWith(k.Kept, StringComparison.Ordinal)
+                && a[i].Text == k.Kept + k.Ending + b[j].Text[k.Kept.Length..]));
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 5 (no migration change): a 30 macro written as a snippet (D4; <c>snippets/**</c> in
+    /// <see cref="Migration31Result.MacroBodies"/>) that the compared row places, itself or through a rendered node it reads,
+    /// with a line that ends in literal text, white space and one read tag (<c>Seen at: {{ input.clinic.content }}</c>):
+    /// where the read rendered empty, 31's snippet keeps the white space before it, where 30 trimmed the rendered macro. In
+    /// 31's text, that white space (spaces or tabs alone) after the line's literal text and just before a line ending or the
+    /// text's end, absent at the aligned place of 30's (<see cref="Aligned"/>), is taken out; every other run is left as 31
+    /// wrote it (R19).
+    /// </summary>
+    private static (string Old, string New)? EmptyReadTrailingSpace(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status || EmptyReadLines(c) is not { Count: > 0 } lines)
+            return null;
+
+        static bool After(string text, (string Literal, string Space) line) => text.EndsWith(line.Literal, StringComparison.Ordinal);
+
+        var undone = now;
+        var a = WhiteSpaceRuns(old);
+        var b = WhiteSpaceRuns(now);
+        if (Undo(old, now, a, b, (i, j) => b[j].Space && j > 0 && lines.Any(line =>
+                b[j].Text.StartsWith(line.Space, StringComparison.Ordinal) && b[j].Text[line.Space.Length..] is var rest
+                && rest.Length > 0 && rest[0] is '\n' or '\r' && a[i].Text == rest
+                && After(now[..b.Take(j).Sum(r => r.Text.Length)], line))) is { } inside)
+            undone = inside.New;
+
+        // At the text's end 30 has no run to align with.
+        foreach (var line in lines)
+        {
+            if (undone.EndsWith(line.Space, StringComparison.Ordinal) && undone[..^line.Space.Length] is var before
+                && After(before, line) && !old.EndsWith(line.Space, StringComparison.Ordinal))
+            {
+                undone = Nearest(old, undone, before);
+                break;
+            }
+        }
+
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// The lines of the 30 macros written as snippets that the compared row places (its own placements, nested ones
+    /// included, and those of each rendered node it reads, in turn) which end in literal text, white space and one read
+    /// tag: each line's literal text, trimmed, and its white space before the tag. None with no literal text.
+    /// </summary>
+    private static List<(string Literal, string Space)> EmptyReadLines(DifferenceContext c)
+    {
+        var lines = new List<(string, string)>();
+        if (c.Key31 is not { } key || !c.Plan.Entries.TryGetValue(EntryOf(key), out var row))
+            return lines;
+
+        var sites = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { row.Key };
+        var pending = new Queue<PlanEntry>([row]);
+        while (pending.Count > 0)
+        {
+            var entry = pending.Dequeue();
+            sites.UnionWith(entry.Placements.Select(p => p.Site).Where(s => s.StartsWith("snippet.", StringComparison.Ordinal)));
+            foreach (var path in entry.Reads)
+            {
+                var named = c.Plan.Entries.Keys.Where(k => path == k || path.StartsWith(k + ".", StringComparison.Ordinal)).MaxBy(k => k.Length);
+                if (named is not null && c.Plan.Entries[named].Kind == PlanKind.Rendered && seen.Add(named))
+                    pending.Enqueue(c.Plan.Entries[named]);
+            }
+        }
+
+        foreach (var site in sites.Order(StringComparer.Ordinal))
+        {
+            var path = "snippets/" + site["snippet.".Length..].Replace('.', '/') + ".md";
+            if (!c.Migrated.MacroBodies.Contains(path) || !c.Migrated.Files.TryGetValue(path, out var file) || FrontMatter.Split(file)?.Body is not { } body)
+                continue;
+            foreach (var raw in body.Split('\n'))
+            {
+                var line = raw.TrimEnd('\r').TrimEnd(' ', '\t');
+                var tags = Tag.Matches(line);
+                if (tags.Count != 1 || tags[0].Index + tags[0].Length != line.Length)
+                    continue;
+                var before = line[..tags[0].Index];
+                var literal = before.TrimEnd(' ', '\t');
+                if (literal.Trim().Length > 0 && literal.Length < before.Length)
+                    lines.Add((literal.Trim(), before[literal.Length..]));
+            }
+        }
+
+        return lines;
     }
 
     /// <summary>
@@ -1311,7 +1464,8 @@ public static class ExpectedDifferences
     /// <summary>
     /// #5: each text reply the 31 run served that holds <c>{{</c> stands in 31's text as written, where 30's holds it as 30
     /// rendered it (<see cref="Rendered30"/>, with no variable: a reply that reads one did not render at 30, which
-    /// <see cref="ReplyNotRendered"/> covers). Each place is put back as 30's.
+    /// <see cref="ReplyNotRendered"/> covers). Each place is put back as 30's: the reply whole, and the reply stripped
+    /// as a migrated deliverable reads a source (<c>| string.strip</c>, #1508, 2026-11-26, item 3) by 30's render stripped.
     /// </summary>
     private static (string Old, string New)? RenderedReplies(DifferenceContext c, string old, string now)
     {
@@ -1321,8 +1475,11 @@ public static class ExpectedDifferences
         foreach (var reply in c.Run31.Outputs.Values.Select(v => v is JsonValue value && value.TryGetValue<string>(out var text) ? text : null)
                      .OfType<string>().Where(r => r.Contains("{{", StringComparison.Ordinal)).Distinct(StringComparer.Ordinal).OrderByDescending(r => r.Length))
         {
-            if (Rendered30(reply) is { } rendered && rendered != reply)
-                undone = undone.Replace(reply, rendered, StringComparison.Ordinal);
+            if (Rendered30(reply) is not { } rendered || rendered == reply)
+                continue;
+            undone = undone.Replace(reply, rendered, StringComparison.Ordinal);
+            if (reply.Trim() is { Length: > 0 } strippedReply && strippedReply != reply)
+                undone = undone.Replace(strippedReply, rendered.Trim(), StringComparison.Ordinal);
         }
 
         return undone == now ? null : (old, undone);
@@ -1493,7 +1650,7 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// The controller's ruling on #1508 (Task 33's review): a deliverable whose template reads a <c>while</c> that ran no pass
-    /// (its row's <c>passes</c> 0) as <c>{{ node.&lt;while&gt;.content }}</c>, with white space alone between that tag and the
+    /// (its row's <c>passes</c> 0) as <c>{{ node.&lt;while&gt;.content }}</c> (stripped or not), with white space alone between that tag and the
     /// next or the one before (the separator): the while composes as the empty text at both, and 30's composer dropped its
     /// part with its separator, where 31's template keeps it. 31's text with that separator taken out where the tag stood (at
     /// the start, at the end, or one of two separators side by side between) is 30's, where that brings the texts nearer.
@@ -1511,24 +1668,201 @@ public static class ExpectedDifferences
         foreach (var loop in c.Run31.Rows.Where(r => r.Kind == PlanKind.While && r.Key == r.EntryKey
                      && r.Detail["passes"] is JsonValue passes && passes.TryGetValue<int>(out var count) && count == 0))
         {
-            var tag = $"{{{{ {loop.Key}.content }}}}";
-            for (var at = body.IndexOf(tag, StringComparison.Ordinal); at >= 0; at = body.IndexOf(tag, at + tag.Length, StringComparison.Ordinal))
+            // The tag as the migration writes a source (#1508 item 3: stripped) or as a hand-written template reads it.
+            foreach (var tag in new[] { $"{{{{ {loop.Key}.content | string.strip }}}}", $"{{{{ {loop.Key}.content }}}}" })
             {
-                var open = body.LastIndexOf("}}", at, StringComparison.Ordinal);
-                var before = body[(open < 0 ? 0 : open + 2)..at];
-                var next = body.IndexOf("{{", at + tag.Length, StringComparison.Ordinal);
-                var after = body[(at + tag.Length)..(next < 0 ? body.Length : next)];
-                bool Separator(string text) => text.Length > 0 && text.All(char.IsWhiteSpace);
-                if (open < 0 && before.Length == 0 && Separator(after) && undone.StartsWith(after, StringComparison.Ordinal))
-                    undone = Nearest(old, undone, undone[after.Length..]);
-                else if (next < 0 && after.Length == 0 && Separator(before) && undone.EndsWith(before, StringComparison.Ordinal))
-                    undone = Nearest(old, undone, undone[..^before.Length]);
-                else if (Separator(before) && Separator(after))
-                    undone = EachNearer(old, undone, before + after, after);
+                for (var at = body.IndexOf(tag, StringComparison.Ordinal); at >= 0; at = body.IndexOf(tag, at + tag.Length, StringComparison.Ordinal))
+                {
+                    var open = body.LastIndexOf("}}", at, StringComparison.Ordinal);
+                    var before = body[(open < 0 ? 0 : open + 2)..at];
+                    var next = body.IndexOf("{{", at + tag.Length, StringComparison.Ordinal);
+                    var after = body[(at + tag.Length)..(next < 0 ? body.Length : next)];
+                    bool Separator(string text) => text.Length > 0 && text.All(char.IsWhiteSpace);
+                    if (open < 0 && before.Length == 0 && Separator(after) && undone.StartsWith(after, StringComparison.Ordinal))
+                        undone = Nearest(old, undone, undone[after.Length..]);
+                    else if (next < 0 && after.Length == 0 && Separator(before) && undone.EndsWith(before, StringComparison.Ordinal))
+                        undone = Nearest(old, undone, undone[..^before.Length]);
+                    else if (Separator(before) && Separator(after))
+                        undone = EachNearer(old, undone, before + after, after);
+                }
             }
         }
 
         return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// R16's guard as the migration writes it on a 30 template loop over a loop node that needs <c>.items</c>
+    /// (<c>TemplateRewriter</c>): the <c>for</c> tag (30's, with <c>.items</c>), the state test, the body, the empty
+    /// <c>else</c>, and the loop's <c>end</c>.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex GuardedLoop = new(
+        @"\{\{[~-]?\s*for\s+(?<v>\w+)\s+in\s+(?<loop>[\w.]+)\.items\b[^}]*\}\}\{\{ if \k<v>\.state == ""completed"" \}\}(?<body>.*?)\{\{ else \}\}\{\{ end \}\}\{\{[~-]?\s*end\s*[~-]?\}\}",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    private static readonly System.Text.RegularExpressions.Regex Tag =
+        new(@"\{\{.*?\}\}", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 4 (Q4 stands): in a prompt, a rendered node's text or a deliverable's, an item of a loop that
+    /// did not run writes nothing at 31 (R16's guard), where 30's template loop wrote its fixed text with its reads empty.
+    /// The templates the row is made from (its own source file and those of the rendered nodes it reads, in turn) are read
+    /// for R16's guard (<see cref="GuardedLoop"/>), each with its body as a pattern (<see cref="ItemPattern"/>: its literal
+    /// text exactly, a read of the item's identity any text on one line, a read of the item's result the empty text), and
+    /// the number of the loop's items in the 31 run that did not run (<see cref="ItemsNotRun"/>: rows <c>NotRun</c> or
+    /// <c>Skipped</c>, under the compared row's outer items). 30's and 31's lines are aligned (<see cref="Aligned"/>); a run
+    /// of lines only 30 has that is, whole, m ≥ 1 repetitions of a guard's pattern (its trailing white space trimmed or
+    /// not), m at most the loop's items not yet counted, is taken out of 30's text with the line ending that joins it (the
+    /// one before it; the one after, for a run at the start), and counts m. Null when none is taken.
+    /// </summary>
+    private static (string Old, string New)? LoopItemNotRun(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind is not (ComparedKind.Prompt or ComparedKind.Render or ComparedKind.Deliverable) || c.Key31 is not { } key
+            || !c.Plan.Entries.TryGetValue(EntryOf(key), out var row))
+            return null;
+
+        var guards = new List<(string Loop, System.Text.RegularExpressions.Regex Pattern)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal) { row.Key };
+        var pending = new Queue<PlanEntry>([row]);
+        while (pending.Count > 0)
+        {
+            var entry = pending.Dequeue();
+            if (TemplateOf(c.Migrated, entry.Key) is { } template)
+            {
+                foreach (System.Text.RegularExpressions.Match guard in GuardedLoop.Matches(template))
+                {
+                    if (ItemPattern(guard.Groups["v"].Value, guard.Groups["body"].Value) is { } pattern)
+                        guards.Add((guard.Groups["loop"].Value, pattern));
+                }
+            }
+
+            foreach (var path in entry.Reads)
+            {
+                var named = c.Plan.Entries.Keys.Where(k => path == k || path.StartsWith(k + ".", StringComparison.Ordinal)).MaxBy(k => k.Length);
+                if (named is not null && c.Plan.Entries[named].Kind == PlanKind.Rendered && seen.Add(named))
+                    pending.Enqueue(c.Plan.Entries[named]);
+            }
+        }
+
+        var left = guards.Select(g => g.Loop).Distinct(StringComparer.Ordinal).ToDictionary(
+            loop => loop, loop => ItemsNotRun(c, loop, key), StringComparer.Ordinal);
+        if (left.Values.All(n => n == 0))
+            return null;
+
+        var a = old.Split('\n');
+        var b = now.Split('\n');
+        if (Aligned(a, b) is not { } pairs)
+            return null;
+
+        var taken = new HashSet<int>();
+        for (var p = 0; p < pairs.Count; p++)
+        {
+            if (pairs[p].B >= 0)
+                continue;
+            var start = p;
+            while (p + 1 < pairs.Count && pairs[p + 1].B < 0)
+                p++;
+            var lines = pairs.Skip(start).Take(p - start + 1).Select(q => q.A).ToList();
+            var text = string.Join("\n", lines.Select(i => a[i]));
+            foreach (var (loop, pattern) in guards)
+            {
+                var items = Repetitions(pattern, text);
+                if (items == 0 || items > left[loop])
+                    continue;
+                left[loop] -= items;
+                taken.UnionWith(lines);
+                break;
+            }
+        }
+
+        return taken.Count == 0 ? null : (string.Join("\n", a.Where((_, i) => !taken.Contains(i))), now);
+    }
+
+    /// <summary>A tag in a guarded body that reads the item's identity (<c>v.item</c>, <c>v.item.*</c>, <c>v.label</c>, <c>v.id</c>), its result (<c>v.content</c>, <c>v.value</c>, <c>v.nodes.*</c>), or neither.</summary>
+    private static readonly System.Text.RegularExpressions.Regex ItemRead = new(
+        @"^\{\{\s*(?<v>\w+)\.(?:(?<identity>item(?:\.[\w.]+)?|label|id)|(?<result>content|value|nodes(?:\.[\w.]+)?))\s*(?:\|[^}]*)?\}\}$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// #1509 (final review B1): one item's text as 30's template loop wrote it for an item that did not run, as a pattern
+    /// over a run of 30's lines: the guard body's literal text exactly; a tag that reads the item's identity any text with
+    /// no line ending; a tag that reads its result the empty string. The last repetition may lose any trailing part of the
+    /// body's final white space (the line ending that joins the run; a deliverable's <c>string.strip</c>). Each repetition is
+    /// captured as <c>u</c>. Null when the body holds another tag, a white-space control, or no literal text but white space.
+    /// </summary>
+    private static System.Text.RegularExpressions.Regex? ItemPattern(string variable, string body)
+    {
+        var pieces = new List<string>();
+        var literal = new System.Text.StringBuilder();
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match tag in Tag.Matches(body))
+        {
+            literal.Append(body, at, tag.Index - at);
+            at = tag.Index + tag.Length;
+            if (ItemRead.Match(tag.Value) is not { Success: true } read || read.Groups["v"].Value != variable)
+                return null;
+            if (read.Groups["identity"].Success)
+            {
+                pieces.Add(System.Text.RegularExpressions.Regex.Escape(literal.ToString()));
+                pieces.Add(@"[^\n]*?");
+                literal.Clear();
+            }
+        }
+
+        literal.Append(body, at, body.Length - at);
+        var all = string.Concat(Tag.Split(body));
+        if (all.All(char.IsWhiteSpace))
+            return null;
+
+        var tail = literal.ToString();
+        var kept = tail.TrimEnd();
+        var white = tail[kept.Length..];
+        var head = string.Concat(pieces);
+        var unit = head + System.Text.RegularExpressions.Regex.Escape(tail);
+        var trimmed = string.Join("|", Enumerable.Range(0, white.Length + 1).Reverse().Select(n => System.Text.RegularExpressions.Regex.Escape(white[..n])));
+        var last = head + System.Text.RegularExpressions.Regex.Escape(kept) + "(?:" + trimmed + ")";
+        return new System.Text.RegularExpressions.Regex(
+            $"^(?:(?<u>{unit}))*?(?<u>{last})\\z",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2));
+    }
+
+    /// <summary>How many repetitions of <paramref name="pattern"/> the whole <paramref name="text"/> is; 0 when it is none.</summary>
+    private static int Repetitions(System.Text.RegularExpressions.Regex pattern, string text)
+    {
+        try
+        {
+            return pattern.Match(text) is { Success: true } match ? match.Groups["u"].Captures.Count : 0;
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// #1509 (final review B1): the items of <paramref name="loop"/> the 31 run did not run (rows <c>NotRun</c>, or
+    /// <c>Skipped</c>: past its max, or its body skipped; not <c>Failed</c> or <c>Cancelled</c>), counting only its own item
+    /// rows (an item path one id longer than the loops around it) and, for a compared row inside outer items, only the items
+    /// under that row's item path.
+    /// </summary>
+    private static int ItemsNotRun(DifferenceContext c, string loop, string key31)
+    {
+        var depth = 1 + c.Plan.Entries.Count(e => e.Value.Kind == PlanKind.For && loop.StartsWith(e.Key + ".", StringComparison.Ordinal));
+        var colon = key31.IndexOf(':', StringComparison.Ordinal);
+        var outer = colon < 0 ? [] : key31[(colon + 1)..].Split('/');
+        return c.Run31.Rows.Count(r => r.EntryKey == loop && r.State is RowState.NotRun or RowState.Skipped
+            && r.Key.StartsWith(loop + ":", StringComparison.Ordinal)
+            && r.Key[(loop.Length + 1)..].Split('/') is var path && path.Length == depth
+            && path.Take(depth - 1).Zip(outer).All(p => p.First == p.Second));
+    }
+
+    /// <summary>The template body of the entry <paramref name="key"/> (<c>node.&lt;path&gt;</c> or <c>deliverable.&lt;path&gt;</c>), or null.</summary>
+    private static string? TemplateOf(Migration31Result migrated, string key)
+    {
+        var path = key.StartsWith("node.", StringComparison.Ordinal) ? "nodes/" + key["node.".Length..]
+            : key.StartsWith("deliverable.", StringComparison.Ordinal) ? "deliverables/" + key["deliverable.".Length..]
+            : null;
+        return path is not null && migrated.Files.TryGetValue(path.Replace('.', '/') + ".md", out var file) ? FrontMatter.Split(file)?.Body : null;
     }
 
     /// <summary><paramref name="candidate"/> when it is nearer <paramref name="old"/> than <paramref name="now"/> is, else <paramref name="now"/>.</summary>

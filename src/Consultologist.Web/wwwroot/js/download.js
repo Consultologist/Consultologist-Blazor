@@ -16,3 +16,6 @@ window.consultologistDownload = (fileName, mimeType, base64) => {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
 };
+
+// #1509 (Task 22): the Profile page's "Use this browser's zone" reads the browser's IANA zone, only when the button is clicked.
+window.consultologistBrowserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;

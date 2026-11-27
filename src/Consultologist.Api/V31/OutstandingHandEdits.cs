@@ -111,7 +111,8 @@ public sealed class MigrationFigures
 /// refusal, or a throw, counts it among the packages that do not migrate. A package at 31 or past it is not migrated. The
 /// type registry (<see cref="PublishedTypeRegistry"/>) is read only when a package is migrated. A pin or a package that
 /// cannot be read fails alone: it is counted as not counted (A10-059) and the rest are counted. A registry or toolchain
-/// that cannot be read gives <see cref="MigrationFigures.NotRead"/> (A10-058). Never an exception (cancellation aside).
+/// that cannot be read gives <see cref="MigrationFigures.NotRead"/> (A10-058). Each package is counted against the engine's
+/// configured limits (#1508, F9; <see cref="EngineLimitSettings.PublishLimits"/>), as the bulk publish counts it. Never an exception (cancellation aside).
 /// </summary>
 public sealed class OutstandingHandEdits(
     IWorkflowPackagePinResolver pins,
@@ -120,6 +121,7 @@ public sealed class OutstandingHandEdits(
     EngineToolchain toolchain,
     WorkflowFormatCatalog formats,
     OutputContractCatalog contracts,
+    EngineLimitSettings limits,
     ILogger<OutstandingHandEdits> logger)
 {
     private readonly IWorkflowPackagePinResolver _pins = pins ?? throw new ArgumentNullException(nameof(pins));
@@ -128,6 +130,7 @@ public sealed class OutstandingHandEdits(
     private readonly EngineToolchain _toolchain = toolchain ?? throw new ArgumentNullException(nameof(toolchain));
     private readonly WorkflowFormatCatalog _formats = formats ?? throw new ArgumentNullException(nameof(formats));
     private readonly OutputContractCatalog _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
+    private readonly EngineLimitSettings _limits = limits ?? throw new ArgumentNullException(nameof(limits));
     private readonly ILogger<OutstandingHandEdits> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>The figures over <paramref name="accounts"/>' active packages.</summary>
@@ -162,7 +165,7 @@ public sealed class OutstandingHandEdits(
             ct.ThrowIfCancellationRequested();
             var options = new Migration31Options(
                 types, current, source.Formats ?? _formats, schema => _contracts.TryResolveContract(schema, out var id) ? id : null,
-                WriteSnapshot: false);
+                WriteSnapshot: false, Limits: _limits.PublishLimits);
             try
             {
                 var result = WorkflowPackageMigration30To31.Migrate(source.ManifestJson, source.Files, options);

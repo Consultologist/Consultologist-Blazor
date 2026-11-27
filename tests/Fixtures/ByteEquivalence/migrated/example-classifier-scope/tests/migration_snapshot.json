@@ -16,8 +16,6 @@
     }
   },
   "outputs": {
-    "node.letter_decline_letter.decline_letter:letter": "Stub reply for node.letter_decline_letter.decline_letter:letter (40282e24).",
-    "node.letter_information_request.information_request:letter": "Stub reply for node.letter_information_request.information_request:letter (c07db743).",
     "node.plan_sections.plan_section:assessment": "Stub reply for node.plan_sections.plan_section:assessment (65b86ba0).",
     "node.plan_sections.plan_section:plan": "Stub reply for node.plan_sections.plan_section:plan (075fe66d).",
     "node.scope": {
@@ -27,19 +25,13 @@
   "expect": {
     "prompts": {
       "node.scope": {
-        "hash": "sha256:24c3d97c327dbf8566e3482cee912ec8e00df75f1ea0a34cabe7c16d69ce6992"
+        "hash": "sha256:ed4cf80f1ae0898db3ad24df82d8a7aa59eab47040ddb2b7837983edbb00cf0a"
       },
       "node.plan_sections.plan_section:assessment": {
         "hash": "sha256:09fa628369f2fcfeae9efc57896be74472ad0f72d89b0d3edddf2c431b5b2f63"
       },
       "node.plan_sections.plan_section:plan": {
         "hash": "sha256:6f394c72e01defcba4210fb994759de086ad2529e9900b2b14feedd10d513c2b"
-      },
-      "node.letter_information_request.information_request:letter": {
-        "hash": "sha256:6f7f81191b8c10c463f82a6c57e1f99a0f951ab62e1c140918092d2ebfe4f6ca"
-      },
-      "node.letter_decline_letter.decline_letter:letter": {
-        "hash": "sha256:72f1c7fea9e489af9614dfb5240c4e1124c0dcadca9c0d6f766b4dc576704ee5"
       }
     },
     "deliverables": {

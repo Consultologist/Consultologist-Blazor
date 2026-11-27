@@ -141,6 +141,7 @@ public static class ApiRoutes
     public const string DiagnosticsSseExit = "Diagnostics/SseExit";
     public const string WorkflowPackageCurrent = "WorkflowPackages/Current";
     public const string WorkflowPackageContent = "WorkflowPackages/Current/Content";
+    public const string WorkflowPackageStartChecks = "WorkflowPackages/Current/StartChecks";
     public const string WorkflowPackagePublish = "WorkflowPackages/Publish";
     public const string WorkflowPackageIngest = "WorkflowPackages/Ingest";
     public const string WorkflowPackageDiagram = "WorkflowPackages/Current/Diagram";

@@ -1,0 +1,288 @@
+@using System.Globalization
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 17; part 09 § 6.4, part 08 § 8): each run fact the package read with its raw value (the date with its zone
+    beside it), and under it every run spot that read it: the body's row key, the site and the formatted output. The spots are
+    gathered from every row's `runSpots` and from each macro row's own. A spot's output is in the row only when it reads raw
+    `run.*` facts; otherwise it is in the body's retained text, fetched when the person asks for it and sliced at the spot's
+    `start` and `length` (in runes), and after the 7-day drop the spot shows its output hash and A12-002. A spot of a
+    `blocked` deliverable is never fetched (R1): its hash alone, as for a macro's spot. Beside any body
+    whose run-neutral hash and sent-text hash differ, A12-003. Run facts are kept for the life of the record.
+*@
+@if (_facts.Count == 0)
+{
+    <p class="history31-run-facts__none">No run facts were read.</p>
+}
+else
+{
+    <ul class="history31-run-facts">
+        @foreach (var (name, value) in _facts)
+        {
+            <li class="history31-run-fact">
+                <code class="history31-run-fact__name">run.@name</code>
+                <span class="history31-run-fact__value">@value</span>
+                @Spots(_byFact[name])
+            </li>
+        }
+    </ul>
+}
+
+@foreach (var group in _otherReads)
+{
+    <div class="history31-run-reads">
+        <code class="history31-run-reads__name">@group.Key</code>
+        @Spots(group.Value)
+    </div>
+}
+
+@if (_bodies.Count > 0)
+{
+    <ul class="history31-run-bodies">
+        @foreach (var body in _bodies)
+        {
+            <li class="history31-run-body">
+                <code class="history31-run-body__key">@body.Key</code>
+                <span>sent text <code class="hash-text">@body.Sent</code></span>
+                <span>run-neutral <code class="hash-text">@body.Neutral</code></span>
+                @if (body.Differs)
+                {
+                    <span class="history31-run-body__differs">@HistorySentences31.RunFactsDiffer</span>
+                }
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ConsultGenerationJobResponse Detail { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Record31 Record { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public RowText31 Texts { get; set; } = default!;
+
+    private sealed record SpotView(string Id, string BodyKey, string RowKey, bool Macro, int? Site, string Reads, string? Output, string? OutputHash, bool Blocked);
+
+    private sealed record BodyView(string Key, string Sent, string Neutral, bool Differs);
+
+    private sealed class Reveal
+    {
+        public bool Open;
+        public bool Loading;
+        public string? Output;
+        public bool Dropped;
+        public bool Unavailable;
+    }
+
+    private readonly Dictionary<string, Reveal> _reveals = new(StringComparer.Ordinal);
+    private IReadOnlyList<(string Name, string Value)> _facts = [];
+    private Dictionary<string, List<SpotView>> _byFact = new(StringComparer.Ordinal);
+    private List<KeyValuePair<string, List<SpotView>>> _otherReads = [];
+    private IReadOnlyList<BodyView> _bodies = [];
+
+    /// <summary>The rows are read once per parameter set, not on every render.</summary>
+    protected override void OnParametersSet()
+    {
+        _facts = Detail.RunFacts is { } facts ? facts.Select(pair => (pair.Key, ValueOf(pair.Value))).ToList() : [];
+
+        var rows = BodyRows().ToList();
+        var spots = new List<SpotView>();
+        var bodies = new List<BodyView>();
+        foreach (var (key, row, json, macro) in rows)
+        {
+            var holder = new Row31(key, row.Section, json);
+            foreach (var spot in holder.List("runSpots"))
+            {
+                var one = new Row31(key, row.Section, spot);
+                spots.Add(new SpotView(one.Text("id") ?? $"{key}/spot:{spots.Count + 1}", key, row.Key, macro, one.Int("site"),
+                    one.Text("reads") ?? "", one.Text("output"), one.Text("outputHash"), IsBlocked(row.Key)));
+            }
+
+            if (BodyOf(key, holder, row.Section, macro) is { } body)
+            {
+                bodies.Add(body);
+            }
+        }
+
+        _bodies = bodies;
+        _byFact = new Dictionary<string, List<SpotView>>(StringComparer.Ordinal);
+        var claimed = new HashSet<SpotView>();
+        foreach (var (name, _) in _facts)
+        {
+            var reading = spots.Where(spot => Reads(spot.Reads, name)).ToList();
+            _byFact[name] = reading;
+            claimed.UnionWith(reading);
+        }
+
+        // a spot that reads something no listed fact is (a run-dependent value's path) is grouped by what it reads
+        _otherReads = spots.Where(spot => !claimed.Contains(spot))
+            .GroupBy(spot => spot.Reads, StringComparer.Ordinal)
+            .Select(group => KeyValuePair.Create(group.Key, group.ToList()))
+            .ToList();
+    }
+
+    // R1 (final review D1): a blocked deliverable's text is read only in its "Refused, not delivered" panel, so no spot of
+    // it fetches the retained text; an output the row itself holds (a raw run.* fact) stays.
+    private bool IsBlocked(string rowKey) =>
+        Record.Find(rowKey) is { Section: "deliverable" } row && row.Text("state") == "blocked";
+
+    private static bool Reads(string reads, string fact) =>
+        string.Equals(reads, $"run.{fact}", StringComparison.Ordinal) || reads.StartsWith($"run.{fact}.", StringComparison.Ordinal);
+
+    private static string ValueOf(JsonNode? node) => node switch
+    {
+        JsonObject { } fact when fact["value"] is JsonValue value =>
+            fact["timeZone"] is JsonValue zone ? $"{Plain(value)} ({Plain(zone)})" : Plain(value),
+        JsonValue { } value => Plain(value),
+        null => "null",
+        _ => node.ToJsonString(),
+    };
+
+    private static string Plain(JsonValue value) => value.TryGetValue<string>(out var text) ? text : value.ToJsonString();
+
+    /// <summary>Every row of the record that can hold a body: node, check and deliverable rows, and the macro rows inside them.</summary>
+    private IEnumerable<(string Key, Row31 Row, JsonElement Json, bool Macro)> BodyRows()
+    {
+        foreach (var row in Record.Nodes.Concat(Record.Checks).Concat(Record.Deliverables))
+        {
+            yield return (row.Key, row, row.Json, false);
+            foreach (var macro in row.List("macros"))
+            {
+                if (macro.ValueKind == JsonValueKind.Object)
+                {
+                    var key = macro.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString()! : row.Key;
+                    yield return (key, row, macro, true);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// A body with a run-neutral hash, beside its sent-text hash, which the row's kind decides: the prompt's <c>inputHash</c>
+    /// for an agent row, the produced content's <c>outputHash</c> for a rendered node, a deliverable's <c>composedHash</c>, a
+    /// macro's <c>contentHash</c>. A computed row is not a body (its hashes cover an expression and the values it read, not a
+    /// text with run spots; A12-003 speaks of text), so it is not listed. A row without both hashes says nothing.
+    /// </summary>
+    private static BodyView? BodyOf(string key, Row31 holder, string section, bool macro)
+    {
+        if (holder.Text("runNeutralHash") is not { } neutral)
+        {
+            return null;
+        }
+
+        var member = macro ? "contentHash"
+            : section == "deliverable" ? "composedHash"
+            : holder.Text("kind") switch { "agent" => "inputHash", "rendered" => "outputHash", _ => null };
+        if (member is null)
+        {
+            return null;
+        }
+
+        var sent = holder.Text(member);
+        return new BodyView(key, sent ?? "—", neutral, sent is not null && !string.Equals(sent, neutral, StringComparison.Ordinal));
+    }
+
+    private RenderFragment Spots(IReadOnlyList<SpotView> spots) => @<text>
+        @if (spots.Count > 0)
+        {
+            <ul class="history31-spots">
+                @foreach (var spot in spots)
+                {
+                    <li class="history31-spot">
+                        <RowLink31 Key="@spot.BodyKey" Class="history31-spot__body"><code>@spot.BodyKey</code></RowLink31>
+                        <span class="history31-spot__site">site @spot.Site</span>
+                        @if (spot.Output is { } output)
+                        {
+                            <span class="history31-spot__output">@output</span>
+                        }
+                        else if (!spot.Macro && !spot.Blocked)
+                        {
+                            // a macro's own spots have no retained text (the engine keeps the spots of the row's own body)
+                            var reveal = _reveals.GetValueOrDefault(spot.Id);
+                            <button type="button" class="history31-spot__show" aria-expanded="@(reveal is { Open: true } ? "true" : "false")"
+                                    @onclick="() => ToggleAsync(spot)">Show output</button>
+                            @if (reveal is { Open: true, Loading: false })
+                            {
+                                if (reveal.Output is { } text)
+                                {
+                                    <span class="history31-spot__output">@text</span>
+                                }
+                                else if (reveal.Dropped)
+                                {
+                                    <span class="history31-spot__dropped">@HistorySentences31.TextDeleted</span>
+                                }
+                                else if (reveal.Unavailable)
+                                {
+                                    <span class="history31-spot__unavailable" role="status">@HistorySentences31.RecordNotAvailable</span>
+                                }
+                            }
+                        }
+                        @if (spot.OutputHash is { Length: > 0 } hash)
+                        {
+                            <code class="hash-text history31-spot__hash">@hash</code>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    </text>;
+
+    /// <summary>
+    /// Opens or closes a spot's output. The first opening fetches the owning row's retained text once (through
+    /// <see cref="Texts"/>) and reads the spot's text from the row's <c>spots</c> map, which the engine cut at the spot's
+    /// position in the sent text; the page does no slicing of its own. A dropped text says A12-002; a row that is missing, a
+    /// fetch that fails, or a text with no entry for the spot says <see cref="HistorySentences31.RecordNotAvailable"/>, and the
+    /// next opening asks again. The output hash stays beside the spot throughout.
+    /// </summary>
+    private async Task ToggleAsync(SpotView spot)
+    {
+        if (!_reveals.TryGetValue(spot.Id, out var reveal))
+        {
+            _reveals[spot.Id] = reveal = new Reveal();
+        }
+
+        reveal.Open = !reveal.Open;
+        if (!reveal.Open || reveal.Output is not null || reveal.Dropped || reveal.Loading)
+        {
+            return;
+        }
+
+        reveal.Loading = true;
+        reveal.Unavailable = false;
+        try
+        {
+            var row = await Texts.Get(spot.RowKey);
+            if (row is { TextDeleted: true })
+            {
+                reveal.Dropped = true;
+            }
+            else if (row?.Text is { ValueKind: JsonValueKind.Object } text
+                && text.TryGetProperty("spots", out var spots) && spots.ValueKind == JsonValueKind.Object
+                && spots.TryGetProperty(spot.Id, out var output) && output.ValueKind == JsonValueKind.String)
+            {
+                reveal.Output = output.GetString();
+            }
+            else
+            {
+                reveal.Unavailable = true;
+            }
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception)
+        {
+            reveal.Unavailable = true;
+        }
+        finally
+        {
+            reveal.Loading = false;
+        }
+    }
+}

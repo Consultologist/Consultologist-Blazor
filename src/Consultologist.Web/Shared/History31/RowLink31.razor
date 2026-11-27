@@ -1,0 +1,31 @@
+@inject NavigationManager Navigation
+<a href="@Href" class="@Class" @onclick="Follow" @onclick:preventDefault="true">@ChildContent</a>
+
+@code {
+    /// <summary>The row, decision or sub-row id the link goes to (the fragment is <c>row-&lt;Key&gt;</c>).</summary>
+    [Parameter, EditorRequired]
+    public string Key { get; set; } = "";
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [CascadingParameter]
+    public RowLinks31? Links { get; set; }
+
+    private string Href => Links is { JobId: { Length: > 0 } jobId } ? $"/history/{Uri.EscapeDataString(jobId)}#row-{Key}" : $"#row-{Key}";
+
+    private void Follow()
+    {
+        if (Links?.Reveal(Key) == true)
+        {
+            return;
+        }
+
+        var current = Navigation.Uri;
+        var hash = current.IndexOf('#');
+        Navigation.NavigateTo((hash < 0 ? current : current[..hash]) + "#row-" + Key);
+    }
+}

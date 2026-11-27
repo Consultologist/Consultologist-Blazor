@@ -22,7 +22,8 @@ public class ExpectedDifferencesTests
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
         "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
         "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
-        "while-no-pass-separator", "macro-choice-classifier", "blank-conversion",
+        "while-no-pass-separator", "loop-item-not-run", "chosen-macro-final-line-ending", "empty-read-trailing-space",
+        "macro-choice-classifier", "blank-conversion",
     ];
 
     [Fact]
@@ -246,18 +247,20 @@ public class ExpectedDifferencesTests
     /// that format after 30's own text, which listed the same values ("Answer with exactly one of: …").
     /// </summary>
     [Fact]
-    public void SentFormat_ExplainsAClassifiersAnswerFormatAppendedToItsPrompt()
+    public void ADroppedAnswerLine_IsCreditedToSentFormat()
     {
-        const string At30 = "Decide whether the referral for Margaret Okafor is in scope.\n\nAnswer with exactly one of: in_scope, out_of_scope.";
+        const string Body = "Decide whether the referral for Margaret Okafor is in scope.";
+        const string At30 = Body + "\n\nAnswer with exactly one of: in_scope, out_of_scope.";
         const string Answers = """{"additionalProperties":false,"properties":{"value":{"enum":["in_scope","out_of_scope"],"type":"string"}},"required":["value"],"type":"object"}""";
-        const string At31 = At30 + "\n\n" + AgentTurn.CustomTrailer + "\n" + Answers;
+        const string At31 = Body + "\n\n" + AgentTurn.CustomTrailer + "\n" + Answers;
         Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, At30, At31, key31: "node.scope", key30: "scope")));
 
         // #1508 (comment 5, item 7, #3): a description sent with the answers' format.
         Assert.StartsWith("sent-format: ", Explain(Context(ComparedKind.Prompt, At30, At31.Replace("{\"additionalProperties\"", "{\"description\":\"One value.\",\"additionalProperties\"", StringComparison.Ordinal), key31: "node.scope")));
 
-        // Near: other values, or another order, than 30 listed; 30 listed none; a format that is not the answers' shape (a
+        // Near: a 30 text that does not end with the line; other values, or another order, than 30 listed; 30 listed none; a format that is not the answers' shape (a
         // title sent, another member); the text before it differs; a deliverable.
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30 + " More.", At31, key31: "node.scope")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("\"out_of_scope\"]", "\"needs_information\"]", StringComparison.Ordinal), key31: "node.scope")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, At30, At31.Replace("[\"in_scope\",\"out_of_scope\"]", "[\"out_of_scope\",\"in_scope\"]", StringComparison.Ordinal), key31: "node.scope")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "Decide.", "Decide.\n\n" + AgentTurn.CustomTrailer + "\n" + Answers, key31: "node.scope")));
@@ -410,6 +413,16 @@ public class ExpectedDifferencesTests
         const string Rendered = "Repeat the echo in 6 months.\nThe braces {{ and }} stay literal.";
         var run = Run(RunState.Completed, outputs: new() { ["node.plan_gate.draft_plan"] = Reply });
         Assert.StartsWith("reply-never-a-template: ", Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan", run)));
+
+        // The reply as a migrated deliverable reads it, stripped (#1508, 2026-11-26, item 3: `| string.strip` on each source):
+        // the reply served ends with a line ending, which neither text holds.
+        var served = Run(RunState.Completed, outputs: new() { ["node.plan_gate.draft_plan"] = "# Plan\n\n" + Reply + "\n" });
+        var stripped = ExpectedDifferences.Credit(SourcesContext(ComparedKind.Deliverable, "# Plan\n\n" + Rendered, "# Plan\n\n" + Reply, "deliverable.plan", served));
+        Assert.Equal(["reply-never-a-template"], stripped.Rules.Select(r => r.Id));
+        Assert.True(stripped.Expected);
+
+        // Near: the reply served is stripped at 31, but 30's text kept something else than the reply rendered and stripped.
+        Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Deliverable, "# Plan\n\nSomething else kept.", "# Plan\n\n" + Reply, "deliverable.plan", served)));
 
         // Near: a reply the run did not serve; 30's text is not the rendered reply (another number); a reply that does not
         // render at 30 (a variable its scope lacks), written the same at 31.
@@ -599,7 +612,186 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(SourcesContext(ComparedKind.Prompt, "Opening line.", "\n\nOpening line.", "node.closing", noPass)));
     }
 
+    [Fact]
+    public async Task ALoopItemThatDidNotRun_IsExpected()
+    {
+        // #1508, 2026-11-26, item 4 (Q4 stands): edge-items-not-run's loop has three items and max 2. 30's template loop
+        // wrote its fixed text for the third with its reads empty; 31's R16 guard writes nothing for it. The deliverable reads
+        // the rendered node as Markdown, so its plain text is escaped as well.
+        var (_, _, texts) = await EquivalenceFixture.Compared("edge-items-not-run", "third-problem-not-run");
+        var render = texts.Single(t => t.Site == "edge-items-not-run/third-problem-not-run#renders/node.problem_lines");
+        var deliverable = texts.Single(t => t.Site == "edge-items-not-run/third-problem-not-run#deliverables/deliverable.problem_list");
+        Assert.Equal((false, true, false), (render.Equal, render.Expected, render.Unexplained));
+        Assert.Equal(["loop-item-not-run"], render.Rules);
+        Assert.Equal((false, true, false), (deliverable.Equal, deliverable.Expected, deliverable.Unexplained));
+        Assert.Equal(["escaped-plain-text", "loop-item-not-run"], deliverable.Rules);
+    }
+
+    [Fact]
+    public void ALoopItemThatDidNotRun_DoesNotExplainANearPair()
+    {
+        // Hand-made pairs on edge-items-not-run's plan: problem_lines guards each item of problem_loop on its state.
+        const string Ran = "- Type 2 diabetes: Diabetes paragraph.\n- Metformin continued: Medication paragraph.\n";
+        const string Third = "- Blood pressure of 148/92: \n";
+        var notRun = ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun);
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, Ran + Third, Ran, "node.problem_lines", notRun)));
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, Third + Ran, Ran, "node.problem_lines", notRun)));
+
+        // A 30-only line that lacks the guarded body's literal text ("- ", ": ").
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + "Blood pressure of 148/92\n", Ran, "node.problem_lines", notRun)));
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + "Blood pressure: 148/92 -\n", Ran, "node.problem_lines", notRun)));
+
+        // Every item of the loop completed.
+        var allRan = ItemsRun(RowState.Completed, RowState.Completed, RowState.Completed);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + Third, Ran, "node.problem_lines", allRan)));
+
+        // One item did not run, but 30 has two lines only it wrote, apart.
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Third + Ran + Third, Ran, "node.problem_lines", notRun)));
+
+        // A template loop that is not the migration's guarded form credits nothing.
+        var unguarded = EquivalenceFixture.Migrated("edge-items-not-run");
+        var files = new Dictionary<string, string>(unguarded.Files, StringComparer.Ordinal);
+        var lines = files["nodes/problem_lines.md"];
+        files["nodes/problem_lines.md"] = lines.Replace("{{ if e.state == \"completed\" }}", "", StringComparison.Ordinal).Replace("{{ else }}{{ end }}", "", StringComparison.Ordinal);
+        Assert.NotEqual(lines, files["nodes/problem_lines.md"]);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, Ran + Third, Ran, "node.problem_lines", notRun, unguarded with { Files = files })));
+
+        // A status is never explained.
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Status, "Completed", "Failed", null, notRun)));
+    }
+
+    // ---- final review B1: the rule credits only an item's fixed text with its result reads empty ----
+
+    private const string ItemsRan = "- Type 2 diabetes: Diabetes paragraph.\n- Metformin continued: Medication paragraph.\n";
+
+    [Fact]
+    public void ALoopItemThatDidNotRun_DoesNotExplainA30OnlyLineWithAResult()
+    {
+        // (a) the line 31 would lack if it skipped an item 30 ran: its result read is not empty
+        var notRun = ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: Blood pressure paragraph.\n", ItemsRan, "node.problem_lines", notRun)));
+    }
+
+    [Fact]
+    public void ALoopItemThatDidNotRun_CountsEachItemInARun()
+    {
+        // (b) two items' fixed text in one run of 30-only lines, one item not run: refused; two not run: credited
+        const string Two = "- Blood pressure of 148/92: \n- Weight 82 kg: \n";
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + Two, ItemsRan, "node.problem_lines",
+            ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun))));
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, ItemsRan + Two, ItemsRan, "node.problem_lines",
+            ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun, RowState.NotRun))));
+    }
+
+    [Fact]
+    public void ALoopItemThatFailed_IsNotCredited()
+    {
+        // (c) the ruling covers an item past its max or with its body skipped, not one that failed or was cancelled
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: \n", ItemsRan, "node.problem_lines",
+            ItemsRun(RowState.Completed, RowState.Completed, RowState.Failed))));
+    }
+
+    [Fact]
+    public void ALoopItemWhoseBodyWasSkipped_IsCredited_WithItsResultEmptyOnly()
+    {
+        var skipped = ItemsRun(RowState.Completed, RowState.Completed, RowState.Skipped);
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: \n", ItemsRan, "node.problem_lines", skipped)));
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: Blood pressure paragraph.\n", ItemsRan, "node.problem_lines", skipped)));
+    }
+
+    [Fact]
+    public void ALoopItemNotRun_CountsOnlyTheLoopsOwnItemRows()
+    {
+        // a row one item path deeper (an inner loop's instance, keyed by the loop's own entry) is not one of its items
+        var deeper = Run(RunState.Completed, rows:
+        [
+            Row("node.problem_loop:1", PlanKind.For, RowState.Completed), Row("node.problem_loop:2", PlanKind.For, RowState.Completed),
+            Row("node.problem_loop:3", PlanKind.For, RowState.Completed), Row("node.problem_loop:3/1", PlanKind.For, RowState.NotRun),
+        ]);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: \n", ItemsRan, "node.problem_lines", deeper)));
+    }
+
+    [Fact]
+    public async Task AChosenMacrosFinalLineEnding_IsExpected()
+    {
+        // #1508, 2026-11-26, item 5 (no migration change): follow_up, a macro the model chose (R13), ends its body in a line
+        // ending, which 31 drops as it renders a body (R5), where 30 wrote the body whole where the reply's marker stood.
+        var (_, _, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
+        var letter = texts.Single(t => t.Site == "edge-unruled-whitespace/default#deliverables/deliverable.letter");
+        Assert.Equal((false, true, false), (letter.Equal, letter.Expected, letter.Unexplained));
+        Assert.Equal(["chosen-macro-final-line-ending"], letter.Rules);
+    }
+
+    [Fact]
+    public void AChosenMacrosFinalLineEnding_DoesNotExplainANearPair()
+    {
+        // Hand-made pairs on edge-unruled-whitespace's plan (its hand edits made).
+        const string Opening = "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol.\n";
+        const string FollowUp = "A follow-up visit is booked in three months.";
+        Assert.StartsWith("chosen-macro-final-line-ending: ", Explain(WhitespaceContext(
+            Opening + FollowUp + "\n\nYours sincerely, Dr A. Sample", Opening + FollowUp + "\nYours sincerely, Dr A. Sample", "deliverable.letter")));
+
+        // A line ending lost after text that is no chosen macro's body.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(
+            Opening + "\n" + FollowUp + "\nYours sincerely, Dr A. Sample", Opening + FollowUp + "\nYours sincerely, Dr A. Sample", "deliverable.letter")));
+
+        // More than one line ending lost after the body.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(
+            Opening + FollowUp + "\n\n\nYours sincerely, Dr A. Sample", Opening + FollowUp + "\nYours sincerely, Dr A. Sample", "deliverable.letter")));
+
+        // A macro the engine placed: problem_close's line ending lost is not this rule's; its kept white space (R5) is still
+        // macro-trailing-whitespace's.
+        const string Close = "Diabetes paragraph: HbA1c 71 mmol/mol.\nReviewed today (fictional).";
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(Close + "\n\n## Problem list 2", Close + "\n## Problem list 2", "deliverable.problems")));
+        var kept = ExpectedDifferences.Credit(WhitespaceContext(Close + "\n\n## Problem list 2", Close + "\n\n\n\n## Problem list 2", "deliverable.problems"));
+        Assert.True(kept.Expected);
+        Assert.Equal(["macro-trailing-whitespace"], kept.Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task AnEmptyReadsTrailingSpace_IsExpected()
+    {
+        // #1508, 2026-11-26, item 5 (no migration change): clinic_line, a 30 macro written as a snippet (D4), ends its line
+        // with a read of the unset clinic; 31's snippet keeps "Seen at: " where 30 trimmed the rendered macro. problem_close's
+        // white space in the same deliverable is R5's and the engine placement's, credited beside it.
+        var (_, _, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
+        var problems = texts.Single(t => t.Site == "edge-unruled-whitespace/default#deliverables/deliverable.problems");
+        Assert.Equal((false, true, false), (problems.Equal, problems.Expected, problems.Unexplained));
+        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+    }
+
+    [Fact]
+    public void AnEmptyReadsTrailingSpace_DoesNotExplainANearPair()
+    {
+        // Hand-made pairs on edge-unruled-whitespace's plan: deliverable.problems places the snippet clinic_line,
+        // "Seen at: {{ input.clinic.content }}"; deliverable.letter places none.
+        Assert.StartsWith("empty-read-trailing-space: ", Explain(WhitespaceContext("Seen at:\n\n## Problem list 1", "Seen at: \n\n## Problem list 1", "deliverable.problems")));
+        Assert.StartsWith("empty-read-trailing-space: ", Explain(WhitespaceContext("Seen at:", "Seen at: ", "deliverable.problems")));
+
+        // A trailing space after literal text, not a read.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext(
+            "Seen at:\n\nDiabetes paragraph.\n", "Seen at:\n\nDiabetes paragraph. \n", "deliverable.problems")));
+
+        // A space 31 has inside a line; a row that places no such snippet.
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext("Seen at:Clinic A\n", "Seen at: Clinic A\n", "deliverable.problems")));
+        Assert.Null(ExpectedDifferences.Explain(WhitespaceContext("Seen at:\n\nYours", "Seen at: \n\nYours", "deliverable.letter")));
+    }
+
     // ---- helpers ---------------------------------------------------------------------------------------------
+
+    /// <summary>A deliverable of edge-unruled-whitespace (its hand edits made), so its own plan is read.</summary>
+    private static DifferenceContext WhitespaceContext(string old, string now, string key31) =>
+        new("edge-unruled-whitespace", "default", $"edge-unruled-whitespace/default#deliverables/{key31}", ComparedKind.Deliverable, null, key31, old, now,
+            Capture("Completed", null), Run(RunState.Completed), EquivalenceFixture.Migrated("edge-unruled-whitespace"), EquivalenceFixture.Plan("edge-unruled-whitespace"));
+
+    /// <summary>A 31 run of edge-items-not-run whose problem_loop items ended as <paramref name="states"/>, in order.</summary>
+    private static OfflineResult ItemsRun(params RowState[] states) =>
+        Run(RunState.Completed, rows: [.. states.Select((s, i) => Row($"node.problem_loop:{i + 1}", PlanKind.For, s))]);
+
+    /// <summary>A context on edge-items-not-run (its hand edits made), so its own plan is read.</summary>
+    private static DifferenceContext ItemsContext(ComparedKind kind, string old, string now, string? key31, OfflineResult run, Migration31Result? migrated = null) =>
+        new("edge-items-not-run", "third-problem-not-run", $"edge-items-not-run/third-problem-not-run#{key31 ?? "status"}", kind, null, key31, old, now,
+            Capture("Completed", null), run, migrated ?? EquivalenceFixture.Migrated("edge-items-not-run"), EquivalenceFixture.Plan("edge-items-not-run"));
 
     // ---- macro-choice-classifier (#1508, comment 6, items 1 and 2; R13, R14) ------------------------------------
 

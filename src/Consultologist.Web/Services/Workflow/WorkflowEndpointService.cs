@@ -13,6 +13,10 @@ public interface IWorkflowEndpointService
     Task<WorkflowPackageResponse> GetCurrentPackageAsync();
     /// <summary>The pinned package, or a named one since #411 split editing from pinning.</summary>
     Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null);
+    /// <summary>#1509 (D1): the account checks a start would refuse with, asked before a start (the signature pick, when one is made,
+    /// is the one the start will send). A 400 (a package that could not be loaded) throws <see cref="HttpRequestException"/> carrying its
+    /// <c>error</c>.</summary>
+    Task<WorkflowPackageStartChecksResponse> GetStartChecksAsync(string? packageRef = null, string? signatureBlockId = null);
     Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request);
     /// <summary>#858: server-side import — POST the uploaded .zip, get back normalized content and
     /// full catalog-backed findings. Null when the endpoint is unavailable (the editor falls back to
@@ -133,7 +137,11 @@ public record WorkflowPackageInputResponse(
     string? ExpectedContent = null,
     // v14 (#729): a union input's accepted types, in try order (Type is the
     // primary/first arm the setup form renders). Null for a single-type input.
-    IReadOnlyList<string>? Types = null);
+    IReadOnlyList<string>? Types = null,
+    // #1509 (specVersion 31, area 12; part 09 § 4.3): the input's format as a
+    // self-contained schema, and its channel. Null below 31.
+    JsonElement? Format = null,
+    string? Channel = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageFieldResponse.</summary>
 public record WorkflowPackageFieldResponse(
@@ -371,6 +379,9 @@ public record WorkflowPackageResponse(
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageMacroResponse (v12 § 3).</summary>
 public record WorkflowPackageMacroResponse(string Id, string Label, bool Default);
 
+/// <summary>#1509 (D1): mirrors the Api's WorkflowPackageStartChecksResponse: the sentences a start would be refused with, and <c>needs.profile</c>.</summary>
+public record WorkflowPackageStartChecksResponse(IReadOnlyList<string> Refusals, IReadOnlyList<string> NeedsProfile);
+
 /// <summary>
 /// The editor's load half. The manifest rides as an opaque JsonElement: the
 /// texts-only editor never modifies it, and round-tripping it verbatim to the
@@ -383,12 +394,14 @@ public record WorkflowPackageContentResponse(
     int SpecVersion,
     JsonElement Manifest,
     Dictionary<string, string> Files,
-    // #1508 (specVersion 31, area 11): mirrors the Api's trailing members; unused here until area 12.
+    // #1508 (specVersion 31, area 11): mirrors the Api's trailing members; the Editor and History read them (Tasks 16, 23).
     JsonElement? Resolve = null,
     JsonElement? Lock = null,
     JsonElement? PublishReport = null,
     string? MigratedFrom = null,
-    IReadOnlyList<string>? Notices = null)
+    IReadOnlyList<string>? Notices = null,
+    // #1509 (area 12; D10): the migrated version's stored migration-report.json; the Editor and History read it (Tasks 16, 24).
+    JsonElement? MigrationReport = null)
 {
     public string Ref => $"{Name}@{Version}";
 }
@@ -416,12 +429,16 @@ public record WorkflowPackagePublishResponse(
     string Name,
     string Version,
     string Ref,
-    List<string>? Warnings = null);
+    List<string>? Warnings = null,
+    // #1509 (specVersion 31, area 12): the publish report in full; null below 31.
+    JsonElement? Report = null);
 
 /// <summary>Success carries the response; failure carries the endpoint's error list for inline display.</summary>
 public record WorkflowPublishOutcome(
     WorkflowPackagePublishResponse? Response,
-    IReadOnlyList<string> Errors)
+    IReadOnlyList<string> Errors,
+    // #1509 (Task 24; D11): a 31 publish's report, published or refused (a 400 carries it beside its errors); null below 31.
+    JsonElement? Report = null)
 {
     public bool Succeeded => Response != null;
 }
@@ -435,7 +452,9 @@ public record WorkflowPublishOutcome(
 public record WorkflowIngestOutcome(
     WorkflowPackageContentResponse? Content,
     IReadOnlyList<string> Findings,
-    string? Error)
+    string? Error,
+    // #1509 (area 12, Task 23; D14): a refused 31 import's every sentence (the Api's `errors`); null when it sent none.
+    IReadOnlyList<string>? Errors = null)
 {
     public bool Parsed => Content != null;
 }
@@ -481,6 +500,12 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
                 response.StatusCode,
                 errorContent);
 
+            // #1509 (Task 11): a 400 is a 31 load refusal (requires, lock, S09-001); its sentence is the message, said as written.
+            if (response.StatusCode == HttpStatusCode.BadRequest && ErrorOf(errorContent) is { } refusal)
+            {
+                throw new HttpRequestException(refusal, null, response.StatusCode);
+            }
+
             throw new HttpRequestException($"Workflow package endpoint failed: {response.StatusCode}");
         }
 
@@ -511,6 +536,56 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             ?? throw new InvalidOperationException("Failed to deserialize workflow package content response.");
     }
 
+    public async Task<WorkflowPackageStartChecksResponse> GetStartChecksAsync(string? packageRef = null, string? signatureBlockId = null)
+    {
+        var url = WithPackageRef(_locations.Url(ApiRoutes.WorkflowPackageStartChecks), packageRef);
+        if (!string.IsNullOrWhiteSpace(signatureBlockId))
+        {
+            url += (url.Contains('?', StringComparison.Ordinal) ? '&' : '?') + $"signatureBlockId={Uri.EscapeDataString(signatureBlockId)}";
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError(
+                "Workflow package start checks endpoint failed with status {StatusCode}: {Error}",
+                response.StatusCode,
+                errorContent);
+
+            var error = response.StatusCode == HttpStatusCode.BadRequest ? ErrorOf(errorContent) : null;
+            throw new HttpRequestException(
+                error ?? $"Workflow package start checks endpoint failed: {response.StatusCode}",
+                null,
+                response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<WorkflowPackageStartChecksResponse>()
+            ?? throw new InvalidOperationException("Failed to deserialize workflow package start checks response.");
+    }
+
+    /// <summary>The <c>error</c> of a <c>{ error }</c> body, or null when it is not one.</summary>
+    private static string? ErrorOf(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.String
+                ? error.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     public async Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request)
     {
         var publishUrl = _locations.Url(ApiRoutes.WorkflowPackagePublish);
@@ -526,7 +601,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
         {
             var published = await response.Content.ReadFromJsonAsync<WorkflowPackagePublishResponse>()
                 ?? throw new InvalidOperationException("Failed to deserialize publish response.");
-            return new WorkflowPublishOutcome(published, Array.Empty<string>());
+            return new WorkflowPublishOutcome(published, Array.Empty<string>(), published.Report);
         }
 
         // 400/403 carry { errors: [...] } for inline display; anything else is a
@@ -536,7 +611,8 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             var payload = await response.Content.ReadFromJsonAsync<PublishErrorPayload>();
             return new WorkflowPublishOutcome(
                 null,
-                payload?.Errors is { Count: > 0 } ? payload.Errors : new List<string> { $"Publish failed: {response.StatusCode}" });
+                payload?.Errors is { Count: > 0 } ? payload.Errors : new List<string> { $"Publish failed: {response.StatusCode}" },
+                payload?.Report);
         }
 
         var errorContent = await response.Content.ReadAsStringAsync();
@@ -859,7 +935,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             if (response.StatusCode == HttpStatusCode.BadRequest)
             {
                 var error = await response.Content.ReadFromJsonAsync<IngestErrorPayload>();
-                return new WorkflowIngestOutcome(null, new List<string>(), error?.Error ?? "That file could not be imported.");
+                return new WorkflowIngestOutcome(null, new List<string>(), error?.Error ?? "That file could not be imported.", error?.Errors);
             }
 
             // Anything else (endpoint not deployed yet, 5xx, auth-shape issues):
@@ -880,7 +956,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     private sealed record IngestPayload(WorkflowPackageContentResponse? Content, List<string>? Findings);
 
-    private sealed record IngestErrorPayload(string? Error);
+    private sealed record IngestErrorPayload(string? Error, List<string>? Errors = null);
 
     private sealed record DiagramPayload(string? Diagram);
 
@@ -890,7 +966,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     private sealed record CatalogPointer(string? Version);
 
-    private sealed record PublishErrorPayload(List<string>? Errors);
+    private sealed record PublishErrorPayload(List<string>? Errors, string? Error = null, JsonElement? Report = null);
 
     /// <summary>
     /// Appends the package ref the caller wants, or leaves the URL alone. Null

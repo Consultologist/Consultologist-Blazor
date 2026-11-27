@@ -112,6 +112,9 @@ public sealed class ConsultGenerationJobs
     // #1506 (D16): a 31 job's stored rows, listed to announce each as row-finished; optional, so a host or a test without
     // one materialises as before. Read for record storage 12 only.
     private readonly V31.IRecordRowStore? _recordRows;
+    // #1509 (D8): a 31 job's held inputs are the run-inputs document, not a 5–30 job's JobInputsPayload; optional, so a host or
+    // a test without one reads a 5–30 job's as before.
+    private readonly V31.IRunInputsStore? _runInputs;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
@@ -125,8 +128,10 @@ public sealed class ConsultGenerationJobs
         IJobInputsBlobStore inputsStore,
         IConsultGenerationLinkStore linkStore,
         V31.RecordSealers? recordSealers = null,
-        V31.IRecordRowStore? recordRows = null)
+        V31.IRecordRowStore? recordRows = null,
+        V31.IRunInputsStore? runInputs = null)
     {
+        _runInputs = runInputs;
         _recordSealers = recordSealers;
         _recordRows = recordRows;
         _logger = logger;
@@ -609,29 +614,19 @@ public sealed class ConsultGenerationJobs
             return await CreateJsonResponseAsync(req, HttpStatusCode.Conflict, new { error = refusal }, cancellationToken);
         }
 
-        // A live pointer whose blob is gone is a broken invariant — loud, as
-        // the read choke point throws, never a quiet unheld fallback.
-        var payload = await _inputsStore.ReadAsync(response.InputsBlob!, cancellationToken);
-        if (payload?.Supplied == null)
-        {
-            throw new InvalidOperationException($"Inputs blob missing for job {jobId}.");
-        }
+        var request = await RerunRequestAsync(response, cancellationToken);
 
-        var origin = new ConsultGenerationJobOrigin(
-            // The issue's word: a rerun is an app action wherever the source
-            // came from, delivered to the account's verified address (#486),
-            // with the email choice read afresh (#518).
-            ConsultGenerationJobSources.App,
+        // The issue's word: a rerun is an app action wherever the source
+        // came from, delivered to the account's verified address (#486),
+        // with the email choice read afresh (#518).
+        var origin = RerunOriginFor(
+            jobId, response,
             ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)),
-            EmailRequested: await EmailRequestedAsync(account.AppUserId, cancellationToken),
-            RerunOfJobId: jobId,
-            // #582: the verdict's evidence, taken here while the source is in
-            // hand — its hashes are immutable once Completed.
-            RerunBaseline: BaselineFrom(jobId, response));
+            await EmailRequestedAsync(account.AppUserId, cancellationToken));
 
         var outcome = await _jobStarter.StartAsync(
             client,
-            RerunRequestFrom(response, payload),
+            request,
             account.AppUserId,
             origin,
             cancellationToken);
@@ -656,6 +651,62 @@ public sealed class ConsultGenerationJobs
             new { jobId = outcome.JobId, sourceJobId = jobId },
             cancellationToken);
     }
+
+    /// <summary>
+    /// The request a rerun of <paramref name="response"/> starts: the held inputs under the record's exact package ref. A
+    /// live pointer whose blob is gone is a broken invariant — loud, as the read choke point throws, never a quiet unheld
+    /// fallback. #1509 (D8): a 31 job's held inputs are its run-inputs document; its values are read from there, its profile
+    /// half never, and the signature pick it recorded (<c>signatureChosen: job</c>) is the block the rerun asks for.
+    /// </summary>
+    internal async Task<ConsultGenerationRequest> RerunRequestAsync(ConsultGenerationJobResponse response, CancellationToken cancellationToken)
+    {
+        if (IsRecordStorage12(response))
+        {
+            var document = _runInputs == null ? null : await _runInputs.ReadAsync(response.InputsBlob!, cancellationToken);
+            return document == null
+                ? throw new InvalidOperationException($"Inputs blob missing for job {response.JobId}.")
+                : RerunRequestFrom(response, document);
+        }
+
+        var payload = await _inputsStore.ReadAsync(response.InputsBlob!, cancellationToken);
+        return payload?.Supplied == null
+            ? throw new InvalidOperationException($"Inputs blob missing for job {response.JobId}.")
+            : RerunRequestFrom(response, payload);
+    }
+
+    /// <summary>
+    /// The origin a rerun of <paramref name="source"/> starts with: an app action, the source id and its baseline (#549, #582).
+    /// #1509 (D8; part 08 § 5.1): for a 31 source, also the source's origins of the inputs that held an earlier run's text, by
+    /// input id and whole (an array's elements stay aligned), so the rerun's record repeats them with their original job and
+    /// deliverable and the text stays model-derived. Server-side only: no request member carries them.
+    /// </summary>
+    internal static ConsultGenerationJobOrigin RerunOriginFor(
+        string sourceJobId, ConsultGenerationJobResponse source, string? replyToAddress, bool emailRequested) =>
+        new(
+            ConsultGenerationJobSources.App,
+            replyToAddress,
+            EmailRequested: emailRequested,
+            RerunOfJobId: sourceJobId,
+            RerunBaseline: RerunBaselineFor(sourceJobId, source),
+            InheritedInputOrigins: IsRecordStorage12(source) ? PreviousRunOriginsOf(source) : null);
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? PreviousRunOriginsOf(ConsultGenerationJobResponse source) =>
+        source.InputOrigins?
+            .Where(pair => pair.Value.Any(o => o.Kind == ConsultInputOriginKinds.PreviousRun && o.SourceJobId != null))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+    /// <summary>#1509 (D8): whether the job's record is a 31 job's (record storage 12), whose held inputs are a run-inputs document.</summary>
+    internal static bool IsRecordStorage12(ConsultGenerationJobResponse response) =>
+        response.SchemaVersion >= V31.RecordSealer.SealedFrom;
+
+    /// <summary>
+    /// The baseline a rerun of <paramref name="source"/> records: <see cref="BaselineFrom"/> for a 5–30 job. A 31 job's
+    /// rerun is compared by no verdict and no divergence (D8): its baseline names the source and holds no hashes.
+    /// </summary>
+    internal static ConsultRerunBaseline RerunBaselineFor(string sourceJobId, ConsultGenerationJobResponse source) =>
+        IsRecordStorage12(source)
+            ? new ConsultRerunBaseline(sourceJobId, null, null, new Dictionary<string, ConsultRerunBaselineNode>(StringComparer.Ordinal))
+            : BaselineFrom(sourceJobId, source);
 
     /// <summary>
     /// Why this job may not be rerun, or null when it may. Completed runs
@@ -766,6 +817,18 @@ public sealed class ConsultGenerationJobs
                 pair => pair.Key,
                 pair => ConsultInputValue.FromJson(pair.Value),
                 StringComparer.Ordinal));
+
+    /// <summary>
+    /// #1509 (D8): the rebuild of a 31 job: the document's values as typed values, under the record's own package ref, and
+    /// the signature block the source recorded as picked for the job (<c>signatureChosen: job</c>; a default pick is made
+    /// afresh by the account, as it was). The profile half of the document is never read into a request.
+    /// </summary>
+    internal static ConsultGenerationRequest RerunRequestFrom(ConsultGenerationJobResponse source, System.Text.Json.Nodes.JsonObject document) =>
+        new(
+            ConsultDraft: null,
+            WorkflowPackage: source.WorkflowPackage,
+            Inputs: V31.RunInputsDocument.ValuesOf(document).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+            SignatureBlockId: string.Equals(source.SignatureChosen, "job", StringComparison.Ordinal) ? source.SignatureBlockId : null);
 
     /// <summary>
     /// The same horizon the start endpoint enforces, so a reschedule cannot put
@@ -1728,7 +1791,19 @@ public sealed class ConsultGenerationJobs
         // #547: the held inputs, while held — what History shows. The same
         // broken-invariant posture as outputs: a live pointer with no blob
         // is loud, never silently absent inputs.
-        if (response.InputsBlob != null && response.InputsDroppedAtUtc == null)
+        if (response.InputsBlob != null && response.InputsDroppedAtUtc == null && IsRecordStorage12(response))
+        {
+            // #1509 (D8): a 31 job's held inputs, as the 5–30 response shows its own: each input's text, a structured value as its JSON.
+            var document = _runInputs == null ? null : await _runInputs.ReadAsync(response.InputsBlob, cancellationToken);
+            response = document == null
+                ? throw new InvalidOperationException($"Inputs blob missing for job {response.JobId}.")
+                : response with
+                {
+                    HeldInputs = V31.RunInputsDocument.ValuesOf(document)
+                        .ToDictionary(pair => pair.Key, pair => ConsultGenerationJobStarter.ResolverForm(pair.Value), StringComparer.Ordinal),
+                };
+        }
+        else if (response.InputsBlob != null && response.InputsDroppedAtUtc == null)
         {
             var held = await _inputsStore.ReadAsync(response.InputsBlob, cancellationToken);
             response = held == null

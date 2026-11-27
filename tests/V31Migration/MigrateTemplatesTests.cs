@@ -40,6 +40,18 @@ public class MigrateTemplatesTests
     }
 
     [Fact]
+    public void AWholeDateInput_IsWrittenIn30sForm()
+    {
+        var conditional = MigrateNodesTests.Migrated("example-conditional-documents");
+        Assert.Contains("Encounter date: {{ input.seen_on.value | date.to_string \"%d %b %Y\" }}",
+            MigrateNodesTests.Md(conditional, "nodes/sections_consult_note_section/consult_note_section.md").Body, StringComparison.Ordinal);
+
+        var v12 = MigrateNodesTests.Migrated("example-v12-constructs");
+        Assert.Contains("{{ input.seen_on.value | date.to_string \"%d %b %Y\" }}.",
+            MigrateNodesTests.Md(v12, "nodes/patient_header.md").Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SnippetBodies_AndFolderItems_AreRewritten()
     {
         var m = Templated("example-macros");

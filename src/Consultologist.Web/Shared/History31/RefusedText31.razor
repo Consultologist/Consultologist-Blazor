@@ -1,0 +1,74 @@
+@using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 20; R1, ruled by the owner on #1507, item 3): the text of a deliverable its check refused (`blocked`), under
+    the heading "Refused, not delivered", with the check that refused it (a link to its row), the check's failWith and the
+    deliverable's sentence (S06-033/S06-037 from its stateReason). The text is shown while it is retained; after the drop the
+    heading, the composed hash and A12-002 remain. The panel offers no copy control, cannot be selected (`user-select: none`
+    in its scoped CSS) and refuses the copy and cut events, so nobody copies it out by habit. There is no release button at
+    31 (#1524, Milestone 40).
+*@
+<section class="history31-refused" aria-labelledby="@HeadingId" @oncopy:preventDefault="true" @oncut:preventDefault="true">
+    <h4 class="history31-refused__heading" id="@HeadingId">@HistorySentences31.RefusedHeading</h4>
+    @if (Deliverable.Text("check") is { Length: > 0 } check)
+    {
+        <p class="history31-refused__check">
+            Check <RowLink31 Key="@check">@CheckId(check)</RowLink31>@if (Check?.Text("failWith") is { Length: > 0 } failWith)
+            {
+                <text>: </text><span class="history31-refused__fail-with">@failWith</span>
+            }
+        </p>
+    }
+    <p class="history31-refused__reason">@HistorySentences31.Blocked(Label, Deliverable.Text("stateReason"))</p>
+    @if (Fetched is { TextDeleted: true })
+    {
+        <p class="history31-refused__dropped">
+            @Hash
+            @HistorySentences31.TextDeleted
+        </p>
+    }
+    else if (RowText31.Content(Fetched) is { } text)
+    {
+        <pre class="history31-refused__text">@text</pre>
+    }
+    else
+    {
+        <p class="history31-refused__hashes">
+            @Hash
+            @if (FetchFailed)
+            {
+                <span class="history31-refused__unavailable">@HistorySentences31.RecordNotAvailable</span>
+            }
+        </p>
+    }
+</section>
+
+@code {
+    /// <summary>The blocked deliverable's row.</summary>
+    [Parameter, EditorRequired]
+    public Row31 Deliverable { get; set; } = default!;
+
+    /// <summary>The row of the check that refused it, when the record holds it.</summary>
+    [Parameter]
+    public Row31? Check { get; set; }
+
+    /// <summary>The deliverable's fetched row; null before it is fetched or when it could not be.</summary>
+    [Parameter]
+    public RecordRowText? Fetched { get; set; }
+
+    [Parameter]
+    public bool FetchFailed { get; set; }
+
+    /// <summary>The composed hash, kept for the life of the record; nothing when the row holds none.</summary>
+    private RenderFragment Hash => @<text>@if (Deliverable.Text("composedHash") is { Length: > 0 } hash)
+        {
+            <code class="hash-text history31-refused__hash">@hash</code>
+        }</text>;
+
+    private string HeadingId => $"row-{Deliverable.Key}-refused";
+
+    private string Label => Deliverable.Text("label") is { Length: > 0 } label ? label : Deliverable.Key;
+
+    /// <summary>A check's id as the sentences name it: its key without the root (<c>check.gate</c> is <c>gate</c>).</summary>
+    internal static string CheckId(string key) => RowKey31.Parse(key) is { Root: "check", Path: { Length: > 0 } path } ? path : key;
+}

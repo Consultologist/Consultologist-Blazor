@@ -1,3 +1,4 @@
+using System.Net;
 using Consultologist.Web.Services.Locations;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -337,6 +338,13 @@ public sealed class AccountEndpointService : IAccountEndpointService
                 "Account setting save endpoint failed with status {StatusCode}: {Error}",
                 response.StatusCode,
                 errorContent);
+
+            // #1509 (Tasks 21, 22): the Api refuses a Letter details value over its limit and a time zone it does not
+            // know with a 400 whose text names the key and the limit, never the value; it is carried as written.
+            if (response.StatusCode == HttpStatusCode.BadRequest && !string.IsNullOrWhiteSpace(errorContent))
+            {
+                throw new HttpRequestException(errorContent.Trim(), null, HttpStatusCode.BadRequest);
+            }
 
             throw new HttpRequestException($"Account setting save endpoint failed: {response.StatusCode}");
         }

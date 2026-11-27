@@ -277,6 +277,26 @@ public class SnapshotTestTests
     }
 
     [Fact]
+    public void TheSnapshot_RunsAtTheOptionsRunLimits()
+    {
+        var (manifestJson, files) = Consultologist.Api.Tests.ByteEquivalence.ByteEquivalenceFixtures.ReadPackage("example-prior-letters");
+        var options = MigrationFixture.Options("example-prior-letters");
+
+        // unset: the starting values, and the package has its snapshot
+        var unset = WorkflowPackageMigration30To31.Migrate(manifestJson, files, options);
+        Assert.Empty(unset.HandEdits);
+        Assert.Contains(SnapshotTest.File, unset.Files.Keys);
+
+        // one agent call a job: the offline run fails, so no snapshot and A10-061's notice
+        var limited = WorkflowPackageMigration30To31.Migrate(manifestJson, files, options with { RunLimits = new RunLimits() with { JobAgentCalls = 1 } });
+        Assert.True(limited.Succeeded);
+        Assert.DoesNotContain(SnapshotTest.File, limited.Files.Keys);
+        var notice = Assert.Single(limited.Notices, n => n.StartsWith("No snapshot test was written", StringComparison.Ordinal));
+        Assert.Equal("No snapshot test was written: the migrated package fails its offline run.", notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-061", notice, ""));
+    }
+
+    [Fact]
     public void AFaultOnTheWay_SaysA10061_CannotBeRunOffline_NeverThrows()
     {
         var result = MigratedPackagesTests.Migrated("example-nested-note");

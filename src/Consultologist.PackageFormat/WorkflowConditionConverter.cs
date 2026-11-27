@@ -182,7 +182,15 @@ public sealed record ConversionResult(JsonNode? Logic, string? ResultFormat, IRe
 /// shows it (<c>input.reason.content</c>, <c>trim(input.reason.content)</c>), and <paramref name="Reads"/> the 31 paths it
 /// reads. A10-008 says <c>'!&lt;Written&gt;' became blank(&lt;Printed&gt;)</c>.
 /// </summary>
-public sealed record BlankConversion(string Written, string Printed, IReadOnlyList<string> Reads);
+public sealed record BlankConversion(string Written, string Printed, IReadOnlyList<string> Reads)
+{
+    /// <summary>
+    /// #1508 (2026-11-26, item 6): for a text compared with a literal (<see cref="ConversionResult.TextLiterals"/>), whether
+    /// the converter wrote <c>trim</c> on a read of an input's text in it, which A10-074's trim clause then says; false
+    /// otherwise.
+    /// </summary>
+    public bool Trimmed { get; init; }
+}
 
 /// <summary>#1507 (part 10 § 2.1): what a converted expression is at 31.</summary>
 public enum ConversionKind
@@ -212,6 +220,13 @@ public sealed record ConversionScope(
 {
     /// <summary>The ids of the inputs that are required; none by default, so every input is typed nullable unless named here.</summary>
     public IReadOnlySet<string> RequiredInputs { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1508 (2026-11-26, item 6): whether <see cref="Item"/> is an element of an input's list (the loop iterates
+    /// <c>input.&lt;id&gt;</c>, or a list field of an outer loop's such item), whose text 30 trimmed at its end as it
+    /// trimmed every input's text; false by default (a node's list, a snippet folder, no loop).
+    /// </summary>
+    public bool ItemIsInputElement { get; init; }
 }
 
 /// <summary>

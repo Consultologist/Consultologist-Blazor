@@ -139,22 +139,30 @@ public sealed class WorkflowPackages
     private async Task<HttpResponseData> NotLoadedAt31Async(
         HttpRequestData req, WorkflowPackageRef packageRef, CompiledLoad? load, CancellationToken cancellationToken)
     {
-        if (_admission!.Runs31 && load is { Unreadable: true })
+        var (status, error) = NotLoadedAt31(_admission!, packageRef, load, _logger);
+        return await CreateJsonResponseAsync(req, status, new { error }, cancellationToken);
+    }
+
+    /// <summary>
+    /// The answer of <see cref="NotLoadedAt31Async"/> as a status and its <c>error</c>, shared with every read endpoint that
+    /// answers a 31 version today's path met (#1509: <c>Current/StartChecks</c> too), so the sentences and the Unreadable rule
+    /// are written once.
+    /// </summary>
+    internal static (HttpStatusCode Status, string Error) NotLoadedAt31(
+        SpecVersionAdmission admission, WorkflowPackageRef packageRef, CompiledLoad? load, ILogger logger)
+    {
+        if (admission.Runs31 && load is { Unreadable: true })
         {
-            _logger.LogError("Workflow package resolution failed at 31. Pin={Pin}, Detail={Detail}", packageRef, load.OperatorDetail);
-            return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
-                new { error = "Workflow package registry is unavailable." }, cancellationToken);
+            logger.LogError("Workflow package resolution failed at 31. Pin={Pin}, Detail={Detail}", packageRef, load.OperatorDetail);
+            return (HttpStatusCode.ServiceUnavailable, "Workflow package registry is unavailable.");
         }
 
-        _logger.LogWarning("Workflow package is specVersion 31 and was not loaded at 31. Pin={Pin}, Admitted={Admitted}", packageRef, _admission.Runs31);
-        return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
-            new
-            {
-                error = _admission.Runs31
-                    ? CompiledPackageStore.NotPublished(packageRef.Name, packageRef.Version)
-                    : _admission.NotSupported(Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion),
-            },
-            cancellationToken);
+        logger.LogWarning("Workflow package is specVersion 31 and was not loaded at 31. Pin={Pin}, Admitted={Admitted}", packageRef, admission.Runs31);
+        return (
+            HttpStatusCode.BadRequest,
+            admission.Runs31
+                ? CompiledPackageStore.NotPublished(packageRef.Name, packageRef.Version)
+                : admission.NotSupported(Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion));
     }
 
     /// <summary>
@@ -432,7 +440,7 @@ public sealed class WorkflowPackages
                 WorkflowPackageContentResponse? content;
                 try
                 {
-                    content = await V31PackageContent.ReadAsync(_registry!, packageRef.Name, version, cancellationToken);
+                    content = await V31PackageContent.ReadAsync(_registry!, packageRef.Name, version, cancellationToken, _logger);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

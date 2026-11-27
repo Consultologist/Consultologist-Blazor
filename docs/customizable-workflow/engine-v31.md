@@ -125,8 +125,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
 
 1. **A load refusal** becomes a start failure on the job (`RecordStartFailure`, with the clinician's sentence;
    the operator's detail goes to the log). The outcome is `PackageContentRejected`, with the job's id.
-2. **The inputs.** The request's typed `Inputs` (`ConsultDraft` back-fills `consult_draft`, as today) and its
-   documents are read. The documents go through the starter's own extraction, so a document sent to a text input
+2. **The inputs.** The request's typed `Inputs` (`ConsultDraft` back-fills `consult_draft`, as today), its references
+   (below, "Inputs sent by reference") and its documents are read. The documents go through the starter's own extraction, so a document sent to a text input
    arrives as its text, behind the same OCR and speech-to-text gates as today.
    #1508: a document OCR read records the model's dated version in the input's `ocr.model`, `prebuilt-read/2024-11-30`
    (the result's `ApiVersion`: the pinned SDK's `AnalyzeResult` has no `ModelVersion`), and `prebuilt-read` alone when the
@@ -160,7 +160,8 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
    `V31StartChecks.NoDeliverableCanExist` decides it (through `RunInputsBuilder.NoDeliverableCanExist`, since #1507),
    a rule that holds `matches` inline, since no replay exists at a start. The detail names each deliverable by label with its printed `if` (S03-001), and nothing it read.
 5. **The held inputs.** The inputs document
-   (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`) is written where the
+   (`{ "inputs": { <id>: { value, content, title } }, "profile": { <field>: text | null } }`, with `"modelDerived": [<id>, …]`
+   when an input holds an earlier run's text, below) is written where the
    job's held inputs live: `org-job-inputs` or `personal-job-inputs`, `{appUserId}/{jobId}.json`. The retention
    drop and account closure therefore delete it as they delete a 5–30 job's.
 6. **The record.** The job's entity is initialised at `PackageSpecVersion` 31 and stamped `SchemaVersion` 12 (record
@@ -185,13 +186,66 @@ value sent both ways is accepted, and an input sent as `null` counts as not sent
 through the library's `RunInputsBuilder.Choices`, which the byte-equivalence comparison reads a 30 scenario's choices
 with; its refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
 
-**Not read at 31 yet.** A 31 start reads typed inputs, documents and macro choices only. These request members are
-not read, so an input sent only through one of them reads as missing (A06-011):
+**Inputs sent by reference** (#1509, ruled by the owner, comment 2, ruling 1; D7). A 31 start reads `InputRefs`,
+`InputFormRefs` and `InputFormFiles` with today's resolvers, in today's order and before the documents (step 2), so an
+input sent only by reference is filled, never missing (A06-011). What the resolvers read of a 5–30 declaration they read of
+the plan (`ConsultGenerationJobStarter.DeclaredInput31`): each input's id, whether its format is an array of a text format,
+and whether its channel is `form`.
 
-- `InputRefs`, the references to a previous run's input or result;
-- `InputFormRefs` and `InputFormFiles`, a form response's references and files.
+- **`InputRefs`**, an earlier run's deliverable: the run must be this account's, completed, still holding its text, and
+  have the deliverable. Its text fills the input: a text input takes it as its text, an array of text as an element. A
+  reference standing alone in an array of text is a list of one. Beside typed rows or documents in an array of text, each
+  element takes its request `Position` among them, as at 30 (#1144); without positions the order is typed rows, then
+  documents, then earlier runs.
+- **`InputFormRefs`**, a held form response, and **`InputFormFiles`**, a questionnaire file: they fill only an input whose
+  channel is `form`, which is an object (part 02 § 8.3). The response's answer, or the file's object, is the input's value,
+  held to its format by `RunInputsBuilder` as a typed value is (A06-012), since a 31 format has no 5–30 declaration to coerce
+  by. A value the request sends beside the reference must equal it; one left out is filled from it. A form reference on any
+  other input is refused in today's words for an answer a form cannot fill (*"The response's answer for input '<id>' cannot
+  be filled from a form answer."*), and a questionnaire file in today's words for an input that takes none.
 
-Reruns and the pages that send references are area 12's.
+A refusal is today's, outcome and words: no job is recorded, and the sender is told nothing more than a 5–30 start tells
+it. The header records an element from an earlier run with origin `previous-run`, `jobId` (the run it came from),
+`resultId` (the deliverable) and `modelDerived: true` (part 08 § 3.1). A form-filled input is recorded as `typed`, part 08
+§ 3.1 having no form origin. The held inputs document then has a `modelDerived` member, the ids of the inputs holding such
+an element in ordinal order (absent when none does). The orchestration reads it into the run's
+`RunInputs.ModelDerivedInputs`, so a decision that reads such an input, directly or through a loop's `item` or a call's
+`param`, is `modelDerived: true` (part 08 § 5.1). A node row's flags stay those `resolve.json` writes (part 08 § 4). A 5–30
+start resolves its references exactly as before.
+
+A start writes the lineage links a 5–30 start writes (#546), once the inputs are held: one row on the source job for each
+element taken from an earlier run, and one for a rerun, which History's "Used by" list on the source job reads. A start
+with no such input and no rerun writes none. A write that fails is logged and never refuses the start.
+
+### Rerun (#1509, D8)
+
+`Rerun` of a storage-12 job rebuilds the request from the job's held inputs document, where a 5–30 job's comes from its
+`Supplied` half: each `inputs.<id>.value` is sent as a typed value, under the record's own package ref, and the profile
+half is never read into a request (the account's profile is read afresh, as at every start). A source whose inputs were
+dropped, or never held, is refused in the same words as a 5–30 job's; a pointer whose document is gone is an error, as it is
+there. When the source recorded `signatureChosen: "job"`, the request names the recorded `signatureBlockId`; a default pick
+is made afresh. The new job is a 31 job, and its response names the source as `RerunOf`. Its `RerunVerdict` and
+`RerunDivergence` are `null`: storage 11's comparison of node hashes is not made at 31, and History shows the link between
+the two jobs only. The job response lists a 31 job's held inputs, while they are held, as a 5–30 response lists its own:
+each input's text, a structured value as its JSON. A rerun sends the values the source held as typed values, but the record never marks model output as not model-derived
+(part 08 § 5.1): for each input, and each element of an array input, whose origin on the source was `previous-run`, the
+rerun's record holds that origin again with the original `jobId` and `resultId` and `modelDerived: true`, the run's
+`ModelDerivedInputs` holds the input's id, and the lineage links to the original source runs are written beside the rerun's
+own. The rerun door reads the origins from the source's record and passes them to the start itself; no request member carries
+them, so a caller cannot mark or unmark an input. Typed inputs and documents stay as they were.
+
+### Asking before a start (#1509, D1)
+
+`GET WorkflowPackages/Current/StartChecks?ref=<package ref>&signatureBlockId=<id>`
+(`[Function("WorkflowPackageStartChecks")]`, `V31StartChecksRoute`) answers the account's refusals before a start, for the
+Create page to say them where the person is looking. It is authorised, CORS'd, and resolves `ref` (the pin when absent;
+an account package only for its owner) and loads the package as `Current` does. The answer is
+`WorkflowPackageStartChecksResponse(Refusals, NeedsProfile)`: `Refusals` are the sentences of a start's account step, in the
+start's order (A08-004 in S06-031's place when `signatureBlockId` names a block the account lacks, then S06-031, S06-032,
+S06-008), and `NeedsProfile` is the plan's `needs.profile`. It reads the account with the starter's own code
+(`V31JobStarter.ProfileAsync`, `TimeZoneAsync` and `AccountRefusals`), so a start gives the same sentences. Input
+refusals are not in it (the page's own checks cover them and the start repeats them), and no profile value is. A load
+refusal is the same 400 `{ error }` as `Current`'s, S09-001 when 31 is not admitted; a version below 31 answers two empty lists.
 
 ## The orchestration
 
@@ -488,7 +542,9 @@ reached four ways:
   is tried again at the next pass (`RecordNotSealedException`, logged with the job id and the exception's type);
 - the first read of a terminal job that has no `recordHash`: `GET ConsultGenerationJobs/{jobId}/Record`.
 
-**Restoring.** `record.json` sits in the text account, whose 30-day lifecycle policy deletes it. The document is a
+**Restoring.** `record.json` sits in the container `job-records` of the records account, to which no lifecycle rule
+applies (R5, #1509; before that it sat in the text account, whose 30-day policy deleted it, and a record written there is
+read as missing and restored). The document is a
 materialisation of the rows under the header (decided in the build, #1506), so `RecordSealer.ReadSealedAsync`, which
 the `Record` route reads through, seals the job if need be, reads the blob and, when a stamped job's blob is gone,
 assembles the document again and writes it back only if it hashes to the stamped `recordHash`. It logs
@@ -522,9 +578,10 @@ job that is not the caller's or is below storage 12):
   Try again."* with CORS, and logs `V31 rows not available. JobId, ExceptionType`.
 
 **Retention and closure.** The 7-day sweep calls `IRecordTextDrop` first: it seals the job if need be, deletes the
-job's `text/` blobs, and only then signals `DropText`. The sweep never deletes `record.json` (the lifecycle policy
-does, at 30 days, and the next read restores it, above), and `recordHash` still holds afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
-closure, which a rerun resumes. The blobs go with the account's prefix. Both know a storage-12 job from its index row
+job's `text/` blobs, and only then signals `DropText`. The sweep never deletes `record.json` or a row, and `recordHash` still holds afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
+closure, which a rerun resumes. The text blobs go with the account's prefix in the text account, and `record.json` with
+the account's `{appUserId}/` prefix of `job-records` in the records account (`IRecordBlobStore.DeleteAccountRecordsAsync`,
+called only for an account with a storage-12 job; a failure stops the closure). Both know a storage-12 job from its index row
 (`ConsultGenerationJobIndex`'s `RecordStorage`, written only for a job at storage 12 or later), so for a 5–30 job they
 make the calls they made before 31: no entity read and no record store. A 5–30 row is written through the entity type
 it always was, so its stored properties are unchanged. A 31 job indexed before this column existed has none and is
@@ -597,7 +654,9 @@ resolver, as the pin health report reads it). Each distinct package is read once
 and a package below 31 is migrated in memory by `WorkflowPackageMigration30To31.Migrate` against the bundled 31 type
 registry (`PublishedTypeRegistry`, read on first use from `package-format/v31/` and `agents/v31/` in the app's
 output by the library's one loader, `PackageFormat.V31.PublishedTypeRegistry.Read`, #1508 R20; the ingestor takes the
-same singleton), nothing written. The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
+same singleton), nothing written, each package counted against the engine's configured limits
+(`EngineLimitSettings.PublishLimits`: a package past the default 10,000 `JobInstances` but within the configured number carries no
+A10-081 hand edit). The line reads `Outstanding migration hand edits: <n> in <p> packages; <q> packages do not
 migrate`: `<n>` the hand-edit notices summed, `<p>` the packages with at least one, `<q>` the packages the migration
 refused or failed on. A package at 31 is not counted. A pin or a package that cannot be read fails alone (a stale
 pin is a normal state): the rest are counted on that line, and A10-059 follows it, `Outstanding migration hand edits:
@@ -651,7 +710,8 @@ and every file, `manifest.json` included, as text in `Files` (written as UTF-8 w
 5. **The pipeline** (`PackagePublish.RunAsync`) runs with the engine's own inputs: the bundled 31 type registry
    (`PublishedTypeRegistry`), the toolchain the engine attests (`EngineToolchain.Current()`), the limits
    (`EngineLimitSettings.PublishLimits`: `MaxAgentCallsPerJob`, `LoopItems`, `JobAgentCalls`, `JobInstances` and
-   `JobMinutes`), the clock, `RegexMilliseconds` for the tests' `matches`, and no diagram. `publishedBy` is
+   `JobMinutes`), the clock, `RegexMilliseconds` for the tests' `matches`, `EngineLimitSettings.Limits` as the limits the package's
+   tests run at (`PublishOptions.RunLimits`), and no diagram. `publishedBy` is
    `operator-migration` with a migration report, else `editor` with a `Source`, else `api`. A migration report whose
    `newVersion` is not the version being tried gets that version (a member replacement, written canonical), so the
    stored `migration-report.json` names the version it is stored in; one that names it already is stored as sent.
@@ -726,10 +786,13 @@ stamped version whose pair verifies is served from its folder (`V31PackageConten
 will not run it** (a `requires` refusal is logged, not answered), so its owner can read it and publish a new version:
 
 - `Manifest` the stored `manifest.json`, member for member; `Files` every stored source file but `manifest.json`, and
-  `dag.mmd` when stored (never the evidence, `migration-report.json` or the lock blob);
+  `dag.mmd` when stored (never the evidence, `migration-report.json`, which is `MigrationReport`, or the lock blob);
 - trailing `Resolve`, `Lock` and `PublishReport`, each parsed from the stored bytes; `MigratedFrom`, the stamp's old
   version. The pages are to show it as S09-004, *"migrated by the operator from \<old version\>"* (part 09 § 6.2);
-  nothing in this build composes that sentence (area 12).
+  nothing in this build composes that sentence (area 12);
+- trailing `MigrationReport`, the stored `migration-report.json` parsed, for a version the operator migrated (null when
+  there is none, below 31 and on an import, and then not written, so a 5–30 response carries no `migrationReport` key). A stored file that is not JSON is served as null and a warning naming the
+  package and version is logged; the route does not fail.
 
 An integrity refusal (A06-004, S09-009, S09-014) is a 400 with its sentence; a folder whose `manifest.json` is not a
 JSON object is A06-004; a registry failure while reading the folder is 503. All these members are null below 31.
@@ -748,6 +811,41 @@ Nothing is compiled, tested or stored by an import. A 5–30 zip is read exactly
 `ConsultGenerationJobStarter` answers a 31 pin it cannot admit with the error `SpecVersionNotAdmitted` and S09-001, a
 400, where it gave an unhandled spec-version message before. Other versions it does not run keep
 `SpecVersionNotYetExecutable` (422).
+
+## The pages (area 12, #1509)
+
+*What the Create, History, Profile and Editor pages read of the engine at 31; the decisions are in the plan
+`package-format-v31/plans/area-12-create-and-history.md` (its *Recorded in the build* lists every choice a task took). Nothing here
+admits 31 in production: the admission lists are untouched.*
+
+- **The start checks.** `GET WorkflowPackages/Current/StartChecks` (`V31StartChecksRoute`), above, answers the account's
+  sentences before a start. The Create page (`Consults.razor`, `Shared/Create31/StartChecks31.razor`) asks it after a 31 load,
+  on each pick of a package or a signature block, on window focus (`wwwroot/js/windowFocus.js`) and before a start (one ask in
+  `CreateConsultAsync`, behind the one button labelled "Create consult", "Create & next" or "Schedule consult"); when it cannot ask it says A12-004 and holds Start.
+  Only the latest ask counts: a newer ask, or a package switch (`ResetStartChecks31`), makes an older one stale, and a stale
+  ask writes neither the signature blocks nor the pick, and starts nothing.
+- **References at a start.** `ConsultGenerationJobStarter.ExtractFor31Async` (private) reads `InputRefs`, `InputFormRefs` and `InputFormFiles` (above, "Inputs
+  sent by reference"). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
+  the held inputs document's `modelDerived` member (written by `V31JobStarter`), read into `RunInputs.ModelDerivedInputs` by `ConsultGenerationOrchestratorV31`. The start also writes the lineage
+  links (`IConsultGenerationLinkStore`).
+- **Rerun.** `ConsultGenerationJobs/{jobId}/Rerun` of a storage-12 job rebuilds its request from the held inputs
+  (`RerunRequestAsync`), repeats the `previous-run` origins through `ConsultGenerationJobOrigin.InheritedInputOrigins`, and gives
+  the new job `RerunOf`; no verdict or divergence is computed (D8).
+- **The record's container.** `record.json` is written to the container `job-records` of the records account
+  (`ConsultGenerationRecordStorage__BlobServiceUri`, see `docs/STORAGE.md`), to which no lifecycle rule applies, so the page's
+  record download (`GET ConsultGenerationJobs/{jobId}/Record`, `RecordRoutes`) is available after the 7-day drop; a missing blob is
+  restored from the rows.
+- **What History fetches, and when.** A storage-12 job (`SchemaVersion >= 12`) is shown by `RecordView31`.
+  The job (`GET ConsultGenerationJobs/{jobId}`) is polled as for a 5–30 job (60 s when stopped, fast while running or delivering).
+  Once per detail load it fetches the package's content (`GET WorkflowPackages/Current/Content`, for `resolve.json`'s templates,
+  descriptions and graph, and `MigratedFrom`; a failure is read as no content) and lists the rows (`GET …/Rows`), listing them
+  again only when the job's `Rows` or `Decisions` count has moved (a decision under a node that never ran writes no row). A row's text (`GET …/Rows?key=`) is fetched once, when its row is first opened
+  (a deliverable's, a node's, a check's), or when a run spot's output or a retained name is needed; nothing is fetched for a
+  collapsed row, and a text the engine has dropped (`textDeleted`) says A12-002 with the row's hash. The record
+  (`GET …/Record`) is fetched only by the download and by Verify. On Create, `RunView31` is given the rows `Consults.razor` lists (`LoadRows31Async`: on attaching, on a poll whose count moved and on `done`), and it fetches a `released` deliverable's text only.
+- **Profile and the Editor.** Letter details and the time zone are account settings read and written through
+  `Account/Settings/{key}` (`LetterDetailsCard`, `TimeZoneCard`; the Api's 400 for a value over a limit is plain text the card
+  shows). A 31 package opens read-only in the Editor (`V31PackageView`), whose download is `PackageDownload31`.
 
 ## Settings
 
@@ -771,7 +869,8 @@ re-read for that job.
 | `ConsultGeneration__JobAgentCalls` | 500 | The agent calls one job may make; a retry or repair is part of its call (S09-015 past it) |
 | `ConsultGeneration__RenderSteps` | 100000 | The steps one render may take (S05-062 past it) |
 | `ConsultGeneration__JobInstances` | 10000 | The instances one job may open: a node, check or deliverable instance, a loop item, a pass or a call (A09-001 past it; recorded in `limits` as `jobInstances`). Publish refuses a package whose worst case opens more (A11-001, #1508) |
-| `ConsultGenerationRecordStorage__TableServiceUri` (or `…__ConnectionStringName`) | unset | Where the table `ConsultGenerationRecordRows` lives. Unset, the table is on the account `AccountStorage` names, as the other job tables are; the text and record blobs are in the job outputs container, never here |
+| `ConsultGenerationRecordStorage__TableServiceUri` (or `…__ConnectionStringName`) | unset | Where the table `ConsultGenerationRecordRows` lives. Unset, the table is on the account `AccountStorage` names, as the other job tables are; the text blobs are in the job outputs container, never here |
+| `ConsultGenerationRecordStorage__BlobServiceUri` | unset | The records account's blob service, where `record.json` is written, in the container `job-records` (created on the first write; the identity needs Storage Blob Data Contributor there). Unset, the document is written to a `job-records` container of the text account (`TextStorage`'s), where its 30-day rule deletes it and the next read restores it from the rows, and the host logs a warning naming this setting once at startup |
 | `ConsultGeneration__RegexMilliseconds` | 2000 | R2: the time one evaluation of `matches` or `has_word` may take (A06-001 past it). It is at most 2147483646, and it is not in the record (D8) |
 | `AzureAI__MaxRetries` | 0 | Keep 0 on any app that runs 31 jobs (above) |
 | `Operators__AppUserIds` | nobody | Who may call the drain's endpoints, as for `Operator/*` |
@@ -915,7 +1014,8 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
    file its notice names (`Migration31Result.HandEditFiles`, one per notice) is among `handEdits`' paths, edited or null:
    any left is its first S10-002 notice, every left one in `handEditsLeft`. An operator who answers a notice in another
    file still sends the named file, unchanged if need be, as the acknowledgement. The migration counts its package
-   against the engine's configured limits (`EngineLimitSettings.PublishLimits`), so A10-081 is said only past them.
+   against the engine's configured limits (`EngineLimitSettings.PublishLimits`), so A10-081 is said only past them; its snapshot's run and the
+   report's worst-case note (A10-014) count at the configured `Limits` too (`Migration31Options.RunLimits`).
 4. **The operator's edits** laid over it, and then, when any were given, its snapshot test written anew
    (`WorkflowPackageMigration30To31.Snapshot`, which publishes the edited package in memory at the engine's configured
    limits, `Migration31Options.Limits`: a package past them, A11-001, or an edit left undone that the checker refuses,

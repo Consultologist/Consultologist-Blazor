@@ -115,7 +115,7 @@ internal static partial class Migrate
             var path = IsCheck(m, node) ? "check." + id : "node." + id;
             m.NodeReads[id] = new ConversionRead(path, formats[id].DeepClone())
             {
-                AlwaysValued = AlwaysValued(tree, id, cases, 0),
+                AlwaysValued = AlwaysValued(tree, id, cases, 0, NoGates),
                 Classifier = m.AnswerFormats.ContainsKey(id),
             };
         }
@@ -218,13 +218,14 @@ internal static partial class Migrate
     /// Part 04 § 7.6's "always valued", as area 05's <c>ScopeTree.AlwaysValued</c> has it: a leaf (none has an <c>if</c>
     /// at 30, whose node <c>when</c> is retired since 26) and a <c>for</c>, always; a <c>while</c> that checks after its
     /// first pass; an <c>if</c> with an <c>else</c>, a <c>case</c> with no empty branch, when every <c>ret</c> is. A
-    /// <c>case</c> not yet in <paramref name="cases"/> is not.
+    /// <c>case</c> not yet in <paramref name="cases"/> is not. #1508 (item 1; F-D4): a leaf in <paramref name="gated"/> (it
+    /// carries a deliverable's <c>if</c>, <see cref="Migrated.DeliverableGates"/>) is not.
     /// </summary>
-    private static bool AlwaysValued(NodeTree tree, string id, Dictionary<string, CaseShape> cases, int depth)
+    private static bool AlwaysValued(NodeTree tree, string id, Dictionary<string, CaseShape> cases, int depth, IReadOnlySet<string> gated)
     {
         if (depth > SourceBounds.JsonDepth || !tree.ById.TryGetValue(id, out var node))
             return false;
-        bool Ret(string? ret) => RetId(ret) is { } child && AlwaysValued(tree, child, cases, depth + 1);
+        bool Ret(string? ret) => RetId(ret) is { } child && AlwaysValued(tree, child, cases, depth + 1, gated);
 
         return node switch
         {
@@ -233,9 +234,12 @@ internal static partial class Migrate
             { If: not null } => node.Else is not null && Ret(node.Then?.Ret) && Ret(node.Else.Ret),
             { Case: not null } => cases.TryGetValue(id, out var shape) && shape.Missing.Count == 0
                 && (node.Branches ?? []).All(b => Ret(b.Ret)) && (node.Else is null || Ret(node.Else.Ret)),
-            _ => true,
+            _ => !gated.Contains(id),
         };
     }
+
+    /// <summary>No leaf gated: what is always valued before the gates are known (<see cref="AlwaysValued"/>).</summary>
+    private static readonly IReadOnlySet<string> NoGates = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
     /// Where a condition owned by <paramref name="id"/> is judged (<see cref="SitePlace"/>): with <paramref name="inner"/>
@@ -249,33 +253,38 @@ internal static partial class Migrate
         var loop = chain.FirstOrDefault(a => tree.ById[a].For is not null);
         if (loop is null)
             return new SitePlace(null, false, inWhile);
-        var (element, folder) = ElementOf(m, tree, loop, formats, 0);
-        return new SitePlace(element, folder, inWhile);
+        var (element, folder, input) = ElementOf(m, tree, loop, formats, 0);
+        return new SitePlace(element, folder, inWhile, input);
     }
 
     /// <summary>
     /// The element of the list <paramref name="loop"/> iterates (part 04 § 2.6's <c>item.value</c>): a snippet folder's
     /// item is a value of the folder's format (and a folder item); an array input's, a node list's or an outer item's
-    /// list field's element is the list's <c>items</c>. Null when the list does not type.
+    /// list field's element is the list's <c>items</c>. Null when the list does not type. <c>Input</c> says whether the
+    /// element is an input's (an array input's, or a list field of an outer loop's input element), whose text 30
+    /// trimmed at its end (#1508, 2026-11-26, item 6).
     /// </summary>
-    private static (JsonNode? Element, bool Folder) ElementOf(Migrated m, NodeTree tree, string loop, FormatSet formats, int depth)
+    private static (JsonNode? Element, bool Folder, bool Input) ElementOf(Migrated m, NodeTree tree, string loop, FormatSet formats, int depth)
     {
         if (depth > SourceBounds.JsonDepth || CollectionOf(tree.ById[loop]) is not { } collection)
-            return (null, false);
+            return (null, false, false);
         var segments = collection.Split('.');
         switch (segments)
         {
             case ["snippet", var folder]:
-                return (m.Sources.GetValueOrDefault($"snippets/{folder}/{WorkflowDataResolver.IndexFileName}")?.Json["format"]?.DeepClone(), true);
+                return (m.Sources.GetValueOrDefault($"snippets/{folder}/{WorkflowDataResolver.IndexFileName}")?.Json["format"]?.DeepClone(), true, false);
             case ["input", var input]:
-                return (ExpressionChecker.ItemsOf(m.Manifest["inputs"]?[input]?["format"], formats)?.DeepClone(), false);
+                return (ExpressionChecker.ItemsOf(m.Manifest["inputs"]?[input]?["format"], formats)?.DeepClone(), false, true);
             case ["node", var node, "value", ..] when m.NodeReads.TryGetValue(node, out var read):
-                return (ListItems(read.Format, segments[2..]), false);
+                return (ListItems(read.Format, segments[2..]), false, false);
             case ["item", "value", ..]:
                 var outer = tree.Ancestors(loop).FirstOrDefault(a => tree.ById[a].For is not null);
-                return outer is null ? (null, false) : (ListItems(ElementOf(m, tree, outer, formats, depth + 1).Element, segments[1..]), false);
+                if (outer is null)
+                    return (null, false, false);
+                var (element, _, fromInput) = ElementOf(m, tree, outer, formats, depth + 1);
+                return (ListItems(element, segments[1..]), false, fromInput);
             default:
-                return (null, false);
+                return (null, false, false);
         }
 
         JsonNode? ListItems(JsonNode? format, IReadOnlyList<string> steps) =>

@@ -1,9 +1,9 @@
 ---
 {"label":"Consultation note","kind":"rendered","description":null,"format":"markdown_block","if":null,"check":"check.note_coverage","whenEmpty":"release"}
 ---
-{{ node.standards_section_instructions.content }}
+{{ node.standards_section_instructions.content | string.strip }}
 
-{{ node.patient_header.content }}
+{{ node.patient_header.content | string.strip }}
 
 {{ macro.formal_note.fixed_text }}
 

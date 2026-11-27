@@ -158,6 +158,9 @@ internal static class TemplateRewriter
     /// <summary>The 30 renderers (C#), each a built-in renderer of the registry at 31 (part 05 § 5.3).</summary>
     private static readonly IReadOnlySet<string> Renderers30 = new HashSet<string>(StringComparer.Ordinal) { "concept_bullets", "concept_context" };
 
+    /// <summary>#1508 (item 2): 30 wrote a date as Scriban's default, "09 Nov 2026".</summary>
+    internal const string ThirtyDatePattern = "%d %b %Y";
+
     private sealed class Run
     {
         private readonly string text;
@@ -307,7 +310,7 @@ internal static class TemplateRewriter
                 return;
             }
 
-            var written = Read(chain, head, vars, sink, false);
+            var written = Read(chain, head, vars, sink, false, output: true);
             if (written.Placement is not null && TagAt(output.Span.Start.Offset) is { } tag)
                 placements.Add(tag.Start);
             if (written.Macro is { } macro)
@@ -1028,7 +1031,7 @@ internal static class TemplateRewriter
         /// for it (<c>item.label</c> with no <c>itemLabel</c>, a 30 run fact 31 lacks: A10-005; a prompt's
         /// <c>profile.*</c>: S10-004; a prompt's, a <c>rendered</c> node's or a macro body's <c>deliverable.*</c>, or a <c>rendered</c> node's <c>profile.*</c>: A10-039).
         /// </summary>
-        private Written Read(Chain chain, ScriptExpression whole, ImmutableDictionary<string, Variable> vars, Sink sink, bool wrap)
+        private Written Read(Chain chain, ScriptExpression whole, ImmutableDictionary<string, Variable> vars, Sink sink, bool wrap, bool output = false)
         {
             foreach (var index in chain.Indexes)
                 Expr(index, vars, sink, false);
@@ -1063,7 +1066,9 @@ internal static class TemplateRewriter
 
                     var format = input["format"];
                     var text = format is not null && FormatTypes.TextKind(format, Formats) is not null;
-                    sink.Add(End(token), End(token), text ? ".content" : ".value");
+                    // #1508 (item 2): a date input written whole is written in 30's form, "09 Nov 2026".
+                    var thirty = output && format is JsonValue date && date.TryGetValue<string>(out var kind) && kind == "date";
+                    sink.Add(End(token), End(token), text ? ".content" : thirty ? ".value | date.to_string \"" + TemplateRewriter.ThirtyDatePattern + "\"" : ".value");
                     return text ? Nothing : WholeOf($"input.{id}.value", format);
                 }
 

@@ -32,9 +32,9 @@ public class PackagePublishTests
 
     private static PublishOptions Options(
         Func<string, string>? diagram = null, ITemplateReads? templates = null, string? migrationReport = null,
-        string? migratedFrom = null, TimeProvider? clock = null) =>
+        string? migratedFrom = null, TimeProvider? clock = null, RunLimits? runLimits = null) =>
         new(ResolveFixture.Published(), CompiledGoldenTests.Fixed, Limits, "api", clock ?? new FixedClock(Now),
-            templates, diagram, migrationReport, migratedFrom);
+            templates, diagram, migrationReport, migratedFrom, RunLimits: runLimits);
 
     /// <summary>The nested note with <c>tests/snapshot.json</c>, a test written from the package's own offline run.</summary>
     private static async Task<Dictionary<string, byte[]>> WithTest(Action<JsonObject>? change = null)
@@ -191,6 +191,22 @@ public class PackagePublishTests
         Assert.Equal("S07-007", Assert.Single(outcome.Report.Refusals).Id);
         Assert.False(Assert.Single(outcome.Report.Tests).Pass);
         Assert.NotNull(outcome.Compiled);
+    }
+
+    [Fact]
+    public async Task ThePackagesTests_RunAtTheGivenRunLimits()
+    {
+        var upload = await WithTest();
+
+        // unset: the spec's starting values, which the nested note's test passes
+        Assert.True((await PackagePublish.RunAsync(upload, Options(runLimits: null))).Published);
+
+        // one agent call a job: the nested note makes many, so its test fails at its run
+        var outcome = await PackagePublish.RunAsync(upload, Options(runLimits: new RunLimits() with { JobAgentCalls = 1 }));
+
+        AssertRefusedAndNothingStored(outcome);
+        Assert.False(Assert.Single(outcome.Report.Tests).Pass);
+        Assert.Contains(outcome.Report.Refusals, r => r.Id == "S07-007");
     }
 
     [Fact]

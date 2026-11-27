@@ -235,7 +235,7 @@ internal sealed class FakeRecordBlobStore : IRecordBlobStore
 
     /// <summary>#1506 (Task 15): the job's <c>record.json</c> removed (the lifecycle policy's 30 days); true when it was there.</summary>
     public bool RemoveRecord(string? accountKind, string appUserId, string jobId) =>
-        Blobs.Remove(Consultologist.Api.Jobs.JobOutputsBlobStore.ContainerFor(accountKind), BlobRecordStore.RecordName(appUserId, jobId));
+        Blobs.Remove(BlobRecordStore.RecordContainer, BlobRecordStore.RecordName(appUserId, jobId));
 
     public Task WriteTextAsync(string? accountKind, string appUserId, string jobId, string key, string part, JsonObject text, CancellationToken ct) =>
         _store.WriteTextAsync(accountKind, appUserId, jobId, key, part, text, ct);
@@ -251,4 +251,7 @@ internal sealed class FakeRecordBlobStore : IRecordBlobStore
 
     public Task<string?> ReadRecordAsync(string? accountKind, string appUserId, string jobId, CancellationToken ct) =>
         _store.ReadRecordAsync(accountKind, appUserId, jobId, ct);
+
+    public Task DeleteAccountRecordsAsync(string appUserId, CancellationToken ct) =>
+        _store.DeleteAccountRecordsAsync(appUserId, ct);
 }

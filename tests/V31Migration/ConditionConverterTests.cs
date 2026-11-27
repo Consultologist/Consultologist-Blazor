@@ -374,40 +374,146 @@ public class ConditionConverterTests
     }
 
     /// <summary>
-    /// #1508 (comment 5, item 2): text compared with a literal (S03-002 at 31) is written as membership, which answers as
-    /// 30's comparison did: <c>x == "lit"</c> is <c>x in ["lit"]</c>, <c>!=</c> its negation, the literal on either side;
-    /// each is listed for the migration's notice (A10-074). Text compared with text stays S03-003.
+    /// #1508 (comment 5, item 2; #1508, 2026-11-26, item 6): text compared with a literal (S03-002 at 31) is written as
+    /// membership, <c>x == "lit"</c> as <c>x in ["lit"]</c>, <c>!=</c> its negation, the literal on either side, with
+    /// <c>trim</c> written on each text read of an input in <c>x</c>, as 30 trimmed an input's text (at its end) before it
+    /// compared, and on each text read of an item of an input's list (30 trimmed every text of an input, per element and
+    /// per field); a node's text, or an item of a node's list (model output), which 30 did not trim, gets none. Each is
+    /// listed for the migration's notice (A10-074), whose trim clause is said only where a trim was written. Text
+    /// compared with text stays S03-003.
     /// </summary>
     [Fact]
-    public void TextComparedWithALiteral_BecomesIn()
+    public void TextComparedWithALiteral_IsComparedOnTheTrimmedInput()
     {
         var input = Convert("row.input.x");
         var field = Convert("row.input.x-y");
         var lower = Convert("row.downcase");
         var node = Convert("row.read.node-content");
-        var item = Convert("composer-macros.section_draft.section_close.if");
+        var itemReads = MigrationFixture.Expression("composer-macros.section_draft.section_close.if")["reads"]!.AsObject();
+        var inputItem = WorkflowConditionConverter.FromScriban(
+            "item.value.title != \"Plan\"", MigrationFixture.ScopeOf(itemReads) with { ItemIsInputElement = true });
+        var nodeItem = WorkflowConditionConverter.FromScriban("item.value.title != \"Plan\"", MigrationFixture.ScopeOf(itemReads));
         var reversed = WorkflowConditionConverter.FromScriban("\"Breathlessness\" != input.reason", NearScope());
         var texts = WorkflowConditionConverter.FromScriban("input.reason == node.summary.content", NearScope());
 
-        Assert.Equal("""{"in":[{"var":"input.reason.content"},["Breathlessness"]]}""", CanonicalJson.Write(input.Logic));
-        Assert.Equal("""{"in":[{"var":"input.patient.value.name"},["Margaret Okafor"]]}""", CanonicalJson.Write(field.Logic));
-        Assert.Equal("""{"in":[{"lower":[{"var":"input.reason.content"}]},["breathlessness"]]}""", CanonicalJson.Write(lower.Logic));
+        Assert.Equal("""{"in":[{"trim":[{"var":"input.reason.content"}]},["Breathlessness"]]}""", CanonicalJson.Write(input.Logic));
+        Assert.Equal("""{"in":[{"trim":[{"var":"input.patient.value.name"}]},["Margaret Okafor"]]}""", CanonicalJson.Write(field.Logic));
+        Assert.Equal("""{"in":[{"lower":[{"trim":[{"var":"input.reason.content"}]}]},["breathlessness"]]}""", CanonicalJson.Write(lower.Logic));
         Assert.Equal("""{"in":[{"var":"node.summary.content"},["Reviewed in clinic."]]}""", CanonicalJson.Write(node.Logic));
-        Assert.Equal("""{"!":[{"in":[{"var":"item.value.title"},["Plan"]]}]}""", CanonicalJson.Write(item.Logic));
-        Assert.Equal("""{"!":[{"in":[{"var":"input.reason.content"},["Breathlessness"]]}]}""", CanonicalJson.Write(reversed.Logic));
-        Assert.All(new[] { input, field, lower, node, item, reversed }, r => Assert.Equal("boolean", r.ResultFormat));
-        Assert.All(new[] { input, field, lower, node, item, reversed }, r => Assert.Empty(r.Blanks));
+        Assert.Equal("""{"!":[{"in":[{"trim":[{"var":"item.value.title"}]},["Plan"]]}]}""", CanonicalJson.Write(inputItem.Logic));
+        Assert.Equal("""{"!":[{"in":[{"var":"item.value.title"},["Plan"]]}]}""", CanonicalJson.Write(nodeItem.Logic));
+        Assert.Equal("""{"!":[{"in":[{"trim":[{"var":"input.reason.content"}]},["Breathlessness"]]}]}""", CanonicalJson.Write(reversed.Logic));
+        Assert.All(new[] { input, field, lower, node, inputItem, nodeItem, reversed }, r => Assert.Equal("boolean", r.ResultFormat));
+        Assert.All(new[] { input, field, lower, node, inputItem, nodeItem, reversed }, r => Assert.Empty(r.Blanks));
+        Assert.All(new[] { input, field, lower, node, inputItem, nodeItem, reversed }, r => Assert.Empty(r.Notices));
 
-        var listed = Assert.Single(item.TextLiterals);
+        var trimmed = Assert.Single(reversed.TextLiterals);
+        Assert.Equal("\"Breathlessness\" ≠ input.reason.content", trimmed.Written);
+        Assert.Equal("not (trim(input.reason.content) in [\"Breathlessness\"])", trimmed.Printed);
+        Assert.Equal(["input.reason.content"], trimmed.Reads);
+        Assert.True(trimmed.Trimmed);
+
+        var listed = Assert.Single(inputItem.TextLiterals);
         Assert.Equal("item.value.title ≠ \"Plan\"", listed.Written);
-        Assert.Equal("not (item.value.title in [\"Plan\"])", listed.Printed);
+        Assert.Equal("not (trim(item.value.title) in [\"Plan\"])", listed.Printed);
         Assert.Equal(["item.value.title"], listed.Reads);
         var sentence = MigrationSentences.TextLiteralBecameIn("macros/section_close.md", "if", listed);
-        Assert.Equal("macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (item.value.title in [\"Plan\"]); text is compared with a literal by in at 31.", sentence);
+        Assert.Equal("macros/section_close.md, if: 'item.value.title ≠ \"Plan\"' became not (trim(item.value.title) in [\"Plan\"]); text is compared with a literal by in at 31, and an input's text is trimmed at both ends first, where 30 trimmed its end.", sentence);
         V31Contract.AssertSentence(new SourceRefusal("A10-074", sentence, ""));
+
+        // No trim written, so the trim clause is not said.
+        var untrimmed = Assert.Single(nodeItem.TextLiterals);
+        Assert.False(untrimmed.Trimmed);
+        var plain = MigrationSentences.TextLiteralBecameIn("nodes/draft_point.md", "if", untrimmed);
+        Assert.Equal("nodes/draft_point.md, if: 'item.value.title ≠ \"Plan\"' became not (item.value.title in [\"Plan\"]); text is compared with a literal by in at 31.", plain);
+        V31Contract.AssertSentence(new SourceRefusal("A10-074", plain, ""));
+        var read = MigrationSentences.TextLiteralBecameIn("nodes/gate.md", "if", Assert.Single(node.TextLiterals));
+        Assert.EndsWith("; text is compared with a literal by in at 31.", read, StringComparison.Ordinal);
+        V31Contract.AssertSentence(new SourceRefusal("A10-074", read, ""));
 
         Assert.Null(texts.Logic);
         Assert.Equal(["S03-003"], texts.NoticeIds);
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 6: the trimmed comparison answers as 30's did where 30 trimmed, an input's text ending in
+    /// white space (30 compared <c>CanonicalText.Normalize</c>'s value, its end trimmed), and a null input matches no
+    /// literal, as 30's <c>""</c> did not. Leading white space, which 30 kept, is trimmed too: there 31 matches where 30
+    /// did not (F-D10, said in A10-074).
+    /// </summary>
+    [Fact]
+    public void TextComparedWithALiteral_AnswersAs30_ForTrailingWhiteSpace()
+    {
+        var equal = WorkflowConditionConverter.FromScriban("input.reason == \"yes\"", NearScope());
+        var unequal = WorkflowConditionConverter.FromScriban("input.reason != \"yes\"", NearScope());
+        var evaluator = new CorvusJsonLogicEvaluator();
+        var holds = evaluator.Compile(equal.Logic!);
+        var differs = evaluator.Compile(unequal.Logic!);
+        static JsonObject Data(string? reason) =>
+            new() { ["input"] = new JsonObject { ["reason"] = new JsonObject { ["content"] = reason, ["value"] = reason } } };
+
+        foreach (var reason in new[] { "yes", "yes ", "yes\n", "yes \r\n\t" })
+        {
+            Assert.Equal("yes", Consultologist.Api.CanonicalText.Normalize(reason));
+            Assert.True(holds.Decide(Data(reason)).Result, reason);
+            Assert.False(differs.Decide(Data(reason)).Result, reason);
+        }
+
+        Assert.False(holds.Decide(Data(null)).Result);
+        Assert.True(differs.Decide(Data(null)).Result);
+        Assert.False(holds.Decide(Data("yes please")).Result);
+
+        // The remainder F-D10 names: leading white space, kept by 30, is trimmed at 31.
+        Assert.NotEqual("yes", Consultologist.Api.CanonicalText.Normalize(" yes"));
+        Assert.True(holds.Decide(Data(" yes")).Result);
+
+        // An item of an input's list: 30 trimmed each element's text too, so "Plan " was "Plan".
+        var itemReads = MigrationFixture.Expression("composer-macros.section_draft.section_close.if")["reads"]!.AsObject();
+        var notPlan = evaluator.Compile(WorkflowConditionConverter.FromScriban(
+            "item.value.title != \"Plan\"", MigrationFixture.ScopeOf(itemReads) with { ItemIsInputElement = true }).Logic!);
+        static JsonObject Item(string title) => new() { ["item"] = new JsonObject { ["value"] = new JsonObject { ["title"] = title } } };
+        foreach (var title in new[] { "Plan", "Plan ", "Plan\n" })
+        {
+            Assert.Equal("Plan", Consultologist.Api.CanonicalText.Normalize(title));
+            Assert.False(notPlan.Decide(Item(title)).Result, title);
+        }
+
+        Assert.True(notPlan.Decide(Item("Planned")).Result);
+    }
+
+    /// <summary>
+    /// #1508, 2026-11-26, item 6: a literal that starts with white space, compared with an input's text, could match at 30
+    /// (which kept leading white space) and never matches a trimmed text at 31, so no trim fits: the migration asks for a
+    /// hand edit (A10-085, a reason S10-002 gives). A node's text, which is not trimmed, still converts.
+    /// </summary>
+    [Fact]
+    public void ALiteralThatStartsWithWhiteSpace_IsAHandEdit()
+    {
+        var refused = WorkflowConditionConverter.FromScriban("input.reason == \" yes\"", NearScope());
+        var lowered = WorkflowConditionConverter.FromScriban("(string.downcase input.reason) != \"\\nyes\"", NearScope());
+        var node = WorkflowConditionConverter.FromScriban("node.summary.content == \" yes\"", NearScope());
+
+        Assert.Null(refused.Logic);
+        Assert.Equal(["A10-085"], refused.NoticeIds);
+        var notice = Assert.Single(refused.Notices);
+        Assert.Equal("'input.reason.content = \" yes\"' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.", notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-085", notice, ""));
+        Assert.Null(lowered.Logic);
+        Assert.Equal(["A10-085"], lowered.NoticeIds);
+
+        // An item of an input's list is trimmed too, so the same holds; an item of a node's list converts untrimmed.
+        var itemReads = MigrationFixture.Expression("composer-macros.section_draft.section_close.if")["reads"]!.AsObject();
+        var inputItem = WorkflowConditionConverter.FromScriban(
+            "item.value.title == \" Plan\"", MigrationFixture.ScopeOf(itemReads) with { ItemIsInputElement = true });
+        Assert.Null(inputItem.Logic);
+        Assert.Equal(["A10-085"], inputItem.NoticeIds);
+        var item = Assert.Single(inputItem.Notices);
+        Assert.Equal("'item.value.title = \" Plan\"' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.", item);
+        V31Contract.AssertSentence(new SourceRefusal("A10-085", item, ""));
+        var nodeItem = WorkflowConditionConverter.FromScriban("item.value.title == \" Plan\"", MigrationFixture.ScopeOf(itemReads));
+        Assert.Equal("""{"in":[{"var":"item.value.title"},[" Plan"]]}""", CanonicalJson.Write(nodeItem.Logic));
+
+        Assert.Equal("""{"in":[{"var":"node.summary.content"},[" yes"]]}""", CanonicalJson.Write(node.Logic));
     }
 
     /// <summary>
@@ -416,7 +522,8 @@ public class ConditionConverterTests
     /// field as given. So a text input read whole compared with <c>""</c> is <c>x === null or x in [""]</c> (the null test
     /// written as for a nullable list's size), which answers as 30 did
     /// (A10-075), and any other comparison of an input's text with blank text is refused for a hand edit (A10-076). Text
-    /// not read from an input (a node's, an item's) keeps <c>in [""]</c>, as 30 kept it as written.
+    /// not read from an input (a node's, an item of a node's list) keeps <c>in [""]</c>, as 30 kept it as written; an item
+    /// of an input's list is an input's text, refused as a field's is.
     /// </summary>
     private const string PrintedNotEmpty = "input.reason.content ≠ null and not (input.reason.content in [\"\"])";
 
@@ -463,6 +570,17 @@ public class ConditionConverterTests
             Assert.Equal($"The condition '{text}' compares {read}, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.", notice);
             V31Contract.AssertSentence(new SourceRefusal("A10-076", notice, ""));
         }
+
+        // An item of an input's list is an input's text, which 30 read blank as "" (F6 fix round 1): a hand edit, as a
+        // field's is; an item of a node's list keeps in [""].
+        var itemReads = MigrationFixture.Expression("composer-macros.section_draft.section_close.if")["reads"]!.AsObject();
+        var inputItem = WorkflowConditionConverter.FromScriban(
+            "item.value.title == \"\"", MigrationFixture.ScopeOf(itemReads) with { ItemIsInputElement = true });
+        Assert.Null(inputItem.Logic);
+        Assert.Equal(["A10-076"], inputItem.NoticeIds);
+        Assert.Equal("The condition 'item.value.title == \"\"' compares item.value.title, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.", Assert.Single(inputItem.Notices));
+        var nodeItem = WorkflowConditionConverter.FromScriban("item.value.title == \"\"", MigrationFixture.ScopeOf(itemReads));
+        Assert.Equal("""{"in":[{"var":"item.value.title"},[""]]}""", CanonicalJson.Write(nodeItem.Logic));
     }
 
     private static void AssertBlank((string Written, string Printed, string[] Reads) expected, BlankConversion actual)

@@ -323,7 +323,8 @@ public sealed class ConsultGenerationOrchestratorV31
 
     /// <summary>
     /// The run's inputs from the inputs document (<see cref="IRunInputsStore"/>'s shape): each input's read form, by id; the
-    /// profile's fields, a field not text reading <c>null</c>; and <paramref name="runFacts"/>.
+    /// profile's fields, a field not text reading <c>null</c>; and <paramref name="runFacts"/>. #1509 (D7): the inputs its
+    /// <c>modelDerived</c> member names, when it has one, are the run's <see cref="RunInputs.ModelDerivedInputs"/>.
     /// </summary>
     internal static RunInputs InputsOf(JsonObject document, JsonObject runFacts)
     {
@@ -341,7 +342,14 @@ public sealed class ConsultGenerationOrchestratorV31
                 profile[field] = SourceLayout.Text(value);
         }
 
-        return new RunInputs(inputs, runFacts, profile);
+        var modelDerived = new HashSet<string>(StringComparer.Ordinal);
+        if (document[V31JobStarter.ModelDerivedMember] is JsonArray named)
+        {
+            foreach (var id in named.Select(SourceLayout.Text).OfType<string>())
+                modelDerived.Add(id);
+        }
+
+        return new RunInputs(inputs, runFacts, profile) { ModelDerivedInputs = modelDerived };
     }
 }
 

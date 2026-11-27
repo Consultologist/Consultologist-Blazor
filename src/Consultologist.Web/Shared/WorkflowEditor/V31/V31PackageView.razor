@@ -1,0 +1,113 @@
+@using System.Text.Encodings.Web
+@using System.Text.Json
+@*
+    #1509 (Task 23; part 09 § 8.1, § 8.2; D14): a specVersion 31 package in the Editor, read-only, drawn in place of the
+    editing layout. The bar says so; an import's notices follow it. Left, the package's entries: manifest.json first,
+    then every source file by path (ordinal), then resolve.json and lock.json when the content holds them and the
+    account owns the version, then "Publish report" and, for a migrated version, "Migration", then the diagram when the content holds dag.mmd. Right, the open entry: a file's text as
+    stored in a <pre>, the two evidence files pretty-printed, the diagram drawn. Nothing here edits, and nothing reads
+    the manifest as a 30 one. Another entry is one more line in Entries.
+*@
+<div class="v31-package">
+    <p class="v31-package__bar" role="note">This package uses the new format. You can view and download it; editing returns in a later release.</p>
+
+    @if (Content.Notices is { Count: > 0 } notices)
+    {
+        <ul class="v31-package__notices" aria-label="Notices">
+            @foreach (var notice in notices)
+            {
+                <li class="v31-package__notice">@notice</li>
+            }
+        </ul>
+    }
+
+    <div class="v31-package__panes">
+        <nav class="v31-package__nav" aria-label="Package files">
+            <ul class="v31-package__files">
+                @foreach (var entry in entries)
+                {
+                    <li>
+                        <button type="button"
+                                class="v31-package__file @(entry.Key == Selected.Key ? "v31-package__file--selected" : "")"
+                                aria-current="@(entry.Key == Selected.Key ? "true" : null)"
+                                @onclick="() => selectedKey = entry.Key">@entry.Label</button>
+                    </li>
+                }
+            </ul>
+        </nav>
+        <section class="v31-package__view" aria-label="@Selected.Label">
+            @Selected.Body
+        </section>
+    </div>
+</div>
+
+@code {
+    /// <summary>The package as <c>Current/Content</c> (or the ingest) answered it.</summary>
+    [Parameter, EditorRequired] public WorkflowPackageContentResponse Content { get; set; } = default!;
+
+    /// <summary>The account owns this version: its <c>resolve.json</c> and <c>lock.json</c> are listed.</summary>
+    [Parameter] public bool Owned { get; set; }
+
+    private const string DiagramFile = "dag.mmd";
+
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    /// <summary>One line of the list: its key, what it is called, and what the right pane shows for it.</summary>
+    private sealed record Entry(string Key, string Label, RenderFragment Body);
+
+    private IReadOnlyList<Entry> entries = Array.Empty<Entry>();
+    private string? selectedKey;
+
+    private Entry Selected => entries.FirstOrDefault(entry => entry.Key == selectedKey) ?? entries[0];
+
+    protected override void OnParametersSet()
+    {
+        entries = Entries();
+        if (entries.All(entry => entry.Key != selectedKey))
+        {
+            selectedKey = entries[0].Key;
+        }
+    }
+
+    private IReadOnlyList<Entry> Entries()
+    {
+        var list = new List<Entry> { new("manifest.json", "manifest.json", Text(Content.Manifest.GetRawText())) };
+        list.AddRange(Content.Files
+            .Where(file => file.Key != DiagramFile)
+            .OrderBy(file => file.Key, StringComparer.Ordinal)
+            .Select(file => new Entry(file.Key, file.Key, Text(file.Value))));
+
+        if (Owned && Content.Resolve is { } resolve)
+        {
+            list.Add(new("resolve.json", "resolve.json", Text(Pretty(resolve))));
+        }
+
+        if (Owned && Content.Lock is { } lockFile)
+        {
+            list.Add(new("lock.json", "lock.json", Text(Pretty(lockFile))));
+        }
+
+        // #1509 (Task 24; D10, D11): the publish report as the version's evidence, and the migration report when the
+        // operator migrated it.
+        if (Owned && Content.PublishReport is { } report)
+        {
+            list.Add(new("publish-report", "Publish report", @<PublishReport31 Report="@report" />));
+        }
+
+        if (Content.MigrationReport is { } migration && Content.MigratedFrom is { Length: > 0 } oldVersion)
+        {
+            list.Add(new("migration", "Migration", @<MigrationReport31 Report="@migration" OldVersion="@oldVersion" />));
+        }
+
+        if (Content.Files.TryGetValue(DiagramFile, out var diagram))
+        {
+            list.Add(new("diagram", "Diagram", @<WorkflowDagView Diagram="@diagram" />));
+        }
+
+        return list;
+    }
+
+    private static string Pretty(JsonElement element) => JsonSerializer.Serialize(element, Indented);
+
+    private static RenderFragment Text(string text) => @<pre class="v31-package__text">@text</pre>;
+}

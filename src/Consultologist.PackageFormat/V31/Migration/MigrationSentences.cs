@@ -46,16 +46,29 @@ internal static class MigrationSentences
     }
 
     /// <summary>
-    /// A10-074 (#1508, comment 5, item 2; part 10 § 2.2): in <paramref name="file"/>'s <paramref name="member"/>, a text
-    /// compared with a literal (<see cref="BlankConversion.Written"/>, as the printer shows it), which 31 refuses
-    /// (S03-002), became membership in a list of that literal (<see cref="BlankConversion.Printed"/>), which answers as
-    /// 30's comparison did.
+    /// A10-074 (#1508, comment 5, item 2; #1508, 2026-11-26, item 6; part 10 § 2.2): in <paramref name="file"/>'s
+    /// <paramref name="member"/>, a text compared with a literal (<see cref="BlankConversion.Written"/>, as the printer
+    /// shows it), which 31 refuses (S03-002), became membership in a list of that literal
+    /// (<see cref="BlankConversion.Printed"/>), with <c>trim</c> written on each text read of an input (an item of an
+    /// input's list too): 30 trimmed an input's text at its end before it compared, and 31's <c>trim</c> trims both ends,
+    /// so an input's text that starts with white space now matches where 30's did not. The last clause, on the trim, is
+    /// said only where a trim was written (<see cref="BlankConversion.Trimmed"/>): a node's text is compared as it is.
     /// </summary>
     public static string TextLiteralBecameIn(string file, string member, BlankConversion literal)
     {
         ArgumentNullException.ThrowIfNull(literal);
-        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31.";
+        var trimmed = literal.Trimmed ? ", and an input's text is trimmed at both ends first, where 30 trimmed its end" : "";
+        return $"{file}, {member}: '{literal.Written}' became {literal.Printed}; text is compared with a literal by in at 31{trimmed}.";
     }
+
+    /// <summary>
+    /// A10-085 (#1508, 2026-11-26, item 6): <paramref name="comparison"/> (as the printer shows it) compares an input's
+    /// text with a literal whose first character is white space: 30 kept an input's leading white space, so it could
+    /// match, and the <c>trim</c> the migration writes on the input never leaves any, so no trim fits. A reason S10-002
+    /// gives.
+    /// </summary>
+    public static string ComparedWithLeadingWhiteSpace(string comparison) =>
+        $"'{comparison}' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.";
 
     /// <summary>
     /// A10-075 (#1508, comment 5, item 2; Task 30 fix round 1): in <paramref name="file"/>'s <paramref name="member"/>, a
@@ -239,11 +252,12 @@ internal static class MigrationSentences
         $"Node '{id}' declared {member} at 30, which 31 has no member for; it was dropped.";
 
     /// <summary>
-    /// A10-064 (#1507, Task 15 fix round 1; D16): classifier <paramref name="id"/>'s <c>with</c> values have no 31 member, and
-    /// are written at the end of its prompt as 30's engine appended them (in place of A10-030 for a classifier's <c>with</c>).
+    /// A10-064 (#1507, Task 15 fix round 1; D16; #1508 item 7): classifier <paramref name="id"/>'s <c>with</c> values have no 31
+    /// member; they are the enum of its answer format, which 31 sends after its prompt (in place of A10-030 for a classifier's
+    /// <c>with</c>); 30's "Answer with exactly one of" line is dropped.
     /// </summary>
-    public static string ValuesInPrompt(string id) =>
-        $"Node '{id}' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them.";
+    public static string ValuesInAnswerFormat(string id) =>
+        $"Node '{id}' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.";
 
     /// <summary>
     /// A10-031 (part 02 § 3.3): a reason: a package format whose root is a scalar or <c>null</c>, where a 31 package format
@@ -451,6 +465,14 @@ internal static class MigrationSentences
         $"{file}, if: written to skip the deliverable unless {string.Join(" or ", reads)} ran, as 30 skipped a deliverable none of whose sources ran.";
 
     /// <summary>
+    /// A10-087 (#1508, 2026-11-26, item 1; F-D6; part 10 § 1.2): the leaf <paramref name="file"/> was given the <c>if</c> of
+    /// <paramref name="deliverables"/> (in 30's order), the deliverables with a condition that need it: 30 ran only what an
+    /// applicable deliverable needed, where 31 runs every node.
+    /// </summary>
+    public static string RunsOnlyWhen(string file, IReadOnlyList<string> deliverables) =>
+        $"{file}, if: written so that the node runs only when deliverable {string.Join(" or ", deliverables)} applies, as 30 ran only what an applicable deliverable needed.";
+
+    /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
     /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
     /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is
@@ -458,6 +480,17 @@ internal static class MigrationSentences
     /// </summary>
     public static string JoinASourceRan(string term) =>
         $"every source may not run, and 30 skipped the deliverable when none ran; join {term} to 30's condition by and.";
+
+    /// <summary>
+    /// A10-086 (#1508, 2026-11-26, item 8; R15, F-D13): a reason: every source of the deliverable may not run, and the
+    /// migration cannot read whether the <paramref name="unread"/> ones ran (a node it does not know, or one whose run the
+    /// deliverable's <c>if</c> cannot read), so it writes no <c>if</c> and the operator writes the one that skips the
+    /// deliverable as 30 did; <paramref name="others"/>, when given, is the term (canonical JSON Logic) that says one of the
+    /// other sources ran.
+    /// </summary>
+    public static string SourceRunNotRead(IReadOnlyList<string> unread, string? others) =>
+        $"every source may not run, and the migration cannot read whether {string.Join(", ", unread)} ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it"
+        + (others is null ? "." : $", joining {others} for the others.");
 
     /// <summary>
     /// A10-080 (#1508, comment 7, Q5; R17; part 10 § 1.4): a reason: the template reads <paramref name="path"/> at

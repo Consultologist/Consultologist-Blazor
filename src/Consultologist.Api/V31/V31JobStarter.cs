@@ -20,7 +20,8 @@ namespace Consultologist.Api.V31;
 /// package ref, and only this deployment runs 31 (<see cref="SpecVersionAdmission.Runs31"/>) asks the compiled store: a
 /// version with no 31 stamp is today's path's (null, after one <c>publish.json</c> read). A load refusal is a start failure
 /// recorded on the job (<c>RecordStartFailure</c>, the clinician's sentence; the operator's in the log). Otherwise the
-/// request's typed inputs and its documents (read as today's start reads them), with its <c>MacroChoices</c> read as
+/// request's typed inputs, its documents and its references (#1509: <c>InputRefs</c>, <c>InputFormRefs</c> and
+/// <c>InputFormFiles</c>; read as today's start reads them), with its <c>MacroChoices</c> read as
 /// boolean inputs (#1504; by the macro's <c>if</c>, ruled by the owner on #1507; <see cref="V31StartChecks.Choices"/>), are checked with the account
 /// (<see cref="V31StartChecks"/>): any refusal is one recorded start failure holding every sentence. Then the inputs are
 /// held (<see cref="IRunInputsStore"/>, where the job's held inputs live), the entity initialised at specVersion 31 with
@@ -37,8 +38,16 @@ public sealed class V31JobStarter(
     EngineAttestationResponse engine,
     ILogger<V31JobStarter> logger,
     // #1503 (D9): the drain before a deploy; null (a test) reads as never draining.
-    IEngineDrain? drain = null)
+    IEngineDrain? drain = null,
+    // #1509: the lineage index a 5–30 start writes (History's "Used by" on the source job); null (a test) writes none.
+    IConsultGenerationLinkStore? links = null)
 {
+    /// <summary>
+    /// #1509 (D7): the held inputs document's member naming, in ordinal order, the inputs that hold an element of an earlier
+    /// run's deliverable (<see cref="RunInputs.ModelDerivedInputs"/>); absent when none does.
+    /// </summary>
+    internal const string ModelDerivedMember = "modelDerived";
+
     /// <summary>What a profile field of <c>needs.profile</c> is read from: the account settings that hold it (D6).</summary>
     private static readonly Dictionary<string, string> ProfileSettings = new(StringComparer.Ordinal)
     {
@@ -94,11 +103,14 @@ public sealed class V31JobStarter(
                 ConsultGenerationJobStartError.PackageContentRejected, senderSafe: refusal);
         }
 
-        // Documents become text as today's start makes them: a document sent to a text input arrives as its text.
+        // Documents become text as today's start makes them: a document sent to a text input arrives as its text. #1509 (R2):
+        // so do its references, read as today's start reads them: an earlier run's deliverable, a held form response, a
+        // questionnaire file, each into the input it names (an earlier run's element at its position among typed rows and
+        // documents); a refusal is today's.
         var extraction = await extract(request, ManifestOf(plan));
         if (extraction.Error != null)
         {
-            logger.LogWarning("Rejected 31 job start: attached documents were refused. Kind={Kind}, Outcome={Outcome}", extraction.ErrorKind, extraction.Outcome);
+            // The reader logged the refusal once, naming what was refused (a reference, a form, a questionnaire file or a document).
             return new ConsultGenerationJobStartOutcome(null, extraction.ErrorKind, extraction.Error, SenderSafeDetail: extraction.SenderSafeError);
         }
 
@@ -106,7 +118,7 @@ public sealed class V31JobStarter(
         // #1507 (ruled by the owner on #1507, 2026-11-22, 3): each MacroChoices entry is the value of the boolean input its macro's if reads.
         var (supplied, choiceRefusals) = V31StartChecks.Choices(plan, Supplied(request), request.MacroChoices);
         var (profile, signature) = await ProfileAsync(plan, appUserId, request.SignatureBlockId, cancellationToken);
-        var timeZone = (await settings.GetAsync(appUserId, AccountSettingKeys.TimeZone, cancellationToken))?.Value;
+        var timeZone = await TimeZoneAsync(settings, appUserId, cancellationToken);
 
         // #1505 (R8): the run facts known now as the orchestration will know them (its RunFactsBase, and run.package when the
         // plan reads it); run.date is worked out when the orchestration starts (D6), so an if that reads it is the run's to decide.
@@ -114,19 +126,34 @@ public sealed class V31JobStarter(
         if (plan.RunFacts.Contains("run.package", StringComparer.Ordinal))
             startFacts["package"] = $"{plan.Package}@{plan.Version}";
 
-        var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, startFacts, profile);
-        var accountRefusals = V31StartChecks.Account(plan, profile, timeZone);
-        if (signature.Refusal is { } notTheAccounts)
+        // #1509 (D8; part 08 § 5.1): a rerun's inputs that held an earlier run's text keep the source's origin for it, so the
+        // record never marks that text as typed. Only the rerun door sets them, and only for an input the request supplies.
+        var originsOf = extraction.Origins;
+        if (origin.InheritedInputOrigins is { Count: > 0 } inherited)
         {
-            // #1505 (D15): a block named that the account lacks is A08-004, said in S06-031's place (the account may have one).
-            accountRefusals = accountRefusals.Where(r => r.Id != "S06-031").Prepend(new SourceRefusal("A08-004", notTheAccounts, "")).ToList();
+            var merged = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(originsOf ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(), StringComparer.Ordinal);
+            foreach (var (id, kept) in inherited)
+            {
+                if (!merged.ContainsKey(id) && request.Inputs?.ContainsKey(id) == true)
+                    merged[id] = kept;
+            }
+
+            originsOf = merged;
         }
+
+        // #1509 (D7; part 08 § 3.1): an input holding an element of an earlier run's deliverable starts out model-derived.
+        var modelDerived = (originsOf ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
+            .Where(pair => pair.Value.Any(o => o.Kind == ConsultInputOriginKinds.PreviousRun))
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, startFacts, profile, modelDerived);
+        var accountRefusals = AccountRefusals(plan, profile, timeZone, signature.Refusal);
 
         var refusals = accountRefusals.Concat(choiceRefusals).Concat(inputRefusals).ToList();
         var header = Header(jobId, appUserId, $"{plan.Package}@{plan.Version}", origin, request, plan) with
         {
             // #1506 (part 08 § 3.1; D15): each document's origin with what its extraction used.
-            InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins
+            InputDocumentOrigins = originsOf is { Count: > 0 } origins
                 ? origins.ToDictionary(
                     pair => pair.Key,
                     pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.Select(origin => ExtractionSteps.Of(origin, extraction.OcrModelVersions)).ToList(),
@@ -176,7 +203,29 @@ public sealed class V31JobStarter(
             ["profile"] = new JsonObject(plan.NeedsProfile.Distinct(StringComparer.Ordinal)
                 .Select(field => KeyValuePair.Create(field, (JsonNode?)profile.GetValueOrDefault(field)))),
         };
+        // #1509 (D7): the inputs holding an earlier run's text, for the run's decisions; written only when there are any.
+        if (runInputs.ModelDerivedInputs.Count > 0)
+            document[ModelDerivedMember] = new JsonArray(runInputs.ModelDerivedInputs.Order(StringComparer.Ordinal).Select(id => (JsonNode?)id).ToArray());
         var pointer = await inputs.WriteAsync(accountKind, appUserId, jobId, document, cancellationToken);
+
+        // #1509 (#546): the lineage edges, as a 5–30 start writes them after it holds its inputs: one row per element taken
+        // from an earlier run, one for a replay. Best-effort like that start: a storage blip never refuses a start, and the
+        // job's own origins remain the truth this index projects.
+        if (links != null)
+        {
+            var lineageLinks = ConsultGenerationJobStarter.LinksFrom(jobId, appUserId, originsOf, origin.RerunOfJobId, DateTimeOffset.UtcNow);
+            if (lineageLinks.Count > 0)
+            {
+                try
+                {
+                    await links.WriteAsync(lineageLinks, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Lineage links not written; the run proceeds. JobId={JobId}", jobId);
+                }
+            }
+        }
 
         var recorded = limits.Limits.ToJson();
         await client.Entities.SignalEntityAsync(
@@ -275,8 +324,16 @@ public sealed class V31JobStarter(
     /// <paramref name="requested"/> (#1505, D15), the others their settings. With them, the block used, by id, and how it was
     /// chosen, or A08-004's sentence; all null when the plan reads no signature.
     /// </summary>
-    private async Task<(Dictionary<string, string?> Profile, (string? BlockId, string? Chosen, string? Refusal) Signature)> ProfileAsync(
-        RunPlan plan, string appUserId, string? requested, CancellationToken cancellationToken)
+    private Task<(Dictionary<string, string?> Profile, (string? BlockId, string? Chosen, string? Refusal) Signature)> ProfileAsync(
+        RunPlan plan, string appUserId, string? requested, CancellationToken cancellationToken) =>
+        ProfileAsync(settings, accounts, plan, appUserId, requested, cancellationToken);
+
+    /// <summary>
+    /// <see cref="ProfileAsync(RunPlan, string, string?, CancellationToken)"/> over the given stores, which the start-checks
+    /// route (D1 of #1509) reads an account with, so it answers what a start would.
+    /// </summary>
+    internal static async Task<(Dictionary<string, string?> Profile, (string? BlockId, string? Chosen, string? Refusal) Signature)> ProfileAsync(
+        IAccountSettingsStore settings, IAccountStore accounts, RunPlan plan, string appUserId, string? requested, CancellationToken cancellationToken)
     {
         var profile = new Dictionary<string, string?>(StringComparer.Ordinal);
         (string? BlockId, string? Chosen, string? Refusal) signature = (null, null, null);
@@ -300,6 +357,23 @@ public sealed class V31JobStarter(
         }
 
         return (profile, signature);
+    }
+
+    /// <summary>The account's time zone setting, as the start reads it (null when unset).</summary>
+    internal static async Task<string?> TimeZoneAsync(IAccountSettingsStore settings, string appUserId, CancellationToken cancellationToken) =>
+        (await settings.GetAsync(appUserId, AccountSettingKeys.TimeZone, cancellationToken))?.Value;
+
+    /// <summary>
+    /// The account's refusals as a start orders them (#1505, D15): <see cref="V31StartChecks.Account"/>'s, with a signature
+    /// block named that the account lacks (<paramref name="signatureRefusal"/>) as A08-004, said in S06-031's place.
+    /// </summary>
+    internal static IReadOnlyList<SourceRefusal> AccountRefusals(
+        RunPlan plan, IReadOnlyDictionary<string, string?> profile, string? timeZone, string? signatureRefusal)
+    {
+        var refusals = V31StartChecks.Account(plan, profile, timeZone);
+        if (signatureRefusal is { } notTheAccounts)
+            refusals = refusals.Where(r => r.Id != "S06-031").Prepend(new SourceRefusal("A08-004", notTheAccounts, "")).ToList();
+        return refusals;
     }
 
     /// <summary>
@@ -326,6 +400,8 @@ public sealed class V31JobStarter(
             Array.Empty<IReadOnlyDictionary<string, string>>(),
             workflowPackage,
             Source: origin.Source,
+            // #1509 (D8): a rerun's link to its source (the response's RerunOf); no baseline hashes, so no verdict.
+            RerunBaseline: origin.RerunBaseline,
             ScheduledAtUtc: request.ScheduledAtUtc,
             PackageSpecVersion: PublishedStamp.SpecVersion,
             // #1506 (hash-definitions.md § 7.2): the definition a 31 job's inputs are hashed by.

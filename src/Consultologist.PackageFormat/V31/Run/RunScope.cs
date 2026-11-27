@@ -6,8 +6,16 @@ namespace Consultologist.PackageFormat.V31.Run;
 /// <summary>
 /// #1503 (specVersion 31, area 06): what a job starts with: each input by id as part 02 reads it
 /// (<c>{ value, content, title }</c>; an input not supplied is absent), the run facts (<c>run.*</c>), and the profile's fields.
+/// #1509 (area 12, D7; part 08 § 3.1): with them, <see cref="ModelDerivedInputs"/>.
 /// </summary>
-public sealed record RunInputs(IReadOnlyDictionary<string, JsonNode?> Inputs, JsonObject RunFacts, IReadOnlyDictionary<string, string?> Profile);
+public sealed record RunInputs(IReadOnlyDictionary<string, JsonNode?> Inputs, JsonObject RunFacts, IReadOnlyDictionary<string, string?> Profile)
+{
+    /// <summary>
+    /// #1509 (area 12, D7; part 08 § 3.1): the ids of the inputs holding an element from an earlier run's deliverable, which
+    /// starts out model-derived, so a decision that reads one is <c>modelDerived</c> (§ 5.1). Empty unless the start says so.
+    /// </summary>
+    public IReadOnlySet<string> ModelDerivedInputs { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 03 § 6.1): the data a rule or a body is given: one object whose members are the
@@ -241,17 +249,19 @@ internal sealed class RunScope(RunInputs inputs)
     /// <c>parent</c>s, through <c>previous</c> and <c>history</c>) the flags of the body node it names, a pass's
     /// <c>number</c> neither, and a whole pass every node of its while; <c>param.&lt;id&gt;</c> the flags of the call's
     /// argument, read where the call runs (the literal <c>null</c> neither). Anything else, or a read that names nothing, is
-    /// both. Bounded by the nesting of loops and calls.
+    /// both. Bounded by the nesting of loops and calls. #1509 (area 12, D7): an input named in
+    /// <paramref name="modelDerivedInputs"/> (<see cref="RunInputs.ModelDerivedInputs"/>, an input holding an earlier run's
+    /// text) is model-derived, wherever it is read from.
     /// </summary>
-    public static (bool RunDependent, bool ModelDerived) Lineage(PlanEntry entry, RunFrame frame, string path)
+    public static (bool RunDependent, bool ModelDerived) Lineage(PlanEntry entry, RunFrame frame, string path, IReadOnlySet<string>? modelDerivedInputs = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(path);
-        return Lineage(entry, frame, path, 0);
+        return Lineage(entry, frame, path, modelDerivedInputs, 0);
     }
 
-    private static (bool RunDependent, bool ModelDerived) Lineage(PlanEntry entry, RunFrame frame, string path, int depth)
+    private static (bool RunDependent, bool ModelDerived) Lineage(PlanEntry entry, RunFrame frame, string path, IReadOnlySet<string>? modelDerivedInputs, int depth)
     {
         var segments = path.Split('.');
         if (depth > MaxLineageDepth || segments.Any(s => s.Length == 0))
@@ -260,7 +270,9 @@ internal sealed class RunScope(RunInputs inputs)
         {
             case "run":
                 return (true, false);
-            case "input" or "snippet":
+            case "input":
+                return segments.Length >= 2 && modelDerivedInputs?.Contains(segments[1]) == true ? (false, true) : Clean;
+            case "snippet":
                 return Clean;
             case "node" or "check" or "deliverable":
                 for (var length = segments.Length; length >= 2; length--)
@@ -281,7 +293,7 @@ internal sealed class RunScope(RunInputs inputs)
                 }
 
                 return binding?.Owner is { } loop && SourceLayout.Text(loop.Entry.Json["in"]) is { } source
-                    ? Lineage(loop.Entry, loop.Frame, source, depth + 1)
+                    ? Lineage(loop.Entry, loop.Frame, source, modelDerivedInputs, depth + 1)
                     : Untraced;
             }
 
@@ -297,7 +309,7 @@ internal sealed class RunScope(RunInputs inputs)
 
                 if (argument is null)
                     return Clean;
-                return SourceLayout.Text(argument) is { } reference ? Lineage(call.Entry, call.Frame, reference, depth + 1) : Untraced;
+                return SourceLayout.Text(argument) is { } reference ? Lineage(call.Entry, call.Frame, reference, modelDerivedInputs, depth + 1) : Untraced;
             }
 
             default:

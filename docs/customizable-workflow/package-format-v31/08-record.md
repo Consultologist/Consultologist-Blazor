@@ -63,8 +63,8 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
   - **Retained text** is in the blobs `{appUserId}/{jobId}/text/{sha256 hex of the key}.{part}.json`
     in the account's outputs container, `part` being `produced` (written by the activity that made
     the text) or `settled` (written with the row).
-  - **The canonical record document** is the blob `{appUserId}/{jobId}/record.json` in the same
-    container, which the sweep never deletes. It is a materialisation of the rows under the header: it may be
+  - **The canonical record document** is the blob `{appUserId}/{jobId}/record.json` in the records
+    account's `job-records` container (no lifecycle rule applies to it; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1509)), which the sweep never deletes. It is a materialisation of the rows under the header: it may be
     assembled again from them (when the blob is gone), and is kept only if it hashes to `recordHash` (decided in the
     build, #1506).
 - **A row write is insert-if-absent,** keyed by job and rooted key ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical second
@@ -270,6 +270,16 @@ older records. #1438 (Milestone 40) builds on them.
 **An input element from a previous run's deliverable** (#874) starts out **model-derived**, and its
 origin links to the job it came from. Typed text and uploaded documents start clean
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)).
+Such an element is recorded as `{ "origin": "previous-run", "jobId": "<source job>", "resultId": "<deliverable id>",
+"modelDerived": true }` (decided in the build, #1509, D7). On an input it alone filled, the three members sit beside `id`,
+`origin` and `hash`; in `elements`, beside the element's `origin`. A decision that reads an input holding such an element is
+`modelDerived: true` (§ 5.1).
+
+| Member (on a `previous-run` origin) | Type | Null | Meaning |
+|---|---|---|---|
+| `jobId` | string | never | the job whose deliverable the element was copied from, the same account's |
+| `resultId` | string | never | that deliverable's id |
+| `modelDerived` | boolean | never | `true`: the element starts out model-derived |
 
 **Input elements record their `origin`** (`typed`, `document`, `previous-run`, `transcript`), never a
 `producer`, which is a node's. The engine always knows the origin, so `null` is never written
@@ -435,7 +445,7 @@ decision can concern something that never got a row (a skipped node)
 | `modelDerived` | boolean | never | `true` when it read a model-derived value. A decision's flags describe the decision only: they don't pass to what it chooses ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `decidedAtUtc` | string | never | when the engine evaluated it, from the orchestration's replay-safe clock ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 
-**How a decision's flags are found** (decided in the build, #1506; the flags follow earlier-pass reads, [ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 4). `runDependent` is `true` when a read is `run.*` or names an entry whose `runDependent` is `true`, and `modelDerived` is `true` likewise from the entries' `modelDerived`. A read through `item`, `pass` or `param` takes the flags of what it stands for: the loop's source, the body node, the call's argument reads. A read the runner cannot trace is `modelDerived: true` and `runDependent: true`, so the record never marks model output as not model-derived.
+**How a decision's flags are found** (decided in the build, #1506; the flags follow earlier-pass reads, [ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 4). `runDependent` is `true` when a read is `run.*` or names an entry whose `runDependent` is `true`, and `modelDerived` is `true` likewise from the entries' `modelDerived`, and for a read of an input holding an element from a previous run's deliverable (§ 3.1; #1509, D7). A read through `item`, `pass` or `param` takes the flags of what it stands for: the loop's source, the body node, the call's argument reads. A read the runner cannot trace is `modelDerived: true` and `runDependent: true`, so the record never marks model output as not model-derived.
 
 **Reasons read as sentences** built from the printed condition: *skipped: input.kind.value =
 "table" is false*. A row skipped by a decision has this sentence as its `stateReason`, and the

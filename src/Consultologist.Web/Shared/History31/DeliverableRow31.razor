@@ -1,0 +1,283 @@
+@inherits DisclosureRow31<Deliverables31.View>
+@implements IDisposable
+@using System.Text.Json
+@using Consultologist.Web.Services.Provenance.V31
+@inject IJSRuntime JS
+@*
+    #1509 (Task 20; part 09 § 6.4 "Deliverables", part 08 § 10; R1): one deliverable, its line always shown: its title (its
+    label, else its key), its key, its state as stored and its stateReason as stored (a released deliverable whose check did
+    not apply says so). Opened, its body: its format and hashes; its template from the pinned version when the hashes agree,
+    else A12-007 (nothing when the row holds no templateHash: no template ran); its check line (Check: <id> passed or failed, linking to the check's row); its reads by template site, a
+    looped site collapsed to "× n passes" until expanded, each read with its size and hash and, while retained, its text cut
+    from the composed text; its profile reads (field and hash; the signature's block id); each destination (DeliveryRow31);
+    for a bundle, what it left out and why; its decisions; and its text. A released text has the Create page's Copy note; a
+    blocked one is drawn only by RefusedText31, never offered to copy, and no read shows a piece of it. After the drop the
+    hashes and sizes stay, with A12-002. Its text is fetched when it is first opened, once.
+*@
+<li class="history31-deliverable" id="row-@Node.Key" tabindex="-1" data-state="@Node.Status" @ref="Element">
+    <div class="history31-deliverable__line">
+        <button type="button" class="history31-deliverable__toggle" aria-expanded="@(IsOpen ? "true" : "false")" aria-controls="@ControlsId"
+                @onclick="() => View.Toggle(Node.Key)">
+            <span class="history31-deliverable__title">@Node.Title</span>
+        </button>
+        <code class="history31-deliverable__key">@Node.Key</code>
+        <span class="history31-deliverable__state">@Node.Status</span>
+        @if (Row?.Text("stateReason") is { Length: > 0 } reason)
+        {
+            <span class="history31-deliverable__reason">@HistorySentences31.StateReason(reason)</span>
+        }
+    </div>
+    @if (IsOpen && Row is { } row)
+    {
+        <div class="history31-deliverable__body" id="@BodyId">
+            <dl class="history31-deliverable__hashes">
+                @if (row.Text("format") is { Length: > 0 } format)
+                {
+                    <dt>format</dt>
+                    <dd><code>@format</code></dd>
+                }
+                @foreach (var (label, hash) in Hashes(row))
+                {
+                    <dt>@label</dt>
+                    <dd><code class="hash-text">@hash</code></dd>
+                }
+            </dl>
+            @if (TemplateReads31.Template(View.Resolve, row) is { } template)
+            {
+                <pre class="history31-deliverable__template">@template</pre>
+            }
+            else if (row.Text("templateHash") is { Length: > 0 })
+            {
+                @* a row with no templateHash ran no template (skipped, or failed before it): nothing to say of one *@
+                <p class="history31-deliverable__template-unread">@HistorySentences31.TemplateNotRead</p>
+            }
+            @if (row.Text("check") is { Length: > 0 } check)
+            {
+                <p class="history31-deliverable__check">
+                    Check: <RowLink31 Key="@check">@RefusedText31.CheckId(check)</RowLink31>
+                    <span class="history31-deliverable__verdict">@Verdict(check)</span>
+                </p>
+            }
+            @if (TemplateReads31.Group(row) is { Count: > 0 } sites)
+            {
+                <ul class="history31-sites">
+                    @foreach (var site in sites)
+                    {
+                        <li class="history31-site" data-site="@site.Site">
+                            <span class="history31-site__line">
+                                @if (site.At.Length > 0)
+                                {
+                                    <span class="history31-site__at">line @site.At</span>
+                                }
+                                <code class="history31-site__expr">@site.Expr</code>
+                                @if (Collapsible(site))
+                                {
+                                    <button type="button" class="history31-site__toggle" aria-expanded="@(_expanded.Contains(site.Site) ? "true" : "false")"
+                                            @onclick="() => ToggleSite(site.Site)">× @site.Passes.Count passes</button>
+                                }
+                            </span>
+                            @if (!Collapsible(site) || _expanded.Contains(site.Site))
+                            {
+                                <ul class="history31-site__passes">
+                                    @foreach (var read in site.Passes)
+                                    {
+                                        <li class="history31-substitution">
+                                            @if (read.Pass is { Count: > 0 } pass)
+                                            {
+                                                <span class="history31-substitution__pass">pass @string.Join(", ", pass)</span>
+                                            }
+                                            <code class="history31-substitution__reads">@read.Reads</code>
+                                            <span class="history31-substitution__size">@read.Size characters</span>
+                                            <code class="hash-text history31-substitution__hash">@read.Hash</code>
+                                            @if (read.Renders is { Length: > 0 } renders)
+                                            {
+                                                <span class="history31-substitution__renders">through <code>@renders</code></span>
+                                            }
+                                            @if (!Blocked && TemplateReads31.Slice(Composed, read.Start, read.Size) is { } piece)
+                                            {
+                                                <span class="history31-substitution__text">@piece</span>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+            @if (ProfileReads(row) is { Count: > 0 } profileReads)
+            {
+                <ul class="history31-deliverable__profile-reads">
+                    @foreach (var (field, hash) in profileReads)
+                    {
+                        <li class="history31-profile-read">
+                            <code class="history31-profile-read__field">@field</code>
+                            <code class="hash-text history31-profile-read__hash">@hash</code>
+                            @if (field == "profile.signature" && View.Record.Header.SignatureBlockId is { Length: > 0 } block)
+                            {
+                                <span class="history31-profile-read__block">block <code>@block</code>@(View.Record.Header.SignatureChosen is { Length: > 0 } chosen ? $" ({chosen})" : "")</span>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+            @if (Node.Children.Count > 0)
+            {
+                <ul class="history31-deliveries">
+                    @foreach (var destination in Node.Children)
+                    {
+                        <DeliveryRow31 @key="destination.Key" Node="destination" View="View" />
+                    }
+                </ul>
+            }
+            @if (LeftOut(row) is { Count: > 0 } leftOut)
+            {
+                <div class="history31-deliverable__left-out">
+                    <span>Left out of the bundle:</span>
+                    <ul>
+                        @foreach (var other in leftOut)
+                        {
+                            <li>
+                                <span class="history31-left-out__label">@(other.Text("label") is { Length: > 0 } otherLabel ? otherLabel : other.Key)</span>
+                                <span class="history31-left-out__state">@other.Text("state")</span>
+                                @if (other.Text("stateReason") is { Length: > 0 } otherReason)
+                                {
+                                    <span class="history31-left-out__reason">@HistorySentences31.StateReason(otherReason)</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+            @if (Node.Decisions.Count > 0)
+            {
+                <ul class="history31-decisions">
+                    @foreach (var decision in Node.Decisions)
+                    {
+                        <Decision31 @key="decision.Key" Decision="decision" />
+                    }
+                </ul>
+            }
+            @if (Blocked)
+            {
+                <RefusedText31 Deliverable="row" Check="CheckRow(row)" Fetched="Fetched" FetchFailed="FetchFailed" />
+            }
+            else if (Fetched is { TextDeleted: true })
+            {
+                <p class="history31-deliverable__dropped">@HistorySentences31.TextDeleted</p>
+            }
+            else if (Composed is { } text)
+            {
+                <pre class="history31-deliverable__text">@text</pre>
+                @if (Node.Status == "released")
+                {
+                    <FluentButton Appearance="Appearance.Accent" Class="history31-deliverable__copy" OnClick="CopyAsync">@_copyLabel</FluentButton>
+                }
+            }
+            @if (FetchFailed && !Blocked)
+            {
+                <p class="history31-deliverable__unavailable">@HistorySentences31.RecordNotAvailable</p>
+            }
+        </div>
+    }
+</li>
+
+@code {
+    private const string CopyNote = "Copy note";
+
+    private readonly HashSet<int> _expanded = [];
+    private string _copyLabel = CopyNote;
+    private int _copyToken;
+    private bool _disposed;
+
+    /// <summary>R1: a deliverable its check refused; its text is RefusedText31's alone.</summary>
+    private bool Blocked => Node.Status == "blocked";
+
+    /// <summary>The composed text while retained; null before it is fetched, after the drop or when none is offered.</summary>
+    private string? Composed => RowText31.Content(Fetched);
+
+    private static readonly (string Member, string Label)[] HashMembers =
+    [
+        ("composedHash", "composed hash"),
+        ("templateHash", "template hash"),
+        ("runNeutralHash", "run-neutral hash"),
+    ];
+
+    private static List<(string Label, string Hash)> Hashes(Row31 row) =>
+        HashMembers.Where(member => row.Text(member.Member) is { Length: > 0 }).Select(member => (member.Label, row.Text(member.Member)!)).ToList();
+
+    /// <summary>A site in a template loop that ran more than once starts collapsed to "× n passes".</summary>
+    private static bool Collapsible(SiteReads31 site) => site.Loop is not null && site.Passes.Count > 1;
+
+    private void ToggleSite(int site)
+    {
+        if (!_expanded.Remove(site))
+        {
+            _expanded.Add(site);
+        }
+    }
+
+    private Row31? CheckRow(Row31 row) => row.Text("check") is { Length: > 0 } check ? View.Record.Find(check) : null;
+
+    /// <summary>The gate's verdict: <c>passed</c> or <c>failed</c> from its <c>pass</c>; a check that gave none, its stored status.</summary>
+    private string Verdict(string check) =>
+        View.Record.Find(check) is not { } row ? ""
+        : row.Flag("pass") is { } pass ? (pass ? "passed" : "failed")
+        : row.Text("status") ?? "";
+
+    private static List<(string Field, string Hash)> ProfileReads(Row31 row) =>
+        row.List("profileReads")
+            .Where(read => read.ValueKind == JsonValueKind.Object && read.TryGetProperty("field", out var field) && field.ValueKind == JsonValueKind.String)
+            .Select(read => (read.GetProperty("field").GetString()!,
+                read.TryGetProperty("hash", out var hash) && hash.ValueKind == JsonValueKind.String ? hash.GetString()! : ""))
+            .ToList();
+
+    /// <summary>
+    /// Part 06 § 8: a bundle holds released deliverables only. For a released deliverable whose folder bundles, the folder's
+    /// other deliverables that were not released, in key order, each with its state and reason as stored.
+    /// </summary>
+    private List<Row31> LeftOut(Row31 row)
+    {
+        if (Node.Status != "released" || TemplateReads31.Bundle(View.Resolve, row.Key) is null)
+        {
+            return [];
+        }
+
+        var folder = Folder(row.Key);
+        return View.Record.Deliverables
+            .Where(other => other.Key != row.Key && Folder(other.Key) == folder && other.Text("state") != "released")
+            .ToList();
+    }
+
+    private static string Folder(string key) => key.LastIndexOf('.') is var cut and > 0 ? key[..cut] : key;
+
+    /// <summary>The Create page's Copy note (the clipboard call and its feedback, #768's words), for a released text only.</summary>
+    private async Task CopyAsync()
+    {
+        if (Blocked || Node.Status != "released" || Composed is not { } text)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _copyLabel = "Copied ✓";
+        }
+        catch (Exception)
+        {
+            _copyLabel = "Copy failed";
+        }
+
+        var token = ++_copyToken;
+        StateHasChanged();
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        if (token == _copyToken && !_disposed)
+        {
+            _copyLabel = CopyNote;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => _disposed = true;
+}

@@ -20,7 +20,9 @@ namespace Consultologist.PackageFormat;
 /// and whether the migration succeeded (the operator's weekly summary). <paramref name="Limits"/> (#1508, Task 36 fix round 1;
 /// default the engine's starting values, <see cref="WorkflowPackageMigration30To31.EngineLimits"/>): the limits the
 /// migration counts its package against (A10-081) and its snapshot publishes at; the operator's bulk publish gives the
-/// engine's configured ones, so a package within them is neither a hand edit nor refused.
+/// engine's configured ones, so a package within them is neither a hand edit nor refused. <paramref name="RunLimits"/>
+/// (#1508, F9; default the spec's starting values): the limits the snapshot's offline run counts against; the bulk publish gives
+/// the engine's configured ones.
 /// </summary>
 public sealed record Migration31Options(
     V31.TypeRegistry Registry,
@@ -31,7 +33,8 @@ public sealed record Migration31Options(
     IReadOnlyDictionary<string, string>? WhenEmpty = null,
     IReadOnlyDictionary<string, string>? FolderFormats = null,
     bool WriteSnapshot = true,
-    V31.PublishLimits? Limits = null)
+    V31.PublishLimits? Limits = null,
+    V31.Run.RunLimits? RunLimits = null)
 {
     /// <summary>The members of <c>options.json</c> (R18), in the order it is written.</summary>
     private static readonly string[] Members = ["renames", "whenEmpty", "folderFormats"];
@@ -459,6 +462,8 @@ public static class WorkflowPackageMigration30To31
                 return (null, MigrationSentences.SnapshotNotRun(MigrationSentences.CannotRun), null);
 
             var request = V31.Harness.SnapshotTest.Fictional(plan);
+            if (options.RunLimits is { } runLimits)
+                request = request with { Limits = runLimits };
             // The offline host answers every call at once, so the run ends without waiting on a clock.
             var run = V31.Harness.OfflineRun.RunAsync(plan, request).GetAwaiter().GetResult();
             var (written, why) = Written(files, upload, plan, request, run, snapshotFileBytes);

@@ -38,7 +38,9 @@ public interface IAIEndpointService
         // #991: per form-channel object input, the questionnaire file whose
         // coerced object the value in `inputs` equals — bytes beside the value,
         // verified by the server at start; null when none.
-        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null);
+        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null,
+        // #1509 (specVersion 31, area 12): the signature block picked for this run.
+        string? signatureBlockId = null);
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
@@ -60,6 +62,24 @@ public interface IAIEndpointService
 
     /// <summary>#546: who used this run — the links index's rows, ids only.</summary>
     Task<IReadOnlyList<ConsultJobLinkResponse>> GetConsultGenerationJobLinksAsync(string jobId);
+
+    /// <summary>
+    /// #1509 (specVersion 31, record storage 12): a job's stored rows in key order, decisions included, with no text
+    /// (<c>GET ConsultGenerationJobs/{jobId}/Rows</c>).
+    /// </summary>
+    Task<IReadOnlyList<RecordRowRef>> GetJobRowsAsync(string jobId);
+
+    /// <summary>
+    /// #1509: one row by its key, with the retained text it is still owed (<c>Rows?key=</c>); null when the job has no
+    /// row with that key (404).
+    /// </summary>
+    Task<RecordRowText?> GetJobRowAsync(string jobId, string key);
+
+    /// <summary>
+    /// #1509: the sealed record's exact bytes (<c>GET ConsultGenerationJobs/{jobId}/Record</c>); a 409 (not finished) or a
+    /// 500 (not readable) throws carrying the route's sentence.
+    /// </summary>
+    Task<RecordDownload> DownloadJobRecordAsync(string jobId);
 
     string GetConsultGenerationJobEventsUrl(string jobId, string attemptId, string? lastEventId = null);
 
@@ -175,7 +195,8 @@ public class AIEndpointService : IAIEndpointService
         IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null,
         IReadOnlyDictionary<string, bool>? macroChoices = null,
         IReadOnlyCollection<string>? acknowledgedShortInputs = null,
-        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null)
+        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null,
+        string? signatureBlockId = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -207,7 +228,8 @@ public class AIEndpointService : IAIEndpointService
                 // #991: the questionnaire files, beside their values.
                 InputFormFiles: formFiles is { Count: > 0 }
                     ? formFiles.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
-                    : null);
+                    : null,
+                SignatureBlockId: signatureBlockId);
 
             _logger.LogInformation(
                 "Starting consult generation job at {Url}. InputCount={InputCount}, InputLength={InputLength}",
@@ -397,6 +419,73 @@ public class AIEndpointService : IAIEndpointService
         }
     }
 
+    // #1509: the record routes write camelCase ({ rows }, { key, section, row, text, textDeleted }), unlike the job routes.
+    private static readonly JsonSerializerOptions RecordJsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    private string JobUrl(string jobId, string tail)
+    {
+        var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
+        return $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/{tail}";
+    }
+
+    public async Task<IReadOnlyList<RecordRowRef>> GetJobRowsAsync(string jobId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, JobUrl(jobId, "Rows"));
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await DescribeFailureAsync(response, "Consult record rows");
+        }
+
+        var listing = await response.Content.ReadFromJsonAsync<RecordRowsListing>(RecordJsonOptions);
+        return listing?.Rows ?? Array.Empty<RecordRowRef>();
+    }
+
+    public async Task<RecordRowText?> GetJobRowAsync(string jobId, string key)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, JobUrl(jobId, "Rows") + "?key=" + Uri.EscapeDataString(key));
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await DescribeFailureAsync(response, "Consult record row");
+        }
+
+        return await response.Content.ReadFromJsonAsync<RecordRowText>(RecordJsonOptions)
+            ?? throw new InvalidOperationException("Failed to deserialize the record row.");
+    }
+
+    public async Task<RecordDownload> DownloadJobRecordAsync(string jobId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, JobUrl(jobId, "Record"));
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // 409 "The job hasn't finished." and 500 "The record isn't available yet. Try again." carry their sentence
+            throw await DescribeFailureAsync(response, "Consult record download");
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        var hash = response.Headers.TryGetValues("X-Record-Hash", out var values) ? values.FirstOrDefault() : null;
+        var fileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"') is { Length: > 0 } named
+            ? named
+            : $"record-{jobId}.json";
+        return new RecordDownload(bytes, hash, fileName);
+    }
+
     public string GetConsultGenerationJobEventsUrl(string jobId, string attemptId, string? lastEventId = null)
     {
         var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
@@ -519,7 +608,11 @@ public record ConsultGenerationRequest(
     // the value was imported from. The Create page's questionnaire door
     // populates it; the server verifies and stamps the file-sourced
     // form-response origin.
-    Dictionary<string, InputFilePayload>? InputFormFiles = null);
+    Dictionary<string, InputFilePayload>? InputFormFiles = null,
+    // #1509 (specVersion 31, area 12): mirrors the API record's trailing member —
+    // the account signature block picked for this run; omitted when none.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? SignatureBlockId = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef. #1144: Position
 /// is the element's index in the combined array of a several input; null for a
@@ -578,6 +671,24 @@ public sealed record ConsultTokenUsage(int Input, int Output);
 
 public sealed record ConsultJobLinksResponse(IReadOnlyList<ConsultJobLinkResponse>? UsedBy);
 public record ConsultGenerationJobSseEvent(string EventName, string Json, string? EventId = null);
+
+/// <summary>
+/// #1509 (specVersion 31, record storage 12): one stored row as the <c>Rows</c> listing gives it: its key, its section
+/// (<c>node</c>, <c>check</c>, <c>decision</c>, <c>deliverable</c> or <c>delivery</c>) and the row's JSON object, no text.
+/// </summary>
+public sealed record RecordRowRef(string Key, string Section, JsonElement Row);
+
+/// <summary>
+/// #1509: one row fetched by its key (<c>Rows?key=</c>). <paramref name="Text"/> is the object of named texts the row is
+/// still owed (<c>content</c>, the produced or composed text; <c>sent</c>; a check's or node's other members), null when
+/// nothing is offered or once the text is dropped (<paramref name="TextDeleted"/>).
+/// </summary>
+public sealed record RecordRowText(string Key, string Section, JsonElement Row, JsonElement? Text, bool TextDeleted);
+
+/// <summary>#1509: the sealed record document's bytes, its <c>X-Record-Hash</c> and the file name the route gives it.</summary>
+public sealed record RecordDownload(byte[] Bytes, string? RecordHash, string FileName);
+
+internal sealed record RecordRowsListing(IReadOnlyList<RecordRowRef>? Rows);
 public record ConsultGenerationJobResponse(
     string JobId,
     string? AppUserId,
@@ -729,7 +840,9 @@ public record ConsultGenerationJobResponse(
     int? Rows = null,
     IReadOnlyDictionary<string, int>? RowStates = null,
     int? Decisions = null,
-    string? CurrentKey = null);
+    string? CurrentKey = null,
+    // #1509 (Task 17): mirrors the Api's Inputs — the header's `inputs` (id, origin, hash, extraction members, elements).
+    System.Text.Json.Nodes.JsonArray? Inputs = null);
 
 /// <summary>
 /// Mirrors Consultologist.Api.Jobs.ConsultLoopInstanceRow (v30 #1341/#1342, record storage 11):
