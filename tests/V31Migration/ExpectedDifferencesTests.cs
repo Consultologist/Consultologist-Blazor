@@ -23,7 +23,7 @@ public class ExpectedDifferencesTests
         "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
         "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
         "while-no-pass-separator", "loop-item-not-run", "chosen-macro-final-line-ending", "empty-read-trailing-space",
-        "macro-choice-classifier", "blank-conversion",
+        "macro-choice-classifier", "loop-item-strip-node", "blank-conversion",
     ];
 
     [Fact]
@@ -753,11 +753,12 @@ public class ExpectedDifferencesTests
     {
         // #1508, 2026-11-26, item 5 (no migration change): clinic_line, a 30 macro written as a snippet (D4), ends its line
         // with a read of the unset clinic; 31's snippet keeps "Seen at: " where 30 trimmed the rendered macro. problem_close's
-        // white space in the same deliverable is R5's and the engine placement's, credited beside it.
+        // white space in the same deliverable is the engine placement's, credited beside it (its R5 remainder is stripped with
+        // each item of the loop since #1510).
         var (_, _, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
         var problems = texts.Single(t => t.Site == "edge-unruled-whitespace/default#deliverables/deliverable.problems");
         Assert.Equal((false, true, false), (problems.Equal, problems.Expected, problems.Unexplained));
-        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+        Assert.Equal(["before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
     }
 
     [Fact]

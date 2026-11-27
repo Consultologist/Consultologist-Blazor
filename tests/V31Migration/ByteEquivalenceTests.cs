@@ -35,7 +35,12 @@ public class ByteEquivalenceTests
         var (capture, run, texts) = await EquivalenceFixture.Compared("example-conditional-sections", "default");
 
         Assert.NotEmpty(texts);
-        Assert.All(texts, t => Assert.Equal((true, false, (string?)null), (t.Equal, t.Expected, t.Explanation)));
+        // #1510 (item 1): the nodes that strip each loop's items render texts 31 alone has, each credited to loop-item-strip-node;
+        // every text 30 also has is equal.
+        var stripped = texts.Where(t => t.Site.Contains("_stripped:", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(stripped);
+        Assert.All(stripped, t => Assert.Equal((false, true, "loop-item-strip-node"), (t.Equal, t.Expected, Assert.Single(t.Rules))));
+        Assert.All(texts.Except(stripped), t => Assert.Equal((true, false, (string?)null), (t.Equal, t.Expected, t.Explanation)));
         foreach (var prompt in capture["prompts"]!.AsArray().OfType<JsonObject>())
         {
             var key = KeyMap.To31((string)prompt["key"]!, EquivalenceFixture.Migrated("example-conditional-sections"), EquivalenceFixture.Plan("example-conditional-sections"))!;
@@ -406,14 +411,15 @@ public class ByteEquivalenceTests
     [Fact]
     public async Task AComparedText_NamesTheRulesCredited()
     {
-        // #1508 (R19): composer-sources' tally is a let of text escaped in a Markdown deliverable (escaped-plain-text), and
-        // its count differs too, because 30 trimmed the topics it counted (unexpected difference 4, not ruled): the rule is
-        // credited, and the text is unexplained, so not expected.
+        // #1508 (R19): composer-sources' tally is a let of text escaped in a Markdown deliverable (escaped-plain-text). #1510
+        // (#1509 comment 7207709261, item 1): its count is 30's now that the topics it counts are stripped as 30 trimmed them,
+        // so the rule explains it all.
         var (_, _, texts) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
         var tally = texts.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally");
 
         Assert.Equal(["escaped-plain-text"], tally.Rules);
-        Assert.Equal((false, false, true, (string?)null), (tally.Equal, tally.Expected, tally.Unexplained, tally.Explanation));
+        Assert.Equal((false, true, false), (tally.Equal, tally.Expected, tally.Unexplained));
+        Assert.StartsWith("escaped-plain-text: ", tally.Explanation, StringComparison.Ordinal);
 
         // An explained text names its rules and has nothing left; an equal text names none.
         var (_, _, letters) = await EquivalenceFixture.Compared("example-prior-letters", "default");
@@ -443,6 +449,60 @@ public class ByteEquivalenceTests
         Assert.Contains("escaped-plain-text", sources.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally").Rules);
         var (_, _, v12) = await EquivalenceFixture.Compared("example-v12-constructs", "tone-friendly");
         Assert.Contains("escaped-plain-text", v12.Single(t => t.Site == "example-v12-constructs/tone-friendly#deliverables/deliverable.consult").Rules);
+    }
+
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 1): 30 trimmed each item of a loop it composed; the migration returns each item
+    /// of composer-sources' topic loop through a node that strips it, so six of the seven sites the ruling names are 30's
+    /// bytes, with no rule, and the seventh, tally, differs only as a plain text escaped in Markdown (escaped-plain-text), its
+    /// count now 30's.
+    /// </summary>
+    [Fact]
+    public async Task ALoopsItems_AreTrimmedAs30Did()
+    {
+        var (_, _, texts) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
+        string[] sites =
+        [
+            "prompts/node.opening", "prompts/node.closing", "prompts/node.plan_gate.draft_plan", "prompts/node.tone_case.plain_line",
+            "deliverables/deliverable.topics", "deliverables/deliverable.topics_then_opening",
+        ];
+        foreach (var site in sites)
+        {
+            var text = texts.Single(t => t.Site == "composer-sources/awkward-texts#" + site);
+            Assert.True((text.Equal, text.Rules.Count, text.Unexplained) == (true, 0, false), $"{site}: equal {text.Equal}, rules {string.Join(",", text.Rules)}");
+        }
+
+        var tally = texts.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally");
+        Assert.Equal(["escaped-plain-text"], tally.Rules);
+        Assert.Equal((false, true, false), (tally.Equal, tally.Expected, tally.Unexplained));
+    }
+
+    /// <summary>
+    /// #1510 (F-D3): the stripping node's texts are 31's alone; each is credited to <c>loop-item-strip-node</c> exactly when its
+    /// node is one the migration wrote and its text is the old <c>ret</c>'s text for that item, trimmed. Never otherwise.
+    /// </summary>
+    [Fact]
+    public async Task AStrippingNodesText_IsCreditedOnlyWhenItIsTheItemTrimmed()
+    {
+        var (capture, run, texts) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
+        var stripped = texts.Where(t => t.Site.Contains("#renders/node.topic_loop.topic_gate_stripped", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(stripped);
+        Assert.All(stripped, t => Assert.Equal((false, true, false), (t.Equal, t.Expected, t.Unexplained)));
+        Assert.All(stripped, t => Assert.Equal(["loop-item-strip-node"], t.Rules));
+        Assert.All(texts.Where(t => !t.Site.Contains("_stripped", StringComparison.Ordinal)), t => Assert.DoesNotContain("loop-item-strip-node", t.Rules));
+
+        var migrated = EquivalenceFixture.Migrated("composer-sources");
+        var plan = EquivalenceFixture.Plan("composer-sources");
+        var render = run.Renders.First(r => r.Key.StartsWith("node.topic_loop.topic_gate_stripped:", StringComparison.Ordinal));
+        DifferenceContext Context(string key, string? old, string now) =>
+            new("composer-sources", "awkward-texts", "composer-sources/awkward-texts#renders/" + key, ComparedKind.Render, null, key, old, now, capture, run, migrated, plan);
+
+        Assert.StartsWith("loop-item-strip-node: ", ExpectedDifferences.Explain(Context(render.Key, null, render.Text)));
+        // Another text at the same node, a text 30 also had, and a 31-only render of a node the migration did not write.
+        Assert.Null(ExpectedDifferences.Explain(Context(render.Key, null, render.Text + "\n")));
+        Assert.Null(ExpectedDifferences.Explain(Context(render.Key, render.Text, render.Text + " ")));
+        Assert.Null(ExpectedDifferences.Explain(Context("node.topic_loop.topic_gate" + render.Key[render.Key.IndexOf(':')..], null, render.Text)));
+        Assert.Null(ExpectedDifferences.Explain(Context(render.Key, null, render.Text) with { Migrated = migrated with { StripNodes = new Dictionary<string, string>() } }));
     }
 
     [Fact]
@@ -484,6 +544,7 @@ public class ByteEquivalenceTests
         ["required-blank-refused"] = "no compared capture's 31 start refuses a required text input supplied blank.",
         ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
         ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
+        ["macro-trailing-whitespace"] = "the one compared macro whose body ends in more white space than one line ending, edge-unruled-whitespace's problem_close, ends each item of a loop whose .content is read, which the migration strips as 30 trimmed it (#1510); the rule's own tests hold it on hand-made texts.",
     };
 
     [Fact]
@@ -505,9 +566,6 @@ public class ByteEquivalenceTests
         Assert.All(ExpectedDifferences.Rules, rule => Assert.True(hits.Contains(rule.Id) ^ RulesWithoutAHit.ContainsKey(rule.Id),
             hits.Contains(rule.Id) ? $"{rule.Id} has a golden hit and a reason." : $"{rule.Id} has no golden hit and no reason."));
         Assert.Contains("sent-format", hits);
-        // #1508 (Task 35 fix round 1): edge-unruled-whitespace's problem_close, placed after each paragraph by 30's engine,
-        // ends its body in more white space than one line ending.
-        Assert.Contains("macro-trailing-whitespace", hits);
         Assert.All(RulesWithoutAHit.Keys, id => Assert.Contains(id, ExpectedDifferences.Rules.Select(r => r.Id)));
     }
 

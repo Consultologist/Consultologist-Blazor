@@ -149,8 +149,10 @@ public class EdgeCasePackagesTests
     {
         // The three Q3 to Q5 cases: the migration's if, the loop's .content and the object guard give 30's bytes, every text
         // equal but edge-items-not-run's template loop, Q4's difference, expected as the owner ruled (#1508, 2026-11-26,
-        // item 4: loop-item-not-run).
-        Assert.All((await EquivalenceFixture.Report(package)).Texts, t => Assert.True(t.Equal || (t.Expected && t.Rules.Contains("loop-item-not-run")), t.Site));
+        // item 4: loop-item-not-run), and the texts of the node that strips the problem loop's items, 31's alone (#1510,
+        // loop-item-strip-node).
+        Assert.All((await EquivalenceFixture.Report(package)).Texts, t => Assert.True(
+            t.Equal || (t.Expected && (t.Rules.Contains("loop-item-not-run") || t.Rules.SequenceEqual(["loop-item-strip-node"]))), t.Site));
     }
 
     // ---- edge-missing-marker -------------------------------------------------------------------------------------
@@ -279,14 +281,15 @@ public class EdgeCasePackagesTests
         Assert.Equal(["chosen-macro-final-line-ending"], texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.letter", StringComparison.Ordinal)).Rules);
 
         // problem_close, placed after each paragraph by 30's engine, ends its body in more white space than one line ending:
-        // 30 trimmed it all, 31 keeps all but one line ending (R5). The comparison writes its marker into the captured reply,
-        // and macro-trailing-whitespace explains the letter's prompt with nothing left; in the problems deliverable it is
-        // credited beside (b).
+        // 30 trimmed it all, 31 keeps all but one line ending (R5). #1510 (item 1): it ends each item of the problem loop,
+        // whose .content is read, so the node that strips each item takes that white space off as 30 trimmed it, and
+        // macro-trailing-whitespace is no longer needed: the letter's prompt and the problems deliverable are explained
+        // without it.
         var letter = texts.Single(t => t.Site.EndsWith("#prompts/node.letter", StringComparison.Ordinal));
-        Assert.Contains("macro-trailing-whitespace", letter.Rules);
-        Assert.True(letter.Expected);
+        Assert.DoesNotContain("macro-trailing-whitespace", letter.Rules);
+        Assert.True(letter.Equal || letter.Expected);
         var problems = texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.problems", StringComparison.Ordinal));
-        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+        Assert.Equal(["before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
         Assert.True(problems.Expected);
     }
 
