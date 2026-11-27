@@ -872,6 +872,37 @@ public class ExpectedDifferencesTests
     }
 
     [Fact]
+    public void ALoopItemNotRun_DoesNotExcuseALostResult()
+    {
+        // #1543, ruling 5 (A7): an inline guard body, the third item not run, the first item's result holding a line ending.
+        // 31's text lacks the whole line that holds the second item's result; the identity read may not swallow it.
+        var inline = EquivalenceFixture.Migrated("edge-items-not-run");
+        var files = new Dictionary<string, string>(inline.Files, StringComparer.Ordinal);
+        var lines = files["nodes/problem_lines.md"];
+        files["nodes/problem_lines.md"] = lines.Replace("- {{ e.item.value }}: {{ e.content }}\n", "{{ e.label }}: {{ e.content }}; ", StringComparison.Ordinal);
+        Assert.NotEqual(lines, files["nodes/problem_lines.md"]);
+        const string Old = "Type 2 diabetes: Diabetes paragraph.\nHbA1c 71 mmol/mol.; Metformin continued: Medication paragraph.; Blood pressure of 148/92: ; ";
+        const string Lost = "Type 2 diabetes: Diabetes paragraph.";
+
+        var credited = ExpectedDifferences.Credit(ItemsContext(ComparedKind.Render, Old, Lost, "node.problem_lines",
+            ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun), inline with { Files = files }));
+
+        Assert.DoesNotContain("loop-item-not-run", credited.Rules.Select(r => r.Id));
+        Assert.True(credited.Unexplained);
+        Assert.False(credited.Expected);
+    }
+
+    [Fact]
+    public void AnIdentityReadFollowedByAnotherRead_StopsAtTheNextLiteral()
+    {
+        // #1543, ruling 5 (A7): the identity read stops before the literal that follows it (": "), so a 30-only line whose
+        // identity text holds ": " (here a result written after it) is not one item's fixed text.
+        var notRun = ItemsRun(RowState.Completed, RowState.Completed, RowState.NotRun);
+        Assert.Null(ExpectedDifferences.Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: Blood pressure paragraph: \n", ItemsRan, "node.problem_lines", notRun)));
+        Assert.StartsWith("loop-item-not-run: ", Explain(ItemsContext(ComparedKind.Render, ItemsRan + "- Blood pressure of 148/92: \n", ItemsRan, "node.problem_lines", notRun)));
+    }
+
+    [Fact]
     public async Task AChosenMacrosFinalLineEnding_IsExpected()
     {
         // #1508, 2026-11-26, item 5 (no migration change): follow_up, a macro the model chose (R13), ends its body in a line
