@@ -163,7 +163,7 @@ Part G starts after Task F3 is committed, so its goldens start green. It ends wi
 **Files:** modify `src/Consultologist.PackageFormat/ConsultMarkdown.cs` and `V31/PlainConversion.cs`. Test: `tests/ConsultMarkdownTests.cs` (new methods only), `tests/V31Logic/PlainConversionTests.cs`, `tests/V31Logic/LogicVectors.cs` (two `plain` cases). Content repo: `v31/constants.json` (G-D3).
 **Interfaces:** produces `ConsultMarkdown.For(int)`, `ConsultMarkdown.Pipeline31`, `ConsultMarkdown.Extensions31`.
 
-- [ ] **Step 1: failing tests** in `ConsultMarkdownTests`:
+- [x] **Step 1: failing tests** in `ConsultMarkdownTests`:
   - `For_BelowThirtyOne_IsTheUnchangedPipeline` (`Same(For(30), Pipeline)`, and `For(5)`).
   - `Pipeline31_IsTheAdvancedBundleLessTheExcluded`: the extension types of `UseAdvancedExtensions().Build()` minus G-D4's equal `Pipeline31`'s, which pins the 0.41.3 list.
   - `Pipeline31_IsTheExtensionsTheContractNames` (each type name less `Extension` against `constants.json`).
@@ -172,9 +172,9 @@ Part G starts after Task F3 is committed, so its goldens start green. It ends wi
   - `Pipeline31_GenericAttributes_AreText`: `# Plan {#id .class key=value}` and `Seen by Dr A. Sample {onclick=x}` keep their braces as text; no `onclick=`, `class="class"` or `key=`.
   - `TheAdvancedBundle_WritesAnyAttributeName`: the evidence for the PR body; `UseAdvancedExtensions().DisableHtml()` on the same text. Write what Markdig 0.41.3 actually emits; if it filters `on*`, record that and still exclude the extension (item 2 stands).
   - In `PlainConversionTests`: `ToPlain_KeepsRawHtmlAsText`, `ToPlain_KeepsAGenericAttributeAsText`. Expected strings are taken from the run in step 3 and read before pinning.
-- [ ] **Step 2:** run `--filter "FullyQualifiedName~ConsultMarkdownTests|FullyQualifiedName~PlainConversionTests"`; they fail.
-- [ ] **Step 3:** implement G-D1, G-D3 and G-D6. The content repo `constants.json` change is checked with `python3 scripts/check-v31.py` there; update it if the checker pins `markdig`'s keys. Commit `Format spec (Consultologist-Blazor#1510): …` on `m39-build`, push, and move the pin. **Stop and report** if `UseAdvancedExtensions` in 0.41.3 holds an extension that G-D3 plus G-D4 do not name (or lacks one), or if any existing `ToPlain_Goldens` case changes.
-- [ ] **Step 4:** the G filter, plus `ConsultMarkdownTests` (the four existing 5–30 tests unchanged): green. Commit (`PackageFormat (#1510): …`, `Tests (#1510): …`), push.
+- [x] **Step 2:** run `--filter "FullyQualifiedName~ConsultMarkdownTests|FullyQualifiedName~PlainConversionTests"`; they fail.
+- [x] **Step 3:** implement G-D1, G-D3 and G-D6. The content repo `constants.json` change is checked with `python3 scripts/check-v31.py` there; update it if the checker pins `markdig`'s keys. Commit `Format spec (Consultologist-Blazor#1510): …` on `m39-build`, push, and move the pin. **Stop and report** if `UseAdvancedExtensions` in 0.41.3 holds an extension that G-D3 plus G-D4 do not name (or lacks one), or if any existing `ToPlain_Goldens` case changes.
+- [x] **Step 4:** the G filter, plus `ConsultMarkdownTests` (the four existing 5–30 tests unchanged): green. Commit (`PackageFormat (#1510): …`, `Tests (#1510): …`), push.
 
 ### Task G2: the PDF draws every block of the 31 bundle (items 1, 2, 3)
 
@@ -513,3 +513,7 @@ public static class PackageDiagram { public static string Generate(string resolv
 - **Task F3:** the content repo's two commits are headed `Format spec (Consultologist-Blazor#1509): …`, where the brief said `#1510`; they were pushed before the slip was seen, and a pushed commit is not amended. Their bodies name #1510.
 - **Task F3:** the conformance README holds no table of comparison rules, so `loop-item-strip-node` is written in chapter 10 § 10.11 only (and in part 10 § 3.2 and the library's rule table here); the README gains the three A10 rows.
 - **Task F3:** besides part 10 §§ 1.2 and 3.2, three passages said what is no longer written and were corrected: part 04 § 2.8's migrated loops (and its twin, the content repo's § 4.2.8, which still showed `plaintext` items from before #1507's R9), part 10 § 1.4's instance count for `example-nested-note` (80,614 → 120,814), and the library's sentence range (A10-001 to A10-090). The library's passes table gains a row for `StripLoopItems` and its rule table `loop-item-strip-node`; `FX/README.md`'s `migrated/` section names the two new file families.
+- **Task G1:** `constants.json` `markdig`'s two new members, `emphasisExtras` and `html`, are added to `constants.schema.json` (both required; `additionalProperties` is false there) and to the `markdig` member of each `conformance/schemas/constants/` case, which copy `constants.json`; `check-v31.py` checks the four keys and `html: false`. `operation-goldens/plain.json` gains the two new `plain` cases; no other vector moved. Content repo `1145db3`; the pin `9f8f91c` → `1145db3`.
+- **Task G1:** what Markdig 0.41.3 does with generic attributes: `UseAdvancedExtensions().DisableHtml()` writes any attribute name the text names, an event handler included, with no `on*` filter: `# Plan {#id .class key=value}` gives `<h1 id="id" class="class" key="value">Plan</h1>` and `Seen by Dr A. Sample {onclick=x}` gives `<p onclick="x">Seen by Dr A. Sample </p>` (`TheAdvancedBundle_WritesAnyAttributeName`). Through `Pipeline31` both keep their braces as text.
+- **Task G1:** `Pipeline31_IsTheExtensionsTheContractNames` also holds `emphasisExtras`, `html` and `version` to the pipeline; Markdig's version is read from its informational version (its assembly version is `0.41.0`). Moving `constants.json` reddened no golden: the whole non-E2E suite is green with the new pin.
+- **Task G1:** the prose that still says `UseAdvancedExtensions` (part 02 § 5.2, the content repo's § 2.5.2 and the conformance README's D13 row) is left for G8's documents.
