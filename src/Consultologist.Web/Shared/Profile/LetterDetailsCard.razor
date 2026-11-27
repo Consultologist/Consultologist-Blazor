@@ -1,0 +1,156 @@
+@inject IAccountEndpointService AccountService
+@* #1509 (Task 21; part 09 § 7.1; D13): the profile fields a 31 package reads that have no home elsewhere. A blank value
+   is not set: saving one deletes the setting. Only a field that changed is written. The Api's refusal of a value (a 400
+   naming the key and the limit, never the value) is shown as it comes. *@
+
+<section class="content-card letter-details-card">
+    <div class="form-stack">
+        <h3 class="panel-title">
+            Letter details
+        </h3>
+
+        <p class="panel-description">
+            Details a workflow can print in your letters. A field left blank is not set, and a workflow that needs
+            it will ask you to set it before it runs.
+        </p>
+
+        @if (message != null)
+        {
+            <FluentMessageBar Intent="@messageIntent" AllowDismiss="false" Class="letter-details-message">
+                @message
+            </FluentMessageBar>
+        }
+
+        <div class="state-panel">
+            <span class="muted-text">Credentials</span>
+            <strong class="letter-credentials-state">@LetterDetails.Describe(savedCredentials)</strong>
+        </div>
+        <input class="node-field__input letter-credentials-input"
+               value="@credentialsInput"
+               @onchange="args => credentialsInput = args.Value?.ToString() ?? string.Empty"
+               maxlength="@LetterDetails.MaxCredentialsLength"
+               disabled="@requestInProgress"
+               placeholder="For example, MD, FRCPC"
+               aria-label="Credentials" />
+
+        <div class="state-panel">
+            <span class="muted-text">Organisation</span>
+            <strong class="letter-organisation-state">@LetterDetails.Describe(savedOrganisation)</strong>
+        </div>
+        <input class="node-field__input letter-organisation-input"
+               value="@organisationInput"
+               @onchange="args => organisationInput = args.Value?.ToString() ?? string.Empty"
+               maxlength="@LetterDetails.MaxOrganisationLength"
+               disabled="@requestInProgress"
+               placeholder="Your clinic or hospital"
+               aria-label="Organisation" />
+
+        <div class="state-panel">
+            <span class="muted-text">Closing line</span>
+            <strong class="letter-closing-state">@LetterDetails.Describe(savedClosing)</strong>
+        </div>
+        <textarea class="node-field__input letter-closing-input"
+                  rows="3"
+                  value="@closingInput"
+                  @onchange="args => closingInput = args.Value?.ToString() ?? string.Empty"
+                  maxlength="@LetterDetails.MaxClosingLength"
+                  disabled="@requestInProgress"
+                  placeholder="The closing line, exactly as it should appear"
+                  aria-label="Closing line"></textarea>
+
+        <div class="action-row">
+            <FluentButton Appearance="Appearance.Accent"
+                          Class="letter-details-save"
+                          Disabled="@requestInProgress"
+                          @onclick="SaveAsync">
+                Save
+            </FluentButton>
+        </div>
+    </div>
+</section>
+
+@code {
+    private string? savedCredentials;
+    private string? savedOrganisation;
+    private string? savedClosing;
+    private string credentialsInput = string.Empty;
+    private string organisationInput = string.Empty;
+    private string closingInput = string.Empty;
+    private bool requestInProgress;
+    private string? message;
+    private MessageIntent messageIntent = MessageIntent.Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            savedCredentials = (await AccountService.GetSettingAsync(LetterDetails.CredentialsKey))?.Value;
+            savedOrganisation = (await AccountService.GetSettingAsync(LetterDetails.OrganisationKey))?.Value;
+            savedClosing = (await AccountService.GetSettingAsync(LetterDetails.ClosingKey))?.Value;
+        }
+        catch (HttpRequestException)
+        {
+            // Shown as unset; a save will say if the service is down.
+            message = "We couldn't load your letter details.";
+            messageIntent = MessageIntent.Warning;
+        }
+
+        credentialsInput = savedCredentials ?? string.Empty;
+        organisationInput = savedOrganisation ?? string.Empty;
+        closingInput = savedClosing ?? string.Empty;
+    }
+
+    private async Task SaveAsync()
+    {
+        requestInProgress = true;
+        message = null;
+        try
+        {
+            savedCredentials = await WriteAsync(LetterDetails.CredentialsKey, savedCredentials, credentialsInput);
+            savedOrganisation = await WriteAsync(LetterDetails.OrganisationKey, savedOrganisation, organisationInput);
+            savedClosing = await WriteAsync(LetterDetails.ClosingKey, savedClosing, closingInput);
+            credentialsInput = savedCredentials ?? string.Empty;
+            organisationInput = savedOrganisation ?? string.Empty;
+            closingInput = savedClosing ?? string.Empty;
+            message = "Your letter details are saved.";
+            messageIntent = MessageIntent.Success;
+        }
+        catch (HttpRequestException exception) when (exception.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            // The Api's refusal names the key and the limit, never the value.
+            message = exception.Message;
+            messageIntent = MessageIntent.Error;
+        }
+        catch (HttpRequestException)
+        {
+            message = "We couldn't save your letter details. Please try again.";
+            messageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            requestInProgress = false;
+        }
+    }
+
+    /// <summary>Writes the field when what is typed, trimmed, differs from what is saved; returns what is saved after.</summary>
+    private async Task<string?> WriteAsync(string key, string? saved, string typed)
+    {
+        var stored = LetterDetails.Store(typed);
+        var current = LetterDetails.Store(saved);
+        if (string.Equals(stored, current, StringComparison.Ordinal))
+        {
+            return saved;
+        }
+
+        if (stored == null)
+        {
+            await AccountService.DeleteSettingAsync(key);
+        }
+        else
+        {
+            await AccountService.SaveSettingAsync(key, stored, LetterDetails.ContentType);
+        }
+
+        return stored;
+    }
+}

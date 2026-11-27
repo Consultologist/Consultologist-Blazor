@@ -76,6 +76,19 @@ public class EndpointUrlTests
     }
 
     [Fact]
+    public async Task TheAccountService_SettingSave400_ThrowsCarryingTheRefusalAsWritten()
+    {
+        // #1509 (Tasks 21, 22): the Api's refusal of a Letter details value or a time zone is plain text.
+        var handler = new StatusHandler(HttpStatusCode.BadRequest, "profile.credentials must be at most 120 characters.");
+        var service = new AccountEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<AccountEndpointService>>());
+
+        var thrown = await Assert.ThrowsAsync<HttpRequestException>(() => service.SaveSettingAsync("profile.credentials", "x", "text/plain"));
+
+        Assert.Equal("profile.credentials must be at most 120 characters.", thrown.Message);
+        Assert.Equal(HttpStatusCode.BadRequest, thrown.StatusCode);
+    }
+
+    [Fact]
     public async Task TheJobsService_CallsTheChosenLocation()
     {
         var handler = new RecordingHandler("""{"JobId":"j","Status":"Running"}""");
