@@ -123,7 +123,7 @@ public static class ExpectedDifferences
         {
             Bytes = ExplicitHardBreaks,
         },
-        new("block-read-own-line",
+        new(BlockReadOwnLineId,
             "#1543, ruling 2, ruled by the owner on 2026-11-27 (a markdown_block read separated from the text beside it by a blank line); part 10 §§ 1.2, 3.2",
             "a markdown_block read that had text beside it on its line, which 31 refuses, or a line of text next to its line, is separated from that text by a blank line the migration wrote: 31's text holds the line endings of that blank line where 30's has the read inside the line, or one line ending")
         {
@@ -268,8 +268,9 @@ public static class ExpectedDifferences
 
             // #1543 (D8): a run of white space is one token, so two rules whose differences share one run (the blank line
             // the migration wrote beside a separated read, after the space an empty read left) each leave it a different
-            // run: neither alone brings the texts nearer. When no rule alone does, a pair is tried, the first's change not taking the
-            // texts further away, and kept only where the two together bring them nearer.
+            // run: neither alone brings the texts nearer. When no rule alone does, a pair one of whose rules is
+            // block-read-own-line (the only rule that needs it) is tried, the first's change not taking the texts further
+            // away, and kept only where the two together bring them nearer. No other two rules are ever paired.
             if (!changed && distance > 0 && Pair(context, old, now, distance, applied) is { } pair)
             {
                 (old, now, distance) = (pair.Old, pair.New, pair.Distance);
@@ -282,12 +283,15 @@ public static class ExpectedDifferences
     }
 
     /// <summary>
-    /// The first pair of rules not yet <paramref name="applied"/>, in <see cref="Rules"/>' order, whose changes in turn bring
-    /// <paramref name="old"/> and <paramref name="now"/> nearer than <paramref name="distance"/>, the first's alone not
-    /// taking them further away; none when no pair does.
+    /// The first pair of rules not yet <paramref name="applied"/>, in <see cref="Rules"/>' order, one of them
+    /// <see cref="BlockReadOwnLineId"/>, whose changes in turn bring <paramref name="old"/> and <paramref name="now"/> nearer
+    /// than <paramref name="distance"/>, the first's alone not taking them further away; none when no pair does (and none
+    /// when block-read-own-line is applied already or finds no place).
     /// </summary>
     private static (string Old, string New, int Distance, Rule[] Rules)? Pair(DifferenceContext context, string old, string now, int distance, List<Rule> applied)
     {
+        if (applied.Any(r => r.Id == BlockReadOwnLineId) || SeparationPlaces(context).Count == 0)
+            return null;
         foreach (var first in Rules)
         {
             if (applied.Contains(first) || first.Bytes?.Invoke(context, old, now) is not { } once || (once.Old == old && once.New == now)
@@ -298,7 +302,7 @@ public static class ExpectedDifferences
 
             foreach (var second in Rules)
             {
-                if (second == first || applied.Contains(second) || second.Bytes?.Invoke(context, once.Old, once.New) is not { } twice
+                if (second == first || applied.Contains(second) || (first.Id != BlockReadOwnLineId && second.Id != BlockReadOwnLineId) || second.Bytes?.Invoke(context, once.Old, once.New) is not { } twice
                     || (twice.Old == once.Old && twice.New == once.New))
                 {
                     continue;
@@ -391,7 +395,19 @@ public static class ExpectedDifferences
     /// each a run of line endings beside the text a separated read's line of text ends (or starts) with. None for a package
     /// whose sources hold no such read.
     /// </summary>
-    private static List<System.Text.RegularExpressions.Regex> SeparationPlaces(DifferenceContext c)
+    private static List<System.Text.RegularExpressions.Regex> SeparationPlaces(DifferenceContext c) =>
+        SeparationPlacesOf.GetValue(c, FindSeparationPlaces);
+
+    /// <summary>The id of the rule of D8, which alone may be credited in a pair (<see cref="Pair"/>).</summary>
+    private const string BlockReadOwnLineId = "block-read-own-line";
+
+    /// <summary>
+    /// <see cref="SeparationPlaces"/> computed once per difference context (by reference), not on every rule invocation:
+    /// they depend on the context's migration and run alone, never on the texts being undone.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DifferenceContext, List<System.Text.RegularExpressions.Regex>> SeparationPlacesOf = new();
+
+    private static List<System.Text.RegularExpressions.Regex> FindSeparationPlaces(DifferenceContext c)
     {
         var migrated = c.Migrated;
         var places = new List<string>();
