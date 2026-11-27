@@ -10,6 +10,7 @@ using Consultologist.Api.V31;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Diagram;
 using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Publish;
 using Microsoft.Extensions.Configuration;
@@ -231,7 +232,7 @@ public class V31PackagePublisherTests
     }
 
     [Fact]
-    public async Task ThePipeline_IsGivenTheEnginesRegistryToolchainLimitsAndClock_AndNoDiagram()
+    public async Task ThePipeline_IsGivenTheEnginesRegistryToolchainLimitsAndClock_AndTheDiagram()
     {
         var rig = new Rig();
 
@@ -250,11 +251,31 @@ public class V31PackagePublisherTests
         Assert.Equal(rig.Limits.PublishLimits, options.Limits);
         Assert.Equal(rig.Limits.RegexLimit, options.MatchTimeLimit);
         Assert.Equal(Now, options.Clock.GetUtcNow());
-        Assert.Null(options.Diagram);
+        // #1510 (area 13, D13): publish writes dag.mmd, drawn by the library's one drawing.
+        Assert.NotNull(options.Diagram);
         Assert.Null(options.Templates);
         Assert.Null(options.MigrationReport);
         Assert.Null(options.MigratedFrom);
-        Assert.DoesNotContain(rig.Stored, f => f.Path == PackagePublish.DiagramFile);
+        Assert.Contains(rig.Stored, f => f.Path == PackagePublish.DiagramFile);
+    }
+
+    [Fact]
+    public async Task APublishedPackage_HoldsItsDiagram()
+    {
+        // #1510 (area 13, D13; part 07 §§ 5, 7): the stored dag.mmd is the drawing of the stored resolve.json, written
+        // before lock.json; it is a view, so the stamp's hashes are the pair's alone.
+        var rig = new Rig();
+
+        var result = await rig.Publisher().PublishAsync(OwnerId, Kind, Request(await Files()), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var resolve = Text(rig.Stored.Single(f => f.Path == CompiledPackage.ResolveFile).Bytes);
+        var diagram = Text(rig.Stored.Single(f => f.Path == PackagePublish.DiagramFile).Bytes);
+        Assert.Equal(PackageDiagram.Generate(resolve), diagram);
+        Assert.StartsWith("---\nconfig:\n  layout: elk\n---\nflowchart TD\n", diagram, StringComparison.Ordinal);
+        var paths = rig.Stored.Select(f => f.Path).ToList();
+        Assert.True(paths.IndexOf(PackagePublish.DiagramFile) < paths.IndexOf(ResolveCompiler.LockFile), "dag.mmd is written before lock.json");
+        Assert.Equal(CanonicalJson.HashText(resolve), rig.Writes[^1].Stamp.ResolveHash);
     }
 
     [Fact]

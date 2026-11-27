@@ -6,6 +6,7 @@ using Consultologist.Api.Auth;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Diagram;
 using Consultologist.PackageFormat.V31.Publish;
 using Microsoft.Extensions.Logging;
 
@@ -34,7 +35,8 @@ public interface IV31RegistryWriter
 /// <c>manifest.json</c> (a member replacement keeping every other member, its order and its nulls) before the pipeline
 /// (<see cref="PackagePublish.RunAsync"/>) runs, so <c>sourceHash</c> covers the manifest as stored. A manifest whose
 /// <c>name</c> or <c>version</c> is not text is passed as uploaded, and the pipeline refuses it (A11-004). The pipeline runs
-/// with the engine's type registry, toolchain, limits, clock and match time limit, and no diagram (D1). A published outcome
+/// with the engine's type registry, toolchain, limits, clock and match time limit, and the library's drawing
+/// (<see cref="PackageDiagram.Generate"/>, #1510 D13: the version's <c>dag.mmd</c>, a view no hash covers). A published outcome
 /// is written (<see cref="IV31RegistryWriter"/>) unless its version is stamped already; a stamped or lost version is tried
 /// again on the next CalVer, three times in all as at 5–30, then A11-006. Only after the stamp are the latest pointer set
 /// and the account's pin flipped, as at 5–30. A refusal writes nothing: each engine fault is logged (its type or sentence
@@ -218,12 +220,13 @@ public sealed class V31PackagePublisher(
         return (version, outcome.Report);
     }
 
-    /// <summary>The pipeline's options for <paramref name="request"/>: the engine's registry, toolchain, limits and clock, D4's <c>publishedBy</c>, D5's report.</summary>
+    /// <summary>The pipeline's options for <paramref name="request"/>: the engine's registry, toolchain, limits and clock, D4's <c>publishedBy</c>, D5's report, the drawing (#1510 D13).</summary>
     private PublishOptions OptionsOf(WorkflowPackagePublishRequest request)
     {
         var publishedBy = request.MigrationReport != null ? ByOperatorMigration : request.Source != null ? ByEditor : ByApi;
         return new PublishOptions(
             types.Registry, toolchain.Current(), limits.PublishLimits, publishedBy, clock,
+            Diagram: PackageDiagram.Generate,
             MigrationReport: request.MigrationReport?.GetRawText(),
             MigratedFrom: request.MigrationReport is { } migration ? MigratedFrom(migration) : null,
             MatchTimeLimit: limits.RegexLimit,

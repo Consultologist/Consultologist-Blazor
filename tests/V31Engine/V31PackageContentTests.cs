@@ -11,6 +11,7 @@ using Consultologist.Api.V31;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Diagram;
 using Consultologist.PackageFormat.V31.Publish;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +29,8 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// <c>MigratedFrom</c> from the stamp), after today's access check; with the preview setting unset a 31 version is S09-001
 /// as a 400. <c>WorkflowPackages/Ingest</c> reads a 31 zip read-only: steps 0 to 2 in memory, a refusal as the 400's
 /// sentences, S07-016 once when the zip held <c>resolve.json</c> or <c>lock.json</c>. A 5–30 package is answered as before.
+/// #1510 (area 13, D14): <c>WorkflowPackages/Current/Diagram</c> answers a stamped 31 version with the drawing of its stored
+/// <c>resolve.json</c>, behind the same admission and load.
 /// A version is put in place by the real publish and the real writer over the in-memory registry. Content is fictional.
 /// </summary>
 public class V31PackageContentTests
@@ -331,6 +334,60 @@ public class V31PackageContentTests
         Assert.Equal([FakeRegistry.PathOf(packageRef, PublishedStamp.FileName)], rig.Registry.Reads);
     }
 
+    // ---- Current/Diagram (#1510, area 13, D14) ----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TheDiagramRoute_AnswersThe31Drawing()
+    {
+        // The drawing of the stored resolve.json, the text the Editor's 31 view draws, whatever dag.mmd the folder holds
+        // (here a stand-in, as a version published before publish drew one holds none).
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry);
+
+        var response = await rig.DiagramAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var diagram = (string)Body(response)["diagram"]!;
+        Assert.Equal(PackageDiagram.Generate(stored.Text(CompiledPackage.ResolveFile)), diagram);
+        Assert.NotEqual(stored.Text(PackagePublish.DiagramFile), diagram);
+        await rig.Store.DidNotReceiveWithAnyArgs().ResolveAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task TheDiagramRoute_RefusesWhen31IsNotAdmitted()
+    {
+        // As Current/Content: the compiled load reads nothing; today's reader refuses 31, which is S09-001 as a 400.
+        var rig = new Rig(preview: null);
+        var stored = await PublishAsync(rig.Registry);
+        rig.Store.ResolveAsync(stored.Ref, Arg.Any<CancellationToken>()).Returns<WorkflowPackage>(_ =>
+            throw Assert.Throws<WorkflowPackageSpecVersionException>(() => WorkflowPackageManifestJson.Read(
+                stored.Text("manifest.json"), stored.Ref.ToString(), WorkflowPackageStore.SupportedSpecVersions)));
+
+        var response = await rig.DiagramAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = (string)Body(response)["error"]!;
+        Assert.Equal(SpecVersionAdmissionTests.With(null).NotSupported(31), error);
+        V31Contract.AssertSentence(new SourceRefusal("S09-001", error, ""));
+        Assert.Null(Body(response)["diagram"]);
+        Assert.Empty(rig.Registry.Reads);
+    }
+
+    [Fact]
+    public async Task TheDiagramRoute_AnswersALoadRefusal_WithItsSentence_As400()
+    {
+        var rig = new Rig();
+        var stored = await PublishAsync(rig.Registry);
+        var path = FakeRegistry.PathOf(stored.Ref, CompiledPackage.ResolveFile);
+        rig.Registry.Blobs[path] = Utf8NoBom.GetBytes(Utf8NoBom.GetString(rig.Registry.Blobs[path]).Replace("Sections", "Sectionz", StringComparison.Ordinal));
+
+        var response = await rig.DiagramAsync(stored.Ref);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(CompiledPackageStore.HashMismatch(stored.Ref.Name, stored.Ref.Version), (string)Body(response)["error"]!);
+        Assert.Null(Body(response)["diagram"]);
+    }
+
     // ---- The migration report (D10) -------------------------------------------------------------------------------------
 
     [Fact]
@@ -585,6 +642,13 @@ public class V31PackageContentTests
             Registry.ClearReads();
             return await Functions.GetCurrentContentAsync(FakeHttp.Request(
                 "GET", null, new Uri($"https://api.example.test/api/WorkflowPackages/Current/Content?ref={packageRef}")));
+        }
+
+        public async Task<HttpResponseData> DiagramAsync(WorkflowPackageRef packageRef)
+        {
+            Registry.ClearReads();
+            return await Functions.GetDiagramAsync(FakeHttp.Request(
+                "GET", null, new Uri($"https://api.example.test/api/WorkflowPackages/Current/Diagram?ref={packageRef}")));
         }
 
         public Task<HttpResponseData> IngestAsync(byte[] zip) =>
