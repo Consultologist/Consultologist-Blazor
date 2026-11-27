@@ -11,7 +11,7 @@
     A blocked deliverable's text is never shown here: History shows it (R1). Every status is the stored word, but
     "delivering" reads "Delivering…" (S09-019). The page fetches and decides; this draws.
     #1510 (Task 10, D12): the Run diagram button, when the job's resolve.json is known; the rows are listed when the dialog
-    opens, and the diagram is RunDiagram31's over them. The Create page has no History rows, so no call box is a link.
+    opens, and the diagram is RunDiagram31's over them and the job's header of that moment. The Create page has no History rows, so no call box is a link.
 *@
 <section class="result-panel run31-results">
     @if (!string.IsNullOrEmpty(Error))
@@ -135,10 +135,10 @@
     </div>
 </section>
 
-@if (_diagramRows is { } rows && Detail is { } detail && Resolve is { } resolve)
+@if (_diagram is { } diagram && Resolve is { } resolve)
 {
-    <RunDagOverlay Diagram31="@RunDiagram31.Build(resolve.GetRawText(), Record31.From(detail, rows), linkCalls: false)"
-                   OnClose="() => _diagramRows = null" />
+    <RunDagOverlay Diagram31="@RunDiagram31.Build(resolve.GetRawText(), Record31.From(diagram.Detail, diagram.Rows), linkCalls: false)"
+                   OnClose="() => _diagram = null" />
 }
 
 @code {
@@ -189,8 +189,9 @@
 
     [Parameter] public string Heading { get; set; } = "Documents";
 
-    // The rows the open run diagram was drawn from, listed as it opened; null while it is closed.
-    private IReadOnlyList<RecordRowRef>? _diagramRows;
+    // The rows the open run diagram was drawn from, listed as it opened, with the job's header of that moment (a later one
+    // would lay a job's end over rows listed while it ran); null while it is closed.
+    private (ConsultGenerationJobResponse Detail, IReadOnlyList<RecordRowRef> Rows)? _diagram;
     private string? _diagramError;
 
     /// <summary>Lists the job's rows (GET …/Rows) and opens the run diagram over them; a failure is said under the button.</summary>
@@ -199,7 +200,9 @@
         _diagramError = null;
         try
         {
-            _diagramRows = await AIService.GetJobRowsAsync(JobId);
+            var rows = await AIService.GetJobRowsAsync(JobId);
+            if (Detail is { } detail)
+                _diagram = (detail, rows);
         }
         catch (AccessTokenNotAvailableException exception)
         {

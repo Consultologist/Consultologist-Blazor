@@ -182,6 +182,51 @@ public class RunDiagram31PageTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void TheCreatePagesRunDiagram_IsDrawnFromTheHeaderOfTheMomentItsRowsWereListed()
+    {
+        // the loop's item row and no loop row: running while the job runs, its worst item once it has ended
+        var running = Header() with { Status = "Running", CompletedAtUtc = null };
+        IReadOnlyList<RecordRowRef> rows = [.. CallRows().Skip(1)];
+        AIService.GetJobRowsAsync(JobId).Returns(rows);
+        var resolve = JsonDocument.Parse(FunctionsResolve).RootElement.Clone();
+        var view = Render<Consultologist.Web.Shared.Create31.RunView31>(parameters => parameters
+            .Add(p => p.JobId, JobId)
+            .Add(p => p.Detail, running)
+            .Add(p => p.Resolve, resolve)
+            .Add(p => p.Blocks, [])
+            .Add(p => p.Finished, []));
+
+        view.Find(".run31-run-diagram").Click();
+        var drawn = RunDiagram31.Build(FunctionsResolve, Record31.From(running, rows), linkCalls: false).Mermaid;
+        view.WaitForAssertion(() => Assert.Equal(drawn, RenderedText()), Settle);
+
+        // the job completes while the dialog is open: the page hands in its new header, and the rows are still those listed
+        var completed = Header();
+        Assert.NotEqual(drawn, RunDiagram31.Build(FunctionsResolve, Record31.From(completed, rows), linkCalls: false).Mermaid);
+        view.Render(parameters => parameters.Add(p => p.Detail, completed));
+
+        Assert.NotEmpty(view.FindAll(".run-dag-panel"));
+        Assert.All(JSInterop.Invocations[Draw], invocation => Assert.Equal(drawn, invocation.Arguments[0]));
+    }
+
+    [Fact]
+    public void ABindingThatFails_LeavesTheDiagramDrawn_WithoutLinks()
+    {
+        // a browser holding a cached older mermaid-interop.js has no bind: the call throws, and nothing escapes
+        JSInterop.SetupVoid(Bind, _ => true).SetException(new JSException("consultologistMermaid.bind is not a function"));
+        var text = RunDiagram31.Build(FunctionsResolve, Record31.From(Header(), CallRows()), linkCalls: true);
+        Assert.NotEmpty(text.Anchors);
+
+        var view = Render<WorkflowDagView>(parameters => parameters
+            .Add(p => p.Diagram, text.Mermaid)
+            .Add(p => p.Anchors, text.Anchors));
+
+        view.WaitForAssertion(() => Assert.Single(JSInterop.Invocations[Bind]), Settle);
+        view.WaitForElement(".dag-view__canvas svg");
+        Assert.False(Renderer.UnhandledException.IsCompleted, "the binding's failure escaped the view");
+    }
+
+    [Fact]
     public void WithoutTheCompiledDocument_TheButtonIsNotShown()
     {
         OnHistory(Header(), CallRows(), resolve: null);

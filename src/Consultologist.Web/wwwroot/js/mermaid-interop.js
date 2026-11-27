@@ -52,7 +52,8 @@ window.consultologistMermaid = {
 			box.style.cursor = "pointer";
 			box.setAttribute("role", "link");
 			box.setAttribute("tabindex", "0");
-			const follow = () => view.invokeMethodAsync("Follow", anchor);
+			// A click after the view is gone (its .NET reference disposed) has nothing to call: it does nothing.
+			const follow = () => view.invokeMethodAsync("Follow", anchor).catch(() => {});
 			box.addEventListener("click", follow, { signal: links.signal });
 			box.addEventListener("keydown", (event) => {
 				if (event.key === "Enter") {
