@@ -17,8 +17,9 @@
 //
 // A storage 12 job (schemaVersion 12, specVersion 31) is checked through its record: with --host the script fetches
 // ConsultGenerationJobs/<id>/Record and each deliverable.* row's text through Rows?key=, then checks recordHash, each
-// deliverable's composedHash and the replay of its substitutions; with --record only recordHash is checked, and each
-// deliverable says "text deleted; hash kept". The effective-input hash (definition 7) needs --inputs, as above.
+// deliverable's composedHash and the replay of its substitutions (a composed text the row neither offers nor says
+// textDeleted is missing or altered, and fails); with --record only recordHash is checked, and each deliverable says
+// "text deleted; hash kept". The effective-input hash (definition 7) needs --inputs, as above.
 //
 // <job.json> is the record as the API serves it:
 //   curl -sS -H "Authorization: Bearer $TOKEN" \

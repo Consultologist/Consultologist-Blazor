@@ -791,7 +791,7 @@ will not run it** (a `requires` refusal is logged, not answered), so its owner c
   version. The pages are to show it as S09-004, *"migrated by the operator from \<old version\>"* (part 09 § 6.2);
   nothing in this build composes that sentence (area 12);
 - trailing `MigrationReport`, the stored `migration-report.json` parsed, for a version the operator migrated (null when
-  there is none, below 31 and on an import). A stored file that is not JSON is served as null and a warning naming the
+  there is none, below 31 and on an import, and then not written, so a 5–30 response carries no `migrationReport` key). A stored file that is not JSON is served as null and a warning naming the
   package and version is logged; the route does not fail.
 
 An integrity refusal (A06-004, S09-009, S09-014) is a 400 with its sentence; a folder whose `manifest.json` is not a
@@ -822,6 +822,8 @@ admits 31 in production: the admission lists are untouched.*
   sentences before a start. The Create page (`Consults.razor`, `Shared/Create31/StartChecks31.razor`) asks it after a 31 load,
   on each pick of a package or a signature block, on window focus (`wwwroot/js/windowFocus.js`) and before a start (one ask in
   `CreateConsultAsync`, behind the one button labelled "Create consult", "Create & next" or "Schedule consult"); when it cannot ask it says A12-004 and holds Start.
+  Only the latest ask counts: a newer ask, or a package switch (`ResetStartChecks31`), makes an older one stale, and a stale
+  ask writes neither the signature blocks nor the pick, and starts nothing.
 - **References at a start.** `ConsultGenerationJobStarter.ExtractFor31Async` (private) reads `InputRefs`, `InputFormRefs` and `InputFormFiles` (above, "Inputs
   sent by reference"). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
   the held inputs document's `modelDerived` member (written by `V31JobStarter`), read into `RunInputs.ModelDerivedInputs` by `ConsultGenerationOrchestratorV31`. The start also writes the lineage
@@ -837,7 +839,7 @@ admits 31 in production: the admission lists are untouched.*
   The job (`GET ConsultGenerationJobs/{jobId}`) is polled as for a 5–30 job (60 s when stopped, fast while running or delivering).
   Once per detail load it fetches the package's content (`GET WorkflowPackages/Current/Content`, for `resolve.json`'s templates,
   descriptions and graph, and `MigratedFrom`; a failure is read as no content) and lists the rows (`GET …/Rows`), listing them
-  again only when the job's `Rows` count has moved. A row's text (`GET …/Rows?key=`) is fetched once, when its row is first opened
+  again only when the job's `Rows` or `Decisions` count has moved (a decision under a node that never ran writes no row). A row's text (`GET …/Rows?key=`) is fetched once, when its row is first opened
   (a deliverable's, a node's, a check's), or when a run spot's output or a retained name is needed; nothing is fetched for a
   collapsed row, and a text the engine has dropped (`textDeleted`) says A12-002 with the row's hash. The record
   (`GET …/Record`) is fetched only by the download and by Verify. On Create, `RunView31` is given the rows `Consults.razor` lists (`LoadRows31Async`: on attaching, on a poll whose count moved and on `done`), and it fetches a `released` deliverable's text only.
