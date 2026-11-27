@@ -266,7 +266,9 @@ internal static class V31Contract
     /// ruling 1 and unused; A10-093: a markdown_block read separated from the text beside it by a blank line, #1543 ruling 2
     /// as the owner amended it on 2026-11-27, area 14 Task A5; A10-094: a markdown_block read on a line that a blank line
     /// would break out of its Markdown block (a list item, a quote, a heading or indented text), a hand edit's reason, the
-    /// same amendment's item 4 as the controller extended it for the owner, area 14 Task A5 fix round 1).
+    /// same amendment's item 4 as the controller extended it for the owner, area 14 Task A5 fix round 1; A10-079, A10-084 and
+    /// A10-086 reworded for a deliverable with any source that may not run, its terms joined by and, #1543 ruling 3, area 14
+    /// Task A6).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -346,14 +348,14 @@ internal static class V31Contract
         ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
         ["A10-077"] = "node '<id>' decides whether macro '<macro id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
         ["A10-078"] = "macro '<id>' is placed by <n> nodes, with a classifier each (<ids>), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.",
-        ["A10-079"] = "<file>, if: written to skip the deliverable unless <reads> ran, as 30 skipped a deliverable none of whose sources ran.",
+        ["A10-079"] = "<file>, if: written to skip the deliverable when a source did not run (<reads>), as 30 skipped it.",
         ["A10-080"] = "the template reads <path> at line <n> through <object path>, which can be null, where no {{ if <object path> }} can enclose the read; move the read where that guard can stand.",
         ["A10-081"] = "up to <n> steps could run in one job through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.",
         ["A10-082"] = "options.json gives <renames | whenEmpty | folderFormats> an empty id or an empty choice; name each id and its choice.",
         ["A10-083"] = "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.",
-        ["A10-084"] = "every source may not run, and 30 skipped the deliverable when none ran; join <term> to 30's condition by and.",
+        ["A10-084"] = "a source may not run, and 30 skipped the deliverable when one did not; join <term> to 30's condition by and.",
         ["A10-085"] = "'<comparison>' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.",
-        ["A10-086"] = "every source may not run, and the migration cannot read whether <sources> ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it<, joining <term> for the others>.",
+        ["A10-086"] = "a source may not run, and the migration cannot read whether <sources> ran; write the if that skips the deliverable when a source did not run, as 30 skipped it<, joining <term> for the others>.",
         ["A10-087"] = "<file>, if: written so that the node runs only when deliverable <ids> applies, as 30 ran only what an applicable deliverable needed.",
         ["A10-088"] = "Loop '<id>' returns each item through the new node '<new id>', which strips the item's text as specVersion 30 did.",
         ["A10-089"] = "The signature is written through renderer '<id>', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",

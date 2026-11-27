@@ -457,12 +457,13 @@ internal static class MigrationSentences
         $"macro '{macro}' is placed by {nodes.Count.ToString(CultureInfo.InvariantCulture)} nodes, with a classifier each ({string.Join(", ", nodes)}), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.";
 
     /// <summary>
-    /// A10-079 (#1508, comment 7, Q3; R15; part 10 § 1.2): the deliverable <paramref name="file"/> was given the <c>if</c>
-    /// that skips it unless one of its sources (<paramref name="reads"/>, the 31 reads, in <c>sources</c> order) ran: 30
-    /// skipped a deliverable none of whose sources ran, where 31 would compose it empty and release it.
+    /// A10-079 (#1508, comment 7, Q3; R15; #1543, ruling 3, D11; part 10 § 1.2): the deliverable <paramref name="file"/> was
+    /// given the <c>if</c> that skips it when one of its sources that may not run (<paramref name="reads"/>, the 31 reads, in
+    /// <c>sources</c> order) did not run: 30 skipped a deliverable when any source was a flow that took no branch, where 31
+    /// would compose it from the others and release it.
     /// </summary>
     public static string SkippedUnlessASourceRan(string file, IReadOnlyList<string> reads) =>
-        $"{file}, if: written to skip the deliverable unless {string.Join(" or ", reads)} ran, as 30 skipped a deliverable none of whose sources ran.";
+        $"{file}, if: written to skip the deliverable when a source did not run ({string.Join(", ", reads)}), as 30 skipped it.";
 
     /// <summary>
     /// A10-087 (#1508, 2026-11-26, item 1; F-D6; part 10 § 1.2): the leaf <paramref name="file"/> was given the <c>if</c> of
@@ -526,23 +527,24 @@ internal static class MigrationSentences
         string.Create(CultureInfo.InvariantCulture, $"the read {read} at line {line} stands in a line that a blank line would break out of its Markdown block (a list item, a quote, a heading or indented text), and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.");
 
     /// <summary>
-    /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
-    /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
-    /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is
-    /// not joined to it: the operator writes 30's condition <c>and</c> the term, or 31 releases empty what 30 skipped.
+    /// A10-084 (#1508, the final review of Part F; Q3, R15; #1543, ruling 3, D11): a reason: the deliverable's 30 condition is
+    /// a hand edit (the converter refused it), and a source may not run, so A10-079's <paramref name="term"/> (the canonical
+    /// JSON Logic that says each source that may not run ran: <c>&lt;source&gt;.state === "completed"</c>, <c>and</c> over
+    /// those sources; node keys only) is not joined to it: the operator writes 30's condition <c>and</c> the term, or 31
+    /// releases what 30 skipped.
     /// </summary>
     public static string JoinASourceRan(string term) =>
-        $"every source may not run, and 30 skipped the deliverable when none ran; join {term} to 30's condition by and.";
+        $"a source may not run, and 30 skipped the deliverable when one did not; join {term} to 30's condition by and.";
 
     /// <summary>
-    /// A10-086 (#1508, 2026-11-26, item 8; R15, F-D13): a reason: every source of the deliverable may not run, and the
-    /// migration cannot read whether the <paramref name="unread"/> ones ran (a node it does not know, or one whose run the
-    /// deliverable's <c>if</c> cannot read), so it writes no <c>if</c> and the operator writes the one that skips the
-    /// deliverable as 30 did; <paramref name="others"/>, when given, is the term (canonical JSON Logic) that says one of the
-    /// other sources ran.
+    /// A10-086 (#1508, 2026-11-26, item 8; R15, F-D13; #1543, ruling 3, D11): a reason: a source of the deliverable may not
+    /// run, and the migration cannot read whether the <paramref name="unread"/> ones ran (a node it does not know, or one
+    /// whose run the deliverable's <c>if</c> cannot read), so it writes no <c>if</c> and the operator writes the one that skips
+    /// the deliverable as 30 did; <paramref name="others"/>, when given, is the term (canonical JSON Logic) that says the
+    /// other sources that may not run ran.
     /// </summary>
     public static string SourceRunNotRead(IReadOnlyList<string> unread, string? others) =>
-        $"every source may not run, and the migration cannot read whether {string.Join(", ", unread)} ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it"
+        $"a source may not run, and the migration cannot read whether {string.Join(", ", unread)} ran; write the if that skips the deliverable when a source did not run, as 30 skipped it"
         + (others is null ? "." : $", joining {others} for the others.");
 
     /// <summary>
