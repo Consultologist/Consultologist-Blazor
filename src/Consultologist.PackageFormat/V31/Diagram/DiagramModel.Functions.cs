@@ -75,7 +75,8 @@ public sealed partial record DiagramModel
             var map = entry["nodes"] as JsonObject ?? new JsonObject();
             var inputs = entry["inputs"] as JsonObject ?? new JsonObject();
             var order = Strings(entry["inputOrder"]).Where(inputs.ContainsKey).Concat(inputs.Select(p => p.Key)).Distinct(StringComparer.Ordinal).ToList();
-            var frame = Frame(root, "fn_" + IdOf(name), $"function {name} ({string.Join(", ", order)}) → {Format(entry)}");
+            var frame = new Scope("fn_" + IdOf(name), $"function {name} ({string.Join(", ", order)}) → {Format(entry)}");
+            BeforeDeliverables(frame);
             var body = new FunctionBody(name, map);
             function = body;
             foreach (var id in order)
@@ -86,7 +87,7 @@ public sealed partial record DiagramModel
                 Node(key, frame, 0);
             function = null;
 
-            frame.Boxes.InsertRange(0, body.Params);
+            frame.Prepend(body.Params);
             // The boxes and frames inside the function's frame (not the frame itself, which only a call refers to).
             var inside = new HashSet<string>(StringComparer.Ordinal);
             void Collect(Scope scope)

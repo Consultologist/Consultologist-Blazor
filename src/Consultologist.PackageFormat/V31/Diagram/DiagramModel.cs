@@ -16,8 +16,13 @@ public enum EdgeStyle { Read, If, Reference, Gate }
 /// </summary>
 public sealed record DiagramBox(string Id, string Key, BoxShape Shape, IReadOnlyList<string> Lines, bool ModelDerived);
 
-/// <summary>#1510: a frame (a subgraph): its boxes and frames, and the edges written inside it (a uses frame's, a function's).</summary>
-public sealed record DiagramFrame(string Id, string Title, IReadOnlyList<DiagramBox> Boxes, IReadOnlyList<DiagramFrame> Frames, IReadOnlyList<DiagramEdge> Edges);
+/// <summary>
+/// #1510: a frame (a subgraph): its boxes and frames, and the edges written inside it (a uses frame's, a function's).
+/// <paramref name="At"/> is where it is written in the frame that holds it: before the box of that index in the holder's
+/// <see cref="Boxes"/> (a flow's bodies before its summary box, a <c>uses_</c> frame in the place of the box it wraps), or
+/// after every box when no box has that index. The top-level frame's is 0.
+/// </summary>
+public sealed record DiagramFrame(string Id, string Title, IReadOnlyList<DiagramBox> Boxes, IReadOnlyList<DiagramFrame> Frames, IReadOnlyList<DiagramEdge> Edges, int At);
 
 /// <summary>#1510: an edge between two Mermaid ids (a box's or a frame's); <paramref name="Label"/> null for none.</summary>
 public sealed record DiagramEdge(string From, string To, EdgeStyle Style, string? Label);
@@ -65,11 +70,22 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
     {
         public string Id { get; } = id;
 
+        /// <summary>The index of the box of the holding scope this frame is written before (<see cref="DiagramFrame.At"/>).</summary>
+        public int At { get; set; }
+
         public List<DiagramBox> Boxes { get; } = [];
         public List<Scope> Frames { get; } = [];
         public List<DiagramEdge> Edges { get; } = [];
 
-        public DiagramFrame Freeze() => new(id, title, Boxes.ToList(), Frames.Select(f => f.Freeze()).ToList(), Edges.ToList());
+        /// <summary>Puts <paramref name="boxes"/> before this scope's boxes, its frames keeping their places among the boxes.</summary>
+        public void Prepend(IReadOnlyList<DiagramBox> boxes)
+        {
+            Boxes.InsertRange(0, boxes);
+            foreach (var frame in Frames)
+                frame.At += boxes.Count;
+        }
+
+        public DiagramFrame Freeze() => new(id, title, Boxes.ToList(), Frames.Select(f => f.Freeze()).ToList(), Edges.ToList(), At);
     }
 
     /// <summary>One build over one document. The production rules are in <c>DiagramModel.Production.cs</c>, renderers and macros in <c>DiagramModel.Uses.cs</c>, calls and functions in <c>DiagramModel.Functions.cs</c>, checks and gates in <c>DiagramModel.Checks.cs</c>.</summary>
@@ -89,7 +105,7 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
         public DiagramModel Build()
         {
             Production();
-            root.Boxes.InsertRange(0, pills);
+            root.Prepend(pills);
             var frozen = root.Freeze();
             return new DiagramModel(frozen, Drawn(frozen), frozen.Frames.Any(f => f.Id == "checks"));
         }

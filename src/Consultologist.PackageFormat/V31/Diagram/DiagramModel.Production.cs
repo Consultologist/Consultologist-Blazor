@@ -43,10 +43,14 @@ public sealed partial record DiagramModel
             var bodies = nodes.Select(n => n.Value as JsonObject).OfType<JsonObject>().SelectMany(Children).ToHashSet(StringComparer.Ordinal);
             foreach (var key in InOrder(nodes, order).Where(k => !bodies.Contains(k)))
                 Node(key, root, 0);
+            (deliverablesAt, framesBeforeDeliverables) = (root.Boxes.Count, root.Frames.Count);
             foreach (var key in InOrder(deliverables, order))
                 Deliverable(key);
-            Checks();
+            // Drawn in this order for their edges (a check's follow the deliverables'), placed as § 10.5 writes them.
+            var checksFrame = Checks();
             Functions();
+            if (checksFrame != null)
+                BeforeDeliverables(checksFrame);
             foreach (var id in InputIds().Where(id => !pillKeys.Contains("input." + id)))
                 Pill("input." + id);
         }
@@ -173,11 +177,26 @@ public sealed partial record DiagramModel
             return (title, Text(block["ret"]));
         }
 
+        /// <summary>A new frame in <paramref name="scope"/>, written before the box the scope adds next (a flow's summary box; for a <c>uses_</c> frame, the box after the one it wraps).</summary>
         private static Scope Frame(Scope scope, string id, string title)
         {
-            var frame = new Scope(id, title);
+            var frame = new Scope(id, title) { At = scope.Boxes.Count };
             scope.Frames.Add(frame);
             return frame;
+        }
+
+        /// <summary>Where the deliverables start at the top level: their first box's index, and the top-level frames drawn before them.</summary>
+        private int deliverablesAt, framesBeforeDeliverables;
+
+        /// <summary>
+        /// <paramref name="frame"/> (a function's, then the Checks frame) placed at the top level after the production boxes
+        /// and before the deliverables, after any frame placed so before it: § 10.5 writes a function's frame after the call
+        /// and the Checks frame before the deliverable.
+        /// </summary>
+        private void BeforeDeliverables(Scope frame)
+        {
+            frame.At = deliverablesAt;
+            root.Frames.Insert(framesBeforeDeliverables++, frame);
         }
 
         private void Body(Scope frame, IEnumerable<string> keys, int depth)

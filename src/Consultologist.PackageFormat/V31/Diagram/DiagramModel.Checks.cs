@@ -21,8 +21,8 @@ public sealed partial record DiagramModel
         /// <summary>Whether the entries being drawn are checks: their map is <c>checks</c>, not <c>nodes</c>.</summary>
         private bool drawingChecks;
 
-        /// <summary>Every check, in <c>graph.order</c>, in the Checks frame; then each deliverable's gate.</summary>
-        private void Checks()
+        /// <summary>Every check, in <c>graph.order</c>, in the Checks frame; then each deliverable's gate. The frame, for the caller to place; null when it holds nothing.</summary>
+        private Scope? Checks()
         {
             var order = Strings(document["graph"]?["order"]).ToList();
             var bodies = checks.Select(c => c.Value as JsonObject).OfType<JsonObject>().SelectMany(Children).ToHashSet(StringComparer.Ordinal);
@@ -32,14 +32,15 @@ public sealed partial record DiagramModel
                 Node(key, frame, 0);
             drawingChecks = false;
             if (frame.Boxes.Count == 0 && frame.Frames.Count == 0)
-                return;
+                return null;
 
-            root.Frames.Add(frame);
             foreach (var key in InOrder(deliverables, order))
             {
                 if (deliverables[key] is JsonObject entry && Text(entry["check"]) is { } check && checks.ContainsKey(check))
                     Edge(IdOf(check), IdOf(key), EdgeStyle.Gate, "gates");
             }
+
+            return frame;
         }
 
         /// <summary>A <c>for</c>'s frame title: <c>(aligned)</c> for a check loop over a production loop's <c>.items</c>, else <c>item</c>.</summary>

@@ -15,10 +15,13 @@ public sealed record DiagramText(string Mermaid, IReadOnlyDictionary<string, str
 /// <summary>
 /// #1510 (specVersion 31, area 13): writes a <see cref="DiagramModel"/> as Mermaid (part 09 §§ 10.1 to 10.4). The text
 /// opens with the ELK frontmatter and <c>flowchart TD</c> (D2); <c>\n</c> line ends, four spaces of indent per level.
-/// Each frame writes its boxes in order, a flow's frames just before its summary box (the frames whose id names the
-/// box: <c>for_</c>, <c>while_</c>, <c>if_…_then</c>, <c>if_…_else</c>, <c>case_…_branch_N</c>, <c>case_…_else</c>),
-/// then its other frames, then its own edges; the model's edges follow every frame, so Mermaid pulls no box into the
-/// frame an edge is written in. At the top level a blank line parts the pills, each flow and the runs of plain boxes.
+/// Each frame writes its boxes in order and each of its frames where the model places it (<see cref="DiagramFrame.At"/>):
+/// a flow's frames just before its summary box, a <c>uses_</c> frame in the place of the box it wraps, at the top level a
+/// function's frame and then the Checks frame after the production boxes and before the deliverables (as § 10.5 writes
+/// them); then its own edges. The model's edges follow every frame, so Mermaid pulls no box into the frame an edge is
+/// written in. At the top level a blank line parts the pills, each flow (a summary box with the frames whose id names it:
+/// <c>for_</c>, <c>while_</c>, <c>if_…_then</c>, <c>if_…_else</c>, <c>case_…_branch_N</c>, <c>case_…_else</c>), each
+/// other frame and the runs of plain boxes.
 /// Then come the model-derived class (D9) and an overlay's classes, and last, when a check is drawn, the Checks frame's
 /// heavier border (<c>style checks stroke-width:3px</c>, D9). Every label line is escaped (D8): <c>"</c>,
 /// <c>&lt;</c> and <c>&gt;</c> as <c>#quot;</c>, <c>#lt;</c> and <c>#gt;</c>, a line break as one space; the only
@@ -105,7 +108,6 @@ public static partial class DiagramWriter
     private static void Contents(StringBuilder text, DiagramFrame frame, int level, IReadOnlyDictionary<string, BoxOverlay> overlay,
         List<DiagramBox> written, bool top)
     {
-        var placed = new HashSet<DiagramFrame>(ReferenceEqualityComparer.Instance);
         string? last = null;
         void Part(string kind)
         {
@@ -115,24 +117,28 @@ public static partial class DiagramWriter
             last = kind;
         }
 
-        foreach (var box in frame.Boxes)
+        var boxes = frame.Boxes;
+        int Place(DiagramFrame inner) => inner.At >= 0 && inner.At < boxes.Count ? inner.At : boxes.Count;
+        for (var i = 0; i <= boxes.Count; i++)
         {
-            var own = frame.Frames.Where(f => !placed.Contains(f) && Names(f.Id, box.Id)).ToList();
-            Part(own.Count > 0 ? "flow" : box.Shape == BoxShape.Pill ? "pills" : "boxes");
-            foreach (var inner in own)
+            var box = i < boxes.Count ? boxes[i] : null;
+            var here = frame.Frames.Where(f => Place(f) == i).ToList();
+            // A frame no box here names (a uses_ frame, a function's, Checks) stands alone; a flow's bodies go with its summary box.
+            foreach (var inner in here.Where(f => box == null || !Names(f.Id, box.Id)))
             {
-                placed.Add(inner);
+                Part("flow");
                 Frame(text, inner, level, overlay, written);
             }
 
+            if (box == null)
+                break;
+            var own = here.Where(f => Names(f.Id, box.Id)).ToList();
+            Part(own.Count > 0 ? "flow" : box.Shape == BoxShape.Pill ? "pills" : "boxes");
+            foreach (var inner in own)
+                Frame(text, inner, level, overlay, written);
+
             Box(text, box, level, overlay);
             written.Add(box);
-        }
-
-        foreach (var inner in frame.Frames.Where(f => !placed.Contains(f)))
-        {
-            Part("flow");
-            Frame(text, inner, level, overlay, written);
         }
 
         foreach (var edge in frame.Edges)
