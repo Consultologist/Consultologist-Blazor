@@ -81,7 +81,7 @@ public class PackageCaptureGoldenTests
     /// <c>edge-unruled-whitespace</c>, which shows two white-space differences (expected since #1508, 2026-11-26, item 5).
     /// </summary>
     private static readonly string[] EdgeCasePackages =
-        ["edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
+        ["edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-source-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
 
     /// <summary>Every package under <c>fixture-packages/</c>.</summary>
     public static TheoryData<string> FixturePackages()

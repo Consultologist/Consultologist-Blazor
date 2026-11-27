@@ -230,9 +230,9 @@ public class ConditionConverterTests
         ],
     };
 
-    /// <summary>Forty-four, and (#1508, Task 35) the two of the edge-case packages: edge-no-branch's plan_gate and edge-answer-outside-set's note.</summary>
+    /// <summary>Forty-four, and (#1508, Task 35) the two of the edge-case packages: edge-no-branch's plan_gate and edge-answer-outside-set's note; and (#1543, Task A6) edge-source-no-branch's letter_case.</summary>
     [Fact]
-    public void ThePackageExpressions_AreFortySix() => Assert.Equal(46, PackageIds().Count);
+    public void ThePackageExpressions_AreFortySeven() => Assert.Equal(47, PackageIds().Count);
 
     [Theory]
     [MemberData(nameof(PackageIds))]

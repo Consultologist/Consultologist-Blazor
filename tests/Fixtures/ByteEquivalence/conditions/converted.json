@@ -274,6 +274,22 @@
       "notices": []
     },
     {
+      "id": "edge-source-no-branch.letter_case.case",
+      "logic": {
+        "var": "input.route.value"
+      },
+      "resultFormat": "string {letter, none}",
+      "reads": [
+        "input.route.value"
+      ],
+      "blankConversions": [],
+      "blanks": [],
+      "trimBlanks": [],
+      "textLiterals": [],
+      "emptyComparisons": [],
+      "notices": []
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "logic": {
         "===": [

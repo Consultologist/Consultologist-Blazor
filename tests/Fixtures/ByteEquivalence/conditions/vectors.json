@@ -384,6 +384,26 @@
       ]
     },
     {
+      "id": "edge-source-no-branch.letter_case.case",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.route": "letter"
+          },
+          "result": "letter",
+          "error": null
+        },
+        {
+          "scope": {
+            "input.route": "none"
+          },
+          "result": "none",
+          "error": null
+        }
+      ]
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "refused": null,
       "cases": [

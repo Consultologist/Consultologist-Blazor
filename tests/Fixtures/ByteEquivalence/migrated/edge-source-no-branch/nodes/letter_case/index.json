@@ -1,0 +1,31 @@
+{
+  "kind": "case",
+  "label": "The letter, when the route is a letter",
+  "description": null,
+  "format": "markdown_block",
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "case": "input.route.value",
+  "branches": [
+    {
+      "when": [
+        "letter"
+      ],
+      "nodes": [
+        "letter_text"
+      ],
+      "ret": "node.letter_case.letter_text"
+    },
+    {
+      "when": [
+        "none"
+      ],
+      "nodes": [],
+      "ret": null
+    }
+  ],
+  "else": null
+}

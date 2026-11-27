@@ -112,6 +112,8 @@ comment 7, "Edge-case packages"): one per case the review of area 10 found, and 
 shaping those six would have hidden (the controller's ruling, fix round 1), each two or three nodes over a loop (30's
 validator requires one), captured like the composer packages. Each shows 30's output after the migration, and the warning
 or refusal a new 31 package gets without the migration's explicit thing (`tests/V31Migration/EdgeCasePackagesTests.cs`).
+An eighth, `edge-source-no-branch`, was added by area 14 (#1543, ruling 3, Task A6) the same way: a deliverable with two
+sources, one a flow that takes no branch.
 
 | Package | Scenarios | The case |
 |---|---|---|
@@ -121,6 +123,7 @@ or refusal a new 31 package gets without the migration's explicit thing (`tests/
 | `edge-unset-object` | `intake-unset` | the optional object input `intake`, unset; its `reason` is read by the problem prompt and by the note's prepended macro `intake_line` (a snippet at 31) |
 | `edge-answer-outside-set` | `answer-outside-set`, `answer-in-set` | the classifier `triage` (`routine`, `urgent`) answers `soon`: 30 refuses the reply (`onInvalid: fail`) and fails the job |
 | `edge-flag` | `reply-does-not-fit` | `summary` declares `onInvalid: flag` and its reply does not fit its format (`line` a number): 30 keeps it and runs on |
+| `edge-source-no-branch` | `no-branch`, `branch-taken` | added by area 14 (#1543, ruling 3): the deliverable `note` reads `summary`, which always runs, and the `case` `letter_case` on the enum input `route`, whose one branch is `letter`; with `route: none` the case takes no branch and 30 skips `note` though `summary` ran. `summary_note` (the problem loop and `summary`) keeps the start from being refused, as a job with no deliverable to compose is |
 | `edge-unruled-whitespace` | `default` | two differences no ruling covers, shown: the letter's reply places `follow_up` (a macro the model chose) whose body ends with a line ending, which 31 drops; the problems deliverable prepends `clinic_line`, `Seen at: {{ input.clinic }}` with the clinic unset, which 30 trimmed and 31's snippet keeps. Each paragraph is followed by `problem_close`, placed `after` by 30's engine, its body ending in two extra line endings, which the node that strips each item of the problem loop takes off as 30 trimmed them (#1510), so `macro-trailing-whitespace` has no hit here |
 
 `edge-tests/<package>.json` is each package's pinned test: an in-package test (part 07 § 8) of the edge scenario's
@@ -294,8 +297,8 @@ Scriban templates must equal once they are gone.
 
 ## `migrated/`
 
-`migrated/<package>/` is the migrated 31 source of each of the twenty-three packages (the thirteen vendored ones, the
-three composer packages and (#1508) the seven edge-case packages; `test/general` at `migrated/test/general/`), as
+`migrated/<package>/` is the migrated 31 source of each of the twenty-four packages (the thirteen vendored ones, the
+three composer packages and (#1508, #1543) the eight edge-case packages; `test/general` at `migrated/test/general/`), as
 `WorkflowPackageMigration30To31.Migrate` writes it with the package's hand choices (`tests/V31Migration/ExampleChoices.cs`:
 `parts` renamed `sections` in `example-nested-note`; `whenEmpty` `fail` for its `note` and `hold` for
 `test/general`'s `consult`; `test/general`'s snippet folder `standards` typed `standard_section`). Each folder holds
@@ -375,7 +378,7 @@ spec's own examples make it, changing the fewest files (the plan's D28).
 ## `reports/`
 
 `reports/<package>.json` is `migration-report.json` (part 10 § 3.2, `MigrationReport.ToJson`, canonical JSON) for each
-package that is compared, over all its scenarios in ordinal order: the eleven with no hand edit
+package that is compared, over all its scenarios in ordinal order: the twelve with no hand edit
 (`ByteEquivalenceTests.TheReport_IsTheGolden`) and the nine edited ones and `example-nested-note`, compared on their edited files with the
 migration's keys and notices (`HandEditsTests.TheReport_IsTheGolden`). `handEdits` is the migration's hand-edit
 notices (so an edited package's report still lists them), `notices` every other notice, then A10-063 for a package

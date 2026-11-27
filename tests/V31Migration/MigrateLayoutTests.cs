@@ -21,8 +21,8 @@ public class MigrateLayoutTests
         "example-macros-warnings", "example-nested-note", "example-prior-letters", "example-problem-list",
         "example-structured-intake", "example-two-documents", "example-v12-constructs", "general", "test/general",
         "composer-gates", "composer-macros", "composer-sources",
-        "edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace",
-        "edge-unset-object");
+        "edge-answer-outside-set", "edge-flag", "edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-source-no-branch",
+        "edge-unruled-whitespace", "edge-unset-object");
 
     private static readonly string[] Folders =
         ["nodes", "checks", "functions", "renderers", "snippets", "macros", "formats", "deliverables", "tests"];

@@ -1,0 +1,8 @@
+{
+  "notices": [
+    "deliverables/note.md, if: written to skip the deliverable when a source did not run (node.letter_case), as 30 skipped it.",
+    "Loop 'problem_loop' returns each item through the new node 'problem_draft_stripped', which strips the item's text as specVersion 30 did."
+  ],
+  "handEdits": [],
+  "refusals": []
+}

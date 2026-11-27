@@ -1,0 +1,99 @@
+{
+  "name": "edge-source-no-branch",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Edge case: one source of two takes no branch",
+  "description": "An edge-case fixture (#1543, ruling 3): the deliverable note reads the node summary, which always runs, and the case letter_case, which takes no branch when the route is none, so 30 skips note though summary ran; summary_note, from the problem loop and summary, keeps the start from being refused. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    },
+    {
+      "id": "route",
+      "label": "Route",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "letter",
+        "none"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "problem_loop",
+      "label": "Problem list",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose"
+    },
+    {
+      "id": "summary",
+      "label": "Drafting the summary",
+      "format": "prose"
+    },
+    {
+      "id": "letter_case",
+      "label": "The letter, when the route is a letter",
+      "case": "input.route",
+      "branches": [
+        {
+          "when": [
+            "letter"
+          ],
+          "nodes": [
+            "letter_text"
+          ],
+          "ret": "node.letter_text"
+        }
+      ]
+    },
+    {
+      "id": "letter_text",
+      "label": "Drafting the letter",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "summary_note",
+      "label": "Summary note",
+      "sources": [
+        "node.problem_loop",
+        "node.summary"
+      ]
+    },
+    {
+      "id": "note",
+      "label": "Clinic note",
+      "sources": [
+        "node.summary",
+        "node.letter_case"
+      ]
+    }
+  ]
+}

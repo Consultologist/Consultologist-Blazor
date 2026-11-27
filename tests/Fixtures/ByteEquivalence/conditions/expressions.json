@@ -107,6 +107,14 @@
       "reads": { "input.include_plan": "boolean" }
     },
     {
+      "id": "edge-source-no-branch.letter_case.case",
+      "kind": "case",
+      "expression": "input.route",
+      "letType": null,
+      "origin": "package edge-source-no-branch, node letter_case, case",
+      "reads": { "input.route": { "type": "enum", "values": ["letter", "none"], "required": true } }
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "kind": "condition",
       "expression": "node.scope.value == \"in_scope\"",

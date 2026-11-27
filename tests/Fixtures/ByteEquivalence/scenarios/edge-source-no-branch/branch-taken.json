@@ -1,0 +1,25 @@
+{
+  "description": [
+    "route letter: letter_case takes its letter branch, letter_text runs, and note is composed from",
+    "summary and the case's text, joined by one blank line; summary_note is the problem loop's and summary's."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "route": "letter"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "summary": "Summary: diabetes above target on metformin.",
+    "letter_text": "Dear Margaret Okafor, we will repeat your HbA1c in three months."
+  }
+}

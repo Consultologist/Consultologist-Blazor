@@ -24,7 +24,7 @@ public class MigratedPackagesTests
 
     private static readonly ConcurrentDictionary<string, Migration31Result> Cache = new(StringComparer.Ordinal);
 
-    /// <summary>The twenty-three packages: the vendored ones in the index's order, then the fixture packages.</summary>
+    /// <summary>The twenty-four packages: the vendored ones in the index's order, then the fixture packages.</summary>
     public static TheoryData<string> Packages() => new(Names);
 
     internal static IEnumerable<string> Names =>
@@ -78,11 +78,12 @@ public class MigratedPackagesTests
         + "\nHand edits:\n" + string.Join("\n", result.HandEdits.Select(e => "  " + e));
 
     [Fact]
-    public void TheTwentyThreePackages_AreRun()
+    public void TheTwentyFourPackages_AreRun()
     {
-        // #1508 (Task 35): the sixteen and the seven edge-case packages (EdgeCasePackagesTests).
-        Assert.Equal(23, Packages().Count);
-        Assert.Equal(23, PackagesWithoutHandEdits().Count + PackagesWithHandEdits().Count);
+        // #1508 (Task 35): the sixteen and the seven edge-case packages (EdgeCasePackagesTests); #1543 (Task A6): the eighth,
+        // edge-source-no-branch.
+        Assert.Equal(24, Packages().Count);
+        Assert.Equal(24, PackagesWithoutHandEdits().Count + PackagesWithHandEdits().Count);
     }
 
     [Theory]
