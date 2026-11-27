@@ -174,6 +174,40 @@ public class TimeZoneProfileTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task AFailedLoad_ShowsNoState_AndASaveOfNothingSaysNothingAboutWhatIsSet()
+    {
+        // Final review C3: the read failed, so the card does not know whether a zone is set.
+        WithZone(null);
+        AccountService.GetSettingAsync(TimeZones.SettingKey)
+            .Returns<Task<AccountSettingResponse?>>(_ => throw new HttpRequestException("down"));
+        var page = RenderProfile();
+
+        Assert.Empty(page.FindAll(".time-zone-state"));
+        Assert.DoesNotContain(S06008, page.Markup, StringComparison.Ordinal);
+
+        await page.Find(".time-zone-save").ClickAsync(new());
+
+        Assert.DoesNotContain("Your time zone is not set.", page.Markup, StringComparison.Ordinal);
+        Assert.Empty(page.FindAll(".time-zone-state"));
+        await AccountService.DidNotReceive().DeleteSettingAsync(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task AFailedLoad_ThenSavingAZone_SavesIt_AndShowsIt()
+    {
+        WithZone(null);
+        AccountService.GetSettingAsync(TimeZones.SettingKey)
+            .Returns<Task<AccountSettingResponse?>>(_ => throw new HttpRequestException("down"));
+        var page = RenderProfile();
+
+        await page.Find(".time-zone-select").ChangeAsync(new() { Value = "America/Toronto" });
+        await page.Find(".time-zone-save").ClickAsync(new());
+
+        await AccountService.Received(1).SaveSettingAsync(TimeZones.SettingKey, "America/Toronto", Arg.Any<string>());
+        Assert.Equal("America/Toronto", State(page));
+    }
+
+    [Fact]
     public void TheKey_MirrorsTheApis()
     {
         Assert.Equal(ApiKeys.TimeZone, TimeZones.SettingKey);

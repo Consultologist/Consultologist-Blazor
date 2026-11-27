@@ -171,6 +171,28 @@ public class LetterDetailsProfileTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task AFailedLoad_ShowsNoState_AndASaveWritesOnlyWhatWasTyped()
+    {
+        // Final review C3: the reads failed, so the card does not know what is set: no "Not set", and a Save deletes nothing.
+        WithSaved();
+        AccountService.GetSettingAsync(LetterDetails.OrganisationKey)
+            .Returns<Task<AccountSettingResponse?>>(_ => throw new HttpRequestException("down"));
+        var page = RenderProfile();
+
+        Assert.Empty(page.FindAll(".letter-credentials-state"));
+        Assert.Empty(page.FindAll(".letter-organisation-state"));
+        Assert.Empty(page.FindAll(".letter-closing-state"));
+        Assert.DoesNotContain("Not set", page.Find(".letter-details-card").TextContent, StringComparison.Ordinal);
+
+        await page.Find(".letter-details-save").ClickAsync(new());
+
+        await AccountService.DidNotReceive().DeleteSettingAsync(Arg.Any<string>());
+        await AccountService.DidNotReceive().SaveSettingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+        Assert.DoesNotContain("Your letter details are saved.", page.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not set", page.Find(".letter-details-card").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheLimits_MirrorTheApis()
     {
         Assert.Equal(ApiKeys.ProfileCredentials, LetterDetails.CredentialsKey);
