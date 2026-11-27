@@ -139,11 +139,13 @@ internal static partial class Migrate
     /// 31 (part 05 § 8.6 drops a final line ending from a macro's body only), so a snippet only deliverables read is written
     /// with that white space taken off, and keeps 30's bytes. One a 30 prompt also read as <c>.content</c> (which 30 read with
     /// its file's trailing line ending) is written whole: the two reads cannot both keep 30's bytes, and the comparison says so.
+    /// #1510 (item 2): a trimmed body ending in the signature after a line end or a blank line writes it through the renderer
+    /// that leaves both out when the signature is blank, as 30's trim did (<see cref="SignatureAtTheEnd"/>).
     /// </summary>
     internal static string SnippetBody(Migrated m, WorkflowMacroSpec macro, bool readAsContent)
     {
         var body = MacroBody(m, macro.File);
-        return readAsContent ? body : body.TrimEnd();
+        return readAsContent ? body : SignatureAtTheEnd(m, body.TrimEnd());
     }
 
     /// <summary>

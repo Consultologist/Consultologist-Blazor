@@ -481,6 +481,13 @@ internal static class MigrationSentences
         $"Loop '{loop}' returns each item through the new node '{node}', which strips the item's text as specVersion 30 did.";
 
     /// <summary>
+    /// A10-089 (#1510; #1509 comment 7207709261, item 2; F-D4): the signature is written through the new renderer
+    /// <paramref name="renderer"/>, whose body tests the signature trimmed, as 30 appended no empty signature block.
+    /// </summary>
+    public static string SignatureThroughRenderer(string renderer) =>
+        $"The signature is written through renderer '{renderer}', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.";
+
+    /// <summary>
     /// A10-090 (#1510, F1 fix round 1): a reason: the <c>for</c> <paramref name="loop"/>, whose <c>.content</c> is read, returns
     /// items of more than one text format (an <c>if</c> or a <c>case</c> of a Markdown and a plain branch), so no one node can
     /// strip them and keep each as the engine writes it: the loop keeps its <c>ret</c>, and the operator strips each branch.
