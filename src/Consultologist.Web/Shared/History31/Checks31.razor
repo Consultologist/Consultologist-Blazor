@@ -1,5 +1,4 @@
 @using Consultologist.Web.Services.Provenance.V31
-@using Microsoft.AspNetCore.Components.Routing
 @implements IDisposable
 @inject NavigationManager Navigation
 @*
@@ -31,130 +30,26 @@ else
     public RowText31 Texts { get; set; } = default!;
 
     /// <summary>Follows a link to a check row (or a decision of one); false when this section holds none.</summary>
-    public bool Reveal(string target)
-    {
-        if (!Open(target))
-        {
-            return false;
-        }
+    public bool Reveal(string target) => _view.Reveal(target);
 
-        StateHasChanged();
-        return true;
-    }
-
-    /// <summary>What every row of the section shares: the record, the texts and which rows are open.</summary>
-    public sealed class View
-    {
-        private readonly Checks31 _owner;
-
-        internal View(Checks31 owner) => _owner = owner;
-
-        public Record31 Record => _owner.Record;
-
-        public RowText31 Texts => _owner.Texts;
-
-        public bool IsOpen(string key) => _owner._open.Contains(key);
-
-        /// <summary>The row the page was sent to, focused once it is drawn; null when none is waiting.</summary>
-        public string? FocusKey { get; set; }
-
-        public void Toggle(string key)
-        {
-            if (!_owner._open.Remove(key))
-            {
-                _owner._open.Add(key);
-            }
-
-            _owner.StateHasChanged();
-        }
-    }
-
-    private readonly HashSet<string> _open = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string?> _parents = new(StringComparer.Ordinal);
     private IReadOnlyList<TreeNode31> _tree = [];
     private Record31? _built;
-    private View _view = default!;
-    private bool _arrived;
+    private Disclosure31 _view = default!;
 
-    protected override void OnInitialized()
-    {
-        _view = new View(this);
-        Navigation.LocationChanged += OnLocationChanged;
-    }
+    protected override void OnInitialized() => _view = new Disclosure31(Navigation, () => InvokeAsync(StateHasChanged));
 
     protected override void OnParametersSet()
     {
+        _view.Texts = Texts;
         if (!ReferenceEquals(_built, Record))
         {
             _built = Record;
             _tree = NodeTree31.BuildChecks(Record);
-            _parents.Clear();
-            Walk(_tree, null);
+            _view.SetTree(Record, _tree);
         }
 
-        if (!_arrived)
-        {
-            // a page opened at a row: its rows open as it is first drawn
-            _arrived = true;
-            OpenAt(Navigation.Uri);
-        }
+        _view.Arrive();
     }
 
-    private void Walk(IReadOnlyList<TreeNode31> nodes, string? parent)
-    {
-        foreach (var node in nodes)
-        {
-            _parents[node.Key] = parent;
-            Walk(node.Children, node.Key);
-        }
-    }
-
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
-    {
-        if (OpenAt(args.Location))
-        {
-            InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private bool OpenAt(string uri)
-    {
-        var hash = uri.IndexOf('#');
-        if (hash < 0)
-        {
-            return false;
-        }
-
-        var fragment = Uri.UnescapeDataString(uri[(hash + 1)..]);
-        return fragment.StartsWith("row-", StringComparison.Ordinal) && Open(fragment["row-".Length..]);
-    }
-
-    /// <summary>Opens the row holding <paramref name="target"/> and each row it sits in, and asks for it to be focused.</summary>
-    private bool Open(string target)
-    {
-        string? key = null;
-        if (_parents.ContainsKey(target))
-        {
-            key = target;
-        }
-        else if (Record.Find(target) is { Section: "decision" } decision && _parents.ContainsKey(Record31.OwnerOf(decision)))
-        {
-            key = Record31.OwnerOf(decision);
-        }
-
-        if (key is null)
-        {
-            return false;
-        }
-
-        _view.FocusKey = key;
-        for (string? at = key; at is not null; at = _parents.GetValueOrDefault(at))
-        {
-            _open.Add(at);
-        }
-
-        return true;
-    }
-
-    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+    public void Dispose() => _view.Dispose();
 }

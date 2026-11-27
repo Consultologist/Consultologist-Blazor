@@ -310,15 +310,60 @@ public class History31ChecksTests : ClientRenderTestContext
     public void AGatesRow_ComesAfterItsDeliverables_InTheOrderRecorded()
     {
         // the gate settles last, so its row starts after the others', though its key sorts first
-        var page = Render31(
+        RecordRowRef[] extra =
+        [
             Check("check.aaa_gate", """{ "label": "Gate", "startedAtUtc": "2026-11-16T14:09:00Z", "effect": "released" }"""),
             Check("check.zzz_first", """{ "label": "First", "startedAtUtc": "2026-11-16T14:01:00Z" }"""),
-            Check("check.mmm_second", """{ "label": "Second", "startedAtUtc": "2026-11-16T14:02:00Z" }"""));
+            Check("check.mmm_second", """{ "label": "Second", "startedAtUtc": "2026-11-16T14:02:00Z" }"""),
+        ];
+        var page = Render31(extra);
+        var recorded = NodeTree31.BuildChecks(Record31.From(Record31Fixtures.Header() with { JobId = JobId },
+            Record31Fixtures.Job().Rows.Concat(extra).ToList())).Select(node => node.Key).ToList();
 
         var keys = page.FindAll("#history31-checks > ul > li").Select(li => (li.GetAttribute("id") ?? "")["row-".Length..]).ToList();
 
-        Assert.Equal(new[] { "check.zzz_first", "check.mmm_second", "check.aaa_gate" }, keys.Take(3));
-        Assert.Equal(keys.Count, keys.Distinct().Count());
+        // drawn in the recorded order, which is not key order, and the gate is after the checks that settled before it
+        Assert.Equal(recorded, keys);
+        Assert.NotEqual(keys.Order(StringComparer.Ordinal).ToList(), keys);
+        Assert.True(keys.IndexOf("check.aaa_gate") > keys.IndexOf("check.mmm_second"));
+        Assert.True(keys.IndexOf("check.mmm_second") > keys.IndexOf("check.zzz_first"));
+    }
+
+    [Fact]
+    public void ACollapsedRow_HasNoAriaControls_AnOpenOneNamesItsBody_InChecksAndNodes()
+    {
+        var page = Render31();
+        var checkToggle = LineOf(page, "check.gate").QuerySelector(".history31-check__toggle")!;
+        var nodeToggle = page.Find("#history31-nodes [id=\"row-node.plan\"] .history31-node__toggle");
+
+        Assert.False(checkToggle.HasAttribute("aria-controls"));
+        Assert.False(nodeToggle.HasAttribute("aria-controls"));
+
+        checkToggle.Click();
+        nodeToggle.Click();
+
+        checkToggle = LineOf(page, "check.gate").QuerySelector(".history31-check__toggle")!;
+        nodeToggle = page.Find("#history31-nodes [id=\"row-node.plan\"] .history31-node__toggle");
+        Assert.Equal("row-check.gate-body", checkToggle.GetAttribute("aria-controls"));
+        Assert.NotNull(page.Find("[id=\"row-check.gate-body\"]"));
+        Assert.Equal("row-node.plan-body", nodeToggle.GetAttribute("aria-controls"));
+        Assert.NotNull(page.Find("[id=\"row-node.plan-body\"]"));
+    }
+
+    [Fact]
+    public void TheAlignedItem_IsNamedByItsRetainedName_AsNodesNamesIt()
+    {
+        AIService.GetJobRowAsync(JobId, "node.sections:1").Returns(new RecordRowText("node.sections:1", "node",
+            JsonSerializer.SerializeToElement(new { }), JsonSerializer.SerializeToElement(new JsonObject { ["itemName"] = "Background" }), false));
+        var page = Render31();
+
+        Open(page, "check.part_coverage");
+        Open(page, "check.part_coverage:1");
+
+        page.WaitForAssertion(() => Assert.Equal("Background",
+            LineOf(page, "check.part_coverage:1").QuerySelector(".history31-check__aligned a")!.TextContent.Trim()));
+        // the second item has no retained name to give: its position, as Nodes titles it
+        Assert.Equal("Sections 2", LineOf(page, "check.part_coverage:2").QuerySelector(".history31-check__aligned a")!.TextContent.Trim());
     }
 
     [Fact]

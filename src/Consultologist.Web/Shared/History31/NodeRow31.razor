@@ -1,3 +1,4 @@
+@inherits DisclosureRow31<Nodes31.View>
 @using System.Globalization
 @using System.Text.Json
 @using Consultologist.Web.Services.AI
@@ -11,9 +12,9 @@
     its sub-rows (SubRows31), its decisions (Decision31), its text while retained (else A12-002 beside the hashes) and the
     rows inside it. Its text is fetched when it is first opened, once.
 *@
-<li class="history31-node" id="row-@Node.Key" tabindex="-1" data-kind="@Node.Kind" @ref="_element">
+<li class="history31-node" id="row-@Node.Key" tabindex="-1" data-kind="@Node.Kind" @ref="Element">
     <div class="history31-node__line">
-        <button type="button" class="history31-node__toggle" aria-expanded="@(IsOpen ? "true" : "false")" aria-controls="@BodyId"
+        <button type="button" class="history31-node__toggle" aria-expanded="@(IsOpen ? "true" : "false")" aria-controls="@ControlsId"
                 @onclick="() => View.Toggle(Node.Key)">
             <span class="history31-node__title">@Title</span>
         </button>
@@ -118,11 +119,11 @@
                     </ul>
                 }
                 <SubRows31 Row="row" View="View" />
-                @if (_fetched is { TextDeleted: true })
+                @if (Fetched is { TextDeleted: true })
                 {
                     <p class="history31-node__dropped">@HistorySentences31.TextDeleted</p>
                 }
-                else if (Shown(_fetched) is { } text)
+                else if (Shown(Fetched) is { } text)
                 {
                     <pre class="history31-node__text">@text</pre>
                 }
@@ -150,70 +151,9 @@
 </li>
 
 @code {
-    [Parameter, EditorRequired]
-    public TreeNode31 Node { get; set; } = default!;
-
-    [Parameter, EditorRequired]
-    public Nodes31.View View { get; set; } = default!;
-
-    private ElementReference _element;
-    private RecordRowText? _fetched;
-    private bool _loading;
-    private bool _wasOpen;
-
-    private Row31? Row => Node.Row;
-
-    private bool IsOpen => View.IsOpen(Node.Key);
-
-    private string BodyId => $"row-{Node.Key}-body";
-
     /// <summary>An item retitled by the name its retained text holds, once fetched; any other row as the tree names it.</summary>
     private string Title =>
-        Node.IsItem && Row is { } row ? NodeTree31.ItemTitle(row, RetainedName(_fetched), Node.LoopLabel) : Node.Title;
-
-    protected override async Task OnParametersSetAsync()
-    {
-        var opened = IsOpen && !_wasOpen;
-        _wasOpen = IsOpen;
-        if (!opened || Row is null || _loading || _fetched is not null)
-        {
-            return;
-        }
-
-        _loading = true;
-        try
-        {
-            _fetched = await View.Texts.Get(Node.Key);
-        }
-        catch (AccessTokenNotAvailableException exception)
-        {
-            exception.Redirect();
-        }
-        catch (Exception)
-        {
-            // not read: the hashes stay, and the next opening asks again
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (string.Equals(View.FocusKey, Node.Key, StringComparison.Ordinal))
-        {
-            View.FocusKey = null;
-            try
-            {
-                await _element.FocusAsync();
-            }
-            catch (JSException)
-            {
-                // focus is a convenience: the row is open all the same
-            }
-        }
-    }
+        Node.IsItem && Row is { } row ? NodeTree31.ItemTitle(row, RetainedName(Fetched), Node.LoopLabel) : Node.Title;
 
     /// <summary>The fetched text: its <c>content</c>, else its <c>value</c>'s JSON; null when none was offered.</summary>
     private static string? Shown(RecordRowText? fetched)

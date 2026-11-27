@@ -1,3 +1,4 @@
+@inherits DisclosureRow31<Disclosure31>
 @using System.Text.Json
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Provenance.V31
@@ -9,9 +10,9 @@
     uncovered and untested while retained, then their hashes and sizes with A12-002) and effect (the stored word). A line with
     nothing to say is not drawn. Its text is fetched when it is first opened, once.
 *@
-<li class="history31-check" id="row-@Node.Key" tabindex="-1" data-kind="@Node.Kind" @ref="_element">
+<li class="history31-check" id="row-@Node.Key" tabindex="-1" data-kind="@Node.Kind" @ref="Element">
     <div class="history31-check__line">
-        <button type="button" class="history31-check__toggle" aria-expanded="@(IsOpen ? "true" : "false")" aria-controls="@BodyId"
+        <button type="button" class="history31-check__toggle" aria-expanded="@(IsOpen ? "true" : "false")" aria-controls="@ControlsId"
                 @onclick="() => View.Toggle(Node.Key)">
             <span class="history31-check__title">@Title</span>
         </button>
@@ -101,11 +102,11 @@
                                     }
                                 </div>
                             }
-                            @if (_fetched is { TextDeleted: true } && Lists(row).Any(l => l.Hash is not null))
+                            @if (Fetched is { TextDeleted: true } && Lists(row).Any(l => l.Hash is not null))
                             {
                                 <p class="history31-check__dropped">@HistorySentences31.TextDeleted</p>
                             }
-                            @if (_failed && Lists(row).Any(l => l.Hash is not null))
+                            @if (FetchFailed && Lists(row).Any(l => l.Hash is not null))
                             {
                                 <p class="history31-check__unavailable">@HistorySentences31.RecordNotAvailable</p>
                             }
@@ -141,42 +142,23 @@
 </li>
 
 @code {
-    [Parameter, EditorRequired]
-    public TreeNode31 Node { get; set; } = default!;
-
-    [Parameter, EditorRequired]
-    public Checks31.View View { get; set; } = default!;
-
-    private ElementReference _element;
-    private RecordRowText? _fetched;
-    private bool _failed;
-    private bool _loading;
-    private bool _wasOpen;
-
-    private Row31? Row => Node.Row;
-
-    private bool IsOpen => View.IsOpen(Node.Key);
-
-    private string BodyId => $"row-{Node.Key}-body";
-
     /// <summary>An item retitled by the name its retained text holds, once fetched; any other row as the tree names it.</summary>
     private string Title =>
-        Node.IsItem && Row is { } row ? NodeTree31.ItemTitle(row, RetainedName(_fetched), Node.LoopLabel) : Node.Title;
+        Node.IsItem && Row is { } row ? NodeTree31.ItemTitle(row, RetainedName(Fetched), Node.LoopLabel) : Node.Title;
 
-    protected override async Task OnParametersSetAsync()
+    private string? _alignedName;
+
+    /// <summary>The aligned production item's retained name, from the same fetch Nodes makes for that row (<see cref="RowText31"/>).</summary>
+    protected override async Task OnOpenedAsync()
     {
-        var opened = IsOpen && !_wasOpen;
-        _wasOpen = IsOpen;
-        if (!opened || Row is null || _loading || _fetched is not null)
+        if (Row?.Text("alignedWith") is not { Length: > 0 } aligned)
         {
             return;
         }
 
-        _loading = true;
-        _failed = false;
         try
         {
-            _fetched = await View.Texts.Get(Node.Key);
+            _alignedName = RetainedName(await View.Texts.Get(aligned));
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -184,34 +166,14 @@
         }
         catch (Exception)
         {
-            // not read: the hashes stay, the sentence says so, and the next opening asks again
-            _failed = true;
-        }
-        finally
-        {
-            _loading = false;
+            // not read: the item is named by its position, as before it was opened
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (string.Equals(View.FocusKey, Node.Key, StringComparison.Ordinal))
-        {
-            View.FocusKey = null;
-            try
-            {
-                await _element.FocusAsync();
-            }
-            catch (JSException)
-            {
-                // focus is a convenience: the row is open all the same
-            }
-        }
-    }
-
+    /// <summary>The production item named as Nodes names it: its own name, else the retained name, else its position.</summary>
     private string AlignedTitle(string key) =>
         View.Record.Find(key) is { } row
-            ? NodeTree31.ItemTitle(row, null, View.Record.ParentOf(key)?.Text("label"))
+            ? NodeTree31.ItemTitle(row, _alignedName, View.Record.ParentOf(key)?.Text("label"))
             : key;
 
     /// <summary>The key of the node, check or deliverable row a read's path names (the path itself or its longest leading part at a <c>.</c>); null when it names none.</summary>
@@ -256,7 +218,7 @@
                 continue;
             }
 
-            if (Retained(_fetched, name) is { } items)
+            if (Retained(Fetched, name) is { } items)
             {
                 yield return (name, items, null, null);
             }
