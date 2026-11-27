@@ -140,21 +140,31 @@ internal static class ApiMock
 
 /// <summary>
 /// #1509 (Task 25): what the 31 scenario answers, route by route (a null body is a 404), and how often each route was
-/// asked. A test changes a member before navigating, or between steps (the start checks' answer, say).
+/// asked. A test changes a member before navigating, or between steps (the start checks' answer, say); the route
+/// handlers read them on Playwright's threads, so each body is a volatile field and the settings a concurrent map.
 /// </summary>
 internal sealed class Api31
 {
-    public string? Package { get; set; } = Fixtures31.Package;
-    public string? StartChecks { get; set; } = Fixtures31.NoRefusals;
-    public string? Content { get; set; } = Fixtures31.Content;
-    public string? AccountMe { get; set; } = Fixtures31.AccountMe;
-    public string? Jobs { get; set; } = Fixtures31.Jobs;
-    public string? Job { get; set; } = Fixtures31.Job;
-    public string? Rows { get; set; } = Fixtures31.Rows;
-    public string? Record { get; set; }
+    private volatile string? _package = Fixtures31.Package;
+    private volatile string? _startChecks = Fixtures31.NoRefusals;
+    private volatile string? _content = Fixtures31.Content;
+    private volatile string? _accountMe = Fixtures31.AccountMe;
+    private volatile string? _jobs = Fixtures31.Jobs;
+    private volatile string? _job = Fixtures31.Job;
+    private volatile string? _rows = Fixtures31.Rows;
+    private volatile string? _record;
+
+    public string? Package { get => _package; set => _package = value; }
+    public string? StartChecks { get => _startChecks; set => _startChecks = value; }
+    public string? Content { get => _content; set => _content = value; }
+    public string? AccountMe { get => _accountMe; set => _accountMe = value; }
+    public string? Jobs { get => _jobs; set => _jobs = value; }
+    public string? Job { get => _job; set => _job = value; }
+    public string? Rows { get => _rows; set => _rows = value; }
+    public string? Record { get => _record; set => _record = value; }
 
     /// <summary>Saved account settings by key; any other key is unset (404).</summary>
-    public Dictionary<string, string> Settings { get; } = new(StringComparer.Ordinal);
+    public ConcurrentDictionary<string, string> Settings { get; } = new(StringComparer.Ordinal);
 
     /// <summary>Hits by route: <c>Current</c>, <c>StartChecks</c>, <c>Content</c>, <c>Rows</c>, <c>Rows?key=&lt;key&gt;</c>, …; a method other than GET is named first (<c>PUT Settings/&lt;key&gt;</c>).</summary>
     public ConcurrentDictionary<string, int> Hits { get; } = new(StringComparer.Ordinal);
@@ -162,4 +172,7 @@ internal sealed class Api31
     public string? RowText(string key) => Fixtures31.RowText(key);
 
     public int HitsOf(string name) => Hits.TryGetValue(name, out var count) ? count : 0;
+
+    /// <summary>Hits of every route whose name matches (every <c>PUT</c>, say).</summary>
+    public int HitsWhere(Func<string, bool> name) => Hits.Where(hit => name(hit.Key)).Sum(hit => hit.Value);
 }

@@ -39,7 +39,7 @@ public class Profile31E2ETests
         await Assertions.Expect(select).ToHaveValueAsync(BrowserZone);
         await Assertions.Expect(page.Locator(".time-zone-message")).ToHaveCountAsync(0);
         // Filled, not saved: Save writes it.
-        Assert.Equal(0, api.HitsOf("PUT Settings/account.timeZone"));
+        Assert.Equal(0, api.HitsWhere(name => name.StartsWith("PUT ", System.StringComparison.Ordinal)));
     }
 
     [Fact]

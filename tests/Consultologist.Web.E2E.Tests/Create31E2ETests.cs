@@ -8,8 +8,8 @@ namespace Consultologist.Web.E2E.Tests;
 
 /// <summary>
 /// #1509 (Task 25; part 09 §§ 5.1 to 5.3; D1, D2): the Create page with a specVersion 31 package, in the served app.
-/// The inputs drawn by <c>Input31</c>, the start checks' refusals above Start, a Remove inside a row (AGENTS.md's
-/// label trap, which only a browser shows), and the checks asked again on a window focus.
+/// The inputs drawn by <c>Input31</c>, the start checks' refusals above Start, removing rows (in a plain slot and inside
+/// a form-channel group's <c>&lt;label&gt;</c> slot), and the checks asked again on a window focus.
 /// </summary>
 [Collection(BrowserCollection.Name)]
 public class Create31E2ETests
@@ -22,6 +22,19 @@ public class Create31E2ETests
     {
         var page = await _fixture.Browser.NewPageAsync();
         await ApiMock.Install31Async(page, api);
+        // Counts the page's window-focus listeners as windowFocus.js registers them (it assigns the global once, on load).
+        await page.AddInitScriptAsync("""
+            window.__focusListeners31 = 0;
+            Object.defineProperty(window, 'consultologistWindowFocus', {
+              configurable: true,
+              get() { return this.__focus31; },
+              set(api) {
+                const listen = api.listen;
+                api.listen = (ref) => { const id = listen(ref); window.__focusListeners31++; return id; };
+                this.__focus31 = api;
+              },
+            });
+            """);
         await page.GotoAsync($"{_fixture.BaseUrl}/create", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         await page.WaitForSelectorAsync("[data-input-id='medicines']", new() { Timeout = 30_000 });
         return page;
@@ -79,7 +92,8 @@ public class Create31E2ETests
         // switch (BringToFrontAsync, with or without CDP's focus emulation) fires no focus event: the window is sent the
         // browser's own focus event, which reaches the published windowFocus.js listener and the page through interop.
         api.StartChecks = Fixtures31.NoRefusals;
-        await page.WaitForTimeoutAsync(200); // the listener is registered after the render that drew the refusals
+        // The listener is registered after the render that drew the refusals: wait until it is.
+        await page.WaitForFunctionAsync("() => window.__focusListeners31 === 1");
         await page.EvaluateAsync("() => window.dispatchEvent(new FocusEvent('focus'))");
 
         Assert.True(await AskedAgainAsync(api, before), "the start checks were not asked again after a window focus");
@@ -98,17 +112,23 @@ public class Create31E2ETests
         return api.HitsOf("StartChecks") > before;
     }
 
+    /// <summary>
+    /// Rows are added and removed, the last one too: no row comes back and no other control is clicked, in a plain slot
+    /// and inside the form-channel group's <c>&lt;label&gt;</c>. This test does not pin the label trap (AGENTS.md): in
+    /// this Chromium a Remove that the re-render drops causes no label activation, even with every preventDefault
+    /// wrapper removed (fix round 1, recorded in the plan). The wrapper is pinned by the bUnit test
+    /// <c>ConsultsInputs31Tests.AnArrayOfObjects_IsRepeatingRows</c>.
+    /// </summary>
     [Theory]
     [InlineData("medicines")]
-    // A form-channel group is drawn inside the page's own <label> slot: the case AGENTS.md's trap is about.
     [InlineData("intake")]
-    public async Task Create31_RemovingARow_LeavesNoEmptyRowBehind(string input)
+    public async Task Create31_RemovingEveryRow_LeavesNoRow_AndClicksNothingElse(string input)
     {
         var page = await OpenAsync(new Api31());
         var slot = Slot(page, input);
         var rows = slot.Locator(".input31__row");
         var add = slot.Locator("fluent-button.input31__add");
-        // Every click that reaches the document: a <label>'s activation is one more than the clicks made here.
+        // Every click that reaches the document: a click on another control would be one more than the clicks made here.
         await page.EvaluateAsync("() => { window.__clicks31 = 0; document.addEventListener('click', () => window.__clicks31++, true); }");
 
         await add.ClickAsync();
@@ -118,7 +138,6 @@ public class Create31E2ETests
         await slot.Locator("fluent-button[aria-label='Remove entry 2']").ClickAsync();
         await Assertions.Expect(rows).ToHaveCountAsync(1);
 
-        // The last row's Remove: the re-render drops the button under the click, and nothing puts a row back.
         await slot.Locator("fluent-button[aria-label='Remove entry 1']").ClickAsync();
         await Assertions.Expect(rows).ToHaveCountAsync(0);
         await page.WaitForTimeoutAsync(300);
