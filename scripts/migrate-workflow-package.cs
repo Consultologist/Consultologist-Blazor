@@ -44,9 +44,10 @@
 //
 // --to 31 (#1507, part 10 §§ 1.1, 1.4) is the library's Migration31Script: the
 // dry run prints the notices and the file plan; --write leaves the folder holding
-// exactly the 31 files (manifest.json and the nine folders; 30's prompts/, flat
-// macros and dag.mmd deleted: 31's dag.mmd is not this script's; --snapshot
-// leaves a 31 folder's own dag.mmd alone). --rename, --when-empty and
+// exactly the 31 files (manifest.json and the nine folders; 30's prompts/ and
+// flat macros deleted; dag.mmd the 31 drawing when the migrated package compiles,
+// else deleted until its hand edits are done, #1510 D13; --snapshot leaves a
+// 31 folder's own dag.mmd alone). --rename, --when-empty and
 // --folder-format choose a reserved id's 31 id, a deliverable's whenEmpty (the
 // default is release) and a snippet folder's item format (the default is
 // <folder>_item). --options <file> (#1508, R18) reads all three from a package's
