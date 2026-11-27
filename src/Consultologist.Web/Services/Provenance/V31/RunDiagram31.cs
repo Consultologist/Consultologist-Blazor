@@ -14,7 +14,8 @@ namespace Consultologist.Web.Services.Provenance.V31;
 /// <para>
 /// With no row a box shows nothing and is <c>ranNot</c> (<c>running</c> while the job runs and a row inside it is
 /// written); a loop with no row of its own but item or pass rows of one instance (a running job, or one that failed in
-/// it: the engine writes the loop's row when it ends) lists them and is <c>running</c>. With several (a box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
+/// it: the engine writes the loop's row when it ends) lists them and is <c>running</c> while the job runs, once it has
+/// ended the class of the worst item (D10's order below). With several (a box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
 /// class of the worst (Failed, then Cancelled, Skipped, NotRun, Completed; D10). With exactly one, its status as stored;
 /// a node's output hash and retry count; a loop's items (a <c>while</c>'s passes), one line each, the first
 /// <see cref="Listed"/>, then <c>… and &lt;k&gt; more</c>; an <c>if</c>'s or <c>case</c>'s decision; a classifier's answer
@@ -125,7 +126,7 @@ public static class RunDiagram31
                 // a loop's own row is written when it ends (none while it runs, nor when the job failed in it): its items still list
                 var listed = kind is "for" or "while" ? all.Where(r => Tokens(r.Key) == depth + 1).ToList() : [];
                 if (listed.Count > 0 && listed.Select(r => r.Key[..r.Key.LastIndexOfAny([':', '/', '#'])]).Distinct(StringComparer.Ordinal).Count() == 1)
-                    return new BoxOverlay([.. Items(listed, passes: kind == "while")], "running", null);
+                    return new BoxOverlay([.. Items(listed, passes: kind == "while")], terminal ? Worst(listed) : "running", null);
                 var inside = all.Count > 0 || record.Nodes.Concat(record.Checks).Any(r => r.Key.StartsWith(key + ".", StringComparison.Ordinal));
                 return new BoxOverlay([], !terminal && inside ? "running" : "ranNot", null);
             }
@@ -304,9 +305,12 @@ public static class RunDiagram31
             var counts = rows.Select(Word).Where(w => w.Length > 0).GroupBy(w => w, StringComparer.Ordinal)
                 .OrderBy(g => Rank(g.Key) == 0 ? int.MaxValue : Rank(g.Key)).ThenBy(g => g.Key, StringComparer.Ordinal).ToList();
             var line = string.Join(" · ", counts.Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Count()} {g.Key}")));
-            var worst = counts.Select(g => g.Key).OrderByDescending(Rank).FirstOrDefault();
-            return new BoxOverlay(line.Length > 0 ? [line] : [], worst == null ? "ranNot" : ClassOf(worst), null);
+            return new BoxOverlay(line.Length > 0 ? [line] : [], Worst(rows), null);
         }
+
+        /// <summary>D10: the class of the worst of the rows' words; <c>ranNot</c> when none has a word.</summary>
+        private static string Worst(List<Row31> rows) =>
+            rows.Select(Word).Where(w => w.Length > 0).OrderByDescending(Rank).FirstOrDefault() is { } worst ? ClassOf(worst) : "ranNot";
 
         /// <summary>A row's word: a check's verdict (<c>pass</c>, <c>fail</c>) when it has one, else the status as stored.</summary>
         private static string Word(Row31 row) =>
