@@ -61,7 +61,7 @@ public class LineEndingWarningTests
     public void TheLineAboveAnOutputAlone_Warns()
     {
         // #1543 (ruling 2, D2): a line above a line of only a read (the profile's name, an inline read) is warned, as the
-        // migration writes its \ there; above a placement alone, or below a block read alone, it is not.
+        // migration writes its \ there; above a placement alone it is not.
         var files = Package().WithSnippet("tone", "Plainly.\n", "markdown_block")
             .WithDeliverable("Sincerely,\n{{ profile.name }}\n\nSeen by\n{{~ snippet.tone.content }}\n\n{{ node.plan.content }}\n");
 
@@ -69,6 +69,26 @@ public class LineEndingWarningTests
         Assert.Equal(Sentence("Deliverable 'note'", 1), warning.Sentence);
         Assert.Equal("deliverables/note.md", warning.Path);
         V31Contract.AssertSentence(warning);
+    }
+
+    [Fact]
+    public void TheLineAboveABlockReadAlone_Warns()
+    {
+        // #1543 (ruling 2, D2): the closing is a markdown_block read, typed by the checker; the line above it is warned.
+        var files = Package().WithDeliverable("Sincerely,\n{{ profile.closing }}\n\n{{ node.plan.content }}\n");
+
+        var warning = Assert.Single(Warned(files));
+        Assert.Equal(Sentence("Deliverable 'note'", 1), warning.Sentence);
+        V31Contract.AssertSentence(warning);
+    }
+
+    [Fact]
+    public void TheLineAfterABlockReadAlone_DoesNotWarn()
+    {
+        // A \ after a block read would be text after it (S05-067), so the line ending after it is left as it is.
+        var files = Package().WithDeliverable("{{ profile.closing }}\nDr A. Sample\n\n{{ node.plan.content }}\n");
+
+        Assert.Empty(Warned(files));
     }
 
     [Fact]
