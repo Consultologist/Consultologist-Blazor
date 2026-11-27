@@ -391,6 +391,14 @@ public class MigrateFlowsTests
         Assert.Equal(Compact("""{ "===": [ { "var": "node.topic_gate.state" }, "completed" ] }"""), header["if"]!.ToJsonString());
         Assert.Equal("{{ node.topic_gate.content | string.strip }}", body);
         Assert.Equal("node.topic_loop.topic_gate", result.StripNodes["node.topic_loop.topic_gate_stripped"]);
+        // The flags are Derived's, not the placeholders: a rendered node is reproducible (part 02 § 1.1), and it carries what
+        // the old ret it reads carries, so it is model-derived (the placeholder was false).
+        var gate = Json(result, "nodes/topic_loop/topic_gate/index.json");
+        Assert.True((bool)header["reproducible"]!);
+        Assert.True((bool)header["modelDerived"]!);
+        Assert.Equal(
+            ((bool)gate["modelDerived"]!, (bool)gate["runDependent"]!, (bool)gate["profileCarrying"]!),
+            ((bool)header["modelDerived"]!, (bool)header["runDependent"]!, (bool)header["profileCarrying"]!));
 
         const string notice = "Loop 'topic_loop' returns each item through the new node 'topic_gate_stripped', which strips the item's text as specVersion 30 did.";
         Assert.Single(result.Notices, n => n == notice);
@@ -423,14 +431,37 @@ public class MigrateFlowsTests
         Assert.Equal("{{ node.draft_point.content | string.strip }}", Md(result, "nodes/section_loop/point_loop/draft_point_stripped.md").Body);
     }
 
-    /// <summary>#1510 (F-D1): a loop whose <c>.content</c> nothing reads (read only through <c>.items</c>) keeps its <c>ret</c>.</summary>
-    [Fact]
-    public void AForWhoseContentNobodyReads_IsLeftAsItWas()
+    /// <summary>
+    /// #1510 (F-D1): a loop whose <c>.content</c> nothing reads (read only through <c>.items</c>, or only through
+    /// <c>.value</c>) keeps its <c>ret</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("items")]
+    [InlineData("value")]
+    public void AForWhoseContentNobodyReads_IsLeftAsItWas(string member)
     {
         var result = Migrated("example-prior-letters", root =>
-            root["deliverables"]!.AsArray().OfType<JsonObject>().Single()["sources"] = new JsonArray("node.assessment"));
+        {
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single()["sources"] = new JsonArray("node.assessment");
+            // A loop has a .value when its ret has one: the summary is written in the letter check's format.
+            if (member == "value")
+            {
+                Node(root, "letter_summary")["format"] = "letter_check";
+                Node(root, "letter_summary")["onInvalid"] = "fail";
+            }
+        }, files =>
+        {
+            if (member == "value")
+            {
+                var prompt = files["prompts/assessment.md"];
+                var from = prompt.IndexOf("{{ for letter", StringComparison.Ordinal);
+                var to = prompt.IndexOf("Consult draft:", StringComparison.Ordinal);
+                files["prompts/assessment.md"] = prompt[..from] + "{{ node.letters.value | array.size }} letters were read.\n" + prompt[to..];
+            }
+        });
 
-        Assert.Contains("node.letters.items", Md(result, "nodes/assessment.md").Body, StringComparison.Ordinal);
+        Assert.Contains($"node.letters.{member}", Md(result, "nodes/assessment.md").Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("node.letters.content", Md(result, "nodes/assessment.md").Body, StringComparison.Ordinal);
         var loop = Json(result, "nodes/letters/index.json");
         Assert.Equal("node.letters.letter_summary", (string?)loop["ret"]);
         Assert.DoesNotContain(result.Files.Keys, f => f.EndsWith("_stripped.md", StringComparison.Ordinal));

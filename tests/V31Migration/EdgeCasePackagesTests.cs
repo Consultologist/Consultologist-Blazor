@@ -286,8 +286,8 @@ public class EdgeCasePackagesTests
         // macro-trailing-whitespace is no longer needed: the letter's prompt and the problems deliverable are explained
         // without it.
         var letter = texts.Single(t => t.Site.EndsWith("#prompts/node.letter", StringComparison.Ordinal));
-        Assert.DoesNotContain("macro-trailing-whitespace", letter.Rules);
-        Assert.True(letter.Equal || letter.Expected);
+        Assert.Equal((false, true, false), (letter.Equal, letter.Expected, letter.Unexplained));
+        Assert.Equal(["before-after-macro-marker", "macro-choice-classifier"], letter.Rules);
         var problems = texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.problems", StringComparison.Ordinal));
         Assert.Equal(["before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
         Assert.True(problems.Expected);

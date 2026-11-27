@@ -759,18 +759,24 @@ public class MigrateDeliverablesTests
         const string union = """{"anyOf":[{"$ref":"markdown_block"},{"$ref":"plaintext"}]}""";
         Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(result, prose).Header["format"]);
         Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, gate.Replace("index.json", "left_out.md", StringComparison.Ordinal)).Header["format"]);
-        // #1510 (item 1; F-D1, F-D2): under a for whose .content is read, each item is returned through the node that strips
-        // it, whose format is the old ret's text kind; a union of two kinds is none, so it is plaintext, and the loop's items
-        // are plain text the engine escapes where it joins them (the Markdown branch's with them: a known limit, no fixture
-        // capture has it).
-        Assert.Equal(shape == "for" ? """{"type":"array","items":{"$ref":"plaintext"}}""" : union, MigrateNodesTests.Json(result, flow)["format"]!.ToJsonString());
+        Assert.Equal(shape == "for" ? $$"""{"type":"array","items":{{union}}}""" : union, MigrateNodesTests.Json(result, flow)["format"]!.ToJsonString());
 
         if (shape == "for")
         {
-            Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, "nodes/topic_loop/topic_gate_stripped.md").Header["format"]);
-            // under a for: the union as derived, no hand edit, nothing refused, and no escape on the loop's read
+            // #1510 (item 1; F-D2, fix round 1): the loop's .content is read, but its items have no one text format, so no
+            // node can strip them as the old ret wrote them: the loop keeps its ret, and the hand edit A10-090 says so.
+            var loop = MigrateNodesTests.Json(result, flow);
+            Assert.Equal("node.topic_loop.topic_gate", (string?)loop["ret"]);
+            Assert.Equal(["topic_gate"], loop["nodes"]!.AsArray().Select(n => (string?)n));
+            Assert.DoesNotContain(result.Files.Keys, f => f.StartsWith("nodes/topic_loop/", StringComparison.Ordinal) && f.EndsWith("_stripped.md", StringComparison.Ordinal));
+            Assert.DoesNotContain(result.StripNodes.Keys, k => k.StartsWith("node.topic_loop.", StringComparison.Ordinal));
+            AssertHandEdit(result, flow, "ret",
+                "A10-090", "loop 'topic_loop' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.");
+            Assert.Single(result.HandEdits);
+            Assert.DoesNotContain(result.Notices, n => n.StartsWith("Loop 'topic_loop' returns each item", StringComparison.Ordinal));
+
+            // under a for: the union as derived, nothing refused, and no escape on the loop's read
             Assert.Equal(union, MigrateNodesTests.Json(result, gate)["format"]!.ToJsonString());
-            Assert.Empty(result.HandEdits);
             var check = SourceCheck.Run(MigratedPackagesTests.Upload(result), V31Contract.PublishedTypes());
             Assert.True(check.Refusals.Count == 0, string.Join("\n", check.Refusals.Select(r => $"{r.Id} {r.Path}: {r.Sentence}")));
             Assert.Empty(MigratedPackagesTests.Publish(result));
