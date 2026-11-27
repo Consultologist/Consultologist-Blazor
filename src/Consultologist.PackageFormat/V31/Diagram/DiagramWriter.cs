@@ -89,9 +89,10 @@ public static partial class DiagramWriter
         return new DiagramText(text.ToString(), anchors);
     }
 
-    /// <summary>A label line as Mermaid reads it inside quotes (D8).</summary>
+    /// <summary>A label line as Mermaid reads it inside quotes (D8); a <c>#</c> first (<c>#35;</c>), so package text is never read as an entity and the writer's own are not escaped twice.</summary>
     private static string Escape(string text) =>
         LineBreak().Replace(text, " ")
+            .Replace("#", "#35;", StringComparison.Ordinal)
             .Replace("\"", "#quot;", StringComparison.Ordinal)
             .Replace("<", "#lt;", StringComparison.Ordinal)
             .Replace(">", "#gt;", StringComparison.Ordinal);

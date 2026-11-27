@@ -34,14 +34,15 @@ public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<Diagr
     /// <summary>
     /// The model of <paramref name="resolve"/>, read as a JSON object member by member, never through a loader (a stored
     /// older <c>resolve.json</c> is drawn, not refused). What is missing or of another shape is left out (Review Focus 5):
-    /// never throws on the document's content; a text that is not a JSON object draws nothing.
+    /// never throws on the document's content; a text that is not a JSON object (or names a member twice) draws nothing.
     /// </summary>
     public static DiagramModel Build(string resolve)
     {
         JsonObject? document;
         try
         {
-            document = JsonNode.Parse(resolve ?? "") as JsonObject;
+            // A member named twice is refused here, at any depth, rather than when the builder first reads its object.
+            document = JsonNode.Parse(resolve ?? "", documentOptions: new JsonDocumentOptions { AllowDuplicateProperties = false }) as JsonObject;
         }
         catch (JsonException)
         {

@@ -18,8 +18,10 @@ namespace Consultologist.PackageFormat.V31.Diagram;
 /// (D4; none for a pill but an input's); a condition's read (an <c>if</c>, <c>while</c>, <c>until</c>, a <c>case</c>
 /// subject, a part's or snippet's placement rule) is <c>-.-&gt;|if|</c> into the box it decides; a loop's list is
 /// <c>--&gt;|for|</c> into its frame; a body's result is <c>--&gt;|ret|</c> (<c>ret (&lt;branch&gt;)</c> for an
-/// <c>if</c> or <c>case</c>) into the summary box. <c>reads</c> does not say which of its paths a condition made, so a
-/// path a condition reads draws only the <c>if</c> edge, unless a <c>computed</c> expression reads it too. Reads of
+/// <c>if</c> or <c>case</c>) into the summary box (a <c>for</c> whose body holds no node has no frame: its list's edge
+/// goes into the summary box). An entry's <c>reads</c> mixes its content and condition reads; <c>graph.edges</c> keeps
+/// them apart per source key, so a path a condition reads draws its data edge too only when <c>graph.edges</c> (or a
+/// <c>computed</c> expression) says it is also content (<see cref="Reads"/>). Reads of
 /// <c>item</c>, <c>pass</c>, <c>renderer.*</c>, <c>macro.*</c>, <c>function.*</c> and <c>param.*</c> draw nothing
 /// here; a macro's placement rule is its own box's (Task 3). A body's edges are built before its flow's, and the
 /// flow's own (<c>for</c>, then <c>if</c>, then <c>ret</c>) after them.
@@ -93,6 +95,7 @@ public sealed partial record DiagramModel
             var name = Name(key, entry);
             var lines = Head(key, entry);
             var bodies = new List<(string? Title, string? Ret)>();
+            var framed = false;
             // The flow's own reads are resolved before its bodies, so a pill its list or a condition reads comes before theirs.
             var list = kind == "for" ? Text(entry["in"]) : null;
             var feed = Source(list);
@@ -101,13 +104,13 @@ public sealed partial record DiagramModel
             if (kind == "for")
             {
                 lines.Add(Until($"item in {Printed(list)}", entry));
-                Body(Frame(scope, "for_" + id, $"{name}: per {Printed(list)} item"), Strings(entry["nodes"]), depth);
+                framed = Loop(scope, "for_" + id, $"{name}: per {Printed(list)} item", entry, depth);
             }
             else if (kind == "while")
             {
                 var line = $"while {JsonLogicPrinter.Print(entry["while"])} — at most {Bound(entry["max"])}";
                 lines.Add(Until(line, entry));
-                Body(Frame(scope, "while_" + id, $"{name}: {line}"), Strings(entry["nodes"]), depth);
+                Loop(scope, "while_" + id, $"{name}: {line}", entry, depth);
             }
             else if (kind == "if")
             {
@@ -130,12 +133,21 @@ public sealed partial record DiagramModel
 
             scope.Boxes.Add(new DiagramBox(id, key, BoxShape.Rectangle, lines, Bool(entry["modelDerived"])));
             if (feed is { } source)
-                Edge(source.Id, "for_" + id, EdgeStyle.Read, "for");
+                Edge(source.Id, framed ? "for_" + id : id, EdgeStyle.Read, "for");
             Conditions(id, conditions);
             if (kind is "for" or "while")
                 Ret(Text(entry["ret"]), id, "ret");
             foreach (var (title, ret) in bodies.Where(b => b.Title != null))
                 Ret(ret, id, $"ret ({title})");
+        }
+
+        /// <summary>A loop's body: a frame when it holds a node, as a branch's; whether it drew one (a <c>for</c> with none takes its list's edge into its summary box).</summary>
+        private bool Loop(Scope scope, string frameId, string title, JsonObject entry, int depth)
+        {
+            var inner = Strings(entry["nodes"]).ToList();
+            if (inner.Count > 0)
+                Body(Frame(scope, frameId, title), inner, depth);
+            return inner.Count > 0;
         }
 
         /// <summary>An <c>if</c>'s or <c>case</c>'s body: a frame when it holds a node (an explicitly empty one draws none); its title and <c>ret</c>, or a null title when it is not a body.</summary>
@@ -177,18 +189,39 @@ public sealed partial record DiagramModel
             Reads(id, entry);
         }
 
-        /// <summary>A leaf's or deliverable's edges: its content reads, labelled by member (D4), then its conditions'.</summary>
-        private void Reads(string id, JsonObject entry)
+        /// <summary>
+        /// A leaf's or deliverable's edges: its content reads, labelled by member (D4), then its conditions'. A path a
+        /// condition reads is a content read too when a <c>computed</c> expression reads it, or when <c>graph.edges</c>
+        /// holds a <c>reads</c> edge from its source into the entry that no other read of that source explains (the
+        /// compiler writes content and condition reads apart, per key, not per member). Where <c>graph.edges</c> has no
+        /// word (absent from an older document, or <paramref name="inFunction"/>: it holds no edge between a function's
+        /// own nodes, R1), the path draws the <c>if</c> edge alone.
+        /// </summary>
+        private void Reads(string id, JsonObject entry, bool inFunction = false)
         {
             var conditions = ConditionPaths(entry).Concat(MacroRulePaths(entry)).Select(Source).OfType<Read>().ToHashSet();
             var expression = JsonLogicShape.Paths(entry["expression"]).Select(Source).OfType<Read>().ToHashSet();
-            foreach (var read in Strings(entry["reads"]).Select(Source).OfType<Read>())
+            var reads = Strings(entry["reads"]).Select(Source).OfType<Read>().ToList();
+            var content = reads.Where(r => !conditions.Contains(r) || expression.Contains(r)).ToHashSet();
+            foreach (var read in reads)
             {
-                if (!conditions.Contains(read) || expression.Contains(read))
+                if (content.Contains(read) || (!inFunction && GraphReads(read.Id, id) && !content.Any(c => c.Id == read.Id)))
                     Edge(read.Id, id, EdgeStyle.Read, read.Member);
             }
 
             Conditions(id, ConditionPaths(entry).Select(Source).OfType<Read>());
+        }
+
+        private HashSet<(string From, string To)>? graphReads;
+
+        /// <summary>Whether <c>graph.edges</c> holds a <c>reads</c> edge between the boxes <paramref name="from"/> and <paramref name="to"/>; false when it holds none or is absent.</summary>
+        private bool GraphReads(string from, string to)
+        {
+            graphReads ??= (document["graph"]?["edges"] as JsonArray ?? []).OfType<JsonObject>()
+                .Where(e => Text(e["kind"]) == "reads" && Text(e["from"]) != null && Text(e["to"]) != null)
+                .Select(e => (IdOf(Text(e["from"])!), IdOf(Text(e["to"])!)))
+                .ToHashSet();
+            return graphReads.Contains((from, to));
         }
 
         private void Conditions(string id, IEnumerable<Read> reads)
