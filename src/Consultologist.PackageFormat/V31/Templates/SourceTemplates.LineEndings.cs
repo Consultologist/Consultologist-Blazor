@@ -10,6 +10,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <c>markdown_inline</c>, and every snippet folder's item (its body is <c>markdown_block</c>, part 05 § 6.2). #1543 (ruling
 /// 1): a body a prompt reads or places is warned like any other, with no exception, and the migration writes the <c>\</c> in
 /// each of these sites, so a migrated package with no hand edit is warned nowhere. A prompt and a part are never sites.
+/// #1543 (ruling 2, D2): each tag's role is the checker's own typing of the site's body wherever it read it
+/// (<see cref="TagRoles"/>), as the migration's is.
 /// </summary>
 public static partial class SourceTemplates
 {
@@ -17,13 +19,16 @@ public static partial class SourceTemplates
     {
         /// <summary>
         /// S05-065 for each line ending to break in each site of the package, in the order of the sites (deliverables,
-        /// rendered nodes, macros, snippets, renderers), then of the line endings.
+        /// rendered nodes, macros, snippets, renderers), then of the line endings; the tags' roles as
+        /// <paramref name="bodies"/> (the package's top bodies, with what they place) typed them, a file refused so far
+        /// typing none.
         /// </summary>
-        public void LineEndings()
+        public void LineEndings(IReadOnlyList<CheckedBody> bodies)
         {
+            var refused = Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal);
             foreach (var (subject, path, text) in Sites())
             {
-                foreach (var at in MarkdownLineEndings.Find(text))
+                foreach (var at in MarkdownLineEndings.Find(text, TagRoles.Of(bodies, resolution.Tree, path, text, refused)))
                     Warnings.Add(DialectSentences.SingleLineEnding(subject, LineOf(text, at), path));
             }
         }

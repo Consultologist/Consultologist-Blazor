@@ -252,7 +252,7 @@ public sealed class PackageTemplates : ITemplateReads
     }
 
     /// <summary>Whether <paramref name="output"/> is the tag of <paramref name="placement"/>: its whole expression, on its line.</summary>
-    private static bool Places(TemplateOutput output, Placement placement) =>
+    internal static bool Places(TemplateOutput output, Placement placement) =>
         output is { Pipes.Count: 0, Paths.Count: 1 } && output.Path == placement.Unit && output.Tag.Line == placement.Line;
 
     /// <summary>The site a placement places (<c>snippet.tone</c> for <c>snippet.tone.content</c>; a part or a macro as written).</summary>

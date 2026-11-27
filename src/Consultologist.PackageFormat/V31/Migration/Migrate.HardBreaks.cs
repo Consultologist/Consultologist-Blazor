@@ -12,7 +12,10 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// the engine sends a prompt as its template's text and the model reads the <c>\</c> the reader sees. Never a prompt or its
 /// <c>parts</c> (they are not Markdown values; headers are not touched), nor a file the migration itself wrote (F1's
 /// stripping nodes and F2's renderers: no 30 file becomes a package renderer, so every <c>renderers/</c> file is the
-/// migration's).
+/// migration's). #1543 (ruling 2, D2): each tag's role is the checker's own typing of the body, read from the 31 set
+/// written so far as the derived flags read it (<see cref="Read31"/>); a set the checker cannot read that far, or a file
+/// it refuses, gives every tag the role that says least (<see cref="TagRole.Statement"/>), so no <c>\</c> is written beside
+/// a line of only tags there.
 /// </summary>
 internal static partial class Migrate
 {
@@ -30,10 +33,16 @@ internal static partial class Migrate
             .Where(f => f.Value.Body is not null && !written.Contains(f.Key) && IsMarkdownSite(m, f.Key, f.Value, set))
             .Select(f => f.Key)
             .ToList();
+        if (sites.Count == 0)
+            return;
+        var read = Read31(m);
+        var bodies = read?.Bodies.Bodies ?? [];
+        var refused = read?.Refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal) ?? [];
         foreach (var path in sites)
         {
             var file = m.Sources[path];
-            var (text, count) = MarkdownLineEndings.WithHardBreaks(file.Body!);
+            var role = read is { } typed ? TagRoles.Of(bodies, typed.Resolution.Tree, path, file.Body!, refused) : _ => TagRole.Statement;
+            var (text, count) = MarkdownLineEndings.WithHardBreaks(file.Body!, role);
             if (count == 0)
                 continue;
             file.Body = text;

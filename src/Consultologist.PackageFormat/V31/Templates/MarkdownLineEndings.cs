@@ -13,29 +13,41 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// inside a tag is none of the body's. A line ending is found when it is a soft line break inside a paragraph (in a list
 /// item, a quote, an alert or a footnote too): never in a fence, indented code, a table or a heading, at a paragraph's
 /// last line or before a list item or a heading. It is then left out when the line ends with a tag (a comment too) closed by <c>~}}</c> or
-/// <c>-}}</c> (the template removes that line ending), or when the line before or after it holds only tags and white
-/// space (a statement, a placement or an output alone on its line, whose output may be empty or a block, which would leave
-/// the break at a paragraph's end). A line ending after a <c>\</c> or two spaces is already a hard break, so
-/// <see cref="WithHardBreaks"/> written twice writes nothing the second time.
+/// <c>-}}</c> (the template removes that line ending). #1543 (ruling 2, D2; the G-D8 gap): a line of only tags and white
+/// space is judged by its tags' roles (<see cref="TagRole"/>, which the caller gives from the checker's typing;
+/// <see cref="TagRoles"/>), a comment's being a statement's. The line ending is left out when the line it ends holds only
+/// tags and any of them is not an <see cref="TagRole.InlineRead"/> (a <c>\</c> after a block read would be text after it;
+/// after a statement, a placement or a renderer it could end a paragraph), or when the line after it holds only tags and
+/// any of them is a <see cref="TagRole.Statement"/>, a <see cref="TagRole.Placement"/> or a <see cref="TagRole.Renderer"/>
+/// (its output may be nothing, which would leave the <c>\</c> at a paragraph's end). So the line above a read alone on its
+/// line (<c>Sincerely,</c> above <c>{{ profile.name }}</c>) is found, and each line of a letterhead of single reads. A line
+/// ending after a <c>\</c> or two spaces is already a hard break, so <see cref="WithHardBreaks"/> written twice writes
+/// nothing the second time.
 /// </summary>
 public static class MarkdownLineEndings
 {
     /// <summary>
     /// The offsets in <paramref name="body"/> of the line endings to break (each a <c>\n</c>, or the <c>\r</c> of a
     /// <c>\r\n</c>), in order; none for a body whose tags do not close, or that Markdig refuses to parse (nested too deeply).
+    /// <paramref name="role"/> gives each tag's role (<see cref="TemplateTags.Scan"/>'s tags; a comment is not asked).
     /// </summary>
-    public static IReadOnlyList<int> Find(string body)
+    public static IReadOnlyList<int> Find(string body, Func<TemplateTag, TagRole> role)
     {
         ArgumentNullException.ThrowIfNull(body);
-        var (tags, unclosed) = TemplateTags.Scan(body);
+        ArgumentNullException.ThrowIfNull(role);
+        var (scanned, unclosed) = TemplateTags.Scan(body);
         if (unclosed is not null)
             return [];
         // A comment renders nothing, but a ~}} on it removes the line ending after it as a tag's does.
-        tags = tags.Concat(TemplateTags.Comments(body)).OrderBy(t => t.Start).ToList();
-        var spans = tags.Select(t => (t.Start, t.End)).ToList();
+        var comments = TemplateTags.Comments(body);
+        var tags = scanned.Concat(comments).OrderBy(t => t.Start).ToList();
+        var roles = scanned.ToDictionary(t => t.Start, role);
+        foreach (var comment in comments)
+            roles[comment.Start] = TagRole.Statement;
+        var byStart = tags.ToDictionary(t => t.Start);
         var masked = body.ToCharArray();
-        foreach (var (start, end) in spans)
-            Array.Fill(masked, 'x', start, end - start);
+        foreach (var tag in tags)
+            Array.Fill(masked, 'x', tag.Start, tag.End - tag.Start);
 
         // Lines are read in the masked text, where a line ending inside a tag is none.
         var text = new string(masked);
@@ -56,8 +68,17 @@ public static class MarkdownLineEndings
         {
             if (lineBreak.IsHard || !InParagraph(lineBreak) || LineEndingAt(text, lineBreak.Span.Start) is not { } at)
                 continue;
-            if (RemovedByATag(text, tags, at) || OnlyTags(text, spans, LineStart(text, at), at) || OnlyTags(text, spans, NextLine(text, at), LineEnd(text, NextLine(text, at))))
+            if (RemovedByATag(text, tags, at))
                 continue;
+            if (OnlyTags(text, byStart, LineStart(text, at), at) is { } before && before.Any(t => roles[t.Start] != TagRole.InlineRead))
+                continue;
+            var next = NextLine(text, at);
+            if (OnlyTags(text, byStart, next, LineEnd(text, next)) is { } after
+                && after.Any(t => roles[t.Start] is TagRole.Statement or TagRole.Placement or TagRole.Renderer))
+            {
+                continue;
+            }
+
             found.Add(at);
         }
 
@@ -66,11 +87,12 @@ public static class MarkdownLineEndings
 
     /// <summary>
     /// <paramref name="body"/> with a <c>\</c> written immediately before each line ending <see cref="Find"/> names (after any
-    /// trailing spaces), and how many it wrote. <c>\</c> is not white space, so a <c>~</c> does not strip it.
+    /// trailing spaces), and how many it wrote, each tag's role given by <paramref name="role"/>. <c>\</c> is not white space,
+    /// so a <c>~</c> does not strip it.
     /// </summary>
-    public static (string Text, int Count) WithHardBreaks(string body)
+    public static (string Text, int Count) WithHardBreaks(string body, Func<TemplateTag, TagRole> role)
     {
-        var found = Find(body);
+        var found = Find(body, role);
         if (found.Count == 0)
             return (body, 0);
         var text = new System.Text.StringBuilder(body.Length + found.Count);
@@ -120,16 +142,19 @@ public static class MarkdownLineEndings
         return tags.Any(t => (t.End == before && (t.TildeRight || t.DashRight)) || (t.Start == after && t.DashLeft));
     }
 
-    /// <summary>Whether <paramref name="body"/> from <paramref name="start"/> to <paramref name="end"/> holds a tag or a comment and, outside them, only spaces and tabs.</summary>
-    private static bool OnlyTags(string body, IReadOnlyList<(int Start, int End)> spans, int start, int end)
+    /// <summary>
+    /// The tags and comments of <paramref name="body"/> from <paramref name="start"/> to <paramref name="end"/> when that
+    /// span holds at least one and, outside them, only spaces and tabs; otherwise null.
+    /// </summary>
+    private static List<TemplateTag>? OnlyTags(string body, IReadOnlyDictionary<int, TemplateTag> tags, int start, int end)
     {
-        var any = false;
+        var found = new List<TemplateTag>();
         for (var i = start; i < end;)
         {
-            if (spans.FirstOrDefault(s => s.Start == i) is { End: > 0 } span)
+            if (tags.TryGetValue(i, out var tag))
             {
-                any = true;
-                i = span.End;
+                found.Add(tag);
+                i = tag.End;
             }
             else if (body[i] is ' ' or '\t')
             {
@@ -137,11 +162,11 @@ public static class MarkdownLineEndings
             }
             else
             {
-                return false;
+                return null;
             }
         }
 
-        return any;
+        return found.Count > 0 ? found : null;
     }
 
     private static int LineStart(string body, int at)
