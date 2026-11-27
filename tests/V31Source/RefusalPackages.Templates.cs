@@ -221,14 +221,14 @@ internal static partial class RefusalPackages
 
         yield return new RefusalCase("S05-066",
             "A markdown_block read stands alone on its line (chapter 5 § 5.2.6; #1543, ruling 2). The note, a markdown_block, ends "
-            + "with Sincerely, and the profile's closing on the next line. Invalid: the closing on the line of Sincerely,. Valid: "
-            + "on its own line, after an explicit hard break.",
+            + "with Sincerely, and the profile's closing after a blank line. Invalid: the closing on the line of Sincerely,. Valid: "
+            + "on its own line, after a blank line.",
             Closed(),
             Closed().Edit(Note, ClosingLines, "Sincerely, " + ClosingRead + "\n"));
 
         yield return new RefusalCase("S05-067",
             "Nothing follows a markdown_block read on its line (chapter 5 § 5.2.6; #1543, ruling 2). The note, a markdown_block, ends "
-            + "with Sincerely, and the profile's closing on the next line. Invalid: text after the closing on its line. Valid: alone.",
+            + "with Sincerely, and the profile's closing after a blank line. Invalid: text after the closing on its line. Valid: alone.",
             Closed(),
             Closed().Edit(Note, ClosingRead + "\n", ClosingRead + " (signed)\n"));
 
@@ -567,9 +567,9 @@ internal static partial class RefusalPackages
 
     private const string ClosingRead = "{{ profile.closing }}";
 
-    private const string ClosingLines = "Sincerely,\\\n" + ClosingRead + "\n";
+    private const string ClosingLines = "Sincerely,\n\n" + ClosingRead + "\n";
 
-    /// <summary>The note as a <c>markdown_block</c>, ending with <c>Sincerely,</c>, a <c>\</c> and the profile's closing on its own line.</summary>
+    /// <summary>The note as a <c>markdown_block</c>, ending with <c>Sincerely,</c>, a blank line and the profile's closing on its own line.</summary>
     private static Dictionary<string, byte[]> Closed() =>
         Minimal().With(Note, Md(SourceFixture.Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"),
             "{{ node.plan.content }}\n\n" + ClosingLines));
