@@ -21,7 +21,7 @@ public sealed record DiagramText(string Mermaid, IReadOnlyDictionary<string, str
 /// them); then its own edges. The model's edges follow every frame, so Mermaid pulls no box into the frame an edge is
 /// written in. At the top level a blank line parts the pills, each flow (a summary box with the frames whose id names it:
 /// <c>for_</c>, <c>while_</c>, <c>if_…_then</c>, <c>if_…_else</c>, <c>case_…_branch_N</c>, <c>case_…_else</c>), each
-/// other frame and the runs of plain boxes.
+/// other frame, the runs of plain boxes and the deliverables' runs (a deliverable never shares a run with a production box).
 /// Then come the model-derived class (D9) and an overlay's classes, and last, when a check is drawn, the Checks frame's
 /// heavier border (<c>style checks stroke-width:3px</c>, D9). Every label line is escaped (D8): <c>"</c>,
 /// <c>&lt;</c> and <c>&gt;</c> as <c>#quot;</c>, <c>#lt;</c> and <c>#gt;</c>, a line break as one space; the only
@@ -111,7 +111,7 @@ public static partial class DiagramWriter
         string? last = null;
         void Part(string kind)
         {
-            // At the top level a blank line parts the pills, each flow and each run of plain boxes.
+            // At the top level a blank line parts the pills, each flow, each run of plain boxes and the run of deliverables.
             if (top && last != null && (kind != last || kind == "flow"))
                 text.Append('\n');
             last = kind;
@@ -133,7 +133,7 @@ public static partial class DiagramWriter
             if (box == null)
                 break;
             var own = here.Where(f => Names(f.Id, box.Id)).ToList();
-            Part(own.Count > 0 ? "flow" : box.Shape == BoxShape.Pill ? "pills" : "boxes");
+            Part(own.Count > 0 ? "flow" : box.Shape switch { BoxShape.Pill => "pills", BoxShape.Hexagon => "deliverables", _ => "boxes" });
             foreach (var inner in own)
                 Frame(text, inner, level, overlay, written);
 
