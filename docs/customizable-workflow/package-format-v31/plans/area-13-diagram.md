@@ -216,14 +216,14 @@ Part G starts after Task F3 is committed, so its goldens start green. It ends wi
 
 **Files:** modify `src/Consultologist.PackageFormat/V31/Templates/MarkdownEscape.cs` (and its XML doc). Test: `tests/V31Run/MarkdownEscapeTests.cs`, whose renders move to `ConsultMarkdown.For(31)`; it is a 31 test.
 
-- [ ] **Step 1: failing tests:**
+- [x] **Step 1: failing tests:**
   - `ALineEnding_IsWrittenAsAHardBreak`: `"a\nb"`→`"a  \nb"`, `"a\r\nb"`→`"a  \r\nb"`, `"a\n\nb"`→`"a  \n  \nb"`.
   - `AnEscapedText_KeepsItsLines_ThroughThe31Pipeline` (the `<br />` count equals the line count less one; blank lines stay paragraph breaks).
   - `EscapingPieceByPiece_IsEscapingWhole` (cuts at every offset except inside `\r\n`).
   - `LettersDigitsSpacesNewlinesAndNonAscii_AreUnchanged` loses only its newline cases.
-- [ ] **Step 2:** run `--filter "FullyQualifiedName~MarkdownEscapeTests"`: they fail.
-- [ ] **Step 3:** implement. If a caller of `ExpectedDifferences.Unescape` applies it to escaped text, it also drops two spaces before a line ending.
-- [ ] **Step 4:** the G filter. The goldens it reddens (`deliverable-escaped`, run goldens, captures) are named in the commit body. Commit `PackageFormat (#1510): …`, push.
+- [x] **Step 2:** run `--filter "FullyQualifiedName~MarkdownEscapeTests"`: they fail.
+- [x] **Step 3:** implement. If a caller of `ExpectedDifferences.Unescape` applies it to escaped text, it also drops two spaces before a line ending.
+- [x] **Step 4:** the G filter. The goldens it reddens (`deliverable-escaped`, run goldens, captures) are named in the commit body. Commit `PackageFormat (#1510): …`, push.
 
 ### Task G5: the migration writes explicit hard breaks; the rule credits them (item 4)
 
@@ -522,3 +522,8 @@ public static class PackageDiagram { public static string Generate(string resolv
 - **Task G2:** `Drawn31` names concrete types. G-D5's `DelimiterInline` is abstract, and the one left after a parse is `LinkDelimiterInline` (an unmatched `[`). The set also names the parts a container's own case lays out (`ListItemBlock`, `TableRow`, `TableCell`). At 31, `AppendBlock` and `AppendInline` first check the exact type against `Drawn31`, so a subclass the bundle does not write (a `YamlFrontMatterBlock` is a `CodeBlock`) throws instead of being drawn by its base type's case. `standard` is `ConsultMarkdown.For(specVersion)` being `Pipeline31`.
 - **Task G3:** step 1 confirmed: `Consults.razor:956,971` sit in the `else` of `@if (IsRun31)` (line 832), so they keep `Render(string)`. `RunView31.razor` and `MarkdownInput.razor` name `PublishedStamp.SpecVersion` (the constant 31, as `DeliveryChannels.cs:216`) through a `@using` alias, so the rest of `Consultologist.PackageFormat.V31` stays out of their scope.
 - **Task G3:** `Render31_GenericAttributes_AreText` asserts no ` onclick=` (with the space an attribute has): the text keeps `{onclick=x}`, which holds `onclick=`. It and `Render31_ExcludedSyntax_IsText` pass against the 5–30 pipeline too (it has none of those extensions), so their red was not seen; they hold `Pipeline31` to its exclusions. `Render30_IsTodaysRendering` was added: `Render(markdown, 30)` keeps the hard break, and an empty text at 31 is still the muted paragraph.
+- **Task G4:** a lone `\r` is a line ending too (it gains two spaces), as the escape already counts it a line's end for R9's line start; only a `\n` after a `\r` gains none. A blank line's ending gains two spaces as well (`"a\n\nb"` → `"a  \n  \nb"`), which Markdown still reads as a blank line.
+- **Task G4:** `LettersDigitsSpacesNewlinesAndNonAscii_AreUnchanged` is renamed `LettersDigitsSpacesAndNonAscii_AreUnchanged` (it lost its newline cases, and `\n` and `\r` leave its loop over ASCII). `EscapingPieceByPiece_IsEscapingWhole` passes against the old escape too (its rule was already local), so its red was not seen; it holds the new rule to G-D7's piecewise claim.
+- **Task G4:** `ExpectedDifferences.Unescape` has no caller in `src/`; `ExpectedDifferencesTests.EscapedPlainText_ExplainsADeliverableThatUnescapesTo30sBytes` applies it to escaped text holding line endings, so it drops two spaces before a line ending. The `escaped-plain-text` rule matches by `Escape` itself and needed no change.
+- **Task G4:** `edge-tests/edge-items-not-run.json` is a hand-kept pinned test (no `GOLDEN_UPDATE_V31` writer), held by `EdgeCasePackagesTests.TheMigratedPackage_PublishesWithItsPinnedTest_AndGives30sOutput` (in the G filter) to the comparison run's text: its `expect` for `deliverable.problem_list` gains the two spaces before its line ending, here and not in G8.
+- **Task G4:** reddened for G8 (generated goldens holding the old escaped bytes): `dialect-goldens/deliverable-escaped/expected.txt` and `markdown-escape-vectors/vectors.json` (`DialectGoldenTests.TheGoldens_AreWhatTheCodeGives`); the run golden `macros.run.txt` (`RunGoldenTests.TheMacrosRun_IsWhatTheRunnerGives`, and `DeliverableComposeTests.TheMacrosDeliverable_IsItsDraftEscaped`, which reads its pinned `composedHash`) and `macros.record.json` (`RecordDocumentTests.TheGoldenRuns_AssembleToTheirRecordGoldens(macros)`); `migrated/edge-items-not-run/tests/migration_snapshot.json` (`MigratedPackagesTests.TheMigratedSource_IsTheGolden`); `reports/edge-items-not-run.json` (`ByteEquivalenceTests.TheReport_IsTheGolden`) and `reports/example-v12-constructs.json` (`HandEditsTests.TheReport_IsTheGolden`). No capture went red.
