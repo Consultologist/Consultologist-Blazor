@@ -127,6 +127,10 @@
                 {
                     <pre class="history31-node__text">@text</pre>
                 }
+                @if (FetchFailed)
+                {
+                    <p class="history31-node__unavailable">@HistorySentences31.RecordNotAvailable</p>
+                }
             }
             @if (Node.Decisions.Count > 0)
             {

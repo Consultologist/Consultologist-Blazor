@@ -575,6 +575,20 @@ public class History31NodesTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ARowWhoseTextCannotBeFetched_SaysSo_AndKeepsItsHashes()
+    {
+        // Final review D3: a failed fetch opens to the hashes and the record routes' sentence, as a deliverable's does.
+        AIService.GetJobRowAsync(JobId, "node.plan").Returns(Task.FromException<RecordRowText?>(new HttpRequestException("down")));
+        var page = Render31();
+
+        Open(page, "node.plan");
+
+        page.WaitForAssertion(() => Assert.Contains(HistorySentences31.RecordNotAvailable, BodyOf(page, "node.plan").TextContent));
+        Assert.Contains("sha256:aa", BodyOf(page, "node.plan").TextContent);
+        Assert.Empty(BodyOf(page, "node.plan").QuerySelectorAll(".history31-node__text"));
+    }
+
+    [Fact]
     public void ARowWithMissingAndUnknownMembers_StillRenders()
     {
         var page = Render31([

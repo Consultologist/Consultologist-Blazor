@@ -7,7 +7,7 @@
     #1509 (Task 20; part 09 § 6.4 "Deliverables", part 08 § 10; R1): one deliverable, its line always shown: its title (its
     label, else its key), its key, its state as stored and its stateReason as stored (a released deliverable whose check did
     not apply says so). Opened, its body: its format and hashes; its template from the pinned version when the hashes agree,
-    else A12-007; its check line (Check: <id> passed or failed, linking to the check's row); its reads by template site, a
+    else A12-007 (nothing when the row holds no templateHash: no template ran); its check line (Check: <id> passed or failed, linking to the check's row); its reads by template site, a
     looped site collapsed to "× n passes" until expanded, each read with its size and hash and, while retained, its text cut
     from the composed text; its profile reads (field and hash; the signature's block id); each destination (DeliveryRow31);
     for a bundle, what it left out and why; its decisions; and its text. A released text has the Create page's Copy note; a
@@ -46,8 +46,9 @@
             {
                 <pre class="history31-deliverable__template">@template</pre>
             }
-            else
+            else if (row.Text("templateHash") is { Length: > 0 })
             {
+                @* a row with no templateHash ran no template (skipped, or failed before it): nothing to say of one *@
                 <p class="history31-deliverable__template-unread">@HistorySentences31.TemplateNotRead</p>
             }
             @if (row.Text("check") is { Length: > 0 } check)
@@ -141,7 +142,7 @@
                                 <span class="history31-left-out__state">@other.Text("state")</span>
                                 @if (other.Text("stateReason") is { Length: > 0 } otherReason)
                                 {
-                                    <span class="history31-left-out__reason">@otherReason</span>
+                                    <span class="history31-left-out__reason">@HistorySentences31.StateReason(otherReason)</span>
                                 }
                             </li>
                         }

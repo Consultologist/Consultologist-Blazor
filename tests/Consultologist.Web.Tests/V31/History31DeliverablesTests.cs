@@ -149,6 +149,21 @@ public class History31DeliverablesTests : ClientRenderTestContext
         Assert.Contains(HistorySentences31.TemplateNotRead, BodyOf(page, "deliverable.emr.note").TextContent);
     }
 
+    [Theory]
+    [InlineData(RowState.Skipped)]
+    [InlineData(RowState.Failed)]
+    public void ADeliverableWithNoTemplateHash_SaysNothingOfItsTemplate(RowState state)
+    {
+        // Final review D4: no template ran, so there is none to read: no A12-007.
+        var page = Render31(ResolveWith("deliverable.never", Template), extra:
+            Deliverable("deliverable.never", state, null, """{ "label": "Never", "composedHash": null }"""));
+
+        Open(page, "deliverable.never");
+
+        Assert.Null(BodyOf(page, "deliverable.never").QuerySelector(".history31-deliverable__template"));
+        Assert.DoesNotContain(HistorySentences31.TemplateNotRead, BodyOf(page, "deliverable.never").TextContent);
+    }
+
     // ----- the reads ----------------------------------------------------------------------------------------------------
 
     private static readonly RecordRowRef Looped = Deliverable("deliverable.looped", RowState.Released, null, """
@@ -382,6 +397,29 @@ public class History31DeliverablesTests : ClientRenderTestContext
         // a folder with no bundle lists nothing
         Open(page, "deliverable.emr.note");
         Assert.Null(BodyOf(page, "deliverable.emr.note").QuerySelector(".history31-deliverable__left-out"));
+    }
+
+    [Fact]
+    public void ALeftOutReason_IsShownAsEveryRowShowsIt()
+    {
+        // Final review D5: the left-out list words a stateReason as every other row does (HistorySentences31.StateReason).
+        const string Stored = "The model service stayed busy for 10 minutes.";
+        var resolve = JsonSerializer.SerializeToElement(new { deliverables = new Dictionary<string, object>
+        {
+            ["deliverable.pack.gp_letter"] = new { bundle = "zip" },
+            ["deliverable.pack.summary"] = new { bundle = "zip" },
+        } });
+        var page = Render31(resolve, extra:
+        [
+            Deliverable("deliverable.pack.gp_letter", RowState.Released, null, """{ "label": "GP letter" }"""),
+            Deliverable("deliverable.pack.summary", RowState.Failed, Stored, """{ "label": "Summary" }"""),
+        ]);
+
+        Open(page, "deliverable.pack.gp_letter");
+
+        var reason = BodyOf(page, "deliverable.pack.gp_letter").QuerySelector(".history31-left-out__reason")!.TextContent.Trim();
+        Assert.Equal(HistorySentences31.StateReason(Stored), reason);
+        Assert.NotEqual(Stored, reason);
     }
 
     // ----- copy, and the text a check refused (R1) -------------------------------------------------------------------------
