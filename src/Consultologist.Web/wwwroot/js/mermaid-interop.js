@@ -1,4 +1,4 @@
-// Mermaid rendering interop (#114). The ~3.5 MB vendored library is loaded on
+// Mermaid rendering interop (#114). The ~5.5 MB vendored library is loaded on
 // demand — the first Graph-pane open pays for it, nobody else does.
 window.consultologistMermaid = {
 	_loading: null,
@@ -23,7 +23,8 @@ window.consultologistMermaid = {
 
 	render: async function (text) {
 		await this.ensure();
-		window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" });
+		// #1510 (D1): Mermaid 12's full build bundles ELK; every diagram is laid out with it, frontmatter or not.
+		window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict", layout: "elk" });
 		const id = "workflow-dag-" + Math.random().toString(36).slice(2, 10);
 		const { svg } = await window.mermaid.render(id, text);
 		return svg;
