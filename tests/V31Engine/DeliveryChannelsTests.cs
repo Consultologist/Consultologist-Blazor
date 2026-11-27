@@ -164,6 +164,24 @@ public class DeliveryChannelsTests
     }
 
     [Fact]
+    public async Task Pdf_RendersWithThe31Pipeline()
+    {
+        // #1510 (the third fix-first group, item 1): a 31 job's PDF reads its Markdown as 31 does, so a footnote is a
+        // footnote, where 30's pipeline printed its marker as written
+        var note = new DeliveryDocument("deliverable.note", "Consultation note", "markdown_block",
+            "Margaret Okafor was seen[^1].\n\n[^1]: At Sample Oncology Clinic.");
+        var outcome = await Pdf().SendAsync(Input("pdf") with { Send = Input("pdf").Send with { Documents = [note] } }, CancellationToken.None);
+
+        Assert.Equal(DeliverySendResult.Sent, outcome.Result);
+        var pdf = Assert.Single(Assert.Single(_sent).Attachments!);
+        using var document = UglyToad.PdfPig.PdfDocument.Open(
+            new MemoryStream(pdf.Content), new UglyToad.PdfPig.ParsingOptions { Password = "correct-horse-battery-16" });
+        var text = string.Join(" ", document.GetPages().SelectMany(page => page.GetWords()).Select(word => word.Text));
+        Assert.Contains("At Sample Oncology Clinic.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("[^1]", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Pdf_OfABundle_AttachesOneZip()
     {
         var outcome = await Pdf().SendAsync(Bundle("pdf"), CancellationToken.None);

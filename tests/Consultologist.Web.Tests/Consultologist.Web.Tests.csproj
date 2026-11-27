@@ -28,4 +28,9 @@
     <ProjectReference Include="..\..\src\Consultologist.Api\Consultologist.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- #1510: the 31 note with every block, shared with the PDF's tests (tests/ConsultDocumentPdfTests.cs). -->
+    <None Include="..\Fixtures\Markdown31\every-block.md" Link="Fixtures\Markdown31\every-block.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
