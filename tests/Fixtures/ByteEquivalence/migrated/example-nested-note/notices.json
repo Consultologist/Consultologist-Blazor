@@ -7,11 +7,13 @@
     "Format 'outline', field 'points.point' holds free text; consider a text format.",
     "Format 'verdict', field 'feedback' holds free text; consider a text format.",
     "Node 'section_count' declared onInvalid at 30, which 31 has no member for; it was dropped.",
-    "Hand edit needed in nodes/sections/index.json, max: up to 80,614 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.",
+    "Loop 'sections' returns each item through the new node 'paragraphs_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'paragraphs' returns each item through the new node 'draft_paragraph_stripped', which strips the item's text as specVersion 30 did.",
+    "Hand edit needed in nodes/sections/index.json, max: up to 120,814 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.",
     "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [
-    "Hand edit needed in nodes/sections/index.json, max: up to 80,614 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow."
+    "Hand edit needed in nodes/sections/index.json, max: up to 120,814 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow."
   ],
   "refusals": []
 }

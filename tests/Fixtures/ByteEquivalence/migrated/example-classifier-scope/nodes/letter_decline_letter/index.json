@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "decline_letter"
+    "decline_letter",
+    "decline_letter_stripped"
   ],
-  "ret": "node.letter_decline_letter.decline_letter"
+  "ret": "node.letter_decline_letter.decline_letter_stripped"
 }

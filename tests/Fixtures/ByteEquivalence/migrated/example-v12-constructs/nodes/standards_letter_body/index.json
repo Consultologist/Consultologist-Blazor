@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "letter_body"
+    "letter_body",
+    "letter_body_stripped"
   ],
-  "ret": "node.standards_letter_body.letter_body"
+  "ret": "node.standards_letter_body.letter_body_stripped"
 }

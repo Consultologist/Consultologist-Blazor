@@ -3,6 +3,4 @@
 ---
 {{ node.letter_decline_letter.content | string.strip }}
 
-{{ snippet.closing.content }}
-
-{{ profile.signature }}
+{{ snippet.closing.content }}{{ profile.signature | renderer.signature_after_blank_line }}

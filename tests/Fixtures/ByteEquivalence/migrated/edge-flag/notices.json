@@ -1,7 +1,8 @@
 {
   "notices": [
     "Format 'summary', field 'line' holds free text; consider a text format.",
-    "Node 'summary' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails."
+    "Node 'summary' kept a reply that did not fit its format (onInvalid: flag); 31 makes one more attempt with the validation error, then the node fails.",
+    "Loop 'problem_loop' returns each item through the new node 'problem_draft_stripped', which strips the item's text as specVersion 30 did."
   ],
   "handEdits": [],
   "refusals": []

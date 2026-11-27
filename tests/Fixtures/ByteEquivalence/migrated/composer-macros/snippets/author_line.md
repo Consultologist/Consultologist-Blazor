@@ -1,5 +1,4 @@
 ---
 {"label":"Author line","description":null,"if":null,"format":"markdown_block"}
 ---
-Written by {{ profile.name }} on {{ run.date }}.
-{{ profile.signature }}
+Written by {{ profile.name }} on {{ run.date }}.{{ profile.signature | renderer.signature_after_line_end }}

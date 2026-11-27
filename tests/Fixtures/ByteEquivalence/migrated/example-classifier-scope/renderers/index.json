@@ -1,4 +1,6 @@
 {
   "description": null,
-  "items": []
+  "items": [
+    "signature_after_blank_line"
+  ]
 }

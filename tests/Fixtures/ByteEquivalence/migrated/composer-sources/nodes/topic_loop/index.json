@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "topic_gate"
+    "topic_gate",
+    "topic_gate_stripped"
   ],
-  "ret": "node.topic_loop.topic_gate"
+  "ret": "node.topic_loop.topic_gate_stripped"
 }

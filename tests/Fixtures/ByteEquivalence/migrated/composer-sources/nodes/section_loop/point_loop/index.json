@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "heading",
   "nodes": [
-    "draft_point"
+    "draft_point",
+    "draft_point_stripped"
   ],
-  "ret": "node.section_loop.point_loop.draft_point"
+  "ret": "node.section_loop.point_loop.draft_point_stripped"
 }

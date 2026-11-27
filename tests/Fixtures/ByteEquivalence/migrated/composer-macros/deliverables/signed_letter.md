@@ -3,6 +3,4 @@
 ---
 {{ node.letter_body.content | string.strip }}
 
-{{ snippet.cc_line.content }}
-
-{{ profile.signature }}
+{{ snippet.cc_line.content }}{{ profile.signature | renderer.signature_after_blank_line }}

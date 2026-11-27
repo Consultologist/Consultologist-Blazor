@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": null,
   "nodes": [
-    "index_note"
+    "index_note",
+    "index_note_stripped"
   ],
-  "ret": "node.prior_notes_index_note.index_note"
+  "ret": "node.prior_notes_index_note.index_note_stripped"
 }

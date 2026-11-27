@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "long_stay_section"
+    "long_stay_section",
+    "long_stay_section_stripped"
   ],
-  "ret": "node.sections_long_stay_section.long_stay_section"
+  "ret": "node.sections_long_stay_section.long_stay_section_stripped"
 }

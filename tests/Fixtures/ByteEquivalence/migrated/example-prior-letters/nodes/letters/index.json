@@ -28,7 +28,8 @@
   "itemLabel": null,
   "nodes": [
     "read_letter",
-    "letter_summary"
+    "letter_summary",
+    "letter_summary_stripped"
   ],
-  "ret": "node.letters.letter_summary"
+  "ret": "node.letters.letter_summary_stripped"
 }

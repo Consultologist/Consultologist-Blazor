@@ -1,6 +1,7 @@
 {
   "notices": [
-    "Format 'letter_check', field 'note' holds free text; consider a text format."
+    "Format 'letter_check', field 'note' holds free text; consider a text format.",
+    "Loop 'letters' returns each item through the new node 'letter_summary_stripped', which strips the item's text as specVersion 30 did."
   ],
   "handEdits": [],
   "refusals": []

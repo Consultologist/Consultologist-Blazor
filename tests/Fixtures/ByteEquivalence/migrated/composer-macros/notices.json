@@ -8,12 +8,15 @@
     "Hand edit needed in macros/section_close.md, instruction: macro 'section_close' was placed after the reply by the engine; say in its instruction where the model writes its marker.",
     "Macro 'followup_offer' is now offered by the input 'followup_offer'.",
     "Macro 'leaflet_offer' is now offered by the input 'leaflet_offer'.",
+    "The signature is written through renderer 'signature_after_line_end', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
     "Macro 'quoted_review' is now offered by the input 'quoted_review'.",
     "Hand edit needed in deliverables/gated.md, body: macro 'new_visit_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/gated.md, body: macro 'review_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/optional.md, body: macro 'followup_offer' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/optional.md, body: macro 'leaflet_offer' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "The signature is written through renderer 'signature_after_blank_line', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
     "Hand edit needed in deliverables/echoes.md, body: macro 'quoted_review' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Loop 'section_loop' returns each item through the new node 'section_draft_stripped', which strips the item's text as specVersion 30 did.",
     "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [

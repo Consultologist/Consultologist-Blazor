@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "progress_note_section"
+    "progress_note_section",
+    "progress_note_section_stripped"
   ],
-  "ret": "node.sections_progress_note_section.progress_note_section"
+  "ret": "node.sections_progress_note_section.progress_note_section_stripped"
 }

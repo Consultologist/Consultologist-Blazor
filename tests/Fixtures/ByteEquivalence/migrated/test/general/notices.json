@@ -2,8 +2,10 @@
   "notices": [
     "Renamed macro 'test' to 'test_snippet': 'test' is reserved at 31.",
     "Hand edit needed in snippets/standards/assessment_plan.md, body: macro 'letrozole_prescription_text' is placed at line 5, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.",
+    "Loop 'standards' returns each item through the new node 'section_instructions_stripped', which strips the item's text as specVersion 30 did.",
     "nodes/standards/index.json: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "nodes/standards/section_instructions.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/standards/section_instructions_stripped.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [

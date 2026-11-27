@@ -5,8 +5,14 @@
     "nodes/prior_notes_index_note/index_note.md, if: written so that the node runs only when deliverable notes_index applies, as 30 ran only what an applicable deliverable needed.",
     "Hand edit needed in nodes/sections_senior_review_section/senior_review_section.md, body: the body's if at line 1 does more than choose text to show; write it as parts with their own if.",
     "deliverables/notes_index.md, if: size(input.prior_notes.value) is null when input.prior_notes.value is null, where 30 counted 0.",
+    "Loop 'sections_note_section' returns each item through the new node 'note_section_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'sections_senior_review_section' returns each item through the new node 'senior_review_section_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'sections_long_stay_section' returns each item through the new node 'long_stay_section_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'prior_notes_summarise_note' returns each item through the new node 'summarise_note_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'prior_notes_index_note' returns each item through the new node 'index_note_stripped', which strips the item's text as specVersion 30 did.",
     "nodes/sections_senior_review_section/index.json: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "nodes/sections_senior_review_section/senior_review_section.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
+    "nodes/sections_senior_review_section/senior_review_section_stripped.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [

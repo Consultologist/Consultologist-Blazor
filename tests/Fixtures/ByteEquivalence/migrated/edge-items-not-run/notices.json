@@ -1,5 +1,7 @@
 {
-  "notices": [],
+  "notices": [
+    "Loop 'problem_loop' returns each item through the new node 'problem_draft_stripped', which strips the item's text as specVersion 30 did."
+  ],
   "handEdits": [],
   "refusals": []
 }
