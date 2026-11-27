@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -33,6 +35,55 @@ internal static class ApiMock
         await page.RouteAsync("**/ConsultGenerationJobs/*", route => Fulfill(route, DetailJson()));
         await page.RouteAsync("**/WorkflowPackages/Current", route => Fulfill(route, PackageJson()));
     }
+
+    /// <summary>
+    /// #1509 (Task 25): the specVersion 31 scenario, registered over the default one (a later route wins in
+    /// Playwright), so a test that does not ask for it sees the default routes unchanged. Every 31 route counts its
+    /// hits in <paramref name="api"/>.
+    /// </summary>
+    public static async Task Install31Async(IPage page, Api31 api)
+    {
+        await InstallAsync(page);
+
+        await page.RouteAsync("**/WorkflowPackages/Current", route => Answer(route, api, "Current", api.Package));
+        await page.RouteAsync("**/WorkflowPackages/Current/StartChecks*", route => Answer(route, api, "StartChecks", api.StartChecks));
+        await page.RouteAsync("**/WorkflowPackages/Current/Content*", route => Answer(route, api, "Content", api.Content));
+        await page.RouteAsync("**/Account/Me", route => Answer(route, api, "Me", api.AccountMe));
+        await page.RouteAsync("**/Account/Settings/*", route =>
+        {
+            var key = Uri.UnescapeDataString(new Uri(route.Request.Url).Segments[^1]);
+            return Answer(route, api, "Settings/" + key, api.Settings.TryGetValue(key, out var value) ? SettingJson(key, value) : null);
+        });
+        await page.RouteAsync("**/Account/Jobs*", route => Answer(route, api, "Jobs", api.Jobs));
+        await page.RouteAsync("**/ConsultGenerationJobs/*", route => Answer(route, api, "Job", api.Job));
+        await page.RouteAsync("**/ConsultGenerationJobs/*/Rows*", route =>
+        {
+            var query = new Uri(route.Request.Url).Query;
+            var key = query.StartsWith("?key=", StringComparison.Ordinal) ? Uri.UnescapeDataString(query["?key=".Length..]) : null;
+            return key is null
+                ? Answer(route, api, "Rows", api.Rows)
+                : Answer(route, api, "Rows?key=" + key, api.RowText(key));
+        });
+        await page.RouteAsync("**/ConsultGenerationJobs/*/Record", route => Answer(route, api, "Record", api.Record));
+    }
+
+    /// <summary>A 200 with the body, or a 404 when there is none (an unset setting, a key the job has no row for).</summary>
+    private static Task Answer(IRoute route, Api31 api, string name, string? body)
+    {
+        var method = route.Request.Method;
+        api.Hits.AddOrUpdate(method == "GET" ? name : method + " " + name, 1, (_, count) => count + 1);
+        return body is null
+            ? route.FulfillAsync(new() { Status = 404, ContentType = "text/plain", Body = "" })
+            : Fulfill(route, body);
+    }
+
+    private static string SettingJson(string key, string value) => Json(new
+    {
+        key,
+        value,
+        contentType = "text/plain",
+        updatedAtUtc = "2026-11-16T10:00:00Z",
+    });
 
     private static string JobsJson() => Json(new
     {
@@ -85,4 +136,30 @@ internal static class ApiMock
         specVersion = 6,
         blocks = new[] { new { id = "section-instructions:hpi", name = "hpi" } },
     });
+}
+
+/// <summary>
+/// #1509 (Task 25): what the 31 scenario answers, route by route (a null body is a 404), and how often each route was
+/// asked. A test changes a member before navigating, or between steps (the start checks' answer, say).
+/// </summary>
+internal sealed class Api31
+{
+    public string? Package { get; set; } = Fixtures31.Package;
+    public string? StartChecks { get; set; } = Fixtures31.NoRefusals;
+    public string? Content { get; set; } = Fixtures31.Content;
+    public string? AccountMe { get; set; } = Fixtures31.AccountMe;
+    public string? Jobs { get; set; } = Fixtures31.Jobs;
+    public string? Job { get; set; } = Fixtures31.Job;
+    public string? Rows { get; set; } = Fixtures31.Rows;
+    public string? Record { get; set; }
+
+    /// <summary>Saved account settings by key; any other key is unset (404).</summary>
+    public Dictionary<string, string> Settings { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Hits by route: <c>Current</c>, <c>StartChecks</c>, <c>Content</c>, <c>Rows</c>, <c>Rows?key=&lt;key&gt;</c>, …; a method other than GET is named first (<c>PUT Settings/&lt;key&gt;</c>).</summary>
+    public ConcurrentDictionary<string, int> Hits { get; } = new(StringComparer.Ordinal);
+
+    public string? RowText(string key) => Fixtures31.RowText(key);
+
+    public int HitsOf(string name) => Hits.TryGetValue(name, out var count) ? count : 0;
 }
