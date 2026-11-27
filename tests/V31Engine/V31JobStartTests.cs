@@ -1526,9 +1526,12 @@ public class V31JobStartTests
         /// <summary>Publishes <see cref="Choices"/>.</summary>
         public WorkflowPackageRef PutChoices() => Publish(Choices());
 
-        /// <summary>Publishes <see cref="SourceFixture.Minimal"/> with its note signed: it reads <c>profile.signature</c>.</summary>
+        /// <summary>
+        /// Publishes <see cref="SourceFixture.Minimal"/> with its note signed: it reads <c>profile.signature</c>, so it is a
+        /// <c>markdown_block</c> (the signature is, #1543).
+        /// </summary>
         public WorkflowPackageRef PutSigned() => Publish(SourceFixture.Minimal().With("deliverables/note.md", SourceFixture.Md(
-            SourceFixture.Deliverable("Consultation note", TemplateFixture.Plain, "null", "hold"),
+            SourceFixture.Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"),
             "{{ node.plan.content }}\n\n{{ profile.signature }}\n")));
 
         /// <summary>

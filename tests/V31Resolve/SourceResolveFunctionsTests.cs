@@ -154,7 +154,8 @@ public class SourceResolveFunctionsTests
     [Theory]
     [InlineData(Plain, "node.plan")]
     [InlineData(Plain, "node.plan.content")]
-    [InlineData(Plain, "profile.signature")]
+    [InlineData("\"markdown_block\"", "profile.signature")]
+    [InlineData("\"markdown_block\"", "profile.closing")]
     [InlineData("\"string\"", "profile.name")]
     [InlineData("\"date\"", "run.date")]
     [InlineData("\"string\"", "item.id")]
@@ -424,9 +425,9 @@ public class SourceResolveFunctionsTests
 
     // ---- The profile ---------------------------------------------------------------------------
 
-    /// <summary><see cref="ResolveFixture.Functions"/> with <c>draft_section</c>'s <c>draft</c> a plaintext bound to <c>profile.signature</c>, and <c>standard_draft</c>'s <c>if</c> reading it.</summary>
+    /// <summary><see cref="ResolveFixture.Functions"/> with <c>draft_section</c>'s <c>draft</c> a markdown_block bound to <c>profile.signature</c>, and <c>standard_draft</c>'s <c>if</c> reading it.</summary>
     private static Dictionary<string, byte[]> ProfileRead(string condition) =>
-        Draft(Plain, "profile.signature")
+        Draft("\"markdown_block\"", "profile.signature")
             .WithJson("functions/draft_section/standard_draft.md", h => h["if"] = JsonNode.Parse(condition));
 
     [Fact]
@@ -438,8 +439,8 @@ public class SourceResolveFunctionsTests
 
         // Read only in a prompt and passed on, it is not the condition's; through the dialect's reads the prompt's
         // read is S04-069 (#1504, area 07).
-        AssertAccepted(Draft(Plain, "profile.signature"), BodiesUnknown);
-        Assert.Contains(ResolveFixture.Run(Draft(Plain, "profile.signature")).Refusals, r => r.Id == "S04-069" && r.Sentence ==
+        AssertAccepted(Draft("\"markdown_block\"", "profile.signature"), BodiesUnknown);
+        Assert.Contains(ResolveFixture.Run(Draft("\"markdown_block\"", "profile.signature")).Refusals, r => r.Id == "S04-069" && r.Sentence ==
             "Function 'draft_section' reads param.draft, which carries profile.signature, in a prompt; the profile is read only in deliverables and macro bodies.");
     }
 
@@ -447,8 +448,8 @@ public class SourceResolveFunctionsTests
     public void AParameterPassedAProfileParameter_CarriesTheProfile()
     {
         var files = Calling(["f01", "f02"], id => id == "f01" ? "f02" : null)
-            .WithJson("functions/f01/index.json", f => f["inputs"]!["draft"]!["format"] = "plaintext")
-            .WithJson("functions/f02/index.json", f => f["inputs"]!["draft"]!["format"] = "plaintext")
+            .WithJson("functions/f01/index.json", f => f["inputs"]!["draft"]!["format"] = "markdown_block")
+            .WithJson("functions/f02/index.json", f => f["inputs"]!["draft"]!["format"] = "markdown_block")
             .WithJson("nodes/start.md", h => h["with"]!["draft"] = "profile.closing")
             .WithJson("functions/f02/index.json", f => f["nodes"]!.AsArray().Add("length"))
             .With("functions/f02/length.md", Md(SourceFixture.Node("computed", "Measuring the draft", "\"number\"", true, false,

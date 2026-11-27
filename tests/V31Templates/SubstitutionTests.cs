@@ -269,7 +269,8 @@ public class SubstitutionTests
     public void AProfileRead_IsASubstitution()
     {
         const string signature = "Dr A. Sample, Sample Oncology Clinic";
-        var plan = RunFixture.Plan(WithNote("Signed: {{ profile.signature }}\n"));
+        // The signature is markdown_block (#1543), so the note is too, and the read starts its line.
+        var plan = RunFixture.Plan(WithNote("Signed:\n\n{{ profile.signature }}\n", "markdown_block"));
         var scope = BodyComposerTests.Scope(("profile.signature", signature));
 
         var outcome = Render(plan, scope);

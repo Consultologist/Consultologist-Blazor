@@ -16,6 +16,9 @@ public class SourceDerivedTests
 {
     private const string Plain = "\"plaintext\"";
 
+    /// <summary>The signature's format (#1543), and so that of what carries it through <see cref="Signed"/>'s <c>sign</c>.</summary>
+    private const string Block = "\"markdown_block\"";
+
     private const string Call = "nodes/standards/section.md";
 
     private const string Function = "functions/draft_section/index.json";
@@ -269,7 +272,7 @@ public class SourceDerivedTests
     internal static Dictionary<string, byte[]> Signed(string condition)
     {
         var files = Listing(Minimal(), "signed", "signed_length")
-            .With("nodes/signed.md", Md(SourceFixture.Node("call", "Signing the note", Plain, true, false,
+            .With("nodes/signed.md", Md(SourceFixture.Node("call", "Signing the note", Block, true, false,
                 "\"if\": null, \"function\": \"sign\", \"with\": { \"sig\": \"profile.signature\" }"), ""))
             .WithJson("nodes/signed.md", h => h["profileCarrying"] = true)
             .With("nodes/signed_length.md", Md(SourceFixture.Node("computed", "Measuring the draft", "\"number\"", true, false,
@@ -277,10 +280,10 @@ public class SourceDerivedTests
             .WithJson("functions/index.json", f => f["items"]!.AsArray().Add("sign"))
             .With("functions/sign/index.json", Json(
                 "{ \"label\": \"Sign the note\", \"description\": null, "
-                + "\"inputs\": { \"sig\": { \"label\": \"Signature\", \"description\": null, \"format\": \"plaintext\" } }, "
+                + "\"inputs\": { \"sig\": { \"label\": \"Signature\", \"description\": null, \"format\": \"markdown_block\" } }, "
                 + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
-                + "\"nodes\": [\"closing\"], \"ret\": \"node.closing\", \"format\": \"plaintext\" }"))
-            .With("functions/sign/closing.md", Md(SourceFixture.Node("computed", "The closing", Plain, true, false,
+                + "\"nodes\": [\"closing\"], \"ret\": \"node.closing\", \"format\": \"markdown_block\" }"))
+            .With("functions/sign/closing.md", Md(SourceFixture.Node("computed", "The closing", Block, true, false,
                 "\"if\": null, \"expression\": { \"var\": \"param.sig.content\" }"), ""))
             .WithJson("functions/sign/closing.md", h => h["profileCarrying"] = true);
         foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
@@ -314,7 +317,7 @@ public class SourceDerivedTests
     /// <summary><see cref="Signed"/> with <c>closing</c> an agent whose prompt reads the parameter.</summary>
     private static Dictionary<string, byte[]> SignedByAnAgent() =>
         Signed(DraftHasText)
-            .With("functions/sign/closing.md", Agent("Writing the closing", Plain, "Write a closing line.\n\n{{ param.sig.content }}\n"))
+            .With("functions/sign/closing.md", Agent("Writing the closing", Block, "Write a closing line.\n\n{{ param.sig.content }}\n"))
             .WithJson("functions/sign/closing.md", h => h["profileCarrying"] = true)
             .WithJson("nodes/signed.md", h => h["reproducible"] = false)
             .WithJson("nodes/signed.md", h => h["modelDerived"] = true);
@@ -446,7 +449,7 @@ public class SourceDerivedTests
         "modelDerived" => (Minimal, Agent("Drafting the note", Plain, "Draft the note for Margaret Okafor.\n\n{{ input.consult_draft.content }}\n"),
             false, LastDraft),
         "runDependent" => (Minimal, Computed("Naming the run", Text, "{ \"var\": \"run.id\" }", true), true, "pass.previous.node.draft.value"),
-        _ => (() => Signed(DraftHasText), Md(SourceFixture.Node("call", "Signing the draft", Plain, true, false,
+        _ => (() => Signed(DraftHasText), Md(SourceFixture.Node("call", "Signing the draft", Block, true, false,
             "\"if\": null, \"function\": \"sign\", \"with\": { \"sig\": \"profile.signature\" }").Replace(
             "\"profileCarrying\": false", "\"profileCarrying\": true", StringComparison.Ordinal), ""), true, LastDraft),
     };

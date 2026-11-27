@@ -318,7 +318,7 @@ public class MigrateMacrosTests
         Assert.Equal("Written by {{ profile.name }} on {{ run.date }}.{{ profile.signature | renderer.signature_after_line_end }}", MigrateNodesTests.Md(result, "snippets/author_line.md").Body);
         var renderer = MigrateNodesTests.Md(result, "renderers/signature_after_line_end.md");
         Assert.Equal(
-            """{"label":"Signature after a line end","kind":"rendered","description":null,"input":"plaintext","format":"plaintext"}""",
+            """{"label":"Signature after a line end","kind":"rendered","description":null,"input":"markdown_block","format":"markdown_block"}""",
             Header(result, "renderers/signature_after_line_end.md"));
         Assert.Equal("{{ if value != null && (value | string.strip) != \"\" }}\n{{ value }}{{ end }}", renderer.Body);
         Assert.Equal("""["signature_after_line_end","signature_after_blank_line"]""", MigrateNodesTests.Json(result, "renderers/index.json")["items"]!.ToJsonString());

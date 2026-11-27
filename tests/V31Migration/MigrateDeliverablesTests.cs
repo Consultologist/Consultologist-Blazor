@@ -403,7 +403,7 @@ public class MigrateDeliverablesTests
 
         var renderer = MigrateNodesTests.Md(result, "renderers/signature_after_blank_line.md");
         Assert.Equal(
-            """{"label":"Signature after a blank line","kind":"rendered","description":null,"input":"plaintext","format":"plaintext"}""",
+            """{"label":"Signature after a blank line","kind":"rendered","description":null,"input":"markdown_block","format":"markdown_block"}""",
             renderer.Header.ToJsonString(Unescaped));
         Assert.Equal("{{ if value != null && (value | string.strip) != \"\" }}\n\n{{ value }}{{ end }}", renderer.Body);
         Assert.Contains("signature_after_blank_line", MigrateNodesTests.Json(result, "renderers/index.json")["items"]!.AsArray().Select(i => (string?)i));

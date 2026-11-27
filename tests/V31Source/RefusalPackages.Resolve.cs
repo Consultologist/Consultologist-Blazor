@@ -291,19 +291,15 @@ internal static partial class RefusalPackages
             WithFunction().Edit(CallFile, DraftArgument, "\"with\": { \"draft\": 5 }"));
 
         const string note = "functions/draft_section/draft_note.md";
-        var profiled = WithDraftNote()
-            .Edit(FunctionIndex, "\"format\": \"markdown_block\" }", "\"format\": \"plaintext\" }")
-            .Edit(CallFile, "input.consult_draft.content", "node.plan.content")
+        // The parameter is markdown_block, the signature's format (#1543), so the invalid side differs by its argument only.
+        Dictionary<string, byte[]> Profiled() => WithDraftNote()
             .Edit(note, "\"if\": null", If("""{ "!": [{ "blank": [{ "var": "param.draft.content" }] }] }"""));
         yield return new RefusalCase("S04-069",
             "A parameter bound to the profile carries it, and no condition reads it (chapter 4 § 4.7.7). The call section "
             + "passes draft_section's draft, which its node draft_note's if reads. Invalid: the call passes "
-            + "profile.signature. Valid: node.plan.content.",
-            profiled,
-            WithDraftNote()
-                .Edit(FunctionIndex, "\"format\": \"markdown_block\" }", "\"format\": \"plaintext\" }")
-                .Edit(CallFile, "input.consult_draft.content", "profile.signature")
-                .Edit(note, "\"if\": null", If("""{ "!": [{ "blank": [{ "var": "param.draft.content" }] }] }""")));
+            + "profile.signature. Valid: input.consult_draft.content.",
+            Profiled(),
+            Profiled().Edit(CallFile, "input.consult_draft.content", "profile.signature"));
     }
 
     // ---- Chapter 4 § 4.7.6: one ret, always valued, one format ---------------------------------------------
@@ -534,13 +530,13 @@ internal static partial class RefusalPackages
     /// <summary>
     /// The function <c>sign</c> (its parameter <c>sig</c>, returned by its computed node <c>closing</c>), the call
     /// <c>signed</c> passing it <c>profile.signature</c>, and the computed node <c>signed_length</c>, measuring the draft
-    /// when it has text.
+    /// when it has text. The parameter, the function and the call are <c>markdown_block</c>, the signature's format (#1543).
     /// </summary>
     private static Dictionary<string, byte[]> WithSigned()
     {
         var files = Minimal()
             .Edit("nodes/index.json", "\"items\": [\"plan\"]", "\"items\": [\"plan\", \"signed\", \"signed_length\"]")
-            .With("nodes/signed.md", Md(Node("call", "Signing the note", Plain, true, false,
+            .With("nodes/signed.md", Md(Node("call", "Signing the note", "\"markdown_block\"", true, false,
                 "\"if\": null, \"function\": \"sign\", \"with\": { \"sig\": \"profile.signature\" }"), "")
                 .Replace("\"profileCarrying\": false", "\"profileCarrying\": true", StringComparison.Ordinal))
             .With("nodes/signed_length.md", Md(Node("computed", "Measuring the draft", "\"number\"", true, false,
@@ -549,10 +545,10 @@ internal static partial class RefusalPackages
             .Edit("functions/index.json", "\"items\": []", "\"items\": [\"sign\"]")
             .With("functions/sign/index.json", Json(
                 "{ \"label\": \"Sign the note\", \"description\": null, "
-                + "\"inputs\": { \"sig\": { \"label\": \"Signature\", \"description\": null, \"format\": \"plaintext\" } }, "
+                + "\"inputs\": { \"sig\": { \"label\": \"Signature\", \"description\": null, \"format\": \"markdown_block\" } }, "
                 + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
-                + "\"nodes\": [\"closing\"], \"ret\": \"node.closing\", \"format\": \"plaintext\" }"))
-            .With("functions/sign/closing.md", Md(Node("computed", "The closing", Plain, true, false,
+                + "\"nodes\": [\"closing\"], \"ret\": \"node.closing\", \"format\": \"markdown_block\" }"))
+            .With("functions/sign/closing.md", Md(Node("computed", "The closing", "\"markdown_block\"", true, false,
                 "\"if\": null, \"expression\": { \"var\": \"param.sig.content\" }"), "")
                 .Replace("\"profileCarrying\": false", "\"profileCarrying\": true", StringComparison.Ordinal));
         foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
