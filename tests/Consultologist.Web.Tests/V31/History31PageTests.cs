@@ -610,6 +610,21 @@ public class History31PageTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ARunningJob_IsListedAgain_WhenADecisionIsWrittenWithNoNewRow()
+    {
+        // Final review D6 (R4): a decision under a node that never ran adds no row; the decisions count moves alone
+        var before = Header("Running") with { StartedAtUtc = Now.AddMinutes(-5), Rows = 5, Decisions = 1 };
+        var after = before with { Decisions = 2 };
+        With31(before);
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(before, before, before, before, after);
+
+        var page = Open(TimeSpan.FromMilliseconds(20));
+
+        page.WaitForAssertion(() => Assert.True(FetchesOf(JobId) >= 8), Settle);
+        Assert.Equal(2, RowListings());
+    }
+
+    [Fact]
     public void A30Job_RendersExactlyAsBefore()
     {
         With31(Header() with { SchemaVersion = 11, PackageSpecVersion = 30, ResolveHash = null, LockHash = null, Limits = null, WorkflowOutputHash = "bbbb" });

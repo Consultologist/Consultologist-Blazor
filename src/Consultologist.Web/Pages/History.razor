@@ -1975,11 +1975,11 @@
     // When each job was last fetched, by the page's clock; a stopped 31 job is not asked again sooner than the slow rate.
     private readonly Dictionary<string, DateTimeOffset> _lastPolled = new(StringComparer.Ordinal);
 
-    // The rows of each loaded 31 job as listed, the record sorted from them, the job's Rows count at that listing, the
+    // The rows of each loaded 31 job as listed, the record sorted from them, the job's Rows and Decisions counts at that listing, the
     // per-view row fetches, the listing's failure in the route's words, and the job's package content (for D10's line).
     private readonly Dictionary<string, IReadOnlyList<RecordRowRef>> _recordRows = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Record31> _records = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, int?> _rowsListedAt = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (int? Rows, int? Decisions)> _rowsListedAt = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RowText31> _rowTexts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _recordErrors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, WorkflowPackageContentResponse?> _contents = new(StringComparer.Ordinal);
@@ -2022,7 +2022,7 @@
         try
         {
             _recordRows[detail.JobId] = await AIService.GetJobRowsAsync(detail.JobId);
-            _rowsListedAt[detail.JobId] = detail.Rows;
+            _rowsListedAt[detail.JobId] = (detail.Rows, detail.Decisions);
             _recordErrors.Remove(detail.JobId);
         }
         catch (AccessTokenNotAvailableException)
@@ -2043,7 +2043,10 @@
         _records[detail.JobId] = Record31.From(detail, _recordRows[detail.JobId]);
     }
 
-    /// <summary>A poll of a loaded 31 job: the rows are listed again only when its Rows count has moved.</summary>
+    /// <summary>
+    /// A poll of a loaded 31 job: the rows are listed again only when its Rows or Decisions count has moved (a decision under
+    /// a node that never ran, R4, writes no row).
+    /// </summary>
     private async Task RefreshRecord31Async(ConsultGenerationJobResponse detail)
     {
         if (!IsStorage12(detail) || !_recordRows.TryGetValue(detail.JobId, out var rows))
@@ -2051,7 +2054,7 @@
             return;
         }
 
-        if (_rowsListedAt.GetValueOrDefault(detail.JobId) != detail.Rows)
+        if (_rowsListedAt.GetValueOrDefault(detail.JobId) != (detail.Rows, detail.Decisions))
         {
             await ListRows31Async(detail);
             return;
