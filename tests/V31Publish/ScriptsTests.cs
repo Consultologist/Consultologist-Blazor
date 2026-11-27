@@ -207,6 +207,21 @@ public class ScriptsTests
     }
 
     [Fact]
+    public void TheCheckScript_ReadsACommittedDiagramsCrlfAsLf_AndNeverWritesThroughALink()
+    {
+        // #1510 (final review): .gitattributes is text=auto, so a checkout may write dag.mmd with \r\n: the committed side
+        // is compared with \r\n read as \n. --write-dag never follows a link, as the folder's read never does.
+        var script = Script("check-workflow-package-v31.cs");
+
+        Assert.Contains("Encoding.UTF8.GetString(committed).Replace(\"\\r\\n\", \"\\n\", StringComparison.Ordinal), fresh, StringComparison.Ordinal)", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("committed.AsSpan().SequenceEqual", script, StringComparison.Ordinal);
+        var refusal = script.IndexOf("is a symbolic link, which this script never follows", StringComparison.Ordinal);
+        var write = script.IndexOf("File.WriteAllBytes(dagPath", StringComparison.Ordinal);
+        Assert.True(refusal > 0 && write > refusal, "a linked dag.mmd is refused before it is written");
+        Assert.Contains("if (existing.LinkTarget != null || (existing.Exists && IsLink(existing)))", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheRerenderScript_ListsItsUsage_ItsExits_AndComparesBothHashes()
     {
         var script = Script("rerender-workflow-packages-v31.cs");

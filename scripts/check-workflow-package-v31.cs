@@ -16,7 +16,8 @@
 //       # as the first, and writes <folder>/dag.mmd: the drawing of the package's resolve.json (#1510, D13)
 //
 // dag.mmd is a view (part 07 § 7): a committed one that differs from the drawing of the package's resolve.json fails
-// (exit 1, and with --write nothing is written); --write-dag writes the fresh one instead. A folder without one passes.
+// (exit 1, and with --write nothing is written), its \r\n read as \n (a text=auto checkout may write them); --write-dag
+// writes the fresh one instead, and refuses (exit 2) a dag.mmd that is a symbolic link. A folder without one passes.
 //
 // The folder is read as an upload: every file under it by its path with "/" (a ".git" folder is skipped).
 // A symbolic link (or any reparse point), file or folder, is skipped and never followed, so --write never copies a link's
@@ -188,6 +189,14 @@ var fresh = PackageDiagram.Generate(outcome.Compiled!.Resolve);
 var dagPath = Path.Combine(root, PackagePublish.DiagramFile);
 if (writeDag)
 {
+    // A link is never followed (as the folder's read skips one): a dag.mmd that is a link is not written through.
+    var existing = new FileInfo(dagPath);
+    if (existing.LinkTarget != null || (existing.Exists && IsLink(existing)))
+    {
+        Console.Error.WriteLine($"error: {dagPath} is a symbolic link, which this script never follows; remove it, then run again.");
+        return 2;
+    }
+
     try
     {
         File.WriteAllBytes(dagPath, new UTF8Encoding(false).GetBytes(fresh));
@@ -200,7 +209,9 @@ if (writeDag)
 
     Console.Error.WriteLine($"dag.mmd: written to {dagPath}.");
 }
-else if (upload.TryGetValue(PackagePublish.DiagramFile, out var committed) && !committed.AsSpan().SequenceEqual(new UTF8Encoding(false).GetBytes(fresh)))
+// The committed side's \r\n is read as \n: a checkout under .gitattributes' text=auto may write the file with \r\n.
+else if (upload.TryGetValue(PackagePublish.DiagramFile, out var committed)
+    && !string.Equals(Encoding.UTF8.GetString(committed).Replace("\r\n", "\n", StringComparison.Ordinal), fresh, StringComparison.Ordinal))
 {
     Console.Error.WriteLine("refused: dag.mmd differs from the drawing of the package's resolve.json; run with --write-dag to write it. Nothing written.");
     return 1;
