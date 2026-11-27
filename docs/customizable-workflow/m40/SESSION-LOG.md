@@ -57,6 +57,18 @@ What bears on Milestone 40:
   `UseAdvancedExtensions`. The owner ruled it an M39 defect and carries it to the M39 build, for
   area 12 or 13; it is not posted on M39's issues from here.
 
+**The note for the M39 build,** as given to the owner to carry:
+
+> On `m39-build` at `94b66aec`, `ConsultMarkdown.Pipeline` (the emailed PDF and the Web's
+> `MarkdownPreview`) is `DisableHtml` + `UsePipeTables` + `UseSoftlineBreakAsHardlineBreak`. Part 02
+> § 5.2 and `V31/PlainConversion.cs` say `UseAdvancedExtensions`. Ruled 2026-11-27: one pipeline
+> everywhere, `UseAdvancedExtensions` with `DisableHtml`; fix in area 12 or 13.
+>
+> Also ruled: line handling is standard Markdown's, so a single line ending is no longer a break.
+> `ConsultMarkdown.Pipeline`'s own comment says prompt and standards sources are written line per
+> line and rely on the hard-break extension. How those sources keep looking the same (for example
+> by writing explicit breaks) is M39's to decide.
+
 **Found while planning:** a comparison of Corvus and json-everything (licence, JSON Schema, JSON
 Logic, maintenance), summarised in the comments on #1458 and #1459. JSON Logic has no published
 specification; the closest effort is the volunteer json-logic organisation.
