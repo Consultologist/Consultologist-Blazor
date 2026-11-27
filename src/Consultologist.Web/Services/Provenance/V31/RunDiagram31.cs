@@ -13,9 +13,10 @@ namespace Consultologist.Web.Services.Provenance.V31;
 /// item or pass per <c>for</c> or <c>while</c> the entry sits in (a loop's item and pass rows hold one more).
 /// <para>
 /// With no row a box shows nothing and is <c>ranNot</c> (<c>running</c> while the job runs and a row inside it is
-/// written); a loop with no row of its own but item or pass rows of one instance (a running job, or one that failed in
-/// it: the engine writes the loop's row when it ends) lists them and is <c>running</c> while the job runs, once it has
-/// ended the class of the worst item (D10's order below). With several (a box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
+/// written); a loop with no row of its own but item or pass rows (a running job, or one that failed in it: the engine
+/// writes the loop's row when it ends) lists them when they are of one instance and shows their tally when they are of
+/// several (a nested loop in outer items), and is <c>running</c> while the job runs, once it has ended the class of the
+/// worst item (D10's order below). A loop with one own row lists that instance's items only. With several rows (a box inside a loop) it shows a tally of their words (<c>3 Completed · 1 Skipped</c>) and the
 /// class of the worst (Failed, then Cancelled, Skipped, NotRun, Completed; D10). With exactly one, its status as stored;
 /// a node's output hash and retry count; a loop's items (a <c>while</c>'s passes), one line each, the first
 /// <see cref="Listed"/>, then <c>… and &lt;k&gt; more</c>; an <c>if</c>'s or <c>case</c>'s decision; a classifier's answer
@@ -125,8 +126,15 @@ public static class RunDiagram31
             {
                 // a loop's own row is written when it ends (none while it runs, nor when the job failed in it): its items still list
                 var listed = kind is "for" or "while" ? all.Where(r => Tokens(r.Key) == depth + 1).ToList() : [];
-                if (listed.Count > 0 && listed.Select(r => r.Key[..r.Key.LastIndexOfAny([':', '/', '#'])]).Distinct(StringComparer.Ordinal).Count() == 1)
-                    return new BoxOverlay([.. Items(listed, passes: kind == "while")], terminal ? Worst(listed) : "running", null);
+                if (listed.Count > 0)
+                {
+                    // the items of one instance list; of several (a nested loop in outer items) they are a tally, as a box in a body (D10)
+                    var cls = terminal ? Worst(listed) : "running";
+                    return listed.Select(r => Instance(r.Key)).Distinct(StringComparer.Ordinal).Count() == 1
+                        ? new BoxOverlay([.. Items(listed, passes: kind == "while")], cls, null)
+                        : Tally(listed) with { Class = cls };
+                }
+
                 var inside = all.Count > 0 || record.Nodes.Concat(record.Checks).Any(r => r.Key.StartsWith(key + ".", StringComparison.Ordinal));
                 return new BoxOverlay([], !terminal && inside ? "running" : "ranNot", null);
             }
@@ -135,7 +143,8 @@ public static class RunDiagram31
                 return Tally(own);
 
             var row = own[0];
-            var items = all.Where(r => Tokens(r.Key) == depth + 1).ToList();
+            // a nested loop's one own row is one instance's: only that instance's items are its
+            var items = all.Where(r => Tokens(r.Key) == depth + 1 && Instance(r.Key) == row.Key).ToList();
             return One(row, kind ?? row.Text("kind"), key, items);
         }
 
@@ -352,6 +361,9 @@ public static class RunDiagram31
 
             return depth;
         }
+
+        /// <summary>An item's or pass's row key up to its last item or pass: the key of the loop instance it is one of.</summary>
+        private static string Instance(string rowKey) => rowKey[..rowKey.LastIndexOfAny([':', '/', '#'])];
 
         /// <summary>The items and passes a row key holds: each starts with <c>:</c>, <c>/</c> or <c>#</c> after the entry.</summary>
         private static int Tokens(string rowKey) => rowKey[RowKey31.InstanceStart(rowKey)..].Count(c => c is ':' or '/' or '#');

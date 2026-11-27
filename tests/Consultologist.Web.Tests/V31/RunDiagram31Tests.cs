@@ -497,15 +497,52 @@ public partial class RunDiagram31Tests
             Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
             Row("node.sections.paragraphs:1/2", PlanKind.For, RowState.Completed)));
         Assert.Equal(["1: Completed", "2: Completed"], Added("nested-note", one, "node__sections__paragraphs"));
+        // of several instances they are no one box's items: a tally, as a box inside a loop body shows (D10)
         var several = Draw("nested-note", Running(
             Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
             Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Completed)));
-        Assert.Empty(Added("nested-note", several, "node__sections__paragraphs"));
+        Assert.Equal(["2 Completed"], Added("nested-note", several, "node__sections__paragraphs"));
         Assert.Equal("running", ClassOf(several, "node__sections__paragraphs"));
 
         // a loop whose list was empty has its row and no item
         var empty = Draw("nested-note", Record(Row("node.sections", PlanKind.For, RowState.Completed, detail: """{ "count": 0 }""")));
         Assert.Equal(["Completed", "out sha256:aa…"], Added("nested-note", empty, "node__sections"));
+    }
+
+    [Fact]
+    public void AJobThatFailedInANestedLoopOfSeveralInstances_DrawsItsItemsAsATallyOfTheWorstClass()
+    {
+        // two outer items started, the job failed in the second's inner loop: the inner loop has no row of its own
+        var failed = Draw("nested-note", Record(
+            Row("node.sections:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/2", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2/2", PlanKind.For, RowState.Failed, null)));
+        // the first instance's own row is there: one own row, so the box is that row's, with that instance's items only
+        Assert.Equal(["Completed", "out sha256:aa…", "1: Completed", "2: Completed"], Added("nested-note", failed, "node__sections__paragraphs"));
+
+        var noOwnRow = Draw("nested-note", Record(
+            Row("node.sections:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/2", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2/2", PlanKind.For, RowState.Failed, null)));
+        Assert.Equal(["3 Completed · 1 Failed"], Added("nested-note", noOwnRow, "node__sections__paragraphs"));
+        Assert.Equal("failed", ClassOf(noOwnRow, "node__sections__paragraphs"));
+    }
+
+    [Fact]
+    public void ANestedLoopWithOneOwnRow_ListsOnlyThatInstancesItems()
+    {
+        var run = Draw("nested-note", Running(
+            Row("node.sections:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Failed, null),
+            Row("node.sections.paragraphs:2/2", PlanKind.For, RowState.Completed)));
+        Assert.Equal(["Completed", "out sha256:aa…", "1: Completed"], Added("nested-note", run, "node__sections__paragraphs"));
     }
 
     [Fact]
