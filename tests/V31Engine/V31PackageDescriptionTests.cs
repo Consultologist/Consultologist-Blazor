@@ -57,7 +57,7 @@ public class V31PackageDescriptionTests
         ["boolean"] = """{"$id":"urn:consultologist:spec:31:format:boolean","$schema":"urn:consultologist:spec:31:dialect","description":"true or false.","type":"boolean"}""",
         ["date"] = """{"$id":"urn:consultologist:spec:31:format:date","$schema":"urn:consultologist:spec:31:dialect","description":"A calendar date, written YYYY-MM-DD.","format":"date","type":"string"}""",
         ["plaintext"] = """{"$id":"urn:consultologist:spec:31:format:plaintext","$schema":"urn:consultologist:spec:31:dialect","contentMediaType":"text/plain","description":"Plain text, with no markup.","type":"string"}""",
-        ["markdown_block"] = """{"$id":"urn:consultologist:spec:31:format:markdown_block","$schema":"urn:consultologist:spec:31:dialect","contentMediaType":"text/markdown","description":"Markdown text that stands on its own lines (a paragraph, a list or a table).","type":"string","x-markdown":"block"}""",
+        ["markdown_block"] = """{"$id":"urn:consultologist:spec:31:format:markdown_block","$schema":"urn:consultologist:spec:31:dialect","contentMediaType":"text/markdown","description":"Markdown text that stands on its own lines (a paragraph, a list or a table). A single line ending is not a break: write separate lines as list items, or leave a blank line between them.","type":"string","x-markdown":"block"}""",
     };
 
     /// <summary>
@@ -179,7 +179,7 @@ public class V31PackageDescriptionTests
         Assert.Null(draft.Channel);
         Assert.Null(draft.Types);
         AssertJson(
-            """{"$id":"urn:consultologist:spec:31:format:markdown_block","contentMediaType":"text/markdown","description":"Markdown text that stands on its own lines (a paragraph, a list or a table).","type":"string","x-markdown":"block"}""",
+            """{"$id":"urn:consultologist:spec:31:format:markdown_block","contentMediaType":"text/markdown","description":"Markdown text that stands on its own lines (a paragraph, a list or a table). A single line ending is not a break: write separate lines as list items, or leave a blank line between them.","type":"string","x-markdown":"block"}""",
             FormatOf(draft));
     }
 

@@ -94,7 +94,7 @@ public class SentFormatTests
     {
         var sent = SentFormat.Prepare("markdown_block", Formats, Format);
         Assert.Equal(
-            """{"description":"Markdown text that stands on its own lines (a paragraph, a list or a table).","type":"string"}""",
+            """{"description":"Markdown text that stands on its own lines (a paragraph, a list or a table). A single line ending is not a break: write separate lines as list items, or leave a blank line between them.","type":"string"}""",
             Compact(sent.Schema));
         Assert.Equal(0, sent.Levels);
     }
