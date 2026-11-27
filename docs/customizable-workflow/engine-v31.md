@@ -711,7 +711,8 @@ and every file, `manifest.json` included, as text in `Files` (written as UTF-8 w
    (`PublishedTypeRegistry`), the toolchain the engine attests (`EngineToolchain.Current()`), the limits
    (`EngineLimitSettings.PublishLimits`: `MaxAgentCallsPerJob`, `LoopItems`, `JobAgentCalls`, `JobInstances` and
    `JobMinutes`), the clock, `RegexMilliseconds` for the tests' `matches`, `EngineLimitSettings.Limits` as the limits the package's
-   tests run at (`PublishOptions.RunLimits`), and no diagram. `publishedBy` is
+   tests run at (`PublishOptions.RunLimits`), and `PackageDiagram.Generate` as the diagram (#1510, D13: the version's
+   `dag.mmd` is the 31 drawing of its `resolve.json`, a view no hash covers). `publishedBy` is
    `operator-migration` with a migration report, else `editor` with a `Source`, else `api`. A migration report whose
    `newVersion` is not the version being tried gets that version (a member replacement, written canonical), so the
    stored `migration-report.json` names the version it is stored in; one that names it already is stored as sent.
@@ -734,8 +735,8 @@ logged by type and does not change the answer.
 version's folder through a 60-second lease on a lock blob beside it, `{name}/{version}.lease` (never inside the folder,
 so no listing takes it for a file or a version; it is left in place after the write). The holder checks the stamp (a
 folder with any `publish.json` is never written to), clears the folder but the stamp, writes the files in the order the
-pipeline gave (the source, `lock.json`, `publish-report.json`, `migration-report.json` for a migration, `resolve.json`
-last), renewing the lease before each write, reads `resolve.json` and `lock.json` back and verifies them against the
+pipeline gave (the source, `dag.mmd`, `lock.json`, `publish-report.json`, `migration-report.json` for a migration,
+`resolve.json` last), renewing the lease before each write, reads `resolve.json` and `lock.json` back and verifies them against the
 stamp it is about to write (`CompiledPackage.Verify`, the load's own check), and then creates `publish.json` only if
 absent. A lost lease or a failed check stops the write with no stamp. A writer that died holds the folder until its
 lease lapses; the retry then clears and rewrites it. Media types: `resolve.json`
@@ -797,6 +798,18 @@ will not run it** (a `requires` refusal is logged, not answered), so its owner c
 An integrity refusal (A06-004, S09-009, S09-014) is a 400 with its sentence; a folder whose `manifest.json` is not a
 JSON object is A06-004; a registry failure while reading the folder is 503. All these members are null below 31.
 
+### `Current/Diagram` at 31
+
+`GET WorkflowPackages/Current/Diagram` (area 13, #1510, D14) keeps today's ref parse and access check, then loads as
+`Current/Content` does. A stamped 31 version whose pair verifies answers 200 `{ "diagram": <text> }`, the text
+`PackageDiagram.Generate` draws from the stored `resolve.json` (the library's one drawing, part 09 § 10; "specVersion
+31: the diagram" in [the package format as a library](package-format-library.md)). It is drawn afresh, not read from
+the stored `dag.mmd`: the two are the same bytes for a version published since D13, and a version published before has
+none. A load refusal is a 400 with its sentence, a `resolve.json` that is absent is A06-004, and a registry failure
+while reading it is 503 *"Workflow package registry is unavailable."*, logged by the failure's type and status. With
+31 not admitted the answer is S09-001, as for `Current`. A version with no 31 stamp takes today's path
+(`WorkflowDagDiagram`).
+
 ### Import
 
 `POST WorkflowPackages/Ingest` reads the zip's entries as bytes. A zip whose `manifest.json` is a 31 manifest takes the
@@ -846,6 +859,11 @@ admits 31 in production: the admission lists are untouched.*
 - **Profile and the Editor.** Letter details and the time zone are account settings read and written through
   `Account/Settings/{key}` (`LetterDetailsCard`, `TimeZoneCard`; the Api's 400 for a value over a limit is plain text the card
   shows). A 31 package opens read-only in the Editor (`V31PackageView`), whose download is `PackageDownload31`.
+- **The diagrams (area 13, #1510).** The Editor's "Diagram" entry draws `PackageDiagram.Generate` of the content's
+  `Resolve` (the stored `dag.mmd` only when there is none), with no fetch of its own. History (for a storage 12 job whose
+  package content holds `Resolve`) and the Create page offer the run diagram (`RunDiagram31.Build`): History draws it from
+  the record the page already polls, and the Create page lists the rows (`GET …/Rows`) each time the dialog opens. On
+  History a call box is a link to its row (D12); the vendored Mermaid is 12.3.0 with ELK (D1).
 
 ## Settings
 

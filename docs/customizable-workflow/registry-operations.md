@@ -351,6 +351,7 @@ unless `WorkflowPackages__PreviewSpecVersions` admits 31, which only dev does.
     └── v2026.12.1/
         ├── manifest.json               # name and version written by the registry (D2)
         ├── nodes/…, formats/…, checks/…, deliverables/…, tests/…   # the source, as normalised, every file sourceHash covers
+        ├── dag.mmd                     # the 31 drawing of resolve.json, a view no hash covers (#1510)
         ├── lock.json
         ├── publish-report.json         # the publish report (not evidence: records never pin it)
         ├── migration-report.json       # only for a version the operator's migration published
@@ -360,7 +361,7 @@ unless `WorkflowPackages__PreviewSpecVersions` admits 31, which only dev does.
 
 The engine writes a 31 version only into an account's private container (`org-account-packages` or
 `personal-account-packages`), under an `acct-…` name: `WorkflowPackages/Publish` publishes only an account's packages.
-`dag.mmd` is written only once area 13 draws it. The order matters: **a folder without `publish.json` does not exist
+`dag.mmd` is drawn from the compiled `resolve.json` and written after the source (area 13, #1510, D13). The order matters: **a folder without `publish.json` does not exist
 for any reader**, so a publish that dies part-way leaves nothing anyone loads, and the next attempt clears it and
 writes it again. A folder that has a `publish.json` of any shape (a 5–30 stamp has the same name) is never written to
 again.
@@ -407,19 +408,25 @@ the pinned content repositories: the type registry from `external/consultologist
 `external/consultologist-agents/agents/v31`, the toolchain as the engine attests it (the package-format release in
 `spec-versions.json`, the formats catalogue's ref, `agents@<the 31 catalogue's version>`), and the limits the engine has
 with no `ConsultGeneration__*` settings (the spec's starting values), so a run is the same anywhere. The clock is the
-system's, and no diagram is drawn.
+system's. The check script draws the diagram as the engine does (`PackageDiagram.Generate`, #1510, D13); the re-render
+draws none.
 
 **`scripts/check-workflow-package-v31.cs`** checks a package folder, or publishes it for CI:
 
 ```
 dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder>
 dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write <out folder> [--version <tag>] [--published-by "ci <tag>"]
+dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write-dag
 ```
 
 - Without `--write` it runs steps 0 to 3 (`PackagePublish.CheckAsync`): nothing is written.
 - With `--write` it runs steps 0 to 4 and writes the version's files in the pipeline's order into `<out folder>`, then
   `publish.json` last. The out folder must be new or empty (a stamped or non-empty one is refused, exit 2), so no stale
   file ever sits beside the stamp. These are the files CI is to attach as Release assets.
+- `dag.mmd` is a view (#1510, D13): once the package would publish, a committed `dag.mmd` that differs byte for byte
+  from the drawing of its `resolve.json` is exit 1 (`refused: dag.mmd differs …`; with `--write`, nothing is written).
+  `--write-dag` writes the fresh drawing into `<folder>` instead. A folder with none passes. With `--write`, the out
+  folder's `dag.mmd` is the drawing.
 - `--version <tag>` replaces `manifest.json`'s `version` in place before step 0 (the name is kept); without it the
   manifest's own name and version are used. `--published-by` is the report's `publishedBy`; it defaults to `ci <tag>`
   with `--version` and `ci` without. `--version` and `--published-by` need `--write`.

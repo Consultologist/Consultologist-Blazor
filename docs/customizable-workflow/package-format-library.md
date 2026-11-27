@@ -1110,9 +1110,9 @@ with its reason:
   against the in-memory `resolve.json`), the publish report, writing the folder and the stamp, storing only a pair
   that is `Complete`, `Toolchain.Current` with the release's names, `PublishLimits` from the engine's numbers, and
   § 4.4's corpus re-render (a script). The break points belong to the engine's configuration and are checked here.
-- **Area 13: `dag.mmd`.** Generating it, and failing a committed one that differs. `SourceHash`
-  leaves it out. `graph` has no edges inside a function; a diagram that needs them would add them
-  with function-prefixed keys.
+- **Area 13: `dag.mmd`, now built** ("specVersion 31: the diagram" below). Generating it, and failing a committed one
+  that differs. `SourceHash` leaves it out. `graph` has no edges inside a function; the diagram draws a function's
+  inside from its entry's `nodes` and `reads` instead (#1510, R1), and adding the edges is #1527 (Milestone 40).
 - **Area 09: the record.** Sub-row keys and recording run facts.
 - **The sentence review (#1483).** S07-003 for a break point names a caret range the package never
   declared, and an engine version that can look in range. The `unknown` and `none` fillers also
@@ -1725,10 +1725,11 @@ agent places a macro, `parts` when an agent declares a non-empty `parts`, and `r
 (an agent's, a `rendered` node's, a deliverable's) has a run spot, its own or a placed unit's: an unplaced snippet
 that writes `run.*` does not count (#1508, R6). `warnings` gains the dialect's S05-060, S05-061 and S05-065.
 
-**S05-065 (W-3, #1510, G-D11)** is said by `SourceTemplates.LineEndings`, once after the folder routes, since it needs
-every body checked: once per line ending `MarkdownLineEndings.Find` names (the migration's finder, below) in a Markdown
-body a reader sees, at the body's own 1-based line. The sites are a `markdown_block` or `markdown_inline` deliverable,
-`rendered` node, macro, snippet or renderer, every snippet folder's item, `checks/` and a function's own units included.
+**S05-065 (W-3, #1510, G-D11)** is said by the nested `Context`'s `LineEndings` (`Context.LineEndings`, in
+`SourceTemplates.LineEndings.cs`), once after the folder routes, since it needs every body checked: once per line
+ending `MarkdownLineEndings.Find` names (the migration's finder, below) in a Markdown body a reader sees, at the
+body's own 1-based line. The sites are a `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro,
+snippet or renderer, every snippet folder's item, `checks/` and a function's own units included.
 A body whose text reaches a prompt (a snippet a prompt, a part or a macro's instruction places, a folder item it reads
 as `item.content`, a `rendered` node whose text it reads, and what those place or read in turn; never a macro's body,
 since a prompt reads its marker) is warned only when it is also shown, placed or read by a deliverable, a macro's body
@@ -1829,7 +1830,7 @@ At publish (part 05 § 5):
   S05-031.
 - A `markdown_block` renderer inside a line warns S05-061.
 - A single line ending inside a paragraph of a `markdown_block` or `markdown_inline` renderer's body warns S05-065
-  (W-3), as any Markdown body a reader sees does (`SourceTemplates.LineEndings`, above).
+  (W-3), as any Markdown body a reader sees does (`Context.LineEndings`, in `SourceTemplates.LineEndings.cs`, above).
 
 At run time a renderer's body renders with only `value` (the piped value) and the built-ins. Each step gives one
 `ComposedRender`: its number, the renderer, its `bodyHash`, the source (a path, or `render:<n>` in a chain), the
@@ -2192,9 +2193,12 @@ space only is no exception: `"  "` becomes `"&#32; "`. Since the owner's third f
 spaces are written before each line ending (`\r\n` is one ending, a lone `\r` is one too, a blank line's ending gains
 them as well), so at 31's standard line handling each line stays a line: `"a\nb"` becomes `"a  \nb"`. Two spaces and
 not `\`, because a piece cannot know whether its line ending ends a paragraph, where a `\` would show. The rule is
-local, so escaping piece by piece is escaping whole. Nothing else changes: letters, digits, other white space, the
-line endings themselves and everything outside ASCII stay. `Escape(text, startsLine)` with `false` is for a piece that
-continues a line (the text after a run spot). The version stays 1.0.0.
+local, so escaping piece by piece is escaping whole, except for a cut inside one `\r\n`: `"x\r"` and `"\ny"` escape to
+a paragraph break (`"x  \r"` and `"  \ny"`) where `"x\r\ny"` escapes to a hard break (`"x  \r\ny"`), and there
+`BodyComposer.EscapedSubstitutions`, which compares the two, records the unit's text as one substitution. Nothing
+else changes: letters, digits, other white space, the line endings themselves and everything outside ASCII stay.
+`Escape(text, startsLine)` with `false` is for a piece that continues a line (the text after a run spot). The version
+stays 1.0.0.
 
 **`MarkdownEscape.IsBlank(text)`** is true when `text` holds only white space and the exact references `&#32;` and
 `&#9;`. Anything else is content: `&#32` with no semicolon, `&#x20;`, `&nbsp;` and `&#33;`. It exists so that an
@@ -2716,8 +2720,9 @@ when the migrated package compiles, its `dag.mmd` is the 31 drawing of its `reso
 (`Migration31Script.DiagramWritten`); when it does not yet, none is written until its hand edits are done
 (`Migration31Script.DiagramWaits`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
 exactly the result's files: 30's `prompts/` and flat macros are deleted, and so is 30's `dag.mmd` when no 31 one replaces
-it (`--snapshot` leaves a 31 folder's `dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files are written first, then changed ones
-with `manifest.json` last, then the deletes, so a write that fails part-way deletes no 30 file.
+it (`--snapshot` leaves a 31 folder's `dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files
+are written first, then changed ones with `manifest.json` last, then the deletes, so a write that fails part-way
+deletes no 30 file.
 
 | Exit | When |
 |---|---|
@@ -2828,7 +2833,8 @@ summary). No sentence, notice or report entry carries a value from an input, a m
   Running it against production, sending the owners' notices and moving production pins are the user's.
 - **Area 12:** the Create page, whose per-run choice sets the optional boolean input a migrated macro's `if` reads
   (area 07's three-state boolean); this area adds nothing to it.
-- **Area 13:** the 31 diagram (`dag.mmd`), which the script does not write.
+- **Area 13, now built** (#1510, D13): the script writes the 31 `dag.mmd` when the migrated package compiles
+  (`Migration31Script.DiagramWritten`, "The script" above), and otherwise says it waits (`DiagramWaits`).
 - **Milestone 41:** the Editor's upgrade and the converter's page, on the same `FromScriban` and `Migrate`. Author
   documentation (part 10 § 6, #1473) and the satellites (§ 7) are not this build's.
 - **For the owner:** the unexpected differences no ruling covers, and the three packages whose edits are not made
@@ -2871,7 +2877,8 @@ public static Task<PublishOutcome> CheckAsync(IReadOnlyDictionary<string, byte[]
 `PublishOptions(Registry, Toolchain, Limits, PublishedBy, Clock, Templates = null, Diagram = null, MigrationReport =
 null, MigratedFrom = null, MatchTimeLimit = null, RunLimits = null)` holds what the caller decides: the published types, the toolchain
 `lock.json` records, the `PublishLimits`, the report's `publishedBy` (D4), the clock (the report's time and the tests'
-limit), the `dag.mmd` builder (D1: none is written while it is null, which it is until area 13), the operator's
+limit), the `dag.mmd` builder (D1: none is written while it is null; since area 13 the engine and the CI script pass
+`PackageDiagram.Generate`, #1510, D13), the operator's
 `migration-report.json` text and the stamp's old version (D5), and the time limit of `matches` and `has_word` in the
 tests' plan and the `RunLimits` the tests run at (null: the spec's starting values; the engine gives its configured ones).
 
@@ -2974,7 +2981,7 @@ test's text: a mismatch on text gives hashes, and S07-009's error a path and a k
 
 | # | Where | As built |
 |---|---|---|
-| D1 | `dag.mmd` | `PublishOptions.Diagram` is null in the engine and the script, so no `dag.mmd` is written; an uploaded one is never stored or served |
+| D1 | `dag.mmd` | `PublishOptions.Diagram` was null in the engine and the script until area 13, so no `dag.mmd` was written; since #1510 (D13) both pass `PackageDiagram.Generate`, so the version's `dag.mmd` is the drawing of its `resolve.json`. An uploaded one is never stored or served |
 | D2 | name and version | the engine assigns the next CalVer as at 5–30 and writes `name` and `version` into `manifest.json` in place (every other member and its order kept) before step 0; the script's `--version` replaces `version` only. A stamped version is never written; an unstamped folder is cleared and rewritten. A manifest without both as text is stored as uploaded and refused with A11-004 |
 | D3 | the request | the same route and record: `Manifest` null, every file in `Files`. The 31 branch is taken when `manifest.json` parses as an object whose `specVersion` is the integer 31. The response gains a trailing `Report`; a refused publish's 400 is `{ errors, error, report }` |
 | D4 | `publishedBy` | `operator-migration` when the request carries `MigrationReport`, else `editor` when it carries `Source`, else `api`; `ci <tag>` from the script |
@@ -3027,8 +3034,9 @@ another engine. Without `--publish` it is a dry run: the publish runs in memory 
   `RunScope`, filled by `RunInputsBuilder`), so a decision that reads it is `modelDerived`. S09-004 (*"migrated by the operator
   from …"*) is drawn from the content response's `MigratedFrom`. What the area decided in the build is in the plan's
   *Recorded in the build*; the pages' own sentences are `A12-001` to `A12-007`.
-- **Area 13:** the 31 diagram: it fills `PublishOptions.Diagram`, and the writer already stores `dag.mmd` as
-  `text/plain`.
+- **Area 13 (built, #1510):** the 31 diagram: the engine's `V31PackagePublisher` and the CI script fill
+  `PublishOptions.Diagram` with `PackageDiagram.Generate`, and the writer stores `dag.mmd` as `text/plain`
+  ("specVersion 31: the diagram" below).
 - **Milestone 41:** the Editor's "Run tests", on the same `PackageTests`.
 - **Not this build's:** the public repository's tag CI (it is to call `scripts/check-workflow-package-v31.cs`), Release
   assets, running the bulk publish against production with its notices and production pins, and the Azure settings
@@ -3054,3 +3062,140 @@ and A11-011 are not shipped as packages, as S07-014 is not); the content reposit
 `Current`, `Content`, job start) asks `SpecVersionAdmission` first, and without the preview setting answers S09-001 as
 a 400. The 5–30 publish, import and content paths keep their behaviour; the response records changed by trailing
 optional members only.
+
+## specVersion 31: the diagram (preview)
+
+*Area 13 of the Milestone 39 build (#1510). Built from
+[the engine and the pages](package-format-v31/09-engine-and-pages.md) (part 09) § 10, with
+[the plan](package-format-v31/plans/area-13-diagram.md) for the decisions (the owner's rulings R1 to R3 on #1510, the
+decisions D1 to D16; its *Recorded in the build* lists every choice a task took). Where the engine stores and serves the
+drawing is in [the engine at specVersion 31](engine-v31.md), "Publish" and "`Current/Diagram` at 31".*
+
+A 31 package is drawn the same way in three places, `dag.mmd`, the Editor's diagram and the run diagram, from one
+graph model built from its compiled `resolve.json` (part 09 § 10.1). The model and the writer are the library's
+(`V31/Diagram/`, namespace `Consultologist.PackageFormat.V31.Diagram`); no other code writes Mermaid for a 31 package.
+The 5–30 drawings (`WorkflowDagDiagram`, the Web's `RunDagDiagram`) keep their text.
+
+```csharp
+public enum BoxShape { Pill, Rectangle, DoubleBox, Parallelogram, Doc, TagRect, Hexagon }
+public enum EdgeStyle { Read, If, Reference, Gate }   // -->, -.->, -.-o, ==>
+public sealed record DiagramBox(string Id, string Key, BoxShape Shape, IReadOnlyList<string> Lines, bool ModelDerived);
+public sealed record DiagramFrame(string Id, string Title, IReadOnlyList<DiagramBox> Boxes,
+    IReadOnlyList<DiagramFrame> Frames, IReadOnlyList<DiagramEdge> Edges, int At);
+public sealed record DiagramEdge(string From, string To, EdgeStyle Style, string? Label);
+public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<DiagramEdge> Edges, bool HasChecks)
+{
+    public static DiagramModel Build(string resolve);
+    public IEnumerable<DiagramBox> AllBoxes();
+    public static string IdOf(string key);              // "node.a.b" → "node__a__b"
+}
+public sealed record BoxOverlay(IReadOnlyList<string> Lines, string? Class, string? Anchor);
+public sealed record DiagramText(string Mermaid, IReadOnlyDictionary<string, string> Anchors);
+public static class DiagramWriter
+{
+    public static string Write(DiagramModel model);
+    public static DiagramText Write(DiagramModel model, IReadOnlyDictionary<string, BoxOverlay> overlay,
+        IReadOnlyList<(string Name, string Style)> classDefs);
+}
+public static class PackageDiagram { public static string Generate(string resolve); }
+```
+
+### The model
+
+`DiagramModel.Build(resolve)` reads the canonical `resolve.json` text as a `JsonObject`, member by member, never through
+`RunPlan` or a loader, so a stored older document is drawn, not refused. What is missing or of another shape is left
+out: a missing `label` leaves the id line alone, an unknown kind is a plain rectangle, an older document without
+`renders` draws no renderer frame, and a text that is not a JSON object (or names a member twice at any depth) is an
+empty document, so `Generate` writes the frontmatter alone. It never throws on the document's content. The rules are
+split by construct: `DiagramModel.Production.cs` (nodes, loops, branches, pills, deliverables, edges),
+`DiagramModel.Uses.cs` (renderers and macros, D7), `DiagramModel.Functions.cs` (calls and functions, R1, D3) and
+`DiagramModel.Checks.cs` (checks, check loops and gates, D5).
+
+- **Boxes.** An agent and a `rendered` node are rectangles (`agent → <format> · <producer>`, `rendered → …`), a
+  `computed` node and a check double boxes (`computed → <format>`), a flow's summary box a rectangle carrying its loop
+  or condition line, a deliverable a hexagon, a call a `tag-rect` (`<id>` over `call <function>`), a renderer use a
+  parallelogram and a placed macro a `doc` box. Every condition, loop line and expression is printed by
+  `JsonLogicPrinter.Print`. A format is its `#/$defs/<id>` name, `?` for an inline schema.
+- **Keys and ids.** `DiagramBox.Key` is the rooted key a record row carries (`node.sections.paragraphs.draft`,
+  `check.coverage`, `deliverable.note`; a pill's is its read, `input.x`, `run.date`); a renderer box's is
+  `<owner key>#render:<n>`, a macro box's `<owner key>#macro:<macro id>`, and a function's box
+  `function.<function>#<local key>`, which no row carries. `IdOf` replaces every `.` with `__`; inside a function a
+  box's id is prefixed `fn_<function>__` and a parameter's pill is `fn_<function>__param__<id>` (D3).
+- **Pills.** One per distinct `input.*`, `run.*`, `profile.*` and `snippet.*` read, at the top level, in order of
+  first read (a loop's list and conditions before its body), then any input nothing reads, in `inputOrder`. A
+  function's pills are one per declared parameter, in `inputOrder`, read or not, inside its frame.
+- **Edges** are derived from the entries (`reads`, `in`, `ret`, `renders`, `placements`, `check`, `function`), not
+  copied from `graph.edges` (D6). A read is `-->` labelled with the member read (D4: `value`, `content`, `items`…; one
+  edge per source, reader and member); a read of `run.*`, `profile.*`, `param.*`, a snippet or a renderer's output is
+  unlabelled; reads of `item`, `pass` and `renderer.*` draw nothing. A condition's read is `-.->|if|`. An entry's
+  `reads` is one list, so `graph.edges` (which keeps content and condition reads apart per source key) decides whether a
+  path a condition reads also draws its data edge; where it has no word (an older document, or inside a function, R1)
+  the `if` edge is drawn alone. A loop's list is `-->|for|` into its frame, a body's result `-->|ret|` (`ret
+  (<branch>)` for an `if` or `case`) into the summary box. A function draws no `ret` edge of its own (D16).
+- **Frames.** A loop body (`for_`, `while_`) and each branch body that holds a node (`if_<id>_then`, `if_<id>_else`,
+  `case_<id>_branch_<n>`, `case_<id>_else`); `uses_<box id>` round any entry with a renderer step or a placed macro,
+  nodes, checks and deliverables alike, titled `<id> · <label>` (D7); `fn_<function>` per function, drawn once, called
+  or not, titled `function <id> (<inputs>) → <format>`; and `checks`, titled `Checks`, holding every check. A check loop
+  over a production loop's `.items` is titled `(aligned)` and draws `-.-o|aligned|` from its frame to that loop's frame;
+  a production loop over another loop's `.items` draws no such edge (D5). A gate is `==>|gates|` from the check to the
+  deliverable. Each frame's position is explicit (`DiagramFrame.At`): a flow's bodies just before its summary box, a
+  `uses_` frame in the place of the box it wraps, and at the top level the function frames, then Checks, after the
+  production boxes and before the deliverables, as § 10.5 writes them.
+- **Model-derived** (D9) is the entry's own `modelDerived`; pills and deliverables are never dashed.
+
+### The writer
+
+`DiagramWriter.Write(model)` opens every text with the frontmatter `---`, `config:`, `  layout: elk`, `---` and
+`flowchart TD` (D2), with `\n` line ends and four spaces of indent per level. Each frame writes its boxes and frames in
+the model's order, then its own edges (a `uses_` frame's, a function's); the model's edges follow every frame. At the
+top level a blank line parts the pills, each flow, each other frame, each run of plain boxes and the deliverables. Then
+come `classDef modelDerived stroke-dasharray: 5 5` and one `class … modelDerived` line when a box is model-derived, an
+overlay's `classDef` and `class` lines, and last, when the Checks frame is drawn, `style checks stroke-width:3px`. A
+label line escapes `#` as `#35;` first, then `"` as `#quot;`, `<` as `#lt;` and `>` as `#gt;`, and writes a line break as
+one space (D8), so the only markup a label holds is the writer's own `<br/>`.
+
+The overlay form, `Write(model, overlay, classDefs)`, is the run diagram's: the overlay is keyed by `DiagramBox.Key`,
+adds label lines after a box's own, a class and a History anchor, and never adds, removes or renames a box, a frame or
+an edge. `DiagramText.Anchors` names, by box id, the anchor of each box the overlay links. The Web's
+`RunDiagram31.Build(resolve, record, linkCalls)` (`Services/Provenance/V31/`) builds that overlay from a storage 12
+record (part 09 § 10.6; D10 to D12), with `RunDagDiagram`'s five colours.
+
+`PackageDiagram.Generate(resolve)` is `DiagramWriter.Write(DiagramModel.Build(resolve))`: the
+`Func<string, string>` that `PublishOptions.Diagram` takes.
+
+### Where it is called
+
+- **Publish** (D13): the engine's `V31PackagePublisher` and `scripts/check-workflow-package-v31.cs` pass
+  `PackageDiagram.Generate`, so step 4 lists `dag.mmd` after the source files. `dag.mmd` is outside `sourceHash`, the
+  lock and the report: nothing pinned moved.
+- **The CI script** compares a committed `dag.mmd` byte for byte with the drawing of the in-memory `resolve.json` once
+  the package would publish: a difference is exit 1 (`refused: dag.mmd differs …`, nothing written); `--write-dag`
+  writes the fresh one into the folder instead; a folder with none passes.
+- **The migration script** (`Migration31Script`, "The script" above) writes `dag.mmd` when the migrated package
+  compiles (`DiagramWritten`) and otherwise deletes a 30 one and says it waits (`DiagramWaits`).
+- **The engine's `Current/Diagram`** at 31 and **the Editor's 31 view** (`V31PackageView`) draw `Generate` of the stored
+  `resolve.json` (D14); the Editor shows the stored `dag.mmd` only when the content holds no `resolve.json`.
+- **The run diagram** on History and the Create page draws `RunDiagram31.Build`. Mermaid stays at `securityLevel:
+  "strict"`, so a call box's link is bound by the app after rendering (`consultologistMermaid.bind`, D12).
+
+The vendored Mermaid is 12.3.0, the full build, with ELK, and `mermaid.initialize` sets `layout: "elk"` (D1).
+
+### The tests and the goldens
+
+`tests/V31Diagram/` holds the library's tests: `DiagramModelTests`, `DiagramWriterTests`, `DiagramUsesTests`,
+`DiagramFunctionsTests`, `DiagramChecksTests` and `DiagramGoldenTests`, whose `TheDiagram_IsTheGolden` holds seven
+drawings in `tests/V31Diagram/Golden/` (`nested-note`, `conditional`, `functions`, `checked-note`, `macros`, and the
+migrated `example-v12-constructs` and `composer-sources`, each compiled with its hand edits made; `GOLDEN_UPDATE_V31=1`
+writes them). `example-macros` is not drawn: its hand edits are not made, so publish refuses it.
+`EveryGraphEdgeBetweenDrawnBoxes_IsDrawn` holds D6 over every drawing, and `TheSpecsExample_IsDrawnAsTheSpecDrawsIt`
+holds § 10.5's first example. The browser suite renders each golden and § 10.5's three examples on Mermaid 12.3.0
+(`Mermaid12E2ETests`) and the run diagram with its call link (`RunDiagram31E2ETests`); the Web's are
+`RunDiagram31Tests`, `RunDiagram31PageTests` and `TemplatesV31Tests`. No conformance case and no hash moved, so the
+content repository did not change for the diagram.
+
+### Not wired in
+
+31 stays outside `AcceptedSpecVersions` and `SupportedSpecVersions`; `Current/Diagram`'s 31 branch asks
+`SpecVersionAdmission`, as `Current/Content`'s does. `graph.edges` still holds no edge inside a function (#1527,
+Milestone 40); the interactive graph (#1399) and Graphviz (#1454) are Milestone 40. How GitHub draws `doc`, `tag-rect`
+and `layout: elk` is not tested by this build (D15).
