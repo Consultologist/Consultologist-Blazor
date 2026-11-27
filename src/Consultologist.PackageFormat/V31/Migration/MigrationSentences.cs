@@ -473,6 +473,14 @@ internal static class MigrationSentences
         $"{file}, if: written so that the node runs only when deliverable {string.Join(" or ", deliverables)} applies, as 30 ran only what an applicable deliverable needed.";
 
     /// <summary>
+    /// A10-088 (#1510; #1509 comment 7207709261, item 1; F-D1): the <c>for</c> <paramref name="loop"/>, whose <c>.content</c>
+    /// is read, returns each item through the new <c>rendered</c> node <paramref name="node"/>, whose body strips the old
+    /// <c>ret</c>'s text, as 30 trimmed each item of a loop it composed.
+    /// </summary>
+    public static string StripsLoopItems(string loop, string node) =>
+        $"Loop '{loop}' returns each item through the new node '{node}', which strips the item's text as specVersion 30 did.";
+
+    /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
     /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
     /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is

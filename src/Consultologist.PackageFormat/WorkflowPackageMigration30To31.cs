@@ -194,6 +194,13 @@ public sealed record Migration31Result(
     /// model wrote a macro's marker with its 30 id, which the byte-equivalence comparison reads.
     /// </summary>
     public IReadOnlyDictionary<string, string> MacroIds30 { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 1; F-D1): each <c>rendered</c> node the migration wrote as a loop's <c>ret</c> to
+    /// strip each item as 30 did, its rooted key to the rooted key of the loop's old <c>ret</c>, whose text it strips. These
+    /// nodes have no 30 id; the byte-equivalence comparison reads them to credit their texts (<c>loop-item-strip-node</c>).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> StripNodes { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -326,6 +333,7 @@ public static class WorkflowPackageMigration30To31
             V31.Migration.Migrate.Macros(migrated);
             V31.Migration.Migrate.Checks(migrated);
             V31.Migration.Migrate.Deliverables(migrated);
+            V31.Migration.Migrate.StripLoopItems(migrated);
             V31.Migration.Migrate.Derived(migrated);
             PastTheInstanceLimit(migrated);
             return migrated.Result(at30.Notices);
