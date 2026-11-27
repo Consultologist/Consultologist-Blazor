@@ -219,8 +219,9 @@ public class BlockReadTests
     [MemberData(nameof(MigratedPackagesTests.Packages), MemberType = typeof(MigratedPackagesTests))]
     public void EveryMigratedPackage_WithNoHandEdit_IsNotRefused(string package)
     {
-        // A package as migrated, before any hand edit is made, has no block read with text beside it: the migration moves
-        // each onto a line of its own (Task A5, D7), the text before it ending with \ and the text after it on the next line.
+        // A package as migrated, before any hand edit is made, has no block read with text beside it: the migration
+        // separates each from the text beside it by a blank line, on both sides (Task A5, D7, as the owner amended it on
+        // 2026-11-27); a line it would break out of its Markdown block is a hand edit (A10-094), which no fixture has.
         var result = MigratedPackagesTests.Migrated(package);
         var upload = MigratedPackagesTests.Upload(result);
         var registry = V31Contract.PublishedTypes();

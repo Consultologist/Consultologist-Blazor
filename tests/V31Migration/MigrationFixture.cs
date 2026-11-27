@@ -202,6 +202,7 @@ internal static class MigrationFixture
         var breaks = new Dictionary<string, int>(migrated.HardBreaks, StringComparer.Ordinal);
         var moved = new Dictionary<string, int>(migrated.MovedReads, StringComparer.Ordinal);
         var separated = new Dictionary<string, IReadOnlyList<string>>(migrated.SeparatedReads, StringComparer.Ordinal);
+        var edited = new List<string>();
         foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
@@ -247,21 +248,42 @@ internal static class MigrationFixture
             else
                 breaks.Remove(relative);
 
-            // #1543 (ruling 2, D8): likewise the reads separated by a blank line, counted as the block-reads pass counts them.
-            if (relative.EndsWith(".md", StringComparison.Ordinal) && SeparatedReadsIn(text, migrated, relative) is { Count: > 0 } reads)
-            {
-                moved[relative] = reads.Count;
-                separated[relative] = reads;
-            }
-            else
-            {
-                moved.Remove(relative);
-                separated.Remove(relative);
-            }
+            // #1543 (ruling 2, D8): likewise the reads separated by a blank line, counted below once the package is whole.
+            moved.Remove(relative);
+            separated.Remove(relative);
+            if (relative.EndsWith(".md", StringComparison.Ordinal))
+                edited.Add(relative);
         }
 
         Assert.All(strip.Keys, k => Assert.True(files.ContainsKey(StripNodeFile(k)), $"{HandEditsStripNodes} names {k}, which the edited package does not hold."));
-        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip, HardBreaks = breaks, MovedReads = moved, SeparatedReads = separated };
+        var overlaid = migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip, HardBreaks = breaks };
+        if (edited.Count > 0 && RolesOf(overlaid) is { } roles)
+        {
+            foreach (var relative in edited)
+            {
+                if (SeparatedReadsIn(files[relative], migrated, relative, roles) is { Count: > 0 } reads)
+                {
+                    moved[relative] = reads.Count;
+                    separated[relative] = reads;
+                }
+            }
+        }
+
+        return overlaid with { MovedReads = moved, SeparatedReads = separated };
+    }
+
+    /// <summary>
+    /// The roles of every site's tags in <paramref name="result"/> as publish reads them (<see cref="SourceTemplates.Readable"/>);
+    /// none when the reader, the type rules or the resolver refuse the package.
+    /// </summary>
+    private static SiteRoles? RolesOf(Migration31Result result)
+    {
+        var registry = V31Contract.PublishedTypes();
+        if (SourceParser.Parse(MigratedPackagesTests.Upload(result), registry.Names).Package is not { } package
+            || SourceTypes.Check(package, registry).Types is not { } types
+            || SourceResolve.Check(package, types).Item2 is not { } resolution)
+            return null;
+        return SourceTemplates.Readable(package, types, resolution, registry).Roles;
     }
 
     /// <summary>
@@ -276,10 +298,11 @@ internal static class MigrationFixture
     /// #1543 (ruling 2, D8): the reads an edited file with a header holds separated by a blank line, as the block-reads pass
     /// counts them (one per tag, in order): each tag <see cref="MarkdownLineEndings.Separations"/> finds separated from a
     /// line of text that is either one the migration separated in that file (<see cref="Migration31Result.SeparatedReads"/>)
-    /// or one the operator separated as the pass would have: a tag that stood with literal text beside it on its line in
-    /// the migrated file. A paragraph the body had already, or any other tag-ended line, is no separated read.
+    /// or one the operator separated as the pass would have: a block read (its role in the edited package,
+    /// <paramref name="roles"/>, <see cref="TagRole.BlockRead"/>) that stood with literal text beside it on its line in the
+    /// migrated file. A paragraph the body had already, an inline read, or any other tag-ended line, is no separated read.
     /// </summary>
-    private static List<string> SeparatedReadsIn(string text, Migration31Result migrated, string path)
+    private static List<string> SeparatedReadsIn(string text, Migration31Result migrated, string path, SiteRoles roles)
     {
         if (FrontMatter.Split(text) is not { } split)
             return [];
@@ -287,14 +310,18 @@ internal static class MigrationFixture
         var theirs = migrated.SeparatedReads.GetValueOrDefault(path) ?? [];
         var before = migrated.Files.TryGetValue(path, out var file) ? FrontMatter.Split(file)?.Body : null;
         var (tags, _) = TemplateTags.Scan(body);
-        var candidates = tags.Select(t => body[t.Start..t.End])
-            .Where(t => theirs.Contains(t) || (before is not null && HasTextBeside(before, t)))
+        var role = roles.Of(path, body);
+        var candidates = tags.Where(t => theirs.Contains(body[t.Start..t.End]) || (before is not null && role(t) == TagRole.BlockRead && HasTextBeside(before, body[t.Start..t.End])))
+            .Select(t => body[t.Start..t.End])
             .ToHashSet(StringComparer.Ordinal);
         var at = MarkdownLineEndings.Separations(body, candidates).Select(s => s.Tag).ToHashSet();
         return tags.Where(t => at.Contains(t.Start)).Select(t => body[t.Start..t.End]).ToList();
     }
 
-    /// <summary>Whether a tag written <paramref name="tag"/> stands in <paramref name="body"/> on a line with literal text (more than white space) beside it.</summary>
+    /// <summary>
+    /// Whether a tag written <paramref name="tag"/> (a block read of the edited body, <see cref="SeparatedReadsIn"/>) stands
+    /// in <paramref name="body"/> on a line with literal text (more than white space) beside it.
+    /// </summary>
     private static bool HasTextBeside(string body, string tag)
     {
         var (tags, _) = TemplateTags.Scan(body);
