@@ -46,6 +46,29 @@ public class MigrateHardBreaksTests
     }
 
     [Fact]
+    public void TheLineAboveTheProfilesName_GetsItsBackslash()
+    {
+        // #1543 (ruling 2, D2; the G-D8 gap): example-macros' house_style macro (a macro body is where 30 let a body read the
+        // profile) written as a closing above the profile's name on a line of its own. 30 broke the line before the name; the
+        // name is an inline read, so the line above it ends with \, said by A10-091.
+        var result = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["macros/house_style.md"] = files["macros/house_style.md"].Replace(
+            "Reviewed against the house style.", "Sincerely,\n{{ profile.name }}", StringComparison.Ordinal));
+
+        Assert.StartsWith("Sincerely,\\\n{{ profile.name }}", MigrateNodesTests.Md(result, "macros/house_style.md").Body, StringComparison.Ordinal);
+        Assert.Equal(new Dictionary<string, int> { ["macros/house_style.md"] = 1 }, result.HardBreaks);
+        const string Notice = "In 'macros/house_style.md', 1 line ending inside a paragraph ends with \\ (an explicit hard break), where specVersion 30 broke the line.";
+        Assert.Single(result.Notices, n => n == Notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-091", Notice, ""));
+
+        // sign_off's file is one the checker refuses as migrated (its instruction is a hand edit): its tags are not typed,
+        // so they take the role that says least, and the line above the name is left as written.
+        var refused = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["macros/sign_off.md"] = files["macros/sign_off.md"].Replace(
+            "Dictated by {{ profile.name }}; not yet reviewed.", "Sincerely,\n{{ profile.name }}", StringComparison.Ordinal));
+        Assert.StartsWith("Sincerely,\n{{ profile.name }}", MigrateNodesTests.Md(refused, "macros/sign_off.md").Body, StringComparison.Ordinal);
+        Assert.Empty(refused.HardBreaks);
+    }
+
+    [Fact]
     public void ASnippetAPromptPlaces_EndsItsLinesWithABackslash()
     {
         // #1543 (ruling 1): example-macros' summary prompt places the snippet style, written here as two lines. A body a
@@ -69,7 +92,7 @@ public class MigrateHardBreaksTests
         // billing part likewise: neither is a site, so the pass leaves each byte for byte, and says neither.
         var m = Passes("example-macros");
         var prompt = m.Sources["nodes/summary.md"].Body!;
-        Assert.NotEmpty(MarkdownLineEndings.Find(prompt));
+        Assert.NotEmpty(MarkdownLineEndings.Find(prompt, _ => TagRole.Statement));
         Assert.Contains("Task:\nSummarise the consult draft", prompt, StringComparison.Ordinal);
         Migrate.HardBreaks(m);
         Assert.Equal(prompt, m.Sources["nodes/summary.md"].Body);

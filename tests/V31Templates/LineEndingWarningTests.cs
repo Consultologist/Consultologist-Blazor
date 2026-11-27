@@ -58,6 +58,20 @@ public class LineEndingWarningTests
     }
 
     [Fact]
+    public void TheLineAboveAnOutputAlone_Warns()
+    {
+        // #1543 (ruling 2, D2): a line above a line of only a read (the profile's name, an inline read) is warned, as the
+        // migration writes its \ there; above a placement alone, or below a block read alone, it is not.
+        var files = Package().WithSnippet("tone", "Plainly.\n", "markdown_block")
+            .WithDeliverable("Sincerely,\n{{ profile.name }}\n\nSeen by\n{{~ snippet.tone.content }}\n\n{{ node.plan.content }}\n");
+
+        var warning = Assert.Single(Warned(files));
+        Assert.Equal(Sentence("Deliverable 'note'", 1), warning.Sentence);
+        Assert.Equal("deliverables/note.md", warning.Path);
+        V31Contract.AssertSentence(warning);
+    }
+
+    [Fact]
     public void ASingleLineEndingInAPrompt_DoesNotWarn()
     {
         var files = Package().WithAgent("draft", "Write the letter for Margaret Okafor.\nKeep it short.\n\n{{ node.plan.content }}\n", "\"markdown_block\"")
@@ -149,7 +163,7 @@ public class LineEndingWarningTests
             .Concat(result.StripNodes.Keys.Select(k => "nodes/" + k["node.".Length..].Replace('.', '/') + ".md"))
             .Where(result.Files.ContainsKey)
             .ToList();
-        Assert.All(written, path => Assert.Empty(MarkdownLineEndings.Find(FrontMatter.Split(result.Files[path])!.Body)));
+        Assert.All(written, path => Assert.Empty(MarkdownLineEndings.Find(FrontMatter.Split(result.Files[path])!.Body, _ => TagRole.Statement)));
     }
 
     /// <summary>
