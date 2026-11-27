@@ -1,6 +1,6 @@
 ---
 {"label":"Nested consultation note","kind":"rendered","description":null,"format":"markdown_block","if":null,"check":null,"whenEmpty":"fail"}
 ---
-{{ node.refine.content }}
+{{ node.refine.content | string.strip }}
 
-{{ node.sections.content }}
+{{ node.sections.content | string.strip }}

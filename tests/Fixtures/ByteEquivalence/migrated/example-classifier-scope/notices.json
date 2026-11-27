@@ -1,6 +1,9 @@
 {
   "notices": [
-    "Node 'scope' declared with at 30, which 31 has no member for; its values are written at the end of its prompt, as 30's engine sent them."
+    "Node 'scope' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.",
+    "nodes/plan_sections/plan_section.md, if: written so that the node runs only when deliverable plan applies, as 30 ran only what an applicable deliverable needed.",
+    "nodes/letter_decline_letter/decline_letter.md, if: written so that the node runs only when deliverable decline_letter applies, as 30 ran only what an applicable deliverable needed.",
+    "nodes/letter_information_request/information_request.md, if: written so that the node runs only when deliverable information_request applies, as 30 ran only what an applicable deliverable needed."
   ],
   "handEdits": [],
   "refusals": []

@@ -3,11 +3,11 @@
 ---
 {{ macro.header_line.fixed_text }}
 
-{{ node.requested_sections.content }}
+{{ node.requested_sections.content | string.strip }}
 
-{{ node.standing_sections.content }}
+{{ node.standing_sections.content | string.strip }}
 
-{{ node.summary.content }}
+{{ node.summary.content | string.strip }}
 
 {{ snippet.closing.content }}
 

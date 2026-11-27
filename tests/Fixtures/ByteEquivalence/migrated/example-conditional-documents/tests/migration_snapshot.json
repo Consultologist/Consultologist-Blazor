@@ -13,23 +13,15 @@
   "run": {},
   "outputs": {
     "node.sections_consult_note_section.consult_note_section:assessment": "Stub reply for node.sections_consult_note_section.consult_note_section:assessment (7c030a84).",
-    "node.sections_consult_note_section.consult_note_section:plan": "Stub reply for node.sections_consult_note_section.consult_note_section:plan (7c849527).",
-    "node.sections_progress_note_section.progress_note_section:assessment": "Stub reply for node.sections_progress_note_section.progress_note_section:assessment (d06f1604).",
-    "node.sections_progress_note_section.progress_note_section:plan": "Stub reply for node.sections_progress_note_section.progress_note_section:plan (22b7c876)."
+    "node.sections_consult_note_section.consult_note_section:plan": "Stub reply for node.sections_consult_note_section.consult_note_section:plan (7c849527)."
   },
   "expect": {
     "prompts": {
       "node.sections_consult_note_section.consult_note_section:assessment": {
-        "hash": "sha256:f6f2c974699375314654ce86b9de0807609e2fbc7e8d19494fb594ce316b9592"
+        "hash": "sha256:1cd38ecefc69fb3bd4f216eb04c6a6c915e0d65d67b4ec6d6b8c520b982513df"
       },
       "node.sections_consult_note_section.consult_note_section:plan": {
-        "hash": "sha256:02d4a0fa915eede8e563130e76df68ab4853a852e4d4096fb86f69e922342fbe"
-      },
-      "node.sections_progress_note_section.progress_note_section:assessment": {
-        "hash": "sha256:d15db53c29241272b37eb4791a07e09e89a6eba2136f81f57cbad223e4e5db6b"
-      },
-      "node.sections_progress_note_section.progress_note_section:plan": {
-        "hash": "sha256:8a4bd431332098f4b1a1979aa5ada7111867c0b9ea4575cfc8b88c2e62a589e7"
+        "hash": "sha256:d66f939ebf84a4804b465bdd33a1b1eba7f13415a90ddd9468c5e240a0c34c28"
       }
     },
     "deliverables": {

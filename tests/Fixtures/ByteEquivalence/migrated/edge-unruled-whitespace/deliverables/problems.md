@@ -3,4 +3,4 @@
 ---
 {{ snippet.clinic_line.content }}
 
-{{ node.problem_loop.content }}
+{{ node.problem_loop.content | string.strip }}

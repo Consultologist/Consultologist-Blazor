@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Drafting the decline letter","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
+{"kind":"agent","producer":"generated","label":"Drafting the decline letter","description":null,"format":"markdown_block","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":{"===":[{"var":"node.scope.value.value"},"out_of_scope"]},"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
 ---
 You are writing a short letter to the referring clinician declining a referral the clinic cannot take.
 
