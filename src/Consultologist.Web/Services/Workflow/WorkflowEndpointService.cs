@@ -450,7 +450,9 @@ public record WorkflowPublishOutcome(
 public record WorkflowIngestOutcome(
     WorkflowPackageContentResponse? Content,
     IReadOnlyList<string> Findings,
-    string? Error)
+    string? Error,
+    // #1509 (area 12, Task 23; D14): a refused 31 import's every sentence (the Api's `errors`); null when it sent none.
+    IReadOnlyList<string>? Errors = null)
 {
     public bool Parsed => Content != null;
 }
@@ -930,7 +932,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             if (response.StatusCode == HttpStatusCode.BadRequest)
             {
                 var error = await response.Content.ReadFromJsonAsync<IngestErrorPayload>();
-                return new WorkflowIngestOutcome(null, new List<string>(), error?.Error ?? "That file could not be imported.");
+                return new WorkflowIngestOutcome(null, new List<string>(), error?.Error ?? "That file could not be imported.", error?.Errors);
             }
 
             // Anything else (endpoint not deployed yet, 5xx, auth-shape issues):
@@ -951,7 +953,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     private sealed record IngestPayload(WorkflowPackageContentResponse? Content, List<string>? Findings);
 
-    private sealed record IngestErrorPayload(string? Error);
+    private sealed record IngestErrorPayload(string? Error, List<string>? Errors = null);
 
     private sealed record DiagramPayload(string? Diagram);
 

@@ -313,6 +313,31 @@ public class EndpointUrlTests
             Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
     }
 
+    [Fact]
+    public async Task TheWorkflowService_Ingest400_CarriesEveryError()
+    {
+        // #1509 (Task 23; D14): a refused 31 import answers { error, errors }; the Editor shows every one.
+        var handler = new StatusHandler(HttpStatusCode.BadRequest, """{"error":"First.","errors":["First.","Second."]}""");
+        var service = new WorkflowEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        var outcome = await service.IngestPackageAsync(new byte[] { 1 });
+
+        Assert.Equal("First.", outcome?.Error);
+        Assert.Equal(new[] { "First.", "Second." }, outcome?.Errors);
+    }
+
+    [Fact]
+    public async Task TheWorkflowService_Ingest400_WithOneError_CarriesNoList()
+    {
+        var handler = new StatusHandler(HttpStatusCode.BadRequest, """{"error":"That .zip has no manifest.json — it is not a package."}""");
+        var service = new WorkflowEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        var outcome = await service.IngestPackageAsync(new byte[] { 1 });
+
+        Assert.Equal("That .zip has no manifest.json — it is not a package.", outcome?.Error);
+        Assert.Null(outcome?.Errors);
+    }
+
     private sealed class FailingHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
