@@ -1,5 +1,8 @@
 using System.Text.Json.Nodes;
+using Consultologist.Api.Tests.V31Migration;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Source;
+using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Diagram;
 
 namespace Consultologist.Api.Tests.V31Diagram;
@@ -14,9 +17,30 @@ internal static class DiagramFixture
     /// <summary>The five resolve goldens.</summary>
     public static readonly string[] Goldens = ["nested-note", "conditional", "functions", "checked-note", "macros"];
 
+    /// <summary>
+    /// The migrated packages drawn, compiled as <see cref="MigratedPackagesTests.Publish"/> compiles them, with their hand
+    /// edits made (<see cref="MigrationFixture.Edited"/>, as <c>HandEditsTests.TheEditedPackage_Publishes</c> publishes
+    /// them). <c>example-macros</c>, the largest (Review Focus 4), is not: its hand edits are not made
+    /// (<c>HandEditsTests.NotEdited</c>), so publish refuses it (S03-025) and it has no <c>resolve.json</c> to draw.
+    /// </summary>
+    public static readonly string[] Migrated = ["example-v12-constructs", "composer-sources"];
+
+    /// <summary>Every package whose drawing is a golden (<c>Golden/&lt;name&gt;.dag.mmd</c>): the resolve goldens, then the migrated packages.</summary>
+    public static readonly string[] Drawings = [.. Goldens, .. Migrated];
+
     /// <summary>The text of the resolve golden <paramref name="golden"/>.</summary>
     public static string Resolve(string golden) =>
         File.ReadAllText(Path.Combine(CompiledGoldenTests.GoldenFolder(), golden + ".resolve.json"));
+
+    /// <summary>The <c>resolve.json</c> the drawing <paramref name="name"/> of <see cref="Drawings"/> is drawn from: a resolve golden's, or a migrated package's as publish compiles it.</summary>
+    public static string ResolveOf(string name)
+    {
+        if (!Migrated.Contains(name))
+            return Resolve(name);
+        var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(MigrationFixture.Edited(name)), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed);
+        Assert.True(compiled != null, $"{name} does not compile: " + string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}")));
+        return compiled!.Resolve;
+    }
 
     /// <summary>The diagram of <paramref name="resolve"/>, its lines.</summary>
     public static string[] Lines(string resolve) => PackageDiagram.Generate(resolve).Split('\n');

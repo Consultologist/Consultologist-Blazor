@@ -458,7 +458,7 @@ public class DiagramModelTests
     [MemberData(nameof(GoldenNames))]
     public void EveryGraphEdgeBetweenDrawnBoxes_IsDrawn(string golden)
     {
-        var resolve = Resolve(golden);
+        var resolve = ResolveOf(golden);
         var model = DiagramModel.Build(resolve);
         var drawn = model.AllBoxes().Select(b => b.Key).ToHashSet(StringComparer.Ordinal);
         // A macro is drawn as its box in the frame of what places it (D7): a placed edge's source is that box.
@@ -481,8 +481,15 @@ public class DiagramModelTests
         {
             var source = DiagramModel.IdOf(from);
             var target = DiagramModel.IdOf(to);
-            // A read piped through renderers enters the reader's first renderer box (D7), which feeds the reader.
-            var readers = model.AllBoxes().Where(b => b.Key == to || b.Key.StartsWith(to + "#render:", StringComparison.Ordinal)).Select(b => b.Id).ToHashSet();
+            // A read piped through renderers enters the reader's first renderer box (D7), which feeds the reader. A snippet
+            // is a pill: what its body reads (graph.edges writes its renderer step's source into it) is drawn into what
+            // places it, whose renders the compiler gives that step (example-v12-constructs' closing).
+            var into = to.StartsWith("snippet.", StringComparison.Ordinal)
+                ? model.Edges.Where(e => e.From == target).Select(e => e.To).ToHashSet()
+                : [target];
+            var readers = model.AllBoxes().Where(b => into.Contains(b.Id)).Select(b => b.Key)
+                .SelectMany(key => model.AllBoxes().Where(b => b.Key == key || b.Key.StartsWith(key + "#render:", StringComparison.Ordinal)))
+                .Select(b => b.Id).ToHashSet();
             Assert.True(kind switch
             {
                 "reads" => model.Edges.Any(e => e.From == source && readers.Contains(e.To) && e.Style == EdgeStyle.Read && e.Label is not "for" && e.Label?.StartsWith("ret", StringComparison.Ordinal) != true),
@@ -499,5 +506,5 @@ public class DiagramModelTests
 
     private static IEnumerable<DiagramEdge> FrameEdges(DiagramFrame frame) => frame.Edges.Concat(frame.Frames.SelectMany(FrameEdges));
 
-    public static TheoryData<string> GoldenNames() => new(Goldens);
+    public static TheoryData<string> GoldenNames() => new(Drawings);
 }

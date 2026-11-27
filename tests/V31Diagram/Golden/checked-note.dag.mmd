@@ -1,0 +1,45 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+    input__consult_draft(["input.consult_draft"])
+
+    node__plan["plan<br/>Planning the sections<br/>agent → section_plan · generated"]
+
+    subgraph for_node__sections["sections: per node.plan.value.sections item"]
+        node__sections__planned_terms["planned_terms<br/>The terms the plan names<br/>agent → concept_list · generated"]
+        node__sections__draft["draft<br/>Drafting the section<br/>agent → plaintext · generated"]
+        node__sections__section_terms["section_terms<br/>The terms the draft covers<br/>agent → concept_list · generated"]
+    end
+    node__sections["sections<br/>Sections<br/>item in node.plan.value.sections"]
+
+    subgraph checks["Checks"]
+        subgraph for_check__part_coverage["part_coverage: per node.sections.items (aligned)"]
+            check__part_coverage__coverage[["coverage<br/>Section covers its planned terms<br/>computed → check_result"]]
+        end
+        check__part_coverage["part_coverage<br/>Section coverage<br/>item in node.sections.items"]
+        check__all_sections_covered[["all_sections_covered<br/>Every section covers its planned terms<br/>computed → check_result"]]
+        check__proofread[["proofread<br/>Proofreading the note<br/>computed → check_result"]]
+    end
+
+    deliverable__note{{"note<br/>Consultation note"}}
+    deliverable__patient__patient_letter{{"patient_letter<br/>Letter to the patient"}}
+
+    input__consult_draft -->|"content"| node__plan
+    input__consult_draft -->|"content"| node__sections__draft
+    node__sections__draft -->|"content"| node__sections__section_terms
+    node__plan -->|"for"| for_node__sections
+    node__sections__draft -->|"ret"| node__sections
+    node__sections -->|"content"| deliverable__note
+    node__sections -->|"value"| deliverable__patient__patient_letter
+    node__sections -->|"for"| for_check__part_coverage
+    for_check__part_coverage -.-o|"aligned"| for_node__sections
+    check__part_coverage__coverage -->|"ret"| check__part_coverage
+    check__part_coverage -->|"items"| check__all_sections_covered
+    check__all_sections_covered -->|"value"| check__proofread
+    deliverable__note -->|"content"| check__proofread
+    check__proofread ==>|"gates"| deliverable__note
+    classDef modelDerived stroke-dasharray: 5 5
+    class node__plan,node__sections__planned_terms,node__sections__draft,node__sections__section_terms,node__sections,check__part_coverage__coverage,check__part_coverage,check__all_sections_covered,check__proofread modelDerived
+    style checks stroke-width:3px

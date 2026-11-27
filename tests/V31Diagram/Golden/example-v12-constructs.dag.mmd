@@ -1,0 +1,133 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+    input__consult_draft(["input.consult_draft"])
+    snippet__snomed_tool_guidance(["snippet.snomed_tool_guidance"])
+    snippet__standards(["snippet.standards"])
+    input__seen_on(["input.seen_on"])
+    snippet__disclaimer(["snippet.disclaimer"])
+    input__followup(["input.followup"])
+    snippet__closing(["snippet.closing"])
+    snippet__followup(["snippet.followup"])
+    snippet__formal_note(["snippet.formal_note"])
+    snippet__friendly_note(["snippet.friendly_note"])
+    profile__signature(["profile.signature"])
+    input__encounter_kind(["input.encounter_kind"])
+    input__billable(["input.billable"])
+    input__length_of_stay(["input.length_of_stay"])
+    input__patient(["input.patient"])
+    input__prior_notes(["input.prior_notes"])
+    input__medications(["input.medications"])
+
+    node__extract_patient_concepts["extract_patient_concepts<br/>Extracting clinical concepts<br/>agent → concept_list · generated"]
+
+    subgraph uses_node__identify_problem["identify_problem · Identifying primary problem"]
+        node__identify_problem__render_1[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
+        node__identify_problem["identify_problem<br/>Identifying primary problem<br/>agent → concept_list · generated"]
+        node__identify_problem__render_1 --> node__identify_problem
+    end
+
+    subgraph uses_node__create_typical_trajectory["create_typical_trajectory · Building reference trajectory"]
+        node__create_typical_trajectory__render_1[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
+        node__create_typical_trajectory["create_typical_trajectory<br/>Building reference trajectory<br/>agent → concept_list · generated"]
+        node__create_typical_trajectory__render_1 --> node__create_typical_trajectory
+    end
+
+    subgraph uses_node__create_patient_trajectory["create_patient_trajectory · Building patient trajectory"]
+        node__create_patient_trajectory__render_1[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
+        node__create_patient_trajectory__render_2[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
+        node__create_patient_trajectory__render_3[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
+        node__create_patient_trajectory["create_patient_trajectory<br/>Building patient trajectory<br/>agent → concept_list · generated"]
+        node__create_patient_trajectory__render_1 --> node__create_patient_trajectory
+        node__create_patient_trajectory__render_2 --> node__create_patient_trajectory
+        node__create_patient_trajectory__render_3 --> node__create_patient_trajectory
+    end
+
+    subgraph for_node__standards_section_instructions["standards_section_instructions: per snippet.standards item"]
+        node__standards_section_instructions__section_instructions["section_instructions<br/>Applying section instructions<br/>agent → markdown_block · generated"]
+        node__standards_section_instructions__patient_section_draft["patient_section_draft<br/>Applying patient information<br/>agent → plaintext · generated"]
+        subgraph uses_node__standards_section_instructions__standard_section_draft["standard_section_draft · Drafting section"]
+            node__standards_section_instructions__standard_section_draft__render_1[/"renderer.concept_context<br/>concept_list → markdown_block"/]
+            node__standards_section_instructions__standard_section_draft["standard_section_draft<br/>Drafting section<br/>agent → plaintext · generated"]
+            node__standards_section_instructions__standard_section_draft__render_1 --> node__standards_section_instructions__standard_section_draft
+        end
+        node__standards_section_instructions__section_instructions_stripped["section_instructions_stripped<br/>Applying section instructions<br/>rendered → markdown_block · computed"]
+    end
+    node__standards_section_instructions["standards_section_instructions<br/>Standards — applying section instructions<br/>item in snippet.standards"]
+
+    node__tone["tone<br/>Reading the referral's tone<br/>agent → tone_answer · generated"]
+    node__patient_header["patient_header<br/>Patient header<br/>rendered → plaintext · computed"]
+    node__extract_input_terms["extract_input_terms<br/>Extracting the referral's terms<br/>agent → concept_list · generated"]
+    node__extract_note_terms["extract_note_terms<br/>Extracting the note's terms<br/>agent → concept_list · generated"]
+
+    subgraph for_node__standards_letter_body["standards_letter_body: per snippet.standards item"]
+        node__standards_letter_body__letter_body["letter_body<br/>Acknowledgement body<br/>rendered → plaintext · computed"]
+        node__standards_letter_body__letter_body_stripped["letter_body_stripped<br/>Acknowledgement body<br/>rendered → plaintext · computed"]
+    end
+    node__standards_letter_body["standards_letter_body<br/>Standards — acknowledgement body<br/>item in snippet.standards"]
+
+    node__extract_letter_terms["extract_letter_terms<br/>Extracting the letter's terms<br/>agent → concept_list · generated"]
+
+    subgraph checks["Checks"]
+        check__note_coverage[["note_coverage<br/>Note coverage check<br/>computed → check_result"]]
+        check__letter_coverage[["letter_coverage<br/>Letter coverage check<br/>computed → check_result"]]
+    end
+
+    subgraph uses_deliverable__consult["consult · Consultation note"]
+        deliverable__consult__render_1[/"renderer.signature_after_blank_line<br/>plaintext → plaintext"/]
+        deliverable__consult{{"consult<br/>Consultation note"}}
+        deliverable__consult__render_1 --> deliverable__consult
+    end
+
+    deliverable__ack_letter{{"ack_letter<br/>Acknowledgement letter"}}
+
+    input__consult_draft -->|"content"| node__extract_patient_concepts
+    snippet__snomed_tool_guidance --> node__extract_patient_concepts
+    snippet__snomed_tool_guidance --> node__identify_problem
+    node__extract_patient_concepts -->|"value"| node__identify_problem__render_1
+    snippet__snomed_tool_guidance --> node__create_typical_trajectory
+    node__identify_problem -->|"value"| node__create_typical_trajectory__render_1
+    snippet__snomed_tool_guidance --> node__create_patient_trajectory
+    node__identify_problem -->|"value"| node__create_patient_trajectory__render_1
+    node__extract_patient_concepts -->|"value"| node__create_patient_trajectory__render_2
+    node__create_typical_trajectory -->|"value"| node__create_patient_trajectory__render_3
+    node__standards_section_instructions__patient_section_draft -->|"content"| node__standards_section_instructions__section_instructions
+    input__consult_draft -->|"content"| node__standards_section_instructions__patient_section_draft
+    node__standards_section_instructions__standard_section_draft -->|"content"| node__standards_section_instructions__patient_section_draft
+    node__create_patient_trajectory -->|"value"| node__standards_section_instructions__standard_section_draft__render_1
+    node__standards_section_instructions__section_instructions -->|"content"| node__standards_section_instructions__section_instructions_stripped
+    node__standards_section_instructions__section_instructions -.->|"if"| node__standards_section_instructions__section_instructions_stripped
+    snippet__standards -->|"for"| for_node__standards_section_instructions
+    node__standards_section_instructions__section_instructions_stripped -->|"ret"| node__standards_section_instructions
+    input__consult_draft -->|"content"| node__tone
+    input__seen_on -->|"value"| node__patient_header
+    snippet__disclaimer --> node__patient_header
+    input__consult_draft -->|"content"| node__extract_input_terms
+    node__patient_header -->|"content"| node__extract_note_terms
+    node__standards_section_instructions -->|"content"| node__extract_note_terms
+    node__standards_letter_body__letter_body -->|"content"| node__standards_letter_body__letter_body_stripped
+    node__standards_letter_body__letter_body -.->|"if"| node__standards_letter_body__letter_body_stripped
+    snippet__standards -->|"for"| for_node__standards_letter_body
+    node__standards_letter_body__letter_body_stripped -->|"ret"| node__standards_letter_body
+    node__standards_letter_body -->|"content"| node__extract_letter_terms
+    node__patient_header -->|"content"| deliverable__consult
+    node__standards_section_instructions -->|"content"| deliverable__consult
+    snippet__closing --> deliverable__consult
+    snippet__followup --> deliverable__consult
+    snippet__formal_note --> deliverable__consult
+    snippet__friendly_note --> deliverable__consult
+    node__tone -.->|"if"| deliverable__consult
+    input__followup -.->|"if"| deliverable__consult
+    profile__signature --> deliverable__consult__render_1
+    node__standards_letter_body -->|"content"| deliverable__ack_letter
+    node__extract_input_terms -->|"value"| check__note_coverage
+    node__extract_note_terms -->|"value"| check__note_coverage
+    node__extract_input_terms -->|"value"| check__letter_coverage
+    node__extract_letter_terms -->|"value"| check__letter_coverage
+    check__note_coverage ==>|"gates"| deliverable__consult
+    check__letter_coverage ==>|"gates"| deliverable__ack_letter
+    classDef modelDerived stroke-dasharray: 5 5
+    class node__extract_patient_concepts,node__identify_problem,node__create_typical_trajectory,node__create_patient_trajectory,node__standards_section_instructions__section_instructions,node__standards_section_instructions__patient_section_draft,node__standards_section_instructions__standard_section_draft,node__standards_section_instructions__section_instructions_stripped,node__standards_section_instructions,node__tone,node__extract_input_terms,node__extract_note_terms,node__extract_letter_terms,check__note_coverage,check__letter_coverage modelDerived
+    style checks stroke-width:3px

@@ -1,0 +1,39 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+    input__consult_draft(["input.consult_draft"])
+    run__date(["run.date"])
+
+    node__plan["plan<br/>Planning the sections<br/>agent → section_plan · generated"]
+    node__classify["classify<br/>Agent classify<br/>agent → judgement · generated"]
+    node__stamp["stamp<br/>Rendered stamp<br/>rendered → plaintext · computed"]
+
+    subgraph uses_node__draft["draft · Agent draft"]
+        node__draft__macro_section_notes__hpi@{ shape: doc, label: "macro.section_notes.hpi<br/>plaintext · placed verbatim" }
+        node__draft["draft<br/>Agent draft<br/>agent → plaintext · generated"]
+        node__draft__macro_section_notes__hpi -->|"placed"| node__draft
+    end
+
+    node__terms["terms<br/>Agent terms<br/>agent → concept_list · generated"]
+
+    subgraph uses_node__terms_text["terms_text · Rendered terms_text"]
+        node__terms_text__render_1[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
+        node__terms_text["terms_text<br/>Rendered terms_text<br/>rendered → plaintext · computed"]
+        node__terms_text__render_1 --> node__terms_text
+    end
+
+    deliverable__note{{"note<br/>Consultation note"}}
+
+    input__consult_draft -->|"content"| node__plan
+    node__plan -->|"content"| node__classify
+    run__date --> node__stamp
+    node__stamp -->|"content"| node__draft
+    node__classify -.->|"if"| node__draft
+    node__classify -.->|"if"| node__draft__macro_section_notes__hpi
+    node__plan -->|"content"| node__terms
+    node__terms -->|"value"| node__terms_text__render_1
+    node__draft -->|"content"| deliverable__note
+    classDef modelDerived stroke-dasharray: 5 5
+    class node__plan,node__classify,node__draft,node__terms,node__terms_text modelDerived

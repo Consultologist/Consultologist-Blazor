@@ -1,0 +1,55 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+    input__consult_draft(["input.consult_draft"])
+    input__sections(["input.sections"])
+    input__include_billing(["input.include_billing"])
+
+    node__plan["plan<br/>Planning the sections<br/>agent → plaintext · generated"]
+
+    subgraph for_node__sections_draft["sections_draft: per input.sections.value item"]
+        subgraph case_node__sections_draft__route_branch_1["route: narrative"]
+            node__sections_draft__route__narrative_draft["narrative_draft<br/>Drafting a narrative section<br/>agent → plaintext · generated"]
+        end
+        subgraph case_node__sections_draft__route_branch_2["route: table"]
+            node__sections_draft__route__table_draft["table_draft<br/>Drafting a table section<br/>agent → plaintext · generated"]
+        end
+        node__sections_draft__route["route<br/>Routing a section by its kind<br/>case item.value.kind"]
+    end
+    node__sections_draft["sections_draft<br/>Sections: drafting each by its kind<br/>item in input.sections.value"]
+
+    subgraph for_node__patient_summaries["patient_summaries: per input.sections.value item"]
+        subgraph if_node__patient_summaries__narrative_only_then["narrative_only: then"]
+            node__patient_summaries__narrative_only__patient_summary["patient_summary<br/>Summarising for the patient<br/>agent → plaintext · generated"]
+        end
+        node__patient_summaries__narrative_only["narrative_only<br/>Narrative sections only<br/>if item.value.kind = #quot;narrative#quot;"]
+    end
+    node__patient_summaries["patient_summaries<br/>Patient summaries<br/>item in input.sections.value"]
+
+    subgraph for_node__standing_sections["standing_sections: per input.sections.value item"]
+        subgraph if_node__standing_sections__applies_then["applies: then"]
+            node__standing_sections__applies__standing_draft["standing_draft<br/>Drafting a standing section<br/>agent → plaintext · generated"]
+        end
+        node__standing_sections__applies["applies<br/>Holding the billing section back unless asked<br/>if item.id ≠ #quot;billing#quot; or input.include_billing.value = true"]
+    end
+    node__standing_sections["standing_sections<br/>Standing sections<br/>item in input.sections.value"]
+
+    deliverable__note{{"note<br/>Consultation note"}}
+
+    input__consult_draft -->|"content"| node__plan
+    node__sections_draft__route__narrative_draft -->|"ret (narrative)"| node__sections_draft__route
+    node__sections_draft__route__table_draft -->|"ret (table)"| node__sections_draft__route
+    input__sections -->|"for"| for_node__sections_draft
+    node__sections_draft__route -->|"ret"| node__sections_draft
+    node__patient_summaries__narrative_only__patient_summary -->|"ret (then)"| node__patient_summaries__narrative_only
+    input__sections -->|"for"| for_node__patient_summaries
+    node__patient_summaries__narrative_only -->|"ret"| node__patient_summaries
+    input__include_billing -.->|"if"| node__standing_sections__applies
+    node__standing_sections__applies__standing_draft -->|"ret (then)"| node__standing_sections__applies
+    input__sections -->|"for"| for_node__standing_sections
+    node__standing_sections__applies -->|"ret"| node__standing_sections
+    node__plan -->|"content"| deliverable__note
+    classDef modelDerived stroke-dasharray: 5 5
+    class node__plan,node__sections_draft__route__narrative_draft,node__sections_draft__route__table_draft,node__sections_draft__route,node__sections_draft,node__patient_summaries__narrative_only__patient_summary,node__patient_summaries__narrative_only,node__patient_summaries,node__standing_sections__applies__standing_draft,node__standing_sections__applies,node__standing_sections modelDerived
