@@ -833,6 +833,8 @@
                     {
                         @* #1509 (Task 12, D15): a 31 job (record storage 12) is followed by its finished rows. *@
                         <RunView31 JobId="@(lastAppliedJobId ?? string.Empty)"
+                                   Detail="latestRunResponse"
+                                   Resolve="resolve31"
                                    Status="@jobStatus31"
                                    Error="@(latestRunResponse?.RuntimeFailureError ?? latestRunResponse?.StartFailure)"
                                    Notice="@(rowsError31 ?? aiRequestError)"
@@ -2031,6 +2033,11 @@
   private Dictionary<string, string> deliverableErrors31 = new(StringComparer.Ordinal);
   private Dictionary<string, Task> deliverableFetches31 = new(StringComparer.Ordinal);
 
+  // #1510 (Task 10, D12): the resolve.json the run diagram draws: the pinned package's (a run started here runs it), or an
+  // attached job's own package's. Null when it was not read: the run view then offers no run diagram.
+  private JsonElement? pinnedResolve31;
+  private JsonElement? resolve31;
+
   // Moves on each ResetRun31, so an answer started for an earlier run (a fetch still in flight when the next run starts)
   // is recognised when it lands and dropped.
   private int run31Token;
@@ -2399,11 +2406,13 @@
   private async Task LoadWorkflowNodesAsync()
   {
     inputHelp31 = new Dictionary<string, string>();
+    pinnedResolve31 = null;
     try
     {
       var content = await WorkflowService.GetCurrentPackageContentAsync();
       // #1509 (D4): read first, so a 31 manifest the 30 readers below cannot read still gives its help text.
       inputHelp31 = InputHelp31.From(content.Resolve);
+      pinnedResolve31 = content.Resolve;
       workflowNodes = WorkflowManifestReader.ReadNodes(content.Manifest, content.Files);
       workflowCollections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
 
@@ -2646,6 +2655,7 @@
     nodeStatuses = new(StringComparer.Ordinal);
     latestRunResponse = null;
     ResetRun31();
+    resolve31 = pinnedResolve31;
     railOpen = new(StringComparer.Ordinal);
     unattestedNodes = new Dictionary<string, UnattestedNodes.Entry>(StringComparer.Ordinal);
     showRunDiagram = false;
@@ -5990,6 +6000,7 @@
 
   private async Task LoadJobResultLabelsAsync(string? packageRef)
   {
+    resolve31 = null;
     if (string.IsNullOrWhiteSpace(packageRef))
     {
       return;
@@ -5998,6 +6009,8 @@
     try
     {
       var content = await WorkflowService.GetCurrentPackageContentAsync(packageRef);
+      // #1510 (D12): the attached job's own package draws its run diagram
+      resolve31 = content.Resolve;
       var labels = WorkflowManifestReader.ReadResults(content.Manifest)
         .Select(result => result.Label)
         .Where(label => !string.IsNullOrWhiteSpace(label))
