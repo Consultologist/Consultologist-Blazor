@@ -478,10 +478,11 @@ public partial class RunDiagram31Tests
         Assert.Equal("ranNot", ClassOf(running, "node__refine"));
         Assert.Equal("ranNot", ClassOf(running, "deliverable__note"));
 
-        // a job that failed mid-loop: the engine writes no row for the loop (PlanRunner stops at the failure), so the same
+        // a job that failed mid-loop: the engine writes no row for the loop (PlanRunner stops at the failure), so its items
+        // still list; the job has ended, so the box is not running but takes the class of its worst item (D10)
         var failed = Draw("nested-note", Record(Row("node.sections:1", PlanKind.For, RowState.Completed), Row("node.sections:2", PlanKind.For, RowState.Failed, null)));
         Assert.Equal(["1: Completed", "2: Failed"], Added("nested-note", failed, "node__sections"));
-        Assert.Equal("running", ClassOf(failed, "node__sections"));
+        Assert.Equal("failed", ClassOf(failed, "node__sections"));
 
         // a while's passes likewise, and the list stays bounded (D10)
         var passes = Enumerable.Range(1, 14).Select(n => Row($"node.refine#{n}", PlanKind.While, RowState.Completed, detail: $$"""{ "pass": {{n}} }""")).ToArray();
