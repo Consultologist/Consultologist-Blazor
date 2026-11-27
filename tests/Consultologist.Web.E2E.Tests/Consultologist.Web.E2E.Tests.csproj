@@ -32,4 +32,10 @@
     <None Include="..\V31Diagram\Golden\*.dag.mmd" Link="Golden\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- #1510 (area 13, Task 10): the functions resolve golden, which the mocked 31 History page answers as the job's
+       resolve.json so its run diagram has a call box. -->
+  <ItemGroup>
+    <None Include="..\V31Resolve\Golden\functions.resolve.json" Link="Golden\V31Resolve\functions.resolve.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
