@@ -243,7 +243,7 @@ public class MigrateHardBreaksTests
     /// <paramref name="package"/> (its 30 files changed by <paramref name="change"/>) migrated pass by pass up to the
     /// hard-breaks pass, the working set returned for a test to change before it.
     /// </summary>
-    private static Migrated Passes(string package, Action<Dictionary<string, string>>? change = null)
+    internal static Migrated Passes(string package, Action<Dictionary<string, string>>? change = null)
     {
         var (json, read) = ByteEquivalenceFixtures.ReadPackage(package);
         var files = new Dictionary<string, string>(read, StringComparer.Ordinal);

@@ -199,6 +199,7 @@ internal static class MigrationFixture
         var keys = new Dictionary<string, string>(migrated.Keys, StringComparer.Ordinal);
         var strip = new Dictionary<string, string>(migrated.StripNodes, StringComparer.Ordinal);
         var breaks = new Dictionary<string, int>(migrated.HardBreaks, StringComparer.Ordinal);
+        var moved = new Dictionary<string, int>(migrated.MovedReads, StringComparer.Ordinal);
         foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
@@ -225,6 +226,7 @@ internal static class MigrationFixture
                 var removed = relative[..^DeletedSuffix.Length];
                 Assert.True(files.Remove(removed), $"{relative} removes {removed}, which the migration did not write.");
                 breaks.Remove(removed);
+                moved.Remove(removed);
                 foreach (var node in strip.Keys.Where(k => StripNodeFile(k) == removed).ToList())
                     strip.Remove(node);
                 continue;
@@ -241,10 +243,18 @@ internal static class MigrationFixture
                 breaks[relative] = count;
             else
                 breaks.Remove(relative);
+
+            // #1543 (ruling 2, D8): likewise the reads moved onto a line of their own: those the migration moved there, which
+            // the edit keeps, or as many as the edited body moves after an explicit hard break (an operator's edit written
+            // in the form the pass writes), whichever is more.
+            if (relative.EndsWith(".md", StringComparison.Ordinal) && Math.Max(migrated.MovedReads.GetValueOrDefault(relative), MovedReadsIn(text)) is var reads and > 0)
+                moved[relative] = reads;
+            else
+                moved.Remove(relative);
         }
 
         Assert.All(strip.Keys, k => Assert.True(files.ContainsKey(StripNodeFile(k)), $"{HandEditsStripNodes} names {k}, which the edited package does not hold."));
-        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip, HardBreaks = breaks };
+        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip, HardBreaks = breaks, MovedReads = moved };
     }
 
     /// <summary>
@@ -254,6 +264,14 @@ internal static class MigrationFixture
     /// </summary>
     private static int HardBreaksIn(string text) =>
         FrontMatter.Split(text) is { } split ? System.Text.RegularExpressions.Regex.Count(split.Body, @"(?<!\\)(?:\\\\)*\\(?=\r?\n)") : 0;
+
+    /// <summary>
+    /// The reads a file with a header moves onto a line of their own after an explicit hard break, as the block-reads pass
+    /// writes text before a read (D7): each tag that starts a line of its body directly after a line ending that follows an
+    /// odd number of <c>\</c>.
+    /// </summary>
+    private static int MovedReadsIn(string text) =>
+        FrontMatter.Split(text) is { } split ? System.Text.RegularExpressions.Regex.Count(split.Body, @"(?<!\\)(?:\\\\)*\\\r?\n\{\{") : 0;
 
     /// <summary>The file of the stripping node at rooted key <paramref name="key"/> (<c>node.a.b</c> is <c>nodes/a/b.md</c>).</summary>
     private static string StripNodeFile(string key) => "nodes/" + key["node.".Length..].Replace('.', '/') + ".md";

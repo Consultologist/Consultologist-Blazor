@@ -129,6 +129,53 @@ public class MarkdownLineEndingsTests
         Assert.Empty(Find("Sincerely,\n{{ if x }}{{ profile.name }}{{ end }}\nSample Oncology Clinic"));
     }
 
+    /// <summary>What <see cref="MarkdownLineEndings.TextBeside"/> says of the first tag of <paramref name="body"/> holding <paramref name="read"/>.</summary>
+    private static (bool Before, bool After) TextBeside(string body, string read)
+    {
+        var tag = TemplateTags.Scan(body).Tags.First(t => body[t.Start..t.End].Contains(read, StringComparison.Ordinal));
+        return MarkdownLineEndings.TextBeside(body, tag, t => RoleOf(body[t.Start..t.End]));
+    }
+
+    [Fact]
+    public void ATagBesideTheReadThatSpansLines_KeepsTheScanOnTheReadsLine()
+    {
+        // #1543 (D5; Task A4's review): a statement stepped over that spans lines ends the scan at its line ending: the text
+        // on the line before (or after) it is another line's, not text beside the read.
+        Assert.Equal((false, false), TextBeside("Seen at: {{ if x\n }}{{ profile.signature }}{{ x = 1\n }} (signed)", "profile.signature"));
+        // On one line, the same statements are stepped over and the text beyond them is beside the read.
+        Assert.Equal((true, true), TextBeside("Seen at: {{ if x }}{{ profile.signature }}{{ x = 1 }} (signed)", "profile.signature"));
+        // An inline read that spans lines is text where it stands beside the read.
+        Assert.Equal((true, false), TextBeside("{{ input.name\n | string.strip }}{{ profile.signature }}", "profile.signature"));
+    }
+
+    /// <summary><see cref="MarkdownLineEndings.WithBlockReadsAlone"/>'s text, and the tags it moved joined by a space.</summary>
+    private static (string Text, string Moved) Alone(string body)
+    {
+        var (text, moved) = MarkdownLineEndings.WithBlockReadsAlone(body, t => RoleOf(body[t.Start..t.End]));
+        return (text, string.Join(" ", moved.Select(t => body[t.Start..t.End])));
+    }
+
+    [Fact]
+    public void WithBlockReadsAlone_MovesEachReadOntoItsLine_AndDropsNothing()
+    {
+        // #1543 (ruling 2, D7): \ and a line ending before the read (and the tags stepped over beside it), a plain line
+        // ending after it; a read alone, or an inline read, is left; written twice, nothing more moves.
+        Assert.Equal(("Regards, \\\n{{ profile.signature }}", "{{ profile.signature }}"), Alone("Regards, {{ profile.signature }}"));
+        Assert.Equal(("{{ profile.signature }}\n (dictated)", "{{ profile.signature }}"), Alone("{{ profile.signature }} (dictated)"));
+        Assert.Equal(
+            ("Referred for: \\\n{{ if x }}{{ profile.closing }}{{ end }}\n (from the intake form).", "{{ profile.closing }}"),
+            Alone("Referred for: {{ if x }}{{ profile.closing }}{{ end }} (from the intake form)."));
+        // Two block reads side by side move as one, with one line ending on each side.
+        Assert.Equal(
+            ("Signed: \\\n{{ profile.signature }}{{ profile.closing }}\n.", "{{ profile.signature }} {{ profile.closing }}"),
+            Alone("Signed: {{ profile.signature }}{{ profile.closing }}."));
+        Assert.Equal(("Sincerely,\n{{ profile.closing }}\n", ""), Alone("Sincerely,\n{{ profile.closing }}\n"));
+        Assert.Equal(("Dictated by {{ profile.name }}.", ""), Alone("Dictated by {{ profile.name }}."));
+        var once = Alone("Regards,  {{ profile.signature }} (dictated)\nNext line.").Text;
+        Assert.Equal("Regards,  \\\n{{ profile.signature }}\n (dictated)\nNext line.", once);
+        Assert.Equal((once, ""), Alone(once));
+    }
+
     [Fact]
     public void ALineEndingInsideATag_IsNotFound()
     {
