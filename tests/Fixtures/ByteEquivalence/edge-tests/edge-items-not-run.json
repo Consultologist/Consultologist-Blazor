@@ -35,7 +35,7 @@
       },
       "deliverable.problem_list": {
         "state": "released",
-        "text": "\\- Type 2 diabetes with an HbA1c of 71 mmol\\/mol \\(fictional\\)\\: Diabetes paragraph\\: HbA1c 71 mmol\\/mol\\.\n\\- Metformin 1 g twice daily\\, continued \\(fictional\\)\\: Medication paragraph\\: metformin continued\\."
+        "text": "\\- Type 2 diabetes with an HbA1c of 71 mmol\\/mol \\(fictional\\)\\: Diabetes paragraph\\: HbA1c 71 mmol\\/mol\\.  \n\\- Metformin 1 g twice daily\\, continued \\(fictional\\)\\: Medication paragraph\\: metformin continued\\."
       }
     }
   }
