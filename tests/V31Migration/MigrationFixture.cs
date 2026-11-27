@@ -248,11 +248,12 @@ internal static class MigrationFixture
     }
 
     /// <summary>
-    /// The explicit hard breaks of a file with a header: the line endings of its body after an odd number of <c>\</c> (an even
-    /// number is escaped backslashes, which break nothing).
+    /// The explicit hard breaks of a file with a header: the line endings of its body (<c>\n</c> or <c>\r\n</c>, as the rule
+    /// <c>explicit-hard-break</c> reads them) after an odd number of <c>\</c> (an even number is escaped backslashes, which
+    /// break nothing).
     /// </summary>
     private static int HardBreaksIn(string text) =>
-        FrontMatter.Split(text) is { } split ? System.Text.RegularExpressions.Regex.Count(split.Body, @"(?<!\\)(?:\\\\)*\\\n") : 0;
+        FrontMatter.Split(text) is { } split ? System.Text.RegularExpressions.Regex.Count(split.Body, @"(?<!\\)(?:\\\\)*\\(?=\r?\n)") : 0;
 
     /// <summary>The file of the stripping node at rooted key <paramref name="key"/> (<c>node.a.b</c> is <c>nodes/a/b.md</c>).</summary>
     private static string StripNodeFile(string key) => "nodes/" + key["node.".Length..].Replace('.', '/') + ".md";

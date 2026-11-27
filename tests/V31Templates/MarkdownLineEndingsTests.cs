@@ -45,6 +45,11 @@ public class MarkdownLineEndingsTests
     {
         Assert.Empty(MarkdownLineEndings.Find("Dear {{ input.name ~}}\nthank you for seeing her."));
         Assert.Empty(MarkdownLineEndings.Find("Dear {{ input.name ~}}  \nthank you for seeing her."));
+
+        // A comment closed by ~}} removes the line ending too, though it renders nothing (Scan lists no such tag).
+        const string Comment = "Dear Dr A. Sample {{# salutation ~}}\nthank you for seeing her.";
+        Assert.Empty(MarkdownLineEndings.Find(Comment));
+        Assert.Equal((Comment, 0), MarkdownLineEndings.WithHardBreaks(Comment));
     }
 
     [Fact]

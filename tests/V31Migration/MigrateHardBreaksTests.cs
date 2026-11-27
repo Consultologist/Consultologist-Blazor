@@ -69,6 +69,43 @@ public class MigrateHardBreaksTests
     }
 
     [Fact]
+    public void AMacroASnippetAPromptPlacesPlaces_EndsItsLinesWithABackslash()
+    {
+        // example-macros' summary prompt places the snippet style, which places macro.house_style: inside a prompt that read is
+        // the macro's marker (part 05 § 3.1: a snippet reads what the template that places it reads), never its body. The
+        // macro's body, written here as two lines, reaches the deliverable through the marker, so it is broken and said.
+        const string Body = "Reviewed against\nthe house style.";
+        var result = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["macros/house_style.md"] = files["macros/house_style.md"].Replace(
+            "Reviewed against the house style.", Body, StringComparison.Ordinal));
+
+        Assert.Contains("{{ macro.house_style }}", MigrateNodesTests.Md(result, "snippets/style.md").Body, StringComparison.Ordinal);
+        Assert.StartsWith("Reviewed against\\\nthe house style.", MigrateNodesTests.Md(result, "macros/house_style.md").Body, StringComparison.Ordinal);
+        Assert.Equal(new Dictionary<string, int> { ["macros/house_style.md"] = 1 }, result.HardBreaks);
+        Assert.Single(result.Notices, n => n.StartsWith("In 'macros/house_style.md', 1 line endings", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("'macros/house_style.md'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnEditedBody_IsRecountedWhateverItsLineEndings()
+    {
+        // An operator's edit laid over the migrated files is recounted as the rule reads a break: a \ before \n or \r\n, after
+        // an odd number of \ (an even number is escaped backslashes).
+        var folder = Directory.CreateTempSubdirectory("hard-breaks-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(folder, "snippets"));
+            File.WriteAllText(Path.Combine(folder, "snippets", "letterhead.md"),
+                "---\n{\"label\":\"Letterhead\",\"description\":null,\"if\":null,\"format\":\"markdown_block\"}\n---\nRiverside Clinic (fictional)\\\r\n12 Sample Street\\\\\r\nSampletown\\\nSample County\n");
+            var edited = MigrationFixture.Overlay(MigrateNodesTests.Migrated("composer-macros"), folder);
+            Assert.Equal(2, edited.HardBreaks["snippets/letterhead.md"]);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void APlainTextDeliverable_IsLeftAsWritten()
     {
         // Every deliverable the migration writes is markdown_block, so the pass is run on one whose format is set to
