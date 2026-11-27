@@ -132,9 +132,12 @@ public class DiagramGoldenTests
             next = found + 1;
         }
 
-        Assert.Equal(
-            ["    classDef modelDerived stroke-dasharray: 5 5", "    class node__sections_draft__route__narrative_draft,node__sections_draft__route__table_draft modelDerived"],
-            drawn.Except(spec));
+        string[] added =
+            ["    classDef modelDerived stroke-dasharray: 5 5", "    class node__sections_draft__route__narrative_draft,node__sections_draft__route__table_draft modelDerived"];
+        Assert.Equal(added, drawn.Except(spec));
+        // And nothing written twice: the drawing is the spec's lines, those two and the text's final line end, no more.
+        Assert.Equal(spec.Length + added.Length + 1, drawn.Length);
         Assert.Equal("    style checks stroke-width:3px", drawn[^2]);
+        Assert.Equal("", drawn[^1]);
     }
 }

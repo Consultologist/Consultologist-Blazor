@@ -468,7 +468,13 @@ public class DiagramModelTests
         string Called(string from) => "fn_" + DiagramModel.IdOf(from["function.".Length..]);
         // D5: an aligned edge is drawn only from a check loop's frame; one into a production loop (over another loop's .items) gets its for edge alone.
         bool Aligned(string to) => to.StartsWith("check.", StringComparison.Ordinal);
-        var edges = JsonNode.Parse(resolve)!["graph"]!["edges"]!.AsArray()
+        var document = JsonNode.Parse(resolve)!;
+        // Whether the entry drawn as box key renders from: a renders step's source is that path or a member of it.
+        bool Renders(string key, string from) => new[] { "nodes", "checks", "deliverables" }
+            .Select(map => document[map]?[key]?["renders"] as JsonArray).OfType<JsonArray>().SelectMany(steps => steps.OfType<JsonObject>())
+            .Select(step => step["source"] is JsonValue source && source.TryGetValue<string>(out var path) ? path : null)
+            .Any(path => path == from || path?.StartsWith(from + ".", StringComparison.Ordinal) == true);
+        var edges = document["graph"]!["edges"]!.AsArray()
             .Select(e => (From: (string)e!["from"]!, To: (string)e["to"]!, Kind: (string)e["kind"]!))
             .Where(e => (e.Kind is "reads" or "if" or "for" or "ret" or "gates" && drawn.Contains(e.From) && drawn.Contains(e.To)) || (e.Kind == "placed" && Placed(e.From, e.To))
                 || (e.Kind == "calls" && e.From.StartsWith("function.", StringComparison.Ordinal) && frames.Contains(Called(e.From)) && drawn.Contains(e.To))
@@ -483,9 +489,11 @@ public class DiagramModelTests
             var target = DiagramModel.IdOf(to);
             // A read piped through renderers enters the reader's first renderer box (D7), which feeds the reader. A snippet
             // is a pill: what its body reads (graph.edges writes its renderer step's source into it) is drawn into what
-            // places it, whose renders the compiler gives that step (example-v12-constructs' closing).
+            // places it, whose renders the compiler gives that step (example-v12-constructs' closing). Only an entry the pill
+            // feeds whose renders name the source stands in for the pill; any other read into a snippet is the pill's own.
             var into = to.StartsWith("snippet.", StringComparison.Ordinal)
-                ? model.Edges.Where(e => e.From == target).Select(e => e.To).ToHashSet()
+                ? model.Edges.Where(e => e.From == target).Select(e => e.To)
+                    .Where(id => model.AllBoxes().Any(b => b.Id == id && Renders(b.Key, from))).Append(target).ToHashSet()
                 : [target];
             var readers = model.AllBoxes().Where(b => into.Contains(b.Id)).Select(b => b.Key)
                 .SelectMany(key => model.AllBoxes().Where(b => b.Key == key || b.Key.StartsWith(key + "#render:", StringComparison.Ordinal)))
