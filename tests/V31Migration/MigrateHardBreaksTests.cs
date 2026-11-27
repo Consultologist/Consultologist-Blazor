@@ -111,6 +111,22 @@ public class MigrateHardBreaksTests
     }
 
     [Fact]
+    public void TheLineAboveABlockRead_GetsNoBackslash()
+    {
+        // #1543 (the owner's ruling of 2026-11-27, item 3): beside a line holding only a block read (the signature) the
+        // migration writes a blank line, never \: the hard-breaks pass alone leaves the line ending as it is.
+        var m = Passes("example-macros", files => files["macros/house_style.md"] = files["macros/house_style.md"].Replace(
+            "Reviewed against the house style.", "Sincerely,\n{{ profile.signature }}", StringComparison.Ordinal));
+        var body = m.Sources["macros/house_style.md"].Body;
+        Assert.Contains("Sincerely,\n{{ profile.signature }}", body, StringComparison.Ordinal);
+
+        Migrate.HardBreaks(m);
+
+        Assert.Equal(body, m.Sources["macros/house_style.md"].Body);
+        Assert.False(m.HardBreaks.ContainsKey("macros/house_style.md"));
+    }
+
+    [Fact]
     public void OneLineEnding_SaysLineEnding_TwoSayLineEndings()
     {
         // #1543 (ruling 10): A10-091's count agrees with its noun.
