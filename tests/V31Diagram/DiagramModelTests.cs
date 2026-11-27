@@ -159,6 +159,102 @@ public class DiagramModelTests
         Assert.Contains("    input__include_billing -.->|\"if\"| node__billing", DiagramWriter.Write(model).Split('\n'));
     }
 
+    /// <summary>A leaf whose <c>if</c> and prompt both read <c>input.include_billing.value</c>, with <paramref name="edges"/> as its <c>graph.edges</c> (null: none).</summary>
+    private static string IfAndBodyRead(JsonArray? edges, string bodyRead = "input.include_billing.value")
+    {
+        var gated = Agent("billing", "Drafting the billing section", "plaintext",
+            new[] { "input.consult_draft.content", bodyRead, "input.include_billing.value" }.Distinct().Order(StringComparer.Ordinal).ToArray());
+        gated["if"] = JsonNode.Parse("""{"===":[{"var":"input.include_billing.value"},true]}""");
+        var document = JsonNode.Parse(Document(("node.billing", gated)))!.AsObject();
+        if (edges == null)
+            document["graph"]!.AsObject().Remove("edges");
+        else
+            document["graph"]!["edges"] = edges;
+        return document.ToJsonString();
+    }
+
+    private static JsonObject GraphEdge(string from, string kind, string to) => new() { ["from"] = from, ["kind"] = kind, ["to"] = to };
+
+    [Fact]
+    public void AReadOfTheIfAndTheBody_DrawsTheDataEdgeAndTheIfEdge_WhenGraphEdgesHoldsBoth()
+    {
+        var model = DiagramModel.Build(IfAndBodyRead(
+        [
+            GraphEdge("input.consult_draft", "reads", "node.billing"),
+            GraphEdge("input.include_billing", "reads", "node.billing"),
+            GraphEdge("input.include_billing", "if", "node.billing"),
+        ]));
+
+        Assert.Equal(
+            [
+                new DiagramEdge("input__consult_draft", "node__billing", EdgeStyle.Read, "content"),
+                new DiagramEdge("input__include_billing", "node__billing", EdgeStyle.Read, "value"),
+                new DiagramEdge("input__include_billing", "node__billing", EdgeStyle.If, "if"),
+            ],
+            model.Edges);
+    }
+
+    [Fact]
+    public void AReadOfTheIfAndTheBody_DrawsTheIfEdgeOnly_WithoutGraphEdges()
+    {
+        var resolve = IfAndBodyRead(null);
+
+        var model = DiagramModel.Build(resolve);
+
+        Assert.Equal(
+            [
+                new DiagramEdge("input__consult_draft", "node__billing", EdgeStyle.Read, "content"),
+                new DiagramEdge("input__include_billing", "node__billing", EdgeStyle.If, "if"),
+            ],
+            model.Edges);
+        Assert.Contains("    input__include_billing -.->|\"if\"| node__billing", Lines(resolve));
+    }
+
+    [Fact]
+    public void AConditionOnlyRead_DrawsNoDataEdge_WhenGraphEdgesHoldsOnlyTheIf()
+    {
+        var model = DiagramModel.Build(IfAndBodyRead(
+        [
+            GraphEdge("input.consult_draft", "reads", "node.billing"),
+            GraphEdge("input.include_billing", "if", "node.billing"),
+        ]));
+
+        Assert.DoesNotContain(model.Edges, e => e.From == "input__include_billing" && e.Style == EdgeStyle.Read);
+        Assert.Contains(new DiagramEdge("input__include_billing", "node__billing", EdgeStyle.If, "if"), model.Edges);
+    }
+
+    [Fact]
+    public void AReadsEdgeAnotherMemberExplains_DrawsNoDataEdgeForTheConditionsMember()
+    {
+        // The body reads input.include_billing.label, the if its value: graph.edges' reads edge (per key, not per member) is the label's.
+        var model = DiagramModel.Build(IfAndBodyRead(
+        [
+            GraphEdge("input.consult_draft", "reads", "node.billing"),
+            GraphEdge("input.include_billing", "reads", "node.billing"),
+            GraphEdge("input.include_billing", "if", "node.billing"),
+        ], bodyRead: "input.include_billing.label"));
+
+        Assert.Contains(new DiagramEdge("input__include_billing", "node__billing", EdgeStyle.Read, "label"), model.Edges);
+        Assert.DoesNotContain(new DiagramEdge("input__include_billing", "node__billing", EdgeStyle.Read, "value"), model.Edges);
+        Assert.Contains(new DiagramEdge("input__include_billing", "node__billing", EdgeStyle.If, "if"), model.Edges);
+    }
+
+    [Fact]
+    public void ALoopWithNoNodes_DrawsNoFrame_AndItsListFeedsItsSummaryBox()
+    {
+        var empty = For("points", "Each point", "input.points.value", "node.points.draft");
+        var idle = new JsonObject { ["id"] = "idle", ["kind"] = "while", ["label"] = "Idling", ["while"] = true, ["max"] = 2, ["nodes"] = new JsonArray() };
+
+        var model = DiagramModel.Build(Document(("node.points", empty), ("node.idle", idle)));
+        var lines = DiagramWriter.Write(model).Split('\n');
+
+        Assert.Empty(model.Root.Frames);
+        Assert.DoesNotContain(lines, l => l.TrimStart().StartsWith("subgraph", StringComparison.Ordinal));
+        Assert.Contains(new DiagramEdge("input__points", "node__points", EdgeStyle.Read, "for"), model.Edges);
+        Assert.Contains("    input__points -->|\"for\"| node__points", lines);
+        Assert.Contains(model.AllBoxes(), b => b.Key == "node.idle");
+    }
+
     [Fact]
     public void APartsIf_IsAnIfEdgeIntoTheNode()
     {
@@ -329,15 +425,22 @@ public class DiagramModelTests
     [InlineData("{}")]
     [InlineData("[]")]
     [InlineData("not json")]
-    [InlineData("""{"nodes":{"node.x":{}},"deliverables":{"deliverable.y":{}},"graph":{"order":"x"}}""")]
-    [InlineData("""{"nodes":{"node.x":{"kind":"agent","reads":5,"label":7,"format":[]}},"inputs":[],"inputOrder":{"a":1}}""")]
-    [InlineData("""{"nodes":{"node.l":{"kind":"for","nodes":["node.l.gone"]},"node.w":{"kind":"while"},"node.i":{"kind":"if","then":7},"node.c":{"kind":"case","branches":[1,{"when":null}]}}}""")]
+    [InlineData("""{"nodes":{},"nodes":{}}""")]
+    [InlineData("""{"nodes":{"node.x":{},"node.x":{}}}""")]
+    [InlineData("""{"nodes":{"node.x":{}},"deliverables":{"deliverable.y":{}},"graph":{"order":"x"}}""", "    node__x[\"x\"]", "    deliverable__y{{\"y\"}}")]
+    [InlineData("""{"nodes":{"node.x":{"kind":"agent","reads":5,"label":7,"format":[]}},"inputs":[],"inputOrder":{"a":1}}""", "    node__x[\"x<br/>agent → ?\"]")]
+    [InlineData("""{"nodes":{"node.l":{"kind":"for","nodes":["node.l.gone"]},"node.w":{"kind":"while"},"node.i":{"kind":"if","then":7},"node.c":{"kind":"case","branches":[1,{"when":null}]}}}""",
+        "    node__l[\"l<br/>item in ?\"]", "    node__w[\"w<br/>while null — at most —\"]", "    node__i[\"i<br/>if null\"]", "    node__c[\"c<br/>case ?\"]")]
+    // A loop that lists itself is in a body, so no top-level entry: nothing is drawn.
     [InlineData("""{"nodes":{"node.a":{"kind":"for","nodes":["node.a"],"ret":"node.a","in":"node.a.items"}}}""")]
-    public void AResolveWithMembersMissing_StillDraws(string resolve)
+    public void AResolveWithMembersMissing_StillDraws(string resolve, params string[] boxes)
     {
         var text = PackageDiagram.Generate(resolve);
 
         Assert.StartsWith("---\nconfig:\n  layout: elk\n---\nflowchart TD\n", text, StringComparison.Ordinal);
+        var lines = text.Split('\n');
+        foreach (var box in boxes)
+            Assert.Contains(box, lines);
     }
 
     [Fact]

@@ -31,6 +31,15 @@ public class DiagramWriterTests
     }
 
     [Fact]
+    public void AHashInPackageText_IsEscapedFirst_SoNoEntityIsDecoded()
+    {
+        // Mermaid decodes #name; and #35; as entities: a package's own '#' is written #35;, before the writer's #quot;, #lt;, #gt;.
+        var lines = Lines(Document(("node.hashed", Agent("hashed", "item #35; and See note #quot; for \"x\"", "plaintext"))));
+
+        Assert.Contains("    node__hashed[\"hashed<br/>item #35;35; and See note #35;quot; for #quot;x#quot;<br/>agent → plaintext · generated\"]", lines);
+    }
+
+    [Fact]
     public void AnEdgeLabelAndAFrameTitle_AreEscaped()
     {
         var model = new DiagramModel(
