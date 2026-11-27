@@ -97,4 +97,21 @@ public class MarkdownLineEndingsTests
         Assert.Equal((once, 0), MarkdownLineEndings.WithHardBreaks(once));
         Assert.Equal(("Dear Dr A. Sample", 0), MarkdownLineEndings.WithHardBreaks("Dear Dr A. Sample"));
     }
+
+    /// <summary>Markdown Markdig's parse refuses as nested too deeply (as <c>PlainConversionTests.TooDeep</c>), each with line endings in it.</summary>
+    public static TheoryData<string> TooDeep() =>
+    [
+        string.Concat(Enumerable.Repeat("> ", 200)) + "Margaret Okafor\n12 Sample Street",
+        string.Concat(Enumerable.Range(0, 300).Select(i => new string(' ', i * 2) + "- level\n")),
+        new string('[', 50_000) + "\nSampletown",
+    ];
+
+    [Theory]
+    [MemberData(nameof(TooDeep))]
+    public void MarkdownTooDeepToParse_HasNoHits_NeverAThrow(string body)
+    {
+        // a publish warning pass and a migration pass must not turn into a failure
+        Assert.Empty(MarkdownLineEndings.Find(body));
+        Assert.Equal((body, 0), MarkdownLineEndings.WithHardBreaks(body));
+    }
 }

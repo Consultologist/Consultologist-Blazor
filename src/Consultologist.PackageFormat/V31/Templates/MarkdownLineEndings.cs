@@ -22,7 +22,7 @@ public static class MarkdownLineEndings
 {
     /// <summary>
     /// The offsets in <paramref name="body"/> of the line endings to break (each a <c>\n</c>, or the <c>\r</c> of a
-    /// <c>\r\n</c>), in order; none for a body whose tags do not close.
+    /// <c>\r\n</c>), in order; none for a body whose tags do not close, or that Markdig refuses to parse (nested too deeply).
     /// </summary>
     public static IReadOnlyList<int> Find(string body)
     {
@@ -40,7 +40,18 @@ public static class MarkdownLineEndings
         // Lines are read in the masked text, where a line ending inside a tag is none.
         var text = new string(masked);
         var found = new List<int>();
-        var document = Markdown.Parse(text, ConsultMarkdown.Pipeline31);
+        MarkdownDocument document;
+        try
+        {
+            document = Markdown.Parse(text, ConsultMarkdown.Pipeline31);
+        }
+        catch (Exception)
+        {
+            // Markdig refuses text nested too deeply (as PlainConversion guards it): no hit, so a warning pass and a
+            // migration pass never turn into a failure.
+            return [];
+        }
+
         foreach (var lineBreak in document.Descendants<LineBreakInline>())
         {
             if (lineBreak.IsHard || !InParagraph(lineBreak) || LineEndingAt(text, lineBreak.Span.Start) is not { } at)
