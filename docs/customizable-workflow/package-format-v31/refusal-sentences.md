@@ -500,3 +500,4 @@ The build's area sentences for area 12, which are not rows of `sentences.json` a
 | A12-004 | [5.3 Checks before submission](09-engine-and-pages.md#53-checks-before-submission) | *"The workflow's checks couldn't be run. Reload the page to try again."* | clinician | |
 | A12-005 | [6. History](09-engine-and-pages.md#6-history) | *"The record couldn't be checked: \<what could not be read\>."* | clinician | |
 | A12-006 | [5.1 Inputs](09-engine-and-pages.md#51-inputs) | *"This workflow can't be filled in here: this page has no field for '\<input label\>'. Tell the operator."* | clinician | |
+| A12-007 | [6.4 The sections, in the order the job runs](09-engine-and-pages.md#64-the-sections-in-the-order-the-job-runs) | *"The template this job ran couldn't be read, so it isn't shown."* | clinician | |

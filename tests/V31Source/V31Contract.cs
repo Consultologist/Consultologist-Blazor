@@ -178,6 +178,7 @@ internal static class V31Contract
         ["A12-004"] = "clinician",
         ["A12-005"] = "clinician",
         ["A12-006"] = "clinician",
+        ["A12-007"] = "clinician",
     };
 
     /// <summary>
@@ -185,7 +186,8 @@ internal static class V31Contract
     /// task that first says it (A12-006, Task 9: an input whose format the Create page has no widget for, part 09 § 5.1;
     /// A12-004, Task 11: the start checks could not be asked before a 31 start, part 09 § 5.3; A12-002, Task 12: a
     /// released deliverable's text dropped by the retention sweep, on the Create page's 31 run view, part 08 § 11;
-    /// A12-001, A12-003 and A12-005, Task 14: a stopped job, a body that differs from run to run, and a record Verify could not read, part 09 § 6).
+    /// A12-001, A12-003 and A12-005, Task 14: a stopped job, a body that differs from run to run, and a record Verify could not read, part 09 § 6;
+    /// A12-007, Task 20: a deliverable's template the pinned version does not give, part 09 § 6.4).
     /// </summary>
     private static readonly Dictionary<string, string> PagesAreaSentences = new()
     {
@@ -195,6 +197,7 @@ internal static class V31Contract
         ["A12-004"] = "The workflow's checks couldn't be run. Reload the page to try again.",
         ["A12-005"] = "The record couldn't be checked: <what could not be read>.",
         ["A12-006"] = "This workflow can't be filled in here: this page has no field for '<input label>'. Tell the operator.",
+        ["A12-007"] = "The template this job ran couldn't be read, so it isn't shown.",
     };
 
     /// <summary>

@@ -581,7 +581,11 @@ grouped by template line, expandable per pass, each with size and hash; one line
 sent with the sentence. A deliverable whose gating check was skipped by its own `if` shows
 *"released: check '<id>' didn't apply (its if was false)"*; a bundle lists what it left out and why
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)). Profile reads show the field and its hash, never its text after the
-7-day drop; the signature read names the block's id.
+7-day drop; the signature read names the block's id. **A blocked deliverable's text** is shown under the heading
+*"Refused, not delivered"*, with the check that refused it and its sentence, so nobody copies it out by mistake: the
+panel has no copy control and cannot be selected, and the text is in no copy or download the page offers. It is shown
+while it is retained (7 days); after that the heading and the hash remain, with A12-002 (ruled by the owner on #1507,
+item 3). There is no release button at 31: releasing after review is #1524, Milestone 40.
 
 ### 6.5 Test results
 
