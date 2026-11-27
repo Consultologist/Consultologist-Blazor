@@ -31,17 +31,19 @@ public class MigrateFlowsTests
     [Fact]
     public void TheNestedNotesLoops_AreTheSpecsExamples()
     {
-        // Part 04 § 2.8: the 30 loop parts, renamed sections by the hand choice (§ 1.9, D6).
+        // Part 04 § 2.8: the 30 loop parts, renamed sections by the hand choice (§ 1.9, D6). #1510 (item 1; F-D1): the
+        // note reads the loop's .content, so each loop returns its items through a node that strips them, as 30 did; the
+        // outer loop's items are then the stripped text of the inner loop's rendering.
         var result = Migrated("example-nested-note");
 
         AssertExample("""
             { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
-              "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "markdown_block" } } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "node.plan.value.sections",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": "title",
-              "nodes": ["outline", "paragraphs"], "ret": "node.sections.paragraphs" }
+              "nodes": ["outline", "paragraphs", "paragraphs_stripped"], "ret": "node.sections.paragraphs_stripped" }
             """, Json(result, "nodes/sections/index.json"), SourceShapes.FlowFor);
         AssertExample("""
             { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
@@ -50,7 +52,7 @@ public class MigrateFlowsTests
               "in": "node.outline.value.points",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": null,
-              "nodes": ["draft_paragraph"], "ret": "node.sections.paragraphs.draft_paragraph" }
+              "nodes": ["draft_paragraph", "draft_paragraph_stripped"], "ret": "node.sections.paragraphs.draft_paragraph_stripped" }
             """, Json(result, "nodes/sections/paragraphs/index.json"), SourceShapes.FlowFor);
     }
 
@@ -64,7 +66,7 @@ public class MigrateFlowsTests
               "in": "input.sections.value",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": "title",
-              "nodes": ["route"], "ret": "node.sections_draft.route" }
+              "nodes": ["route", "route_stripped"], "ret": "node.sections_draft.route_stripped" }
             """, Json(Migrated("example-conditional-sections"), "nodes/sections_draft/index.json"), SourceShapes.FlowFor);
     }
 
@@ -78,8 +80,8 @@ public class MigrateFlowsTests
               "in": "snippet.standards",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": "title",
-              "nodes": ["section_instructions", "patient_section_draft", "standard_section_draft"],
-              "ret": "node.standards.section_instructions" }
+              "nodes": ["section_instructions", "patient_section_draft", "standard_section_draft", "section_instructions_stripped"],
+              "ret": "node.standards.section_instructions_stripped" }
             """, Json(Migrated("test/general"), "nodes/standards/index.json"), SourceShapes.FlowFor);
     }
 
@@ -179,7 +181,7 @@ public class MigrateFlowsTests
         Assert.Null(letters["maxParallel"]);
         Assert.Equal(JsonNode.Parse("""{ "===": [ { "var": "node.read_letter.value.answers_question" }, true ] }""")!.ToJsonString(),
             letters["until"]!.ToJsonString());
-        Assert.Equal("node.letters.letter_summary", (string?)letters["ret"]);
+        Assert.Equal("node.letters.letter_summary_stripped", (string?)letters["ret"]); // #1510: the note reads its .content
 
         var sections = Json(Migrated("composer-sources"), "nodes/section_loop/index.json");
         Assert.True(sections["parallel"]!.GetValue<bool>());
@@ -363,6 +365,100 @@ public class MigrateFlowsTests
                 Assert.True(result.Files.ContainsKey($"{folder}/{child}.md") || result.Files.ContainsKey($"{folder}/{child}/index.json"), $"{package}: {ret}");
             }
         }
+    }
+
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 1; F-D1, F-D2): 30 trimmed each item of a loop it composed; at 31 a loop's
+    /// <c>.content</c> is the engine's rendering of its items. So a <c>for</c> whose <c>.content</c> is read returns each item
+    /// through a new <c>rendered</c> node, the last of its body, that strips the old <c>ret</c>'s text, runs only when the old
+    /// <c>ret</c> completed, and writes Markdown exactly when the old <c>ret</c> did; the reads of <c>.content</c> stay as written.
+    /// </summary>
+    [Fact]
+    public void AForWhoseContentIsRead_ReturnsItsItemsThroughAStrippingNode()
+    {
+        var result = Migrated("composer-sources");
+
+        var loop = Json(result, "nodes/topic_loop/index.json");
+        Assert.Equal("node.topic_loop.topic_gate_stripped", (string?)loop["ret"]);
+        Assert.Equal(["topic_gate", "topic_gate_stripped"], loop["nodes"]!.AsArray().Select(n => (string?)n));
+        Assert.Equal(Compact("""{ "type": "array", "items": { "$ref": "markdown_block" } }"""), loop["format"]!.ToJsonString());
+
+        var (header, body) = Md(result, "nodes/topic_loop/topic_gate_stripped.md");
+        Assert.Equal(SourceShapes.NodeRendered.Members.Select(m => m.Name), header.Select(m => m.Key));
+        Assert.Equal(("rendered", "computed", "Drafted topics only", "markdown_block"),
+            ((string?)header["kind"], (string?)header["producer"], (string?)header["label"], (string?)header["format"]));
+        Assert.Null(header["description"]);
+        Assert.Equal(Compact("""{ "===": [ { "var": "node.topic_gate.state" }, "completed" ] }"""), header["if"]!.ToJsonString());
+        Assert.Equal("{{ node.topic_gate.content | string.strip }}", body);
+        Assert.Equal("node.topic_loop.topic_gate", result.StripNodes["node.topic_loop.topic_gate_stripped"]);
+
+        const string notice = "Loop 'topic_loop' returns each item through the new node 'topic_gate_stripped', which strips the item's text as specVersion 30 did.";
+        Assert.Single(result.Notices, n => n == notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-088", notice, ""));
+
+        // The reads of the loop's .content are as written; the new node has no 30 id.
+        Assert.Contains("{{ node.topic_loop.content }}", Md(result, "nodes/opening.md").Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(result.Keys.Values, k => k.EndsWith("_stripped", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// #1510 (F-D1, F-D2): a loop over a loop strips the inner loop's rendering, which is Markdown whatever its items' format,
+    /// so the outer loop's items are lists no more but the new node's text; the inner loop, whose <c>.content</c> the new node
+    /// reads, strips its own items too, as 30 trimmed both.
+    /// </summary>
+    [Fact]
+    public void ALoopOverALoop_StripsAtEachLevel()
+    {
+        var result = Migrated("composer-sources");
+
+        var outer = Json(result, "nodes/section_loop/index.json");
+        Assert.Equal("node.section_loop.point_loop_stripped", (string?)outer["ret"]);
+        Assert.Equal(Compact("""{ "type": "array", "items": { "$ref": "markdown_block" } }"""), outer["format"]!.ToJsonString());
+        var (header, body) = Md(result, "nodes/section_loop/point_loop_stripped.md");
+        Assert.Equal(("Points", "markdown_block"), ((string?)header["label"], (string?)header["format"]));
+        Assert.Equal("{{ node.point_loop.content | string.strip }}", body);
+
+        var inner = Json(result, "nodes/section_loop/point_loop/index.json");
+        Assert.Equal("node.section_loop.point_loop.draft_point_stripped", (string?)inner["ret"]);
+        Assert.Equal("{{ node.draft_point.content | string.strip }}", Md(result, "nodes/section_loop/point_loop/draft_point_stripped.md").Body);
+    }
+
+    /// <summary>#1510 (F-D1): a loop whose <c>.content</c> nothing reads (read only through <c>.items</c>) keeps its <c>ret</c>.</summary>
+    [Fact]
+    public void AForWhoseContentNobodyReads_IsLeftAsItWas()
+    {
+        var result = Migrated("example-prior-letters", root =>
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single()["sources"] = new JsonArray("node.assessment"));
+
+        Assert.Contains("node.letters.items", Md(result, "nodes/assessment.md").Body, StringComparison.Ordinal);
+        var loop = Json(result, "nodes/letters/index.json");
+        Assert.Equal("node.letters.letter_summary", (string?)loop["ret"]);
+        Assert.DoesNotContain(result.Files.Keys, f => f.EndsWith("_stripped.md", StringComparison.Ordinal));
+        Assert.Empty(result.StripNodes);
+        Assert.DoesNotContain(result.Notices, n => n.StartsWith("Loop 'letters' returns", StringComparison.Ordinal));
+    }
+
+    /// <summary>#1510 (F-D2): the new node's id is fitted and numbered as a classifier's is, when a node already has it.</summary>
+    [Fact]
+    public void AStrippingNodesId_AvoidsATakenId()
+    {
+        var result = Migrated("composer-sources", root =>
+        {
+            // A body node of that id, which the topic's draft reads.
+            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "topic_gate_stripped", ["label"] = "A taken id", ["format"] = "prose" });
+            Node(root, "topic_loop")["nodes"]!.AsArray().Insert(0, "topic_gate_stripped");
+        }, files =>
+        {
+            files["prompts/topic_gate_stripped.md"] = "Write one line on the topic \"{{ item.value.title }}\".\n";
+            files["prompts/draft_topic.md"] += "\n{{ node.topic_gate_stripped.content }}\n";
+        });
+
+        var loop = Json(result, "nodes/topic_loop/index.json");
+        Assert.Equal("node.topic_loop.topic_gate_stripped_2", (string?)loop["ret"]);
+        Assert.Equal(["topic_gate_stripped", "topic_gate", "topic_gate_stripped_2"], loop["nodes"]!.AsArray().Select(n => (string?)n));
+        Assert.Equal("{{ node.topic_gate.content | string.strip }}", Md(result, "nodes/topic_loop/topic_gate_stripped_2.md").Body);
+        Assert.Contains("Renamed 'topic_gate_stripped' to 'topic_gate_stripped_2'; 'topic_gate_stripped' was already taken.", result.Notices);
+        Assert.Contains("Loop 'topic_loop' returns each item through the new node 'topic_gate_stripped_2', which strips the item's text as specVersion 30 did.", result.Notices);
     }
 
     [Fact]

@@ -561,7 +561,7 @@ public class MigrateMacrosTests
         AssertHandEdit(result, File, "body", "A10-077",
             "node 'letrozole_prescription_text_applies' decides whether macro 'letrozole_prescription_text' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.");
         Assert.Equal(
-            """["letrozole_prescription_text_applies","section_instructions","patient_section_draft","standard_section_draft"]""",
+            """["letrozole_prescription_text_applies","section_instructions","patient_section_draft","standard_section_draft","section_instructions_stripped"]""",
             MigrateNodesTests.Json(result, "nodes/standards/index.json")["nodes"]!.ToJsonString());
         Assert.Equal(Answer("node.letrozole_prescription_text_applies"), MigrateNodesTests.Md(result, "macros/letrozole_prescription_text.md").Header["if"]!.ToJsonString());
 

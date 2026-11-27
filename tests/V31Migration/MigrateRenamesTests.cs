@@ -73,8 +73,9 @@ public class MigrateRenamesTests
 
         Assert.Contains("sections", Json(result, "nodes/index.json")["items"]!.AsArray().Select(i => (string?)i));
         Assert.DoesNotContain("parts", Json(result, "nodes/index.json")["items"]!.AsArray().Select(i => (string?)i));
-        Assert.Equal("node.sections.paragraphs", (string?)Json(result, "nodes/sections/index.json")["ret"]);
-        Assert.Equal("node.sections.paragraphs.draft_paragraph", (string?)Json(result, "nodes/sections/paragraphs/index.json")["ret"]);
+        // #1510 (item 1): each loop returns its items through the node that strips them, named after the renamed ret.
+        Assert.Equal("node.sections.paragraphs_stripped", (string?)Json(result, "nodes/sections/index.json")["ret"]);
+        Assert.Equal("node.sections.paragraphs.draft_paragraph_stripped", (string?)Json(result, "nodes/sections/paragraphs/index.json")["ret"]);
         Assert.Contains("nodes/sections/outline.md", result.Files.Keys);
         Assert.Contains("nodes/sections/paragraphs/draft_paragraph.md", result.Files.Keys);
         Assert.DoesNotContain(result.Files.Keys, k => k.StartsWith("nodes/parts", StringComparison.Ordinal));
@@ -336,7 +337,7 @@ public class MigrateRenamesTests
         Assert.EndsWith("\nIts parts are listed below.\n{{ \"node.parts\" }} {{ \"parts\" }}\n{{ node.parts_for.content }}\n", summary, StringComparison.Ordinal);
         Assert.EndsWith("\nThe parts of the plan: {{ node.plan.content }}\n", Body(result, "nodes/parts_for/counterparts.md"), StringComparison.Ordinal);
         Assert.Equal("node.counterparts.value.points", (string?)Json(result, "nodes/parts_for/paragraphs/index.json")["in"]);
-        Assert.Equal(["counterparts", "paragraphs"], Json(result, "nodes/parts_for/index.json")["nodes"]!.AsArray().Select(i => (string?)i));
+        Assert.Equal(["counterparts", "paragraphs", "paragraphs_stripped"], Json(result, "nodes/parts_for/index.json")["nodes"]!.AsArray().Select(i => (string?)i));
         Assert.Equal(["Renamed node 'parts' to 'parts_for': 'parts' is reserved at 31."], result.Report.Renames);
 
         // Byte for byte what the same package gives when its author had called the loop parts_for: nothing else changed.

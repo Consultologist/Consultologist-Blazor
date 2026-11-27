@@ -759,10 +759,15 @@ public class MigrateDeliverablesTests
         const string union = """{"anyOf":[{"$ref":"markdown_block"},{"$ref":"plaintext"}]}""";
         Assert.Equal("markdown_block", (string?)MigrateNodesTests.Md(result, prose).Header["format"]);
         Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, gate.Replace("index.json", "left_out.md", StringComparison.Ordinal)).Header["format"]);
-        Assert.Equal(shape == "for" ? $$"""{"type":"array","items":{{union}}}""" : union, MigrateNodesTests.Json(result, flow)["format"]!.ToJsonString());
+        // #1510 (item 1; F-D1, F-D2): under a for whose .content is read, each item is returned through the node that strips
+        // it, whose format is the old ret's text kind; a union of two kinds is none, so it is plaintext, and the loop's items
+        // are plain text the engine escapes where it joins them (the Markdown branch's with them: a known limit, no fixture
+        // capture has it).
+        Assert.Equal(shape == "for" ? """{"type":"array","items":{"$ref":"plaintext"}}""" : union, MigrateNodesTests.Json(result, flow)["format"]!.ToJsonString());
 
         if (shape == "for")
         {
+            Assert.Equal("plaintext", (string?)MigrateNodesTests.Md(result, "nodes/topic_loop/topic_gate_stripped.md").Header["format"]);
             // under a for: the union as derived, no hand edit, nothing refused, and no escape on the loop's read
             Assert.Equal(union, MigrateNodesTests.Json(result, gate)["format"]!.ToJsonString());
             Assert.Empty(result.HandEdits);
