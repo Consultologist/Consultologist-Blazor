@@ -315,6 +315,13 @@ migration, file for file and byte for byte, with no file on disk the migration d
 the invariant (no hand-edit notice ⇔ `CompiledPackage.Publish` refuses nothing), that nothing unknown is written, and
 that migrating twice gives the same bytes. `migrated/general/` is the vendored package `general`, not `test/general`.
 
+Two families of files have no 30 counterpart (#1510, Part F, the owner's second fix-first group): each `for` whose
+`.content` is read returns its items through a `rendered` node the migration writes, `nodes/<loop>/<ret>_stripped.md`
+(A10-088; 39 of them, in 23 packages), and a signature 30 appended is piped through a package renderer,
+`renderers/signature_after_blank_line.md` or `renderers/signature_after_line_end.md` (A10-089; in `composer-macros`,
+`example-classifier-scope` and `example-v12-constructs`). The comparison credits a stripping node's texts by
+`loop-item-strip-node`.
+
 ## `hand-edits/`
 
 `hand-edits/<package>/` holds the edits an operator makes after the migration (part 10 §§ 1.4, 1.5): edits and a

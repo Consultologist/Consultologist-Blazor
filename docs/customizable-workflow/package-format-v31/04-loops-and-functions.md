@@ -236,16 +236,19 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 
 `example-nested-note`, `nodes/sections/index.json` and `nodes/sections/paragraphs/index.json`
 (the loop `parts` renamed `sections`, part 01). Each loop's leaves are 30 prose that a deliverable
-composes, so they are `markdown_block` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968); part 10 § 1.2):
+composes, so they are `markdown_block` ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7082078968); part 10 § 1.2).
+Each loop's `.content` is read, so each returns its items through the `rendered` node the migration writes to strip
+them (`<ret>_stripped`, [ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7207709261), item 1;
+part 10 § 1.2), and `sections`, which returns the stripped `.content` of `paragraphs`, holds Markdown text items:
 
 ```json
 { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
-  "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "markdown_block" } } },
+  "format": { "type": "array", "items": { "$ref": "markdown_block" } },
   "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "node.plan.value.sections",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
-  "nodes": ["outline", "paragraphs"], "ret": "node.sections.paragraphs" }
+  "nodes": ["outline", "paragraphs", "paragraphs_stripped"], "ret": "node.sections.paragraphs_stripped" }
 ```
 
 ```json
@@ -255,7 +258,7 @@ composes, so they are `markdown_block` ([ruled](https://github.com/Consultologis
   "in": "node.outline.value.points",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": null,
-  "nodes": ["draft_paragraph"], "ret": "node.sections.paragraphs.draft_paragraph" }
+  "nodes": ["draft_paragraph", "draft_paragraph_stripped"], "ret": "node.sections.paragraphs.draft_paragraph_stripped" }
 ```
 
 `example-conditional-sections`, `nodes/sections_draft/index.json` (the input's `labelField`
@@ -268,7 +271,7 @@ moved to the loop):
   "in": "input.sections.value",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
-  "nodes": ["route"], "ret": "node.sections_draft.route" }
+  "nodes": ["route", "route_stripped"], "ret": "node.sections_draft.route_stripped" }
 ```
 
 `test/general`, `nodes/standards/index.json`:
@@ -280,8 +283,8 @@ moved to the loop):
   "in": "snippet.standards",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
-  "nodes": ["section_instructions", "patient_section_draft", "standard_section_draft"],
-  "ret": "node.standards.section_instructions" }
+  "nodes": ["section_instructions", "patient_section_draft", "standard_section_draft", "section_instructions_stripped"],
+  "ret": "node.standards.section_instructions_stripped" }
 ```
 
 Every migrated loop gets `"parallel": true, "until": null` (or `"parallel": false` where it had
