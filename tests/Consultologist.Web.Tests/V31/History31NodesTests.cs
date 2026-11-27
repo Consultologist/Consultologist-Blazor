@@ -313,7 +313,7 @@ public class History31NodesTests : ClientRenderTestContext
         Assert.Equal("placed", macro.QuerySelector(".history31-macro__placed")!.TextContent.Trim());
         Assert.Contains("sha256:c1", macro.QuerySelector(".history31-macro__content-hash")!.TextContent);
         var link = macro.QuerySelector(".history31-macro__decision a")!;
-        Assert.Equal("#row-node.plan/if:macro.letrozole_text", link.GetAttribute("href"));
+        Assert.Equal("/history/" + JobId + "#row-node.plan/if:macro.letrozole_text", link.GetAttribute("href"));
 
         // the decision it links to is under the same node
         Assert.True(HasRow(page, "node.plan/if:macro.letrozole_text"));
@@ -358,7 +358,7 @@ public class History31NodesTests : ClientRenderTestContext
 
         var macro = RowOf(page, "node.plan/macro:follow_up_text");
         var link = macro.QuerySelector(".history31-macro__classifier a")!;
-        Assert.Equal("#row-node.classify", link.GetAttribute("href"));
+        Assert.Equal("/history/" + JobId + "#row-node.classify", link.GetAttribute("href"));
         Assert.Contains("node.classify", link.TextContent);
         Assert.DoesNotContain(HistorySentences31.NoSingleClassifier, macro.TextContent);
     }

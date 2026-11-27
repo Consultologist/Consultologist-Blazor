@@ -249,7 +249,7 @@ public class History31PageTests : ClientRenderTestContext
         {
             var link = banners[i].QuerySelector("a")!;
             Assert.Equal(expected[i].Text, link.TextContent.Trim());
-            Assert.Equal($"#row-{expected[i].LinkKey}", link.GetAttribute("href"));
+            Assert.Equal($"/history/{JobId}#row-{expected[i].LinkKey}", link.GetAttribute("href"));
             Assert.Contains($"history31-banner--{expected[i].Kind}", banners[i].ClassName);
         }
 

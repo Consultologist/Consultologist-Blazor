@@ -10,4 +10,10 @@ public sealed class RowLinks31
 {
     /// <summary>Opens the target's rows in the section that holds it; true when it was found there.</summary>
     public required Func<string, bool> Reveal { get; init; }
+
+    /// <summary>
+    /// The job being viewed. A link's <c>href</c> is the full path (<c>/history/&lt;jobId&gt;#row-&lt;key&gt;</c>) so a new tab
+    /// or a copied link goes to the row, not to the home page; the click handler is the enhancement. Empty: a bare fragment.
+    /// </summary>
+    public string JobId { get; set; } = "";
 }

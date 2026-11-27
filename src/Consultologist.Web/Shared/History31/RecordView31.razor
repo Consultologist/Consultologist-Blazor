@@ -86,7 +86,10 @@
             <h3 class="history31-section__title">Nodes</h3>
             <Nodes31 @ref="_nodes" Record="Record" Texts="Texts" Resolve="Content?.Resolve" />
         </section>
-        <section class="history31-section" id="history31-checks"><h3 class="history31-section__title">Checks</h3></section>
+        <section class="history31-section" id="history31-checks">
+            <h3 class="history31-section__title">Checks</h3>
+            <Checks31 @ref="_checks" Record="Record" Texts="Texts" />
+        </section>
         <section class="history31-section" id="history31-deliverables"><h3 class="history31-section__title">Deliverables</h3></section>
     }
 </div>
@@ -94,12 +97,15 @@
 
 @code {
     private Nodes31? _nodes;
+    private Checks31? _checks;
     private readonly RowLinks31 _links;
 
     public RecordView31()
     {
-        _links = new RowLinks31 { Reveal = key => _nodes?.Reveal(key) == true };
+        _links = new RowLinks31 { Reveal = key => _nodes?.Reveal(key) == true || _checks?.Reveal(key) == true };
     }
+
+    protected override void OnParametersSet() => _links.JobId = Detail.JobId;
 
     [Parameter, EditorRequired]
     public ConsultGenerationJobResponse Detail { get; set; } = default!;

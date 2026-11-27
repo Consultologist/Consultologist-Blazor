@@ -45,7 +45,7 @@
                 <span class="history31-macro__offered">@(Flag(macro, "offered") ? "offered" : "not offered")</span>
                 @foreach (var decision in Strings(macro, "decisions"))
                 {
-                    <span class="history31-macro__decision"><a href="#row-@decision" @onclick="() => View.Reveal(decision)" @onclick:preventDefault="true">@decision</a></span>
+                    <span class="history31-macro__decision"><RowLink31 Key="@decision">@decision</RowLink31></span>
                 }
                 <span class="history31-macro__placed">@(Flag(macro, "placed") ? "placed" : "not placed")</span>
                 @if (Str(macro, "form") is { Length: > 0 } form)
@@ -63,7 +63,7 @@
                 <span class="history31-macro__classifier">
                     @if (Str(macro, "classifier") is { Length: > 0 } classifier)
                     {
-                        <text>classifier </text><a href="#row-@classifier" @onclick="() => View.Reveal(classifier)" @onclick:preventDefault="true">@classifier</a>
+                        <text>classifier </text><RowLink31 Key="@classifier">@classifier</RowLink31>
                     }
                     else
                     {

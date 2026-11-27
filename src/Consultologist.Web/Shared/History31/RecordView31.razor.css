@@ -193,3 +193,67 @@
 .history31 ::deep .history31-node__invalid {
     color: var(--error, #b00020);
 }
+
+/* Checks31 (Task 19): one row per check, collapsed until opened; shares Nodes31's look */
+.history31 ::deep .history31-checks,
+.history31 ::deep .history31-check__children,
+.history31 ::deep .history31-check__reads ul,
+.history31 ::deep .history31-check__list ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.history31 ::deep .history31-check__children {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--neutral-stroke-rest, #d1d1d1);
+}
+
+.history31 ::deep .history31-check__line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    align-items: baseline;
+    overflow-wrap: anywhere;
+}
+
+.history31 ::deep .history31-check__toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+}
+
+.history31 ::deep .history31-check__toggle::before {
+    content: "▸ ";
+}
+
+.history31 ::deep .history31-check__toggle[aria-expanded="true"]::before {
+    content: "▾ ";
+}
+
+.history31 ::deep .history31-check:focus {
+    outline: 2px solid var(--accent-fill-rest, #0f6cbd);
+}
+
+.history31 ::deep .history31-check__body {
+    margin: 0.25rem 0 0.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history31 ::deep .history31-check__lines {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+}
+
+.history31 ::deep .history31-check__lines dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}

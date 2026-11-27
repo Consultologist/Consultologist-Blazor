@@ -372,7 +372,7 @@ public class History31InputsTests : ClientRenderTestContext
         var page = Render31(runFacts: RunFactsDate, rows: [Ref("node.billing", "node", BillingWithSpot)]);
 
         var link = page.Find("#history31-run-facts .history31-spot a");
-        Assert.Equal("#row-node.billing", link.GetAttribute("href"));
+        Assert.Equal("/history/" + JobId + "#row-node.billing", link.GetAttribute("href"));
         Assert.Equal("false", page.Find("#history31-nodes [id=\"row-node.billing\"] .history31-node__toggle").GetAttribute("aria-expanded"));
 
         link.Click();
@@ -394,7 +394,7 @@ public class History31InputsTests : ClientRenderTestContext
         });
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
 
-        var link = page.FindAll(".history31-banner a").First(a => a.GetAttribute("href") == "#row-deliverable.refused");
+        var link = page.FindAll(".history31-banner a").First(a => a.GetAttribute("href") == "/history/" + JobId + "#row-deliverable.refused");
         link.Click();
 
         Assert.EndsWith("#row-deliverable.refused", navigation.Uri, StringComparison.Ordinal);
