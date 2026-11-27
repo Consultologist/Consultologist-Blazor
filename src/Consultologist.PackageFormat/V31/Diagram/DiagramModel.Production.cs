@@ -23,7 +23,8 @@ namespace Consultologist.PackageFormat.V31.Diagram;
 /// them apart per source key, so a path a condition reads draws its data edge too only when <c>graph.edges</c> (or a
 /// <c>computed</c> expression) says it is also content (<see cref="Reads"/>). Reads of
 /// <c>item</c>, <c>pass</c>, <c>renderer.*</c>, <c>macro.*</c>, <c>function.*</c> and <c>param.*</c> draw nothing
-/// here; a macro's placement rule is its own box's (Task 3). A body's edges are built before its flow's, and the
+/// here; a macro's placement rule is its own box's, and a path a renderer step renders runs into that step's box
+/// (<c>DiagramModel.Uses.cs</c>, D7). A body's edges are built before its flow's, and the
 /// flow's own (<c>for</c>, then <c>if</c>, then <c>ret</c>) after them.
 /// </para>
 /// </summary>
@@ -85,8 +86,10 @@ public sealed partial record DiagramModel
                     break;
             }
 
-            scope.Boxes.Add(new DiagramBox(id, key, shape, lines, Bool(entry["modelDerived"])));
+            var uses = Uses(key, id, entry, scope);
+            uses.Boxes.Add(new DiagramBox(id, key, shape, lines, Bool(entry["modelDerived"])));
             Reads(id, entry);
+            UsesEdges(id, entry, uses);
         }
 
         /// <summary>A flow node: its frames, then its summary box; its bodies' edges, then its own.</summary>
@@ -185,8 +188,10 @@ public sealed partial record DiagramModel
             if (deliverables[key] is not JsonObject entry)
                 return;
             var id = IdOf(key);
-            root.Boxes.Add(new DiagramBox(id, key, BoxShape.Hexagon, Head(key, entry), false));
+            var uses = Uses(key, id, entry, root);
+            uses.Boxes.Add(new DiagramBox(id, key, BoxShape.Hexagon, Head(key, entry), false));
             Reads(id, entry);
+            UsesEdges(id, entry, uses);
         }
 
         /// <summary>
@@ -201,7 +206,9 @@ public sealed partial record DiagramModel
         {
             var conditions = ConditionPaths(entry).Concat(MacroRulePaths(entry)).Select(Source).OfType<Read>().ToHashSet();
             var expression = JsonLogicShape.Paths(entry["expression"]).Select(Source).OfType<Read>().ToHashSet();
-            var reads = Strings(entry["reads"]).Select(Source).OfType<Read>().ToList();
+            // A path a renderer step renders runs into the renderer's box instead (DiagramModel.Uses.cs, D7).
+            var transformed = Transformed(entry);
+            var reads = Strings(entry["reads"]).Where(path => !transformed.Contains(path)).Select(Source).OfType<Read>().ToList();
             var content = reads.Where(r => !conditions.Contains(r) || expression.Contains(r)).ToHashSet();
             foreach (var read in reads)
             {
@@ -240,7 +247,7 @@ public sealed partial record DiagramModel
             return Text(entry["case"]) is { } subject ? paths.Prepend(subject) : paths;
         }
 
-        /// <summary>The paths a macro's (or macro folder's) placement rule reads: the macro box's (Task 3), never a read into the node.</summary>
+        /// <summary>The paths a macro's (or macro folder's) placement rule reads: the macro box's (<c>DiagramModel.Uses.cs</c>), never a read into the node.</summary>
         private static IEnumerable<string> MacroRulePaths(JsonObject entry) =>
             Placements(entry).Where(p => Text(p["site"]) is { } site && site.StartsWith("macro", StringComparison.Ordinal))
                 .SelectMany(p => JsonLogicShape.Paths(p["if"]));
@@ -320,9 +327,12 @@ public sealed partial record DiagramModel
             entry["until"] is { } until ? $"{line} · until {JsonLogicPrinter.Print(until)}" : line;
 
         /// <summary>A format's name: a <c>$ref</c>'s definition (<c>#/$defs/x</c> → <c>x</c>) or a bare name; <c>?</c> for an inline schema, as a type string that cannot be printed.</summary>
-        private static string Format(JsonObject entry)
+        private static string Format(JsonObject entry) => FormatOf(entry["format"]);
+
+        /// <summary>The name of the format <paramref name="node"/> (a <c>format</c> or a renderer's <c>input</c>) as <see cref="Format"/> writes it.</summary>
+        private static string FormatOf(JsonNode? node)
         {
-            var reference = entry["format"] is JsonObject format ? Text(format["$ref"]) : Text(entry["format"]);
+            var reference = node is JsonObject format ? Text(format["$ref"]) : Text(node);
             const string defs = "#/$defs/";
             return reference == null ? "?" : reference.StartsWith(defs, StringComparison.Ordinal) ? reference[defs.Length..] : reference;
         }
