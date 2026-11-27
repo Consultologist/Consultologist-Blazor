@@ -2631,7 +2631,7 @@ credited rules' `Said` joined by `; `. A ruled difference beside an unexplained 
 | `all-refused-completes` | R4 item 7 | case |
 | `failed-job-dispatch-order` | #1508 comment 5 item 7, #9 (both jobs failed at the same reply, refused by its node's `failIfEmpty` or format; a text only one side sent is the dispatch order's) | case |
 | `flag-becomes-retry` | #1508 comment 5 item 3 (a node 30 ran as `onInvalid: flag` asks once more at 31 and then fails: its prompt's retry text, the status, and what 30 ran on the kept reply) | case and bytes |
-| `reply-never-a-template` | #1508 comment 5 item 7, #5 (a reply 30 rendered as a template is kept as written at 31) | case and bytes |
+| `reply-never-a-template` | #1508 comment 5 item 7, #5 (a reply 30 rendered as a template is kept as written at 31, or stripped, as a migrated deliverable reads a source) | case and bytes |
 | `escaped-plain-text` | part 06 § 6.4, D8; #1508 comment 5 items 7 (#13, a computed text value) and 8 (D23, plain-text items joined into a Markdown loop's `.content`, also where a prompt reads it) | bytes |
 | `item-ids-from-one` | #1506 ruling 2, D26 | bytes |
 | `position-names-from-the-loop` | part 04 § 2.7, D27; #1508 comment 5 item 4 (an empty `itemLabel` field falls back to the position name) | bytes |
@@ -2984,10 +2984,14 @@ another engine. Without `--publish` it is a dry run: the publish runs in memory 
 
 ### What it leaves to areas 12 and 13
 
-- **Area 12:** the Create page (it reads `Format` by `$id`), History, the Editor's bar and "Download package" (the
-  content response's `Resolve`, `Lock` and `PublishReport`), showing the report the publish response and its 400
-  carry, and S09-004 (*"migrated by the operator from …"*) from the content response's `MigratedFrom`, which nothing
-  composes yet. A 31 start does not yet read `InputRefs` or form references.
+- **Area 12 (built, #1509):** the Create page (`Consults.razor` with `Shared/Create31`, which reads `Format` by `$id` through `InputShapes`), History at
+  record storage 12 (`RecordView31`), the Editor's read-only 31 view (`V31PackageView`, with the publish and migration reports
+  and `PackageDownload31`), and Profile's `LetterDetailsCard` and `TimeZoneCard`. A 31 start reads `InputRefs`,
+  `InputFormRefs` and `InputFormFiles` (`V31JobStarter.ExtractFor31Async`); an element taken from an earlier run's
+  deliverable is recorded with origin `previous-run` and its input's id is in `RunInputs.ModelDerivedInputs` (the library's
+  `RunScope`, filled by `RunInputsBuilder`), so a decision that reads it is `modelDerived`. S09-004 (*"migrated by the operator
+  from …"*) is drawn from the content response's `MigratedFrom`. What the area decided in the build is in the plan's
+  *Recorded in the build*; the pages' own sentences are `A12-001` to `A12-007`.
 - **Area 13:** the 31 diagram: it fills `PublishOptions.Diagram`, and the writer already stores `dag.mmd` as
   `text/plain`.
 - **Milestone 41:** the Editor's "Run tests", on the same `PackageTests`.

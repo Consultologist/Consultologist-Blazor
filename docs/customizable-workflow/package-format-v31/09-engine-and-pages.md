@@ -454,6 +454,9 @@ in written order, each with its `label` and its `description` as help text:
   today; only the name changes.
 - **No macro panel** for a 31 package: its per-run choices are ordinary boolean inputs.
 - **Personal snippets** are inserted into inputs as today; they are never `profile.*` reads.
+- **An input the page has no widget for** (a format with a part none of the table's rows draws) is named, and Start stays
+  disabled, with A12-006: *"This workflow can't be filled in here: this page has no field for '<input label>'. Tell the
+  operator."* (decided in the build, #1509).
 
 ### 5.2 The signature choice
 
@@ -480,6 +483,11 @@ each failing sentence above the Start button, which stays disabled until all pas
 The engine repeats the same checks at job start (§ 1.2, step 6), so a job sent another way (a
 satellite, the email intake) is refused with the same sentences.
 
+The page asks the engine for the account's sentences (`GET WorkflowPackages/Current/StartChecks`, which reads the account with
+the code a start reads it with) after a 31 package loads, on each pick, on window focus and before each of the three starts
+(decided in the build, #1509). When they cannot be asked, Start stays disabled with A12-004: *"The workflow's checks couldn't be
+run. Reload the page to try again."*
+
 ## 6. History
 
 ### 6.1 Which records
@@ -497,6 +505,8 @@ As today, plus:
   version>"*, linking to the byte-equivalence report and the list of hand edits (#1447);
 - **the limits** in force at job start: the per-job ceiling and the retry and time limits
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), §§ 3.2 and 3.4).
+- **a job that stopped** (not terminal, started more than 60 minutes ago: § 3.6's hard cap) is shown *"Stopped"* with A12-001: *"This job stopped before it
+  finished, so it has no record. Run the workflow again."* (decided in the build, #1509, D9).
 
 ### 6.3 Banners
 
@@ -533,7 +543,9 @@ Each fact the package read and its raw value (`run.date: 2026-11-16`, with the z
 `America/Toronto`), and every run spot that read it: the body, the site and the formatted output
 (*"16 November 2026"*). Run facts are kept permanently; a spot's output is kept permanently only
 when the spot reads raw `run.*` facts, and otherwise shows its hash after the 7-day drop ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). Beside any body whose run-neutral hash and
-sent-text hash differ, History says so.
+sent-text hash differ, History says so, with A12-003: *"Part of this text comes from run facts, such as the date, so it differs from
+run to run."* (decided in the build, #1509: for a prompt the sent text is its `inputHash`, for a rendered node its `outputHash`,
+for a deliverable its `composedHash`, for a macro its `contentHash`; a computed row is no body).
 
 **Nodes.** One row per node, by its key with root (`node.sections.paragraphs.draft_paragraph`,
 #1384, [roots](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)):
@@ -585,7 +597,13 @@ sent with the sentence. A deliverable whose gating check was skipped by its own 
 *"Refused, not delivered"*, with the check that refused it and its sentence, so nobody copies it out by mistake: the
 panel has no copy control and cannot be selected, and the text is in no copy or download the page offers. It is shown
 while it is retained (7 days); after that the heading and the hash remain, with A12-002 (ruled by the owner on #1507,
-item 3). There is no release button at 31: releasing after review is #1524, Milestone 40.
+item 3). There is no release button at 31: releasing after review is #1524, Milestone 40. The template is shown only when
+`CanonicalJson.HashText` of its body in `resolve.json` equals the row's `templateHash`; otherwise the row says A12-007: *"The
+template this job ran couldn't be read, so it isn't shown."* (decided in the build, #1509).
+
+**Verify** (beside the record's download, for a terminal job) re-checks the downloaded record and each deliverable's retained text
+against their hashes in the browser (`RecordCheck31`). When the record or a row it needs cannot be fetched it says A12-005: *"The record couldn't be checked:
+<what could not be read>."* (decided in the build, #1509).
 
 ### 6.5 Test results
 

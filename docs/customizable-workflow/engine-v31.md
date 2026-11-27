@@ -812,6 +812,40 @@ Nothing is compiled, tested or stored by an import. A 5–30 zip is read exactly
 400, where it gave an unhandled spec-version message before. Other versions it does not run keep
 `SpecVersionNotYetExecutable` (422).
 
+## The pages (area 12, #1509)
+
+*What the Create, History, Profile and Editor pages read of the engine at 31; the decisions are in the plan
+`package-format-v31/plans/area-12-create-and-history.md` (its *Recorded in the build* lists every choice a task took). Nothing here
+admits 31 in production: the admission lists are untouched.*
+
+- **The start checks.** `GET WorkflowPackages/Current/StartChecks` (`V31StartChecksRoute`), above, answers the account's
+  sentences before a start. The Create page (`Consults.razor`, `Shared/Create31/StartChecks31.razor`) asks it after a 31 load,
+  on each pick of a package or a signature block, on window focus (`wwwroot/js/windowFocus.js`) and before each of its three
+  starts; when it cannot ask it says A12-004 and holds Start.
+- **References at a start.** `V31JobStarter.ExtractFor31Async` reads `InputRefs`, `InputFormRefs` and `InputFormFiles` (above, "Inputs
+  sent by reference"). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
+  the held inputs document's `modelDerived` member, read into `RunInputs.ModelDerivedInputs`. The start also writes the lineage
+  links (`IConsultGenerationLinkStore`).
+- **Rerun.** `ConsultGenerationJobs/{jobId}/Rerun` of a storage-12 job rebuilds its request from the held inputs
+  (`RerunRequestAsync`), repeats the `previous-run` origins through `ConsultGenerationJobOrigin.InheritedInputOrigins`, and gives
+  the new job `RerunOf`; no verdict or divergence is computed (D8).
+- **The record's container.** `record.json` is written to the container `job-records` of the records account
+  (`ConsultGenerationRecordStorage__BlobServiceUri`, see `docs/STORAGE.md`), to which no lifecycle rule applies, so the page's
+  record download (`GET ConsultGenerationJobs/{jobId}/Record`, `RecordRoutes`) is available after the 7-day drop; a missing blob is
+  restored from the rows.
+- **What History fetches, and when.** A storage-12 job (`SchemaVersion >= 12`) is shown by `RecordView31`.
+  The job (`GET ConsultGenerationJobs/{jobId}`) is polled as for a 5–30 job (60 s when stopped, fast while running or delivering).
+  Once per detail load it fetches the package's content (`GET WorkflowPackages/Current/Content`, for `resolve.json`'s templates,
+  descriptions and graph, and `MigratedFrom`; a failure is read as no content) and lists the rows (`GET …/Rows`), listing them
+  again only when the job's `Rows` count has moved. A row's text (`GET …/Rows?key=`) is fetched once, when its row is first opened
+  (a deliverable's, a node's, a check's), or when a run spot's output or a retained name is needed; nothing is fetched for a
+  collapsed row, and a text the engine has dropped (`textDeleted`) says A12-002 with the row's hash. The record
+  (`GET …/Record`) is fetched only by the download and by Verify. A 31 run view on Create (`RunView31`) lists the rows on attaching,
+  on a poll whose count moved and on `done`, and fetches a `released` deliverable's text only.
+- **Profile and the Editor.** Letter details and the time zone are account settings read and written through
+  `Account/Settings/{key}` (`LetterDetailsCard`, `TimeZoneCard`; the Api's 400 for a value over a limit is plain text the card
+  shows). A 31 package opens read-only in the Editor (`V31PackageView`), whose download is `PackageDownload31`.
+
 ## Settings
 
 Each setting is read once, at startup, except those read at each send or alert: `EmailIntake__MailboxAddress` and
