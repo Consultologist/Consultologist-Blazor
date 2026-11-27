@@ -10,8 +10,13 @@
 //   dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder>
 //       # steps 0 to 3 (PackagePublish.CheckAsync): the report as it would be; nothing is written
 //   dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write <out folder> [--version <tag>] [--published-by "ci <tag>"]
-//       # steps 0 to 4 (PackagePublish.RunAsync): the version's files in write order, then publish.json last,
-//       # into <out folder> (new or empty), for CI to upload and attach as Release assets
+//       # steps 0 to 4 (PackagePublish.RunAsync): the version's files in write order, dag.mmd among them, then
+//       # publish.json last, into <out folder> (new or empty), for CI to upload and attach as Release assets
+//   dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write-dag
+//       # as the first, and writes <folder>/dag.mmd: the drawing of the package's resolve.json (#1510, D13)
+//
+// dag.mmd is a view (part 07 § 7): a committed one that differs from the drawing of the package's resolve.json fails
+// (exit 1, and with --write nothing is written); --write-dag writes the fresh one instead. A folder without one passes.
 //
 // The folder is read as an upload: every file under it by its path with "/" (a ".git" folder is skipped).
 // A symbolic link (or any reparse point), file or folder, is skipped and never followed, so --write never copies a link's
@@ -30,7 +35,7 @@
 //              the formats catalogue's ResolvedRef, "agents@<agents catalogue version>"), no output contracts catalogue
 //              (the same as EngineToolchain.Current())
 //   limits     EngineLimitSettings over an empty configuration: the spec's starting values (the engine's unset settings)
-//   clock      the system's; no diagram (D1)
+//   clock      the system's; the diagram PackageDiagram.Generate, the engine's (#1510, D13)
 //
 // Exit codes: 0 published (or, without --write, would publish); 1 refused; 2 usage or environment (an unreadable folder,
 // the registry, or an out folder that is not empty or holds a stamp).
@@ -42,16 +47,21 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Diagram;
 using Consultologist.PackageFormat.V31.Publish;
 using Microsoft.Extensions.Configuration;
 
-const string Usage = "usage: dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> [--write <out folder> [--version <tag>] [--published-by \"ci <tag>\"]]";
+const string Usage = "usage: dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> [--write <out folder> [--version <tag>] [--published-by \"ci <tag>\"]] [--write-dag]";
 
 string? folder = null, outFolder = null, tag = null, publishedBy = null;
+var writeDag = false;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
     {
+        case "--write-dag":
+            writeDag = true;
+            break;
         case "--write" when i + 1 < args.Length:
             outFolder = args[++i];
             break;
@@ -113,7 +123,8 @@ try
     var limits = new EngineLimitSettings(new ConfigurationBuilder().Build());
     options = new PublishOptions(
         registry, toolchain, limits.PublishLimits,
-        publishedBy ?? (tag != null ? $"ci {tag}" : "ci"), TimeProvider.System, MatchTimeLimit: limits.RegexLimit);
+        publishedBy ?? (tag != null ? $"ci {tag}" : "ci"), TimeProvider.System,
+        Diagram: PackageDiagram.Generate, MatchTimeLimit: limits.RegexLimit);
 }
 catch (Exception ex) when (ex is FormatException or InvalidOperationException or IOException or JsonException)
 {
@@ -168,6 +179,30 @@ foreach (var warning in outcome.Report.Warnings)
 if (!outcome.Report.Published)
 {
     Console.Error.WriteLine($"refused: {outcome.Report.Refusals.Count} refusal(s); nothing written.");
+    return 1;
+}
+
+// ---- dag.mmd, a view (#1510, D13; part 07 § 7) --------------------------------------------------------------------------
+
+var fresh = PackageDiagram.Generate(outcome.Compiled!.Resolve);
+var dagPath = Path.Combine(root, PackagePublish.DiagramFile);
+if (writeDag)
+{
+    try
+    {
+        File.WriteAllBytes(dagPath, new UTF8Encoding(false).GetBytes(fresh));
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"error: {dagPath} could not be written: {ex.Message}");
+        return 2;
+    }
+
+    Console.Error.WriteLine($"dag.mmd: written to {dagPath}.");
+}
+else if (upload.TryGetValue(PackagePublish.DiagramFile, out var committed) && !committed.AsSpan().SequenceEqual(new UTF8Encoding(false).GetBytes(fresh)))
+{
+    Console.Error.WriteLine("refused: dag.mmd differs from the drawing of the package's resolve.json; run with --write-dag to write it. Nothing written.");
     return 1;
 }
 
