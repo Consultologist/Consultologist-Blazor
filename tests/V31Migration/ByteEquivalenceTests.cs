@@ -611,6 +611,46 @@ public class ByteEquivalenceTests
     }
 
     /// <summary>
+    /// #1543 (ruling 2, D7, D8): edge-unset-object's intake line reads a field of the object input, a <c>markdown_block</c>
+    /// at 31, with text on both sides; the migration moves it onto a line of its own (<c>Referred for: \</c>, the read, then
+    /// the text after it). The letter differs from 30's by those line endings alone and is expected, credited to
+    /// <c>block-read-own-line</c> alone; against the same run, a result that says it moved no read leaves it unexplained, and
+    /// so does a capture whose letter holds a word 31's does not.
+    /// </summary>
+    [Fact]
+    public async Task AReadTheMigrationMoved_IsExplainedByItsRule()
+    {
+        const string Package = "edge-unset-object";
+        const string Scenario = "intake-unset";
+        const string Site = $"{Package}/{Scenario}#deliverables/deliverable.note";
+        var migrated = EquivalenceFixture.Migrated(Package);
+        Assert.Equal(1, migrated.MovedReads["snippets/intake_line.md"]);
+        var (capture, run, texts) = await EquivalenceFixture.Compared(Package, Scenario);
+        Assert.StartsWith("Referred for: \\\n\n (from the intake form).", run.Deliverables.Single(d => d.Key == "deliverable.note").Text, StringComparison.Ordinal);
+
+        var text = texts.Single(t => t.Site == Site);
+        Assert.True((text.Equal, text.Expected, text.Unexplained) == (false, true, false), $"{Site}: equal {text.Equal}, expected {text.Expected}, rules {string.Join(",", text.Rules)}");
+        Assert.Equal(["block-read-own-line"], text.Rules);
+        Assert.All(texts.Where(t => t.Site != Site), t => Assert.DoesNotContain("block-read-own-line", t.Rules));
+
+        var plan = EquivalenceFixture.Plan(Package);
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(Package, Scenario), capture, migrated, plan);
+        var unsaid = Equivalence.Compare(Package, Scenario, capture, run, migrated with { MovedReads = new Dictionary<string, int>(StringComparer.Ordinal) }, plan, request);
+        Assert.True(unsaid.Single(t => t.Site == Site).Unexplained);
+
+        var lost = capture.DeepClone().AsObject();
+        foreach (var row in lost["deliverables"]!.AsArray().OfType<JsonObject>().Where(r => (string?)r["id"] == "note"))
+        {
+            row["text"] = ((string)row["text"]!).Replace("(from the intake form)", "(from the referral intake form)", StringComparison.Ordinal);
+            row["hash"] = CanonicalJson.HashText((string)row["text"]!);
+        }
+
+        var partly = Equivalence.Compare(Package, Scenario, lost, run, migrated, plan, request).Single(t => t.Site == Site);
+        Assert.True((partly.Expected, partly.Unexplained) == (false, true), $"{Site}: expected {partly.Expected}, rules {string.Join(",", partly.Rules)}");
+        Assert.Equal(["block-read-own-line"], partly.Rules);
+    }
+
+    /// <summary>
     /// #1510 (#1509 comment 7207709261, item 2): composer-macros' profile in <c>no-signature</c> has no signature block, and
     /// 30 left the signature and the line before it out; through the renderer that tests the trimmed signature, so does 31.
     /// <c>authored</c> differs only as the plain text it holds is escaped in Markdown.

@@ -27,7 +27,7 @@
     "deliverables": {
       "deliverable.note": {
         "state": "released",
-        "text": "Referred for:  (from the intake form).\n\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
+        "text": "Referred for: \\\n\n (from the intake form).\n\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued."
       }
     }
   }
