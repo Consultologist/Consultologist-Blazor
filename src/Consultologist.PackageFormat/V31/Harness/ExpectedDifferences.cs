@@ -1944,7 +1944,8 @@ public static class ExpectedDifferences
     /// did not run writes nothing at 31 (R16's guard), where 30's template loop wrote its fixed text with its reads empty.
     /// The templates the row is made from (its own source file and those of the rendered nodes it reads, in turn) are read
     /// for R16's guard (<see cref="GuardedLoop"/>), each with its body as a pattern (<see cref="ItemPattern"/>: its literal
-    /// text exactly, a read of the item's identity any text on one line, a read of the item's result the empty text), and
+    /// text exactly, a read of the item's identity any text on one line up to the body's next literal text, a read of the
+    /// item's result the empty text), and
     /// the number of the loop's items in the 31 run that did not run (<see cref="ItemsNotRun"/>: rows <c>NotRun</c> or
     /// <c>Skipped</c>, under the compared row's outer items). 30's and 31's lines are aligned (<see cref="Aligned"/>); a run
     /// of lines only 30 has that is, whole, m ≥ 1 repetitions of a guard's pattern (its trailing white space trimmed or
@@ -2021,35 +2022,49 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// #1509 (final review B1): one item's text as 30's template loop wrote it for an item that did not run, as a pattern
-    /// over a run of 30's lines: the guard body's literal text exactly; a tag that reads the item's identity any text with
-    /// no line ending; a tag that reads its result the empty string. The last repetition may lose any trailing part of the
-    /// body's final white space (the line ending that joins the run; a deliverable's <c>string.strip</c>). Each repetition is
-    /// captured as <c>u</c>. Null when the body holds another tag, a white-space control, or no literal text but white space.
+    /// over a run of 30's lines: the guard body's literal text exactly; a tag that reads the item's identity any text on one
+    /// line up to, and not including, the next literal text of the body after it (#1543, ruling 5: white space counted, the
+    /// text before the following tag, or after later tags, or the body's tail), so it cannot swallow another item's result;
+    /// a tag that reads its result the empty string. The last repetition may lose any trailing part of the body's final
+    /// white space (the line ending that joins the run; a deliverable's <c>string.strip</c>). Each repetition is captured as
+    /// <c>u</c>. Null when the body holds another tag, a white-space control, no literal text but white space, or an
+    /// identity read with no literal text after it.
     /// </summary>
     private static System.Text.RegularExpressions.Regex? ItemPattern(string variable, string body)
     {
-        var pieces = new List<string>();
-        var literal = new System.Text.StringBuilder();
-        var at = 0;
-        foreach (System.Text.RegularExpressions.Match tag in Tag.Matches(body))
-        {
-            literal.Append(body, at, tag.Index - at);
-            at = tag.Index + tag.Length;
-            if (ItemRead.Match(tag.Value) is not { Success: true } read || read.Groups["v"].Value != variable)
-                return null;
-            if (read.Groups["identity"].Success)
-            {
-                pieces.Add(System.Text.RegularExpressions.Regex.Escape(literal.ToString()));
-                pieces.Add(@"[^\n]*?");
-                literal.Clear();
-            }
-        }
-
-        literal.Append(body, at, body.Length - at);
         var all = string.Concat(Tag.Split(body));
         if (all.All(char.IsWhiteSpace))
             return null;
 
+        // The literal text before each tag, and after the last (the body's tail); whether each tag reads the identity.
+        var literals = new List<string>();
+        var identity = new List<bool>();
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match tag in Tag.Matches(body))
+        {
+            literals.Add(body[at..tag.Index]);
+            at = tag.Index + tag.Length;
+            if (ItemRead.Match(tag.Value) is not { Success: true } read || read.Groups["v"].Value != variable)
+                return null;
+            identity.Add(read.Groups["identity"].Success);
+        }
+
+        literals.Add(body[at..]);
+        var pieces = new List<string>();
+        var literal = new System.Text.StringBuilder();
+        for (var t = 0; t < identity.Count; t++)
+        {
+            literal.Append(literals[t]);
+            if (!identity[t])
+                continue;
+            if (literals.Skip(t + 1).FirstOrDefault(l => l.Length > 0) is not { } next)
+                return null;
+            pieces.Add(System.Text.RegularExpressions.Regex.Escape(literal.ToString()));
+            pieces.Add($@"(?:(?!{System.Text.RegularExpressions.Regex.Escape(next)})[^\n])*?");
+            literal.Clear();
+        }
+
+        literal.Append(literals[^1]);
         var tail = literal.ToString();
         var kept = tail.TrimEnd();
         var white = tail[kept.Length..];
