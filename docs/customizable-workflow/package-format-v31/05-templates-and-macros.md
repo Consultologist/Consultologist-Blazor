@@ -841,6 +841,7 @@ text is recorded by hash under the node that placed it.
 | `at: before`, `after`, `append`, item-level placements, deliverable macros | removed: fixed text is a snippet read in the deliverable template |
 | optional at most once, required exactly once | triggered exactly once, untriggered never |
 | prompt hashes vary with run facts and nothing says so | run spots, with a run-neutral hash beside the sent-text hash |
+| a single line ending in Markdown is a hard break (5–30's pipeline) | it is not a break: end the line with `\` or leave a blank line; publish warns where a body a reader sees has one (§ 2.6, W-3), and the migration writes the `\` ([part 10 § 1.2](10-migration-and-tools.md)) |
 
 ## Refusals
 

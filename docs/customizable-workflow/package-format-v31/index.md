@@ -147,7 +147,7 @@ What moved to Milestones 40 and 41, and the issues filed for later, are listed i
 | Library | Use | Pin |
 |---|---|---|
 | Scriban | every template | locked, caret range from the registry (#1390) |
-| Markdig, with its advanced extensions | the Markdown formats | **exact** (it floats at `0.41.*` today) |
+| Markdig, with the 31 bundle: its advanced extensions less those part 02 § 5.2 leaves out, HTML off | the Markdown formats | **exact** (0.41.3) |
 | `Corvus.Text.Json.JsonLogic` (Apache-2.0) | evaluating JSON Logic, with our custom operations and **our null rules overriding its defaults** | **exact**, behind our own interface |
 | `Corvus.JsonSchema` (Apache-2.0) | validating values against formats; **our own checker** enforces the dialect | **exact**, behind our own interface |
 

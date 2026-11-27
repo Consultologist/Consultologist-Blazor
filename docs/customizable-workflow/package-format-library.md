@@ -44,6 +44,17 @@ stays with the engine.
   concept-list fixture the editor's renderer pane and the tests render). The
   engine and the editor render through the same functions, so the editor's
   sample is the engine's bytes.
+- `ConsultMarkdown` (#1256, #1510): the Markdown pipelines every surface
+  shares (the Web's `MarkdownPreview`, the Api's PDF), picked by the job's
+  specVersion through `For(int specVersion)`. `Pipeline`, for 5–30 and
+  unchanged until 30 is retired: HTML off, pipe tables, a single line ending a
+  hard break. `Pipeline31` (part 02 § 5.2), for 31: Markdig 0.41.3's
+  `UseAdvancedExtensions` built explicitly in its order, less GenericAttributes,
+  CustomContainers, MediaLinks, Mathematics, Diagrams, GridTables and the
+  emphasis extras other than superscript and inserted, with `DisableHtml` and
+  standard line handling (a single line ending is not a break).
+  `Extensions31` lists its 13 extensions as `constants.json` `markdig` names
+  them. Nothing else builds a Markdown pipeline at 31.
 
 ## With the engine
 
@@ -419,7 +430,7 @@ reader's when it has any, else the type rules', else the expressions'.
   `Print` itself writes: it parses, prints again and compares, and gives `false` for anything else.
   `Reason` words a decision's reason for the record. `Version` is 1.0.0.
 - **`PlainConversion.ToPlain(markdown)`**: the conversion `plain` applies (Markdig's plain text with
-  the advanced extensions, `\n` line breaks, no spaces, tabs or line breaks at the very end). It
+  `ConsultMarkdown.Pipeline31`, so raw HTML and a generic attribute's `{…}` stay as text, `\n` line breaks, no spaces, tabs or line breaks at the very end). It
   returns `null`, never the source, when Markdig cannot convert the text (Markdown nested too
   deeply, such as 200 nested `>`); it never throws. `Version` is 1.0.0.
 - **`JsonLogicFunctions`**: the meaning of each operation on values (`Apply`), truthiness (`Truthy`),
@@ -1712,7 +1723,17 @@ compiler embeds each built-in renderer an entry pipes into in the package's `ren
 with the registry's header and body (D6). The features follow from what is placed (D15): `macro-markers` when an
 agent places a macro, `parts` when an agent declares a non-empty `parts`, and `run-spots` when a body that runs
 (an agent's, a `rendered` node's, a deliverable's) has a run spot, its own or a placed unit's: an unplaced snippet
-that writes `run.*` does not count (#1508, R6). `warnings` gains the dialect's S05-060 and S05-061.
+that writes `run.*` does not count (#1508, R6). `warnings` gains the dialect's S05-060, S05-061 and S05-065.
+
+**S05-065 (W-3, #1510, G-D11)** is said by `SourceTemplates.LineEndings`, once after the folder routes, since it needs
+every body checked: once per line ending `MarkdownLineEndings.Find` names (the migration's finder, below) in a Markdown
+body a reader sees, at the body's own 1-based line. The sites are a `markdown_block` or `markdown_inline` deliverable,
+`rendered` node, macro, snippet or renderer, every snippet folder's item, `checks/` and a function's own units included.
+A body whose text reaches a prompt (a snippet a prompt, a part or a macro's instruction places, a folder item it reads
+as `item.content`, a `rendered` node whose text it reads, and what those place or read in turn; never a macro's body,
+since a prompt reads its marker) is warned only when it is also shown, placed or read by a deliverable, a macro's body
+or a `rendered` node no prompt reaches. A prompt and a part are never sites. It is a warning: the package publishes.
+When no site has a hit it reads nothing more.
 
 ### Snippets, parts and macros at publish
 
@@ -1807,6 +1828,8 @@ At publish (part 05 § 5):
 - The renderer is looked up as the function's own, then the package's, then a built-in. One none of them has is
   S05-031.
 - A `markdown_block` renderer inside a line warns S05-061.
+- A single line ending inside a paragraph of a `markdown_block` or `markdown_inline` renderer's body warns S05-065
+  (W-3), as any Markdown body a reader sees does (`SourceTemplates.LineEndings`, above).
 
 At run time a renderer's body renders with only `value` (the piped value) and the built-ins. Each step gives one
 `ComposedRender`: its number, the renderer, its `bodyHash`, the source (a path, or `render:<n>` in a chain), the
@@ -1917,8 +1940,8 @@ reply that does not fit, never reading it (Task 24's fix round 1).
 - **The body substituted.** It is the macro's body rendered in the prompt's data (`profile.*` readable, `run.*`
   filled directly), after dropping exactly one file-final line ending. A `plaintext` macro in a `markdown_block` or
   `markdown_inline` node is escaped first with `MarkdownEscape.Escape` (D14, D7: a backslash before each of the 32
-  ASCII punctuation characters, and since #1505's ruling R9 the first space or tab leading each line written `&#32;`
-  or `&#9;`, nothing else; version `1.0.0`). `contentHash` is of the text substituted. A snippet
+  ASCII punctuation characters, since #1505's ruling R9 the first space or tab leading each line written `&#32;`
+  or `&#9;`, and since #1510 two spaces before each line ending, nothing else; version `1.0.0`). `contentHash` is of the text substituted. A snippet
   a macro's body places is rendered when its decision holds.
 
 With faults, `Finish` returns the reply as it came, with `AgentOutcome.Invalid` set. The runner never reads that
@@ -1956,7 +1979,7 @@ No member carries a value, a reply or a profile field: only ids, keys, hashes an
 
 ### Sentences
 
-The dialect says part 05's rows S05-001 to S05-064, with these exceptions:
+The dialect says part 05's rows S05-001 to S05-065, with these exceptions:
 
 - S05-008 and S05-027 are the worked examples of S05-009 and S05-026;
 - S05-032 is said as the reader's S01-035 (`SourceSentences`, a package renderer named like a built-in one), with
@@ -2165,9 +2188,13 @@ once `PlanFormats.Read` has taken one trailing line ending off a `markdown_inlin
 `MarkdownEscape.Escape` writes a backslash before each of the 32 ASCII punctuation characters, and, since the owner's
 ruling R9, the first space or tab leading each line (at the text's start and after each `\n` or `\r`) as its
 character reference, `&#32;` or `&#9;`, so a line led by four spaces or a tab is not a code block. A line of white
-space only is no exception: `"  "` becomes `"&#32; "`. Nothing else changes: letters, digits, other white space,
-line breaks (hard breaks in the pipeline) and everything outside ASCII stay. `Escape(text, startsLine)` with
-`false` is for a piece that continues a line (the text after a run spot). The version stays 1.0.0.
+space only is no exception: `"  "` becomes `"&#32; "`. Since the owner's third fix-first group (#1510, G-D7), two
+spaces are written before each line ending (`\r\n` is one ending, a lone `\r` is one too, a blank line's ending gains
+them as well), so at 31's standard line handling each line stays a line: `"a\nb"` becomes `"a  \nb"`. Two spaces and
+not `\`, because a piece cannot know whether its line ending ends a paragraph, where a `\` would show. The rule is
+local, so escaping piece by piece is escaping whole. Nothing else changes: letters, digits, other white space, the
+line endings themselves and everything outside ASCII stay. `Escape(text, startsLine)` with `false` is for a piece that
+continues a line (the text after a run spot). The version stays 1.0.0.
 
 **`MarkdownEscape.IsBlank(text)`** is true when `text` holds only white space and the exact references `&#32;` and
 `&#9;`. Anything else is content: `&#32` with no semicolon, `&#x20;`, `&nbsp;` and `&#33;`. It exists so that an
@@ -2522,6 +2549,7 @@ line endings, a JSON Logic value in canonical order.
 | checks | `Migrate.Checks.cs` | each `terms_subset` node as `checks/<id>.md`, `kind: computed`, `format: check_result`, its `failWith` the 30 sentence; a reader of `node.<id>` reads `check.<id>`. One 30 ran inside a flow is also A10-046 |
 | deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, one blank line apart, then for 30's `signature: true` `{{ profile.signature \| renderer.signature_after_blank_line }}` (#1510, F-D4: `Migrate.Signature.cs` writes the package renderer `renderers/signature_after_blank_line.md`, `input` and `format` `plaintext`, whose body writes the blank line and the signature only when the signature trimmed is not empty, so a blank one leaves both out as 30 did and a signature is 30's bytes, unescaped; A10-089; a deliverable whose only piece is the signature keeps `{{ profile.signature }}`). An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim, and when its trimmed body ends with the signature after one blank line or one line ending, the read goes through `signature_after_blank_line` or `signature_after_line_end` (each renderer written once into a package that needs it, listed in `renderers/index.json` in the order first used, the macros pass before this one); #1508 (R15): a deliverable every source of which may not run (`AlwaysValued` false; a `while` counts as running, as 30 composed one with no pass) gets the `if` `<source>.state === "completed"` (`or` over the sources, after 30's by `and`), A10-079; when 30's `if` is a hand edit, a second hand edit on it names that term to join by `and`, A10-084 |
 | loop items stripped | `Migrate.Flows.cs` (`StripLoopItems`) | #1510 (F-D1 to F-D3): after the deliverables, since a loop's readers are known only once they are written: each `for` whose `.content` is read anywhere in the migrated package (a regex over every file for the loop's rooted key or a suffix form that resolves to it, then `.content`) gets a `rendered` node `<ret id>_stripped` (fitted by `FreeNodeId`) as the last of its body and its `ret`: `producer: computed`, the old `ret`'s label, `.content`'s text format (`ScopeTree.RenderedContent`), `if` the old `ret`'s state `completed`, body `{{ node.<old ret id>.content \| string.strip }}`; A10-088. It repeats until no loop is left, so a loop returned by a loop is stripped at each level, and the formats of the loop and the flows returning it follow (`Reformat`). A loop whose items mix text formats gets no node, the hand edit A10-090 on its `ret`. `Migration31Result.StripNodes` (new key → old `ret` key) is what the case rule `loop-item-strip-node` reads |
+| hard breaks | `Migrate.HardBreaks.cs`, `V31/Templates/MarkdownLineEndings.cs` | #1510 (G-D8, G-D10): after the stripped loop items and before the derived flags. In the body of each `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro, snippet (one or a folder's item) and package renderer, `MarkdownLineEndings.WithHardBreaks` writes `\` before each line ending `MarkdownLineEndings.Find` names (the body parsed with `ConsultMarkdown.Pipeline31` after each tag and comment is masked: a soft line break inside a paragraph, not inside a tag, not one `~}}`, `-}}` or the next line's `{{-` removes, not beside a line of only tags), after any trailing spaces; A10-091 per file, `Migration31Result.HardBreaks` (file → count). A body a prompt reads or places (an agent's body, its `parts`, a macro's `instruction`, and what those read or place in turn; a deliverable a check's prompt reads stays a site) and the files the migration writes itself are left; one also shown (read or placed by a deliverable, a macro or a `rendered` node no prompt reads) with hits is A10-092. No fixture has a site with a hit |
 | derived flags | `Migrate.Derived.cs` | last: every node and check header's `reproducible`, `modelDerived`, `runDependent` and `profileCarrying` from `SourceDerived.Values`, the derivation without the header checks (D15). A 30 `reproducible` claim that differs is A10-010; a header made of a body the dialect refused is A10-049 |
 
 After the passes, #1508 (R11): the package as written is checked and counted as publish counts it (`PublishNotes.PastInstances`, A11-001's facts) at the options' `Limits` (by default the engine's starting values, `WorkflowPackageMigration30To31.EngineLimits`; the engine's configured limits in the bulk publish and the weekly summary); past their `JobInstances` it is a hand edit on the outermost loop's `max` on the heaviest path (A10-081), and no `max` is written. Then, with `WriteSnapshot`, the snapshot test (below), published at those limits and run at the options' `RunLimits`. Other notices: A10-021 (a format's free-text field), A10-026 (a
@@ -2633,7 +2661,8 @@ credited rules' `Said` joined by `; `. A ruled difference beside an unexplained 
 | `failed-job-dispatch-order` | #1508 comment 5 item 7, #9 (both jobs failed at the same reply, refused by its node's `failIfEmpty` or format; a text only one side sent is the dispatch order's) | case |
 | `flag-becomes-retry` | #1508 comment 5 item 3 (a node 30 ran as `onInvalid: flag` asks once more at 31 and then fails: its prompt's retry text, the status, and what 30 ran on the kept reply) | case and bytes |
 | `reply-never-a-template` | #1508 comment 5 item 7, #5 (a reply 30 rendered as a template is kept as written at 31, or stripped, as a migrated deliverable reads a source) | case and bytes |
-| `escaped-plain-text` | part 06 § 6.4, D8; #1508 comment 5 items 7 (#13, a computed text value) and 8 (D23, plain-text items joined into a Markdown loop's `.content`, also where a prompt reads it) | bytes |
+| `escaped-plain-text` | part 06 § 6.4, D8; #1508 comment 5 items 7 (#13, a computed text value) and 8 (D23, plain-text items joined into a Markdown loop's `.content`, also where a prompt reads it); `ExpectedDifferences.Unescape` also drops the two spaces the escape writes before a line ending (#1510, G-D7) | bytes |
+| `explicit-hard-break` | #1509 comment 7209167166 item 4, #1510 G-D9 (a `\` directly before a line ending in 31's text, in any compared kind, only in a package whose sources hold a break the migration wrote: `Migration31Result.HardBreaks`, which `MigrationFixture.Overlay` recounts for each overlaid body) | bytes |
 | `item-ids-from-one` | #1506 ruling 2, D26 | bytes |
 | `position-names-from-the-loop` | part 04 § 2.7, D27; #1508 comment 5 item 4 (an empty `itemLabel` field falls back to the position name) | bytes |
 | `sent-format` | part 10 § 1.8, D26; R12 and #1508 comment 5 item 7 #3 (a format's descriptions sent; a classifier's answer format sent after 30's own line listing the same values, and nothing else) | bytes |
@@ -2766,10 +2795,11 @@ The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
 version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`): the bulk publish writes it into `owners.json` as the
 notice of each package it could not migrate; no publish says it. Every other notice, refusal and reason is an area
-sentence, A10-001 to A10-090 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-087 are #1508's:
+sentence, A10-001 to A10-092 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-087 are #1508's:
 an `options.json` that does not read or was not given, the conversions kept as 30 meant, the macro-choice classifiers,
-the migration's `if`s and guards, and the instances limit; A10-088 to A10-090 are #1510's: a loop's items stripped, the
-signature through a renderer, and a loop whose items mix text formats), listed in the plans' tables and in
+the migration's `if`s and guards, and the instances limit; A10-088 to A10-092 are #1510's: a loop's items stripped, the
+signature through a renderer, a loop whose items mix text formats, the explicit hard breaks written, and a body kept
+for a prompt that is also shown), listed in the plans' tables and in
 `V31Contract.MigrationAreaSentences`. Area 10's rulings also
 added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
 `markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
