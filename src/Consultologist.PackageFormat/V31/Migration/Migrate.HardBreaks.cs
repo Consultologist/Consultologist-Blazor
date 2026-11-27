@@ -20,7 +20,7 @@ internal static partial class Migrate
 {
     /// <summary>A reference by root and dotted path (<c>snippet.a.b</c>), not inside a longer name.</summary>
     private static readonly Regex BodyReference = new(
-        @"(?<![A-Za-z0-9_])(?<root>node|snippet|macro)\.(?<path>[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)",
+        @"(?<![A-Za-z0-9_])(?<root>node|snippet)\.(?<path>[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)",
         RegexOptions.CultureInvariant);
 
     /// <summary>A read of a loop's item's body (<c>item.content</c>), not behind another name.</summary>
@@ -91,7 +91,8 @@ internal static partial class Migrate
     /// <summary>
     /// The bodies whose text reaches a prompt: every file a prompt (an <c>agent</c>'s body or its <c>parts</c>' text, or a
     /// macro's <c>instruction</c>, which the placing prompt holds) reads or places, and every file such a body reads or places
-    /// in turn. A prompt's macro read is the macro's marker, never its body, so it reaches nothing.
+    /// in turn. A prompt's macro read is the macro's marker, never its body, so it reaches nothing; so is one in a snippet a
+    /// prompt places, which reads what the prompt reads (part 05 § 3.1), so a macro is never one of these bodies.
     /// </summary>
     private static HashSet<string> ReachPrompts(Migrated m)
     {
@@ -101,7 +102,7 @@ internal static partial class Migrate
         {
             foreach (var text in PromptTexts(path, file))
             {
-                foreach (var read in ReadsOf(m, path, text, prompt: true))
+                foreach (var read in ReadsOf(m, path, text))
                 {
                     if (reached.Add(read))
                         work.Enqueue(read);
@@ -127,7 +128,7 @@ internal static partial class Migrate
                 || (SourceLayout.Text(file.Json["kind"]) == "rendered" && !path.StartsWith("renderers/", StringComparison.Ordinal) && !prompted.Contains(path));
             if (!seen || file.Body is not { } body)
                 continue;
-            foreach (var read in ReadsOf(m, path, body, prompt: false))
+            foreach (var read in ReadsOf(m, path, body))
             {
                 if (shown.Add(read))
                     work.Enqueue(read);
@@ -145,7 +146,7 @@ internal static partial class Migrate
         {
             if (m.Sources.GetValueOrDefault(path)?.Body is not { } body)
                 continue;
-            foreach (var read in ReadsOf(m, path, body, prompt: false))
+            foreach (var read in ReadsOf(m, path, body))
             {
                 if (found.Add(read))
                     work.Enqueue(read);
@@ -177,11 +178,13 @@ internal static partial class Migrate
     /// The files whose text <paramref name="text"/>, written in <paramref name="reader"/>, reads or places: a snippet (a folder
     /// read whole is every item; <c>item.content</c> in a loop over a folder is that folder's items), a <c>rendered</c> node
     /// (resolved outward from the reader's folder, part 01 § 9; a flow is the <c>ret</c>s it returns; an agent's text is its
-    /// reply, never its prompt) and, unless <paramref name="text"/> is a <paramref name="prompt"/>'s, a macro (a prompt's
-    /// macro read is its marker, never its body). A node's <c>.state</c> is no text. A deliverable read is none of these: a
-    /// deliverable is shown, and stays a site whoever reads it.
+    /// reply, never its prompt). A node's <c>.state</c> is no text. A deliverable read is none of these: a deliverable is
+    /// shown, and stays a site whoever reads it. Nor is a macro read: only a prompt, a part, a macro instruction or a snippet
+    /// placed in one may read <c>macro.*</c> (part 05 § 3.1), and there it is the macro's marker, never its body; elsewhere
+    /// it is refused (the migration's <c>macro.&lt;id&gt;.fixed_text</c> in a deliverable is a hand edit, D3), and a macro
+    /// body is a site and shown whoever places it.
     /// </summary>
-    private static IEnumerable<string> ReadsOf(Migrated m, string reader, string text, bool prompt)
+    private static IEnumerable<string> ReadsOf(Migrated m, string reader, string text)
     {
         var reads = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match match in BodyReference.Matches(text))
@@ -191,9 +194,6 @@ internal static partial class Migrate
             {
                 case "snippet":
                     reads.UnionWith(Named(m, "snippets", path));
-                    break;
-                case "macro" when !prompt:
-                    reads.UnionWith(Named(m, "macros", path));
                     break;
                 case "node":
                     if (NodeFile(m, reader, path) is { } node)

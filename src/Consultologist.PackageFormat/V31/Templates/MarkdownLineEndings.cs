@@ -12,7 +12,7 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <c>x</c> characters of its length, so a tag's text never makes Markdown (a pipe in a filter is no table) and a line ending
 /// inside a tag is none of the body's. A line ending is found when it is a soft line break inside a paragraph (in a list
 /// item, a quote, an alert or a footnote too): never in a fence, indented code, a table or a heading, at a paragraph's
-/// last line or before a list item or a heading. It is then left out when the line ends with a tag closed by <c>~}}</c> or
+/// last line or before a list item or a heading. It is then left out when the line ends with a tag (a comment too) closed by <c>~}}</c> or
 /// <c>-}}</c> (the template removes that line ending), or when the line before or after it holds only tags and white
 /// space (a statement, a placement or an output alone on its line, whose output may be empty or a block, which would leave
 /// the break at a paragraph's end). A line ending after a <c>\</c> or two spaces is already a hard break, so
@@ -30,7 +30,9 @@ public static class MarkdownLineEndings
         var (tags, unclosed) = TemplateTags.Scan(body);
         if (unclosed is not null)
             return [];
-        var spans = tags.Select(t => (t.Start, t.End)).Concat(TemplateTags.Comments(body)).OrderBy(s => s.Start).ToList();
+        // A comment renders nothing, but a ~}} on it removes the line ending after it as a tag's does.
+        tags = tags.Concat(TemplateTags.Comments(body)).OrderBy(t => t.Start).ToList();
+        var spans = tags.Select(t => (t.Start, t.End)).ToList();
         var masked = body.ToCharArray();
         foreach (var (start, end) in spans)
             Array.Fill(masked, 'x', start, end - start);

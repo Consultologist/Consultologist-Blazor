@@ -76,12 +76,13 @@ internal static class TemplateTags
     }
 
     /// <summary>
-    /// #1510 (G-D8): the spans of <paramref name="text"/>'s tags that hold only a comment (<c>{{# … }}</c>), which
-    /// <see cref="Scan"/> does not list (they render nothing), each from its <c>{{</c> to the character after its <c>}}</c>.
+    /// #1510 (G-D8): the tags of <paramref name="text"/> that hold only a comment (<c>{{# … }}</c>), which
+    /// <see cref="Scan"/> does not list (they render nothing), each from its <c>{{</c> to the character after its <c>}}</c>;
+    /// a <c>~}}</c> on one still removes the line ending after it.
     /// </summary>
-    public static IReadOnlyList<(int Start, int End)> Comments(string text)
+    public static IReadOnlyList<TemplateTag> Comments(string text)
     {
-        var comments = new List<(int Start, int End)>();
+        var comments = new List<TemplateTag>();
         Token? enter = null;
         var comment = false;
         var code = false;
@@ -95,7 +96,7 @@ internal static class TemplateTags
                 case TokenType.CodeExit when enter is { } open:
                     var tag = Tag(text, open, token);
                     if (comment && !code && !tag.DashLeft && !tag.DashRight)
-                        comments.Add((tag.Start, tag.End));
+                        comments.Add(tag);
                     enter = null;
                     break;
                 case TokenType.Eof:
