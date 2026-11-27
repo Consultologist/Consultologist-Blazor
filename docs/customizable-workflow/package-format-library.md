@@ -2835,7 +2835,8 @@ summary). No sentence, notice or report entry carries a value from an input, a m
 - **Area 12:** the Create page, whose per-run choice sets the optional boolean input a migrated macro's `if` reads
   (area 07's three-state boolean); this area adds nothing to it.
 - **Area 13, now built** (#1510, D13): the script writes the 31 `dag.mmd` when the migrated package compiles
-  (`Migration31Script.DiagramWritten`, "The script" above), and otherwise says it waits (`DiagramWaits`).
+  (`Migration31Script.DiagramWritten`, "The script" above), and otherwise says it waits: for the hand edits
+  (`DiagramWaits`), or, when the migration named none, for the package to compile (`DiagramNotCompiled`).
 - **Milestone 41:** the Editor's upgrade and the converter's page, on the same `FromScriban` and `Migrate`. Author
   documentation (part 10 § 6, #1473) and the satellites (§ 7) are not this build's.
 - **For the owner:** the unexpected differences no ruling covers, and the three packages whose edits are not made
