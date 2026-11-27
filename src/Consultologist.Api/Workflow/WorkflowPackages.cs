@@ -543,10 +543,55 @@ public sealed class WorkflowPackages
         var packageRef = requested.Ref
             ?? await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
 
+        // #1510 (specVersion 31, area 13; part 09 § 10.1; D14): a version stamped 31 is drawn from its stored resolve.json
+        // by the library's one drawing, the text the Editor's 31 view draws (the stored dag.mmd is the same bytes for a
+        // version published since D13, and a version published before has none). It is answered as Current/Content serves
+        // the version: on a deployment that runs 31 (the load reads nothing otherwise), after the access check above,
+        // whenever its pair verifies against the stamp; a pair absent or not matching is the load's sentence. A version with
+        // no 31 stamp, or a registry that could not be read, is today's path's.
+        var load = _compiled != null && _registry != null ? await _compiled.TryLoadAsync(packageRef, cancellationToken) : null;
+        if (load is { Unreadable: false })
+        {
+            if (!CompiledPackageStore.IsIntegrityRefusal(load.RefusalId) && load.Version is { } version)
+            {
+                byte[]? resolve;
+                try
+                {
+                    resolve = await _registry!.TryReadAsync(
+                        packageRef.Name, $"{packageRef.Name}/{version}/{Consultologist.PackageFormat.V31.CompiledPackage.ResolveFile}", cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The failure's type and status, never its message (which can carry a URI), as the 31 load logs it.
+                    _logger.LogError(
+                        "Workflow package diagram could not be read at 31. Ref={Ref}, Failure={Failure}, Status={Status}",
+                        packageRef, ex.GetType().Name, (ex as RequestFailedException)?.Status);
+                    return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
+                        new { error = "Workflow package registry is unavailable." }, cancellationToken);
+                }
+
+                return resolve != null
+                    ? await CreateJsonResponseAsync(req, HttpStatusCode.OK,
+                        new { diagram = Consultologist.PackageFormat.V31.Diagram.PackageDiagram.Generate(System.Text.Encoding.UTF8.GetString(resolve)) },
+                        cancellationToken)
+                    : await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                        new { error = CompiledPackageStore.NotPublished(packageRef.Name, version) }, cancellationToken);
+            }
+
+            _logger.LogWarning(
+                "Workflow package diagram could not be loaded at 31. Ref={Ref}, RefusalId={RefusalId}, Detail={Detail}",
+                packageRef, load.RefusalId, load.OperatorDetail ?? load.Refusal);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = load.Refusal }, cancellationToken);
+        }
+
         WorkflowPackage package;
         try
         {
             package = await _packageStore.ResolveAsync(packageRef, cancellationToken);
+        }
+        catch (WorkflowPackageSpecVersionException ex) when (ex.SpecVersion == Consultologist.PackageFormat.V31.PublishedStamp.SpecVersion && _admission != null)
+        {
+            return await NotLoadedAt31Async(req, packageRef, load, cancellationToken);
         }
         // A package that is not there is not an outage. Asking for a pruned or
         // mistyped version used to answer "the registry is unavailable", which

@@ -16,7 +16,8 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// (<c>{{ snippet.&lt;id&gt;.content }}</c>, D4: the snippet the macros pass wrote, or one written here from the macro's
 /// body when a prompt also places the macro); a macro with a condition (its own <c>if</c>, the placement's, or an
 /// optional one) is a hand edit (D3, A10-002), written <c>{{ macro.&lt;id&gt;.fixed_text }}</c>, which 31 refuses; 30's
-/// <c>signature: true</c> is <c>{{ profile.signature }}</c>.
+/// <c>signature: true</c> is <c>{{ profile.signature }}</c>, piped after the last piece to the renderer that writes the blank
+/// line and the signature only when the signature is not blank (#1510, item 2; <see cref="SignatureAfter"/>).
 /// </summary>
 internal static partial class Migrate
 {
@@ -158,7 +159,9 @@ internal static partial class Migrate
     /// <summary>
     /// D8: the template, its pieces one blank line apart: each prepended macro (placement order), each source's
     /// <c>.content | string.strip</c> (<c>sources</c> order; #1508 item 3, F-D8: 30's composer trimmed each part, never the
-    /// whole, and never a macro's snippet, R5), each appended macro, then <c>{{ profile.signature }}</c> when 30 signed it.
+    /// whole, and never a macro's snippet, R5), each appended macro, then, when 30 signed it, the signature: after the last
+    /// piece through <see cref="SignatureAfter"/>'s renderer in place of the blank line (30 appended no empty block, #1510
+    /// item 2), or <c>{{ profile.signature }}</c> alone when it is the only piece (no line before it to leave out).
     /// </summary>
     private static string Composition(Migrated m, WorkflowDeliverableSpec deliverable, string file, Dictionary<string, string> copies)
     {
@@ -171,8 +174,10 @@ internal static partial class Migrate
             pieces.Add($"{{{{ {SourceRead(m, source)}.content | string.strip }}}}");
         foreach (var placement in macros.Where(x => x is not null && x.At != WorkflowDeliverableMacroSpec.Prepend))
             pieces.Add(DeliverableMacro(m, placement, file, said, copies));
-        if (deliverable.Signature == true)
-            pieces.Add("{{ profile.signature }}");
+        if (deliverable.Signature == true && pieces.Count > 0)
+            pieces[^1] += SignatureAfter(m, "\n\n");
+        else if (deliverable.Signature == true)
+            pieces.Add(SignatureRead);
         return string.Join("\n\n", pieces);
     }
 

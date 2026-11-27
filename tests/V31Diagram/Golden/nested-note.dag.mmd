@@ -1,0 +1,39 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+    input__consult_draft(["input.consult_draft"])
+
+    node__plan["plan<br/>Planning the sections<br/>agent → section_plan · generated"]
+    node__section_count[["section_count<br/>Counting the sections<br/>computed → number"]]
+
+    subgraph for_node__sections["sections: per node.plan.value.sections item"]
+        node__sections__outline["outline<br/>Outlining the section<br/>agent → outline · generated"]
+        subgraph for_node__sections__paragraphs["paragraphs: per node.sections.outline.value.points item"]
+            node__sections__paragraphs__draft_paragraph["draft_paragraph<br/>Drafting a paragraph<br/>agent → plaintext · generated"]
+        end
+        node__sections__paragraphs["paragraphs<br/>Paragraphs<br/>item in node.sections.outline.value.points"]
+    end
+    node__sections["sections<br/>Sections<br/>item in node.plan.value.sections"]
+
+    subgraph while_node__refine["refine: while node.refine.judge.value.verdict ≠ #quot;good#quot; — at most 3"]
+        node__refine__draft_summary["draft_summary<br/>Drafting the summary<br/>agent → plaintext · generated"]
+        node__refine__judge["judge<br/>Judging the summary<br/>agent → verdict · generated"]
+    end
+    node__refine["refine<br/>Refining the summary<br/>while node.refine.judge.value.verdict ≠ #quot;good#quot; — at most 3"]
+
+    deliverable__note{{"note<br/>Nested consultation note"}}
+
+    input__consult_draft -->|"content"| node__plan
+    node__plan -->|"value"| node__section_count
+    node__sections__outline -->|"for"| for_node__sections__paragraphs
+    node__sections__paragraphs__draft_paragraph -->|"ret"| node__sections__paragraphs
+    node__plan -->|"for"| for_node__sections
+    node__sections__paragraphs -->|"ret"| node__sections
+    node__refine__draft_summary -->|"content"| node__refine__judge
+    node__refine__judge -.->|"if"| node__refine
+    node__refine__draft_summary -->|"ret"| node__refine
+    node__refine -->|"content"| deliverable__note
+    classDef modelDerived stroke-dasharray: 5 5
+    class node__plan,node__section_count,node__sections__outline,node__sections__paragraphs__draft_paragraph,node__sections__paragraphs,node__sections,node__refine__draft_summary,node__refine__judge,node__refine modelDerived

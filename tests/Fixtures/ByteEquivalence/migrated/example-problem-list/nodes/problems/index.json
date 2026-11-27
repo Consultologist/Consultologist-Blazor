@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": null,
   "nodes": [
-    "draft_problem"
+    "draft_problem",
+    "draft_problem_stripped"
   ],
-  "ret": "node.problems.draft_problem"
+  "ret": "node.problems.draft_problem_stripped"
 }

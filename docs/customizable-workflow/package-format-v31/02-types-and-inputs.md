@@ -400,7 +400,7 @@ validated against the full format (§ 3.4).
   "type": "string",
   "contentMediaType": "text/markdown",
   "x-markdown": "block",
-  "description": "Markdown text that stands on its own lines (a paragraph, a list or a table)."
+  "description": "Markdown text that stands on its own lines (a paragraph, a list or a table). A single line ending is not a break: write separate lines as list items, or leave a blank line between them."
 }
 ```
 
@@ -467,15 +467,51 @@ The checker refuses one missing where it applies, and one present where it doesn
   `description` changes what the model is told
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6982429387)).
 
-### 5.2 Markdown means Markdig's advanced extensions
+### 5.2 Markdown means one explicit Markdig bundle
 
-`markdown_block` and `markdown_inline` mean **Markdig with `UseAdvancedExtensions`** (pipe and grid
-tables, footnotes, task lists, emphasis extras, auto-links and the rest of that set). The spec lists
-the extensions by name as of the pinned Markdig version; Markdig is pinned **exactly** and listed in
-`lock.json`
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6924903111)).
-Escaping plain text into Markdown, `plain()` and composing to HTML or PDF are defined against that
-list. Flavours (CommonMark, GFM) are #1451.
+`markdown_block` and `markdown_inline` mean **Markdig 0.41.3 with the 31 bundle**, built extension by
+extension in the order of Markdig's `UseAdvancedExtensions`, with the ones below left out. Markdig is
+pinned **exactly** and listed in `lock.json`
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6924903111));
+`constants.json` `markdig` lists the bundle:
+`{"version":"0.41.3","extensions":["Alert","Abbreviation","AutoIdentifier","Citation","DefinitionList","EmphasisExtra","Figure","Footer","Footnote","PipeTable","ListExtra","TaskList","AutoLink"],"emphasisExtras":["Superscript","Inserted"],"html":false}`.
+31 renders by this one standard
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166),
+the owner's third fix-first group): the Web's 31 surfaces, the PDF, `plain()` and the migration's
+line-ending finder all parse with it (the library's `ConsultMarkdown.For(31)`, which is
+`ConsultMarkdown.Pipeline31`).
+
+- **HTML is off** (`DisableHtml`): raw HTML in the text is shown as text, never injected.
+- **Standard line handling:** a single line ending inside a paragraph is **not a break**; Markdown
+  reads it as a space. A line ends with `\` (or two spaces) to break, or a blank line starts a new
+  paragraph. Escaped plain text keeps its lines (chapter 6 § 6.4), the migration ends with `\` the
+  lines 30 broke (chapter 10 § 1.2), and publish warns where a body a reader sees has such a line
+  ending (chapter 5 § 2.6, W-3).
+- **Left out, and why:**
+  - **GenericAttributes:** `{…}` writes any attribute name the text names, an event handler
+    included (Markdig 0.41.3 has no `on*` filter: `Seen by Dr A. Sample {onclick=x}` gives
+    `<p onclick="x">`). In the 31 bundle the braces are text.
+  - **CustomContainers:** `:::name` and `::text::` write a `class` taken from the text, the same
+    path by another syntax.
+  - **MediaLinks:** turns image-link syntax (`![…](url)`) into an embed: an `iframe` when the URL
+    is a known video host's, a `video` or `audio` element when it names a media file; with HTML off
+    it is the one embed path left, and the PDF has no counterpart.
+  - **Mathematics:** neither surface typesets it, and `$` amounts appear in clinical text.
+  - **Diagrams:** no note surface draws Mermaid or nomnoml; a fence shows as code.
+  - **GridTables:** row and column spans and multi-block cells the PDF does not lay out; pipe tables
+    remain.
+  - **EmphasisExtras' strikethrough, subscript and marked:** the PDF's fonts have no strikethrough or
+    highlight, and subscript shares `~` with strikethrough. `~~x~~` and `==x==` stay as written;
+    superscript (`^x^`) and inserted (`++x++`, underlined) remain.
+- **The PDF draws every block and inline the bundle writes** (a heading, a paragraph, a list with
+  `a.`, `A.`, `i.` or `I.` labels, a quote, an alert with its bold title, code, a rule, a pipe table,
+  a definition list, a figure and its caption, a footer, footnotes, a task list's `[x]` and `[ ]`, a
+  citation, an abbreviation, a link's text, an autolink's URL). A type it does not know is an error,
+  never a fallback.
+- **AutoIdentifiers stays:** headings get ids, which two deliverables shown on one page can share.
+
+5–30 keep their own pipeline (HTML off, pipe tables, a single line ending a hard break) until 30 is
+retired. Flavours (CommonMark, GFM) are #1451.
 
 ### 5.3 Object schemas are fully typed; nested text references a text format
 

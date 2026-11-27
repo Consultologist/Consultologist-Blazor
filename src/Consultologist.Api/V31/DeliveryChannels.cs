@@ -2,6 +2,7 @@ using System.IO.Compression;
 using Consultologist.Api.Auth;
 using Consultologist.Api.Email;
 using Consultologist.Api.Jobs;
+using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
 using Microsoft.Extensions.Configuration;
@@ -212,7 +213,7 @@ internal sealed class PdfDeliveryChannel(
         var pdfs = send.Documents
             .Select(document => new GraphMailAttachment(
                 $"{FileId(document.Deliverable)}-{prefix}.pdf",
-                ConsultDocumentPdf.Render(MarkdownOf(document), password, Logger, new PdfRenderContext(input.JobId, document.Deliverable))))
+                ConsultDocumentPdf.Render(MarkdownOf(document), PublishedStamp.SpecVersion, password, Logger, new PdfRenderContext(input.JobId, document.Deliverable))))
             .ToList();
         IReadOnlyList<GraphMailAttachment> attachments = string.Equals(send.Bundle, "zip", StringComparison.Ordinal)
             ? [new GraphMailAttachment($"{(send.Folder.Length > 0 ? send.Folder : "deliverables")}-{prefix}.zip", Zip(pdfs), "application/zip")]

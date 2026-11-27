@@ -1,0 +1,122 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+    input__topics(["input.topics"])
+    input__consult_draft(["input.consult_draft"])
+    input__redraft(["input.redraft"])
+    input__include_plan(["input.include_plan"])
+    input__tone(["input.tone"])
+
+    subgraph for_node__topic_loop["topic_loop: per input.topics.value item"]
+        subgraph if_node__topic_loop__topic_gate_then["topic_gate: then"]
+            node__topic_loop__topic_gate__draft_topic["draft_topic<br/>Drafting a topic<br/>agent → markdown_block · generated"]
+        end
+        node__topic_loop__topic_gate["topic_gate<br/>Drafted topics only<br/>if item.value.kind = #quot;drafted#quot;"]
+        node__topic_loop__topic_gate_stripped["topic_gate_stripped<br/>Drafted topics only<br/>rendered → markdown_block · computed"]
+    end
+    node__topic_loop["topic_loop<br/>Topics<br/>item in input.topics.value"]
+
+    node__opening["opening<br/>Opening line<br/>agent → markdown_block · generated"]
+    node__closing["closing<br/>Closing line<br/>agent → markdown_block · generated"]
+    node__plan["plan<br/>Planning the sections<br/>agent → section_plan · generated"]
+
+    subgraph for_node__section_loop["section_loop: per node.plan.value.sections item"]
+        node__section_loop__outline["outline<br/>Outlining a section<br/>agent → outline · generated"]
+        subgraph for_node__section_loop__point_loop["point_loop: per node.section_loop.outline.value.points item"]
+            node__section_loop__point_loop__draft_point["draft_point<br/>Drafting a point<br/>agent → markdown_block · generated"]
+            node__section_loop__point_loop__draft_point_stripped["draft_point_stripped<br/>Drafting a point<br/>rendered → markdown_block · computed"]
+        end
+        node__section_loop__point_loop["point_loop<br/>Points<br/>item in node.section_loop.outline.value.points"]
+        node__section_loop__point_loop_stripped["point_loop_stripped<br/>Points<br/>rendered → markdown_block · computed"]
+    end
+    node__section_loop["section_loop<br/>Sections<br/>item in node.plan.value.sections"]
+
+    subgraph while_node__refine["refine: while input.redraft.value = true — at most 3"]
+        node__refine__draft_summary["draft_summary<br/>Drafting the summary<br/>agent → markdown_block · generated"]
+        node__refine__judge["judge<br/>Judging the summary<br/>agent → verdict · generated"]
+    end
+    node__refine["refine<br/>Refining the summary<br/>while input.redraft.value = true — at most 3 · until node.refine.judge.value.verdict = #quot;good#quot;"]
+
+    subgraph if_node__plan_gate_then["plan_gate: then"]
+        node__plan_gate__draft_plan["draft_plan<br/>Drafting the plan<br/>agent → markdown_block · generated"]
+    end
+    node__plan_gate["plan_gate<br/>The plan, when asked for<br/>if input.include_plan.value = true"]
+
+    subgraph case_node__tone_case_branch_1["tone_case: formal"]
+        node__tone_case__formal_line["formal_line<br/>Writing the formal line<br/>agent → markdown_block · generated"]
+    end
+    subgraph case_node__tone_case_branch_2["tone_case: plain"]
+        node__tone_case__plain_line["plain_line<br/>Writing the plain line<br/>agent → markdown_block · generated"]
+    end
+    node__tone_case["tone_case<br/>A line in the chosen tone<br/>case input.tone.value"]
+
+    node__topic_tally[["topic_tally<br/>Counting the topics<br/>computed → plaintext"]]
+
+    deliverable__single{{"single<br/>One prose source"}}
+    deliverable__pair{{"pair<br/>Two prose sources"}}
+    deliverable__topics{{"topics<br/>A for over an input"}}
+    deliverable__sections{{"sections<br/>A for over a node's list, with a for inside"}}
+    deliverable__summary{{"summary<br/>A while"}}
+    deliverable__plan{{"plan<br/>An if"}}
+    deliverable__tone_line{{"tone_line<br/>A case"}}
+    deliverable__tally{{"tally<br/>A let of type text"}}
+    deliverable__summary_then_opening{{"summary_then_opening<br/>A while beside a prose node"}}
+    deliverable__topics_then_opening{{"topics_then_opening<br/>A for beside a prose node"}}
+
+    input__consult_draft -->|"content"| node__topic_loop__topic_gate__draft_topic
+    node__topic_loop__topic_gate__draft_topic -->|"ret (then)"| node__topic_loop__topic_gate
+    node__topic_loop__topic_gate -->|"content"| node__topic_loop__topic_gate_stripped
+    node__topic_loop__topic_gate -.->|"if"| node__topic_loop__topic_gate_stripped
+    input__topics -->|"for"| for_node__topic_loop
+    node__topic_loop__topic_gate_stripped -->|"ret"| node__topic_loop
+    input__consult_draft -->|"content"| node__opening
+    node__topic_loop -->|"content"| node__opening
+    input__consult_draft -->|"content"| node__closing
+    node__topic_loop -->|"content"| node__closing
+    input__consult_draft -->|"content"| node__plan
+    input__consult_draft -->|"content"| node__section_loop__outline
+    node__section_loop__point_loop__draft_point -->|"content"| node__section_loop__point_loop__draft_point_stripped
+    node__section_loop__point_loop__draft_point -.->|"if"| node__section_loop__point_loop__draft_point_stripped
+    node__section_loop__outline -->|"for"| for_node__section_loop__point_loop
+    node__section_loop__point_loop__draft_point_stripped -->|"ret"| node__section_loop__point_loop
+    node__section_loop__point_loop -->|"content"| node__section_loop__point_loop_stripped
+    node__section_loop__point_loop -.->|"if"| node__section_loop__point_loop_stripped
+    node__plan -->|"for"| for_node__section_loop
+    node__section_loop__point_loop_stripped -->|"ret"| node__section_loop
+    input__consult_draft -->|"content"| node__refine__draft_summary
+    node__topic_loop -->|"content"| node__refine__draft_summary
+    node__refine__draft_summary -->|"content"| node__refine__judge
+    input__redraft -.->|"if"| node__refine
+    node__refine__judge -.->|"if"| node__refine
+    node__refine__draft_summary -->|"ret"| node__refine
+    input__consult_draft -->|"content"| node__plan_gate__draft_plan
+    node__topic_loop -->|"content"| node__plan_gate__draft_plan
+    input__include_plan -.->|"if"| node__plan_gate
+    node__plan_gate__draft_plan -->|"ret (then)"| node__plan_gate
+    input__consult_draft -->|"content"| node__tone_case__formal_line
+    node__topic_loop -->|"content"| node__tone_case__formal_line
+    input__consult_draft -->|"content"| node__tone_case__plain_line
+    node__topic_loop -->|"content"| node__tone_case__plain_line
+    input__tone -.->|"if"| node__tone_case
+    node__tone_case__formal_line -->|"ret (formal)"| node__tone_case
+    node__tone_case__plain_line -->|"ret (plain)"| node__tone_case
+    node__topic_loop -->|"content"| node__topic_tally
+    node__opening -->|"content"| deliverable__single
+    node__closing -->|"content"| deliverable__pair
+    node__opening -->|"content"| deliverable__pair
+    node__topic_loop -->|"content"| deliverable__topics
+    node__section_loop -->|"content"| deliverable__sections
+    node__refine -->|"content"| deliverable__summary
+    node__plan_gate -->|"content"| deliverable__plan
+    node__plan_gate -.->|"if"| deliverable__plan
+    node__tone_case -->|"content"| deliverable__tone_line
+    node__tone_case -.->|"if"| deliverable__tone_line
+    node__topic_tally -->|"content"| deliverable__tally
+    node__opening -->|"content"| deliverable__summary_then_opening
+    node__refine -->|"content"| deliverable__summary_then_opening
+    node__opening -->|"content"| deliverable__topics_then_opening
+    node__topic_loop -->|"content"| deliverable__topics_then_opening
+    classDef modelDerived stroke-dasharray: 5 5
+    class node__topic_loop__topic_gate__draft_topic,node__topic_loop__topic_gate,node__topic_loop__topic_gate_stripped,node__topic_loop,node__opening,node__closing,node__plan,node__section_loop__outline,node__section_loop__point_loop__draft_point,node__section_loop__point_loop__draft_point_stripped,node__section_loop__point_loop,node__section_loop__point_loop_stripped,node__section_loop,node__refine__draft_summary,node__refine__judge,node__refine,node__plan_gate__draft_plan,node__plan_gate,node__tone_case__formal_line,node__tone_case__plain_line,node__tone_case,node__topic_tally modelDerived

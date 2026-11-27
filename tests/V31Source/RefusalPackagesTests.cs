@@ -86,7 +86,8 @@ public class RefusalPackagesTests
     /// <summary>
     /// #1504 (area 07): the dialect's sentences the suite has no case for. S05-041 (a node that is no agent declares
     /// parts): the reader refuses a parts member on any other kind first, so no package reaches it. S05-060 (W-1, a run
-    /// spot) and S05-061 (W-2, a markdown_block renderer inside a line): warnings; a package that gets them is accepted.
+    /// spot), S05-061 (W-2, a markdown_block renderer inside a line) and S05-065 (W-3, a single line ending inside a paragraph,
+    /// #1510 G-D11): warnings; a package that gets them is accepted.
     /// And part 05's run-time sentences, said while a body renders or a reply is read, never at publish: S05-012, S05-014
     /// and S05-062 (D12's limits), S05-053 to S05-059 (a reply's markers, part 05 § 8.6) and A07-006 (D13). A07-014 (two
     /// versions of one agent, #1504 ruling 4): the published agents catalogue binds each agent at one version, and a package
@@ -95,7 +96,7 @@ public class RefusalPackagesTests
     /// </summary>
     private static readonly string[] TemplatesNotShipped =
     [
-        "S05-041", "S05-060", "S05-061", "A07-014",
+        "S05-041", "S05-060", "S05-061", "S05-065", "A07-014",
         "S05-012", "S05-014", "S05-053", "S05-054", "S05-055", "S05-056", "S05-057", "S05-058", "S05-059", "S05-062", "A07-006",
     ];
 

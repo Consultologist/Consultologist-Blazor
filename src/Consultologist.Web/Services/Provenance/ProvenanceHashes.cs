@@ -24,6 +24,10 @@ public static class ProvenanceHashes
 {
     private static readonly JsonSerializerOptions Canonical = new() { WriteIndented = false };
 
+    /// <summary>A hash as History shortens it: its first 12 characters and an ellipsis; an em dash for none. The run diagram (#1510) shortens hashes the same way.</summary>
+    public static string HashPrefix(string? hash) =>
+        string.IsNullOrEmpty(hash) ? "—" : hash[..Math.Min(12, hash.Length)] + "…";
+
     public static string Sha256Hex(string text) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 

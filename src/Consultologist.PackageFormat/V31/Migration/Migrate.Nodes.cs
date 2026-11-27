@@ -204,10 +204,16 @@ internal static partial class Migrate
             .Select(t => t.Id);
 
     /// <summary>
-    /// A classifier's id for macro <paramref name="macro"/> (its bare id): <c>&lt;macro&gt;_applies</c> fitted (A10-034 when cut),
-    /// or with the first free number, <c>_applies_2</c>, … (S10-006) when a node, a check or a classifier already written has it.
+    /// A classifier's id for macro <paramref name="macro"/> (its bare id): <c>&lt;macro&gt;_applies</c> fitted (<see cref="FreeNodeId"/>).
     /// </summary>
-    private static string ClassifierId(Migrated m, NodeTree tree, string macro)
+    private static string ClassifierId(Migrated m, NodeTree tree, string macro) => FreeNodeId(m, tree, macro, "_applies");
+
+    /// <summary>
+    /// The id of a node the migration adds, which has no 30 id: <paramref name="id"/> and <paramref name="tail"/> fitted
+    /// (A10-034 when cut), or with the first free number, <c>&lt;tail&gt;_2</c>, … (S10-006) when a node, a check or a node
+    /// the migration added already has it.
+    /// </summary>
+    private static string FreeNodeId(Migrated m, NodeTree tree, string id, string tail)
     {
         var taken = new HashSet<string>(tree.ById.Keys, StringComparer.Ordinal);
         foreach (var path in m.Sources.Keys.Where(p => p.StartsWith("nodes/", StringComparison.Ordinal) || p.StartsWith("checks/", StringComparison.Ordinal)))
@@ -216,16 +222,16 @@ internal static partial class Migrate
             taken.Add(segments[^1] == WorkflowDataResolver.IndexFileName ? segments[^2] : segments[^1].Replace(".md", "", StringComparison.Ordinal));
         }
 
-        var wanted = $"{macro}_applies";
-        var suffixed = Renames.Fit(macro, "_applies");
-        var id = suffixed;
-        for (var n = 2; taken.Contains(id); n++)
-            id = Renames.Fit(macro, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"_applies_{n}"));
+        var wanted = id + tail;
+        var suffixed = Renames.Fit(id, tail);
+        var free = suffixed;
+        for (var n = 2; taken.Contains(free); n++)
+            free = Renames.Fit(id, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{tail}_{n}"));
         if (wanted.Length > SourceBounds.IdLength)
             m.Notice(MigrationSentences.RenamedTooLong(Renames.Node, wanted, suffixed));
-        if (id != suffixed)
-            m.Notice(MigrationSentences.RenameTaken(suffixed, id, suffixed));
-        return id;
+        if (free != suffixed)
+            m.Notice(MigrationSentences.RenameTaken(suffixed, free, suffixed));
+        return free;
     }
 
     /// <summary>

@@ -353,7 +353,7 @@ definitions and null behaviour)
 | `trim` | `trim(x)` | text-like (see below) | leading and trailing whitespace removed | `null` |
 | `starts_with` | `starts_with(x, prefix)` | `boolean` | ordinal, case-sensitive prefix test; on Markdown, of the source | `false` if either is `null` |
 | `ends_with` | `ends_with(x, suffix)` | `boolean` | ordinal, case-sensitive suffix test | `false` if either is `null` |
-| `plain` | `plain(x)` | `plaintext` | Markdown converted to plain text by the same conversion as plain-text output (#1397; Markdig with the listed extensions, [#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6924903111)); a plain-text operand is returned unchanged | `null` |
+| `plain` | `plain(x)` | `plaintext` | Markdown converted to plain text by the same conversion as plain-text output (#1397; Markdig with the listed extensions, [#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6924903111): the 31 bundle of [part 02 § 5.2](02-types-and-inputs.md), HTML off, so raw HTML and a generic attribute's `{…}` stay as text); a plain-text operand is returned unchanged | `null` |
 | `matches` | `matches(x, pattern)` | `boolean` | § 5.3 | `false` if `x` is `null` |
 | `has_word` | `has_word(x, word)` | `boolean` | § 5.3 | `false` if `x` is `null` |
 

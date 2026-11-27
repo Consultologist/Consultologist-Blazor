@@ -1,7 +1,8 @@
 {
   "notices": [
     "Node 'triage' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.",
-    "nodes/problem_loop/problem_draft.md, if: written so that the node runs only when deliverable note applies, as 30 ran only what an applicable deliverable needed."
+    "nodes/problem_loop/problem_draft.md, if: written so that the node runs only when deliverable note applies, as 30 ran only what an applicable deliverable needed.",
+    "Loop 'problem_loop' returns each item through the new node 'problem_draft_stripped', which strips the item's text as specVersion 30 did."
   ],
   "handEdits": [],
   "refusals": []

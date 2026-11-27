@@ -6,6 +6,7 @@ using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Diagram;
 using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Publish;
 using Consultologist.PackageFormat.V31.Run;
@@ -172,6 +173,52 @@ public class ScriptsTests
         Assert.Contains("is not empty; write into a new or empty folder", script, StringComparison.Ordinal);
         Assert.Contains("manifest[\"version\"] = tag;", script, StringComparison.Ordinal);
         Assert.DoesNotContain("manifest[\"name\"] =", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACheck_GivesTheCompiledResolve_WhoseDrawingIsThePublishedDiagram()
+    {
+        // #1510 (area 13, D13): what the check script compares a committed dag.mmd with, and what --write-dag writes, is the
+        // drawing of the check's in-memory resolve.json, which is the dag.mmd a publish with the drawing writes.
+        var upload = await Folder();
+        var check = await PackagePublish.CheckAsync(upload, Options());
+        var publish = await PackagePublish.RunAsync(upload, Options() with { Diagram = PackageDiagram.Generate });
+
+        Assert.True(check.Report.Published);
+        var stored = Encoding.UTF8.GetString(publish.Files.Single(f => f.Path == PackagePublish.DiagramFile).Bytes);
+        Assert.Equal(stored, PackageDiagram.Generate(check.Compiled!.Resolve));
+    }
+
+    [Fact]
+    public void TheCheckScript_FailsOnAStaleCommittedDiagram_AndWritesItWithWriteDag()
+    {
+        // #1510 (area 13, D13; part 07 § 7): a committed dag.mmd that differs from a fresh one fails (exit 1); --write-dag
+        // writes the fresh one into the folder; --write publishes the drawing with the version.
+        var script = Script("check-workflow-package-v31.cs");
+
+        Assert.Contains("//   dotnet run -v q --file scripts/check-workflow-package-v31.cs -- <folder> --write-dag", script, StringComparison.Ordinal);
+        Assert.Contains("case \"--write-dag\":", script, StringComparison.Ordinal);
+        Assert.Contains("Diagram: PackageDiagram.Generate", script, StringComparison.Ordinal);
+        Assert.Contains("var fresh = PackageDiagram.Generate(outcome.Compiled!.Resolve);", script, StringComparison.Ordinal);
+        Assert.Contains("dag.mmd differs from the drawing of the package's resolve.json", script, StringComparison.Ordinal);
+        var check = script.IndexOf("var fresh = PackageDiagram.Generate", StringComparison.Ordinal);
+        var written = script.IndexOf("foreach (var file in outcome.Files)", StringComparison.Ordinal);
+        Assert.True(check > 0 && written > check, "the diagram is checked before a version is written");
+    }
+
+    [Fact]
+    public void TheCheckScript_ReadsACommittedDiagramsCrlfAsLf_AndNeverWritesThroughALink()
+    {
+        // #1510 (final review): .gitattributes is text=auto, so a checkout may write dag.mmd with \r\n: the committed side
+        // is compared with \r\n read as \n. --write-dag never follows a link, as the folder's read never does.
+        var script = Script("check-workflow-package-v31.cs");
+
+        Assert.Contains("Encoding.UTF8.GetString(committed).Replace(\"\\r\\n\", \"\\n\", StringComparison.Ordinal), fresh, StringComparison.Ordinal)", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("committed.AsSpan().SequenceEqual", script, StringComparison.Ordinal);
+        var refusal = script.IndexOf("is a symbolic link, which this script never follows", StringComparison.Ordinal);
+        var write = script.IndexOf("File.WriteAllBytes(dagPath", StringComparison.Ordinal);
+        Assert.True(refusal > 0 && write > refusal, "a linked dag.mmd is refused before it is written");
+        Assert.Contains("if (existing.LinkTarget != null || (existing.Exists && IsLink(existing)))", script, StringComparison.Ordinal);
     }
 
     [Fact]

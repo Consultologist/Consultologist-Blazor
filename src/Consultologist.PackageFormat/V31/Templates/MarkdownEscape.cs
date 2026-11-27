@@ -7,9 +7,12 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// displays as exactly that text. CommonMark's backslash escapes for ASCII punctuation: a backslash before each of the 32
 /// ASCII punctuation characters. #1505 (area 08; the owner's ruling R9): the first space or tab leading each line is
 /// written as its character reference (<c>&amp;#32;</c>, <c>&amp;#9;</c>), so a line led by four spaces or a tab is not
-/// an indented code block. Nothing else changes (letters, digits, other white space, line breaks, which the pipeline makes
-/// hard breaks, and any non-ASCII text stay as they are). A line starts at the start of the text and after each
-/// <c>\n</c> or <c>\r</c>. The lock names it <c>markdown_escape</c> at <see cref="Version"/>.
+/// an indented code block. #1510 (G-D7): each line ending is written after two spaces, a hard break, so the text keeps its
+/// lines through 31's pipeline, where a single line ending is no break (<see cref="ConsultMarkdown.Pipeline31"/>); a
+/// <c>\r\n</c> is one ending, and a blank line stays a paragraph break. Nothing else changes (letters, digits, other white
+/// space and any non-ASCII text stay as they are). A line starts at the start of the text and after each <c>\n</c> or
+/// <c>\r</c>. The rule is local, so a text escaped piece by piece is the text escaped whole, except for a cut between a
+/// <c>\r</c> and its <c>\n</c>. The lock names it <c>markdown_escape</c> at <see cref="Version"/>.
 /// </summary>
 public static class MarkdownEscape
 {
@@ -20,8 +23,9 @@ public static class MarkdownEscape
     public static string Escape(string plain) => Escape(plain, startsLine: true);
 
     /// <summary>
-    /// <paramref name="plain"/> with a backslash before each ASCII punctuation character and the first space or tab of each
-    /// line as its character reference. With <paramref name="startsLine"/> <c>false</c> the text is a piece of a longer one
+    /// <paramref name="plain"/> with a backslash before each ASCII punctuation character, the first space or tab of each
+    /// line as its character reference and two spaces before each line ending (a <c>\n</c> after a <c>\r</c> is the
+    /// same ending, so gains none). With <paramref name="startsLine"/> <c>false</c> the text is a piece of a longer one
     /// that continues a line (the text after a run spot), so its start is not a line start.
     /// </summary>
     public static string Escape(string plain, bool startsLine)
@@ -36,6 +40,8 @@ public static class MarkdownEscape
                 escaped.Append("&#32;");
             else if (lineStart && c is '\t')
                 escaped.Append("&#9;");
+            else if (c is '\r' || (c is '\n' && (i == 0 || plain[i - 1] is not '\r')))
+                escaped.Append("  ").Append(c);
             else if (IsAsciiPunctuation(c))
                 escaped.Append('\\').Append(c);
             else

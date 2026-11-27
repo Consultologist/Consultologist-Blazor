@@ -1,4 +1,6 @@
 using Consultologist.Api.Email;
+using Consultologist.PackageFormat;
+using Markdig.Syntax;
 using PdfSharp.Pdf.IO;
 
 namespace Consultologist.Api.Tests;
@@ -304,5 +306,133 @@ public class ConsultDocumentPdfTests
         Assert.Contains("not", text);
         Assert.Contains("table", text);
         Assert.Contains("Follow up in three weeks.", text);
+    }
+
+    // ---- #1510 (the owner's third fix-first group, items 1 to 3): the 31 bundle ------------
+
+    /// <summary>The note Task G3's Web tests render too: one fictional consult using every type the 31 walker draws.</summary>
+    private static string EveryBlockNote() =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Markdown31", "every-block.md"));
+
+    private static string Text31(string markdown) => string.Join("\n", PageTexts(ConsultDocumentPdf.Render(markdown, 31, Password)));
+
+    [Fact]
+    public void TheEveryBlockNote_HoldsEveryTypeTheWalkerDraws()
+    {
+        var document = Markdig.Markdown.Parse(EveryBlockNote(), ConsultMarkdown.Pipeline31);
+
+        // what the walker meets: every block and inline, but not the definitions a LinkReferenceDefinitionGroup holds,
+        // which it passes over in silence
+        var met = document.Descendants()
+            .Where(node => node is not Block { Parent: LinkReferenceDefinitionGroup })
+            .Select(node => node.GetType())
+            .ToHashSet();
+
+        Assert.Equal(
+            ConsultDocumentPdf.Drawn31.Select(type => type.Name).Order(StringComparer.Ordinal),
+            met.Select(type => type.Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Render31_EveryBlockOfTheBundle_IsDrawn()
+    {
+        var text = Text31(EveryBlockNote());
+
+        foreach (var expected in new[]
+                 {
+                     "Consult note for Margaret Okafor",
+                     "Warning", "Seen at Sample Oncology Clinic by Dr A. Sample.",
+                     "two-week history [results pending.",
+                     "steady", "left", "HPI", "HPI reviewed with Margaret at the visit.",
+                     "[x] Bloods taken", "[ ] Echo booked",
+                     "a. Continue tamoxifen", "b. Review in clinic", "2. Letter to the GP",
+                     "Echocardiogram", "An ultrasound of the heart.",
+                     "Drug", "Dose", "Tamoxifen", "20 mg",
+                     "A photograph of the forearm", "Figure 1: the rash at the visit",
+                     "FBC, U&E, LFT", "indented code line",
+                     "Footer by Dr A. Sample",
+                     "1. Taken at the visit on the ward.",
+                     "ECOG 1", "plan", "a scan of the forearm", "https://example.org/referral", "www.example.org", "A&E.",
+                 })
+        {
+            Assert.Contains(expected, text);
+        }
+
+        // the syntax is read, not printed
+        foreach (var syntax in new[] { "[!WARNING]", "\"\"", "^2^", "++", "[^1]", "*[HPI]", "^^", "```", "&amp;", "<https", "](" })
+        {
+            Assert.DoesNotContain(syntax, text);
+        }
+
+        // a link reference definition draws nothing
+        Assert.DoesNotContain("example.org/clinic", text);
+    }
+
+    [Fact]
+    public void Render31_ABlockTheWalkerDoesNotKnow_Throws()
+    {
+        var document = new Markdig.Syntax.MarkdownDocument { new Markdig.Extensions.Yaml.YamlFrontMatterBlock(null!) };
+        var section = new MigraDoc.DocumentObjectModel.Document().AddSection();
+
+        var thrown = Assert.Throws<NotSupportedException>(() => ConsultDocumentPdf.Draw(section, document, standard: true));
+
+        Assert.Contains("YamlFrontMatterBlock", thrown.Message);
+    }
+
+    [Fact]
+    public void Render31_ASingleLineEnding_IsASpace_AndABackslashIsABreak()
+    {
+        var bytes = ConsultDocumentPdf.Render("Margaret Okafor was seen\ntoday in clinic.\\\nReview in a week.", 31, Password);
+
+        using var document = UglyToad.PdfPig.PdfDocument.Open(new MemoryStream(bytes), new UglyToad.PdfPig.ParsingOptions { Password = Password });
+        var words = document.GetPage(1).GetWords().ToList();
+        double Baseline(string word) => words.First(w => w.Text == word).BoundingBox.Bottom;
+
+        Assert.Equal(Baseline("seen"), Baseline("today"), 0.5);
+        Assert.True(Baseline("Review") < Baseline("today") - 5, "the backslash's line break starts a new line");
+        Assert.DoesNotContain(words, word => word.Text.Contains('\\'));
+    }
+
+    [Theory]
+    [InlineData("HPI here, taken in full.")]
+    [InlineData("# HPI here")]
+    [InlineData("- HPI here")]
+    [InlineData("| Section |\n|---|\n| HPI here |")]
+    public void Render31_AnAbbreviationThatOpensALine_IsDrawn(string body)
+    {
+        // Abbreviations wraps the literal it splits in a bare ContainerInline; the walker draws its children
+        var text = Text31("*[HPI]: History of presenting illness\n\n" + body);
+
+        Assert.Contains("HPI here", text);
+        Assert.DoesNotContain("*[HPI]", text);
+    }
+
+    [Fact]
+    public void Render31_AnEntity_IsItsCharacter()
+    {
+        var text = Text31("Margaret&#32;Okafor, A&amp;E");
+
+        Assert.Contains("Margaret Okafor, A&E", text);
+        Assert.DoesNotContain("&#32;", text);
+    }
+
+    [Fact]
+    public void Render31_GenericAttributes_AreText()
+    {
+        var text = Text31("# Plan {#id .class key=value}\n\nSeen by Dr A. Sample {onclick=x}");
+
+        Assert.Contains("Plan {#id .class key=value}", text);
+        Assert.Contains("Seen by Dr A. Sample {onclick=x}", text);
+    }
+
+    [Fact]
+    public void Render31_ExcludedSyntax_IsText()
+    {
+        var text = Text31("Margaret Okafor: ~~x~~, $x$ and ==x==.\n\n:::note\nSeen by Dr A. Sample.\n:::");
+
+        Assert.Contains("~~x~~", text);
+        Assert.Contains("$x$", text);
+        Assert.Contains("==x==", text);
+        Assert.Contains(":::note", text);
     }
 }

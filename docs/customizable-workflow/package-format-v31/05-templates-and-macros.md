@@ -253,6 +253,17 @@ explains ([decided](https://github.com/Consultologist/Consultologist-Blazor/issu
 **The Editor** previews each placement with and without its unit, side by side. That's
 information, not a warning.
 
+**Line endings.** At 31 a single line ending inside a paragraph is not a break: Markdown reads it as
+a space ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166), item 4). End such a line with `\` (an explicit hard
+break, which `~` does not strip) or leave a blank line. Publish warns (W-3) once for each
+such line ending in a Markdown body a reader sees: a deliverable, a `rendered` node, a macro, a snippet
+(one or a folder's item) or a renderer whose `format` is `markdown_block` or `markdown_inline`. A prompt
+and a part are never warned, nor is a body only prompts read or place, since its text is the model's to
+read; one a prompt reads that is also shown is warned. A line ending is not counted in a fence, indented
+code, a table or a heading, at a paragraph's last line, before a list item or a heading, inside a tag,
+where a tag's `~}}` removes it, or beside a line holding only tags (whose output may be empty or a block).
+The migration writes the `\` where 30 broke the line ([part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)).
+
 ## 3. What each template reads
 
 ### 3.1 The table
@@ -830,6 +841,7 @@ text is recorded by hash under the node that placed it.
 | `at: before`, `after`, `append`, item-level placements, deliverable macros | removed: fixed text is a snippet read in the deliverable template |
 | optional at most once, required exactly once | triggered exactly once, untriggered never |
 | prompt hashes vary with run facts and nothing says so | run spots, with a run-neutral hash beside the sent-text hash |
+| a single line ending in Markdown is a hard break (5–30's pipeline) | it is not a break: end the line with `\` or leave a blank line; publish warns where a body a reader sees has one (§ 2.6, W-3), and the migration writes the `\` ([part 10 § 1.2](10-migration-and-tools.md)) |
 
 ## Refusals
 
@@ -920,6 +932,7 @@ rest are this part's wording.
 **Warnings** (publish and the Editor; not refusals)
 - W-1: *"<Subject> reads <run.fact or run-dependent value> at line <n>. Its main hash differs between runs; runs are compared on the run-neutral hash."* (For a macro body the subject is the macro; its row's `runNeutralHash` is the one runs are compared on.)
 - W-2: *"<Subject> pipes renderer.<id>, a markdown_block, inside a line at line <n>."*
+- W-3: *"<Subject> has a single line ending inside a paragraph at line <n>: a single line ending is not a break; end the line with \ or leave a blank line."*
 
 ## Proposed in this part
 

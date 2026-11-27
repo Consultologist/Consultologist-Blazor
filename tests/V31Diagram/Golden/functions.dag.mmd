@@ -1,0 +1,59 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+    input__consult_draft(["input.consult_draft"])
+    snippet__standards(["snippet.standards"])
+
+    node__plan["plan<br/>Planning the sections<br/>agent → plaintext · generated"]
+
+    subgraph for_node__standards["standards: per snippet.standards item"]
+        node__standards__section@{ shape: tag-rect, label: "section<br/>call draft_section" }
+    end
+    node__standards["standards<br/>Standards<br/>item in snippet.standards"]
+
+    node__extract_input_terms["extract_input_terms<br/>Extracting terms from the draft<br/>agent → concept_list · generated"]
+    node__extract_note_terms["extract_note_terms<br/>Extracting terms from the note<br/>agent → concept_list · generated"]
+
+    subgraph fn_draft_section["function draft_section (standard, draft) → plaintext"]
+        fn_draft_section__param__standard(["param.standard"])
+        fn_draft_section__param__draft(["param.draft"])
+        fn_draft_section__node__standard_draft["standard_draft<br/>Drafting from the standard<br/>agent → plaintext · generated"]
+        fn_draft_section__node__patient_draft["patient_draft<br/>Drafting from the patient's facts<br/>agent → plaintext · generated"]
+        fn_draft_section__node__apply_instructions["apply_instructions<br/>Applying the instructions<br/>agent → plaintext · generated"]
+        fn_draft_section__param__standard --> fn_draft_section__node__standard_draft
+        fn_draft_section__param__standard -.->|"if"| fn_draft_section__node__standard_draft
+        fn_draft_section__param__draft --> fn_draft_section__node__patient_draft
+        fn_draft_section__node__patient_draft -->|"content"| fn_draft_section__node__apply_instructions
+        fn_draft_section__node__standard_draft -->|"content"| fn_draft_section__node__apply_instructions
+    end
+
+    subgraph checks["Checks"]
+        subgraph for_check__section_coverage["section_coverage: per node.standards.items (aligned)"]
+            check__section_coverage__coverage[["coverage<br/>Terms covered<br/>computed → check_result"]]
+        end
+        check__section_coverage["section_coverage<br/>Section coverage<br/>item in node.standards.items"]
+        check__all_sections[["all_sections<br/>All sections covered<br/>computed → check_result"]]
+    end
+
+    deliverable__emr__consult{{"consult<br/>Consult note"}}
+
+    input__consult_draft -->|"content"| node__plan
+    input__consult_draft -->|"content"| node__standards__section
+    node__standards__section -.-o|"calls"| fn_draft_section
+    snippet__standards -->|"for"| for_node__standards
+    node__standards__section -->|"ret"| node__standards
+    input__consult_draft -->|"content"| node__extract_input_terms
+    node__standards -->|"content"| node__extract_note_terms
+    node__standards -->|"content"| deliverable__emr__consult
+    node__extract_input_terms -->|"value"| check__section_coverage__coverage
+    node__extract_note_terms -->|"value"| check__section_coverage__coverage
+    node__standards -->|"for"| for_check__section_coverage
+    for_check__section_coverage -.-o|"aligned"| for_node__standards
+    check__section_coverage__coverage -->|"ret"| check__section_coverage
+    check__section_coverage -->|"items"| check__all_sections
+    check__all_sections ==>|"gates"| deliverable__emr__consult
+    classDef modelDerived stroke-dasharray: 5 5
+    class node__plan,node__standards__section,node__standards,node__extract_input_terms,node__extract_note_terms,fn_draft_section__node__standard_draft,fn_draft_section__node__patient_draft,fn_draft_section__node__apply_instructions,check__section_coverage__coverage,check__section_coverage,check__all_sections modelDerived
+    style checks stroke-width:3px

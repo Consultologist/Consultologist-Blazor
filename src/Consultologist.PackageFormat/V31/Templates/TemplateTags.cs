@@ -75,6 +75,46 @@ internal static class TemplateTags
         return (tags, enter is { } last ? Math.Max(last.Start.Line, 0) + 1 : null);
     }
 
+    /// <summary>
+    /// #1510 (G-D8): the tags of <paramref name="text"/> that hold only a comment (<c>{{# … }}</c>), which
+    /// <see cref="Scan"/> does not list (they render nothing), each from its <c>{{</c> to the character after its <c>}}</c>;
+    /// a <c>~}}</c> on one still removes the line ending after it.
+    /// </summary>
+    public static IReadOnlyList<TemplateTag> Comments(string text)
+    {
+        var comments = new List<TemplateTag>();
+        Token? enter = null;
+        var comment = false;
+        var code = false;
+        foreach (var token in new Lexer(text))
+        {
+            switch (token.Type)
+            {
+                case TokenType.CodeEnter:
+                    (enter, comment, code) = (token, false, false);
+                    break;
+                case TokenType.CodeExit when enter is { } open:
+                    var tag = Tag(text, open, token);
+                    if (comment && !code && !tag.DashLeft && !tag.DashRight)
+                        comments.Add(tag);
+                    enter = null;
+                    break;
+                case TokenType.Eof:
+                    return comments;
+                case TokenType.Comment or TokenType.CommentMulti:
+                    comment = true;
+                    break;
+                case TokenType.Whitespace or TokenType.WhitespaceFull or TokenType.NewLine:
+                    break;
+                default:
+                    code = true;
+                    break;
+            }
+        }
+
+        return comments;
+    }
+
     private static TemplateTag Tag(string text, Token enter, Token exit)
     {
         var start = Math.Clamp(enter.Start.Offset, 0, text.Length);

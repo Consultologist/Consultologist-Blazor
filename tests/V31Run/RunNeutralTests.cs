@@ -81,7 +81,7 @@ public class RunNeutralTests
         // The deliverable reads it too, and is released with its own neutral text and spots.
         var note = result.Values["deliverable.note"]!;
         Assert.Equal("released", (string?)note["state"]);
-        Assert.EndsWith("\nSeen {{run:1}}\n\n", (string?)note["neutral"], StringComparison.Ordinal);
+        Assert.EndsWith("\nSeen {{run:1}}  \n\n", (string?)note["neutral"], StringComparison.Ordinal);
         var noteRow = recorder.Row("deliverable.note").Detail;
         Assert.Equal(CanonicalJson.HashText((string)note["neutral"]!), (string?)noteRow["runNeutralHash"]);
         Assert.Single(noteRow["runSpots"]!.AsArray());

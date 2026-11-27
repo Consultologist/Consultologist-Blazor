@@ -172,6 +172,19 @@ internal sealed class Migrated
     /// </summary>
     public HashSet<string> AlwaysValued30 { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 1; F-D1): each <c>rendered</c> node written as a loop's <c>ret</c> to strip each
+    /// item (<see cref="Migrate.StripLoopItems"/>), its rooted key to the old <c>ret</c>'s rooted key. Not in <see cref="Keys"/>:
+    /// it has no 30 id.
+    /// </summary>
+    public Dictionary<string, string> StripNodes { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1510 (#1509 comment 7209167166, item 4; G-D8): each Markdown body the hard-breaks pass (<see cref="Migrate.HardBreaks"/>)
+    /// gave an explicit hard break, its file to how many <c>\</c> it wrote there.
+    /// </summary>
+    public Dictionary<string, int> HardBreaks { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Each condition site's place, by the site's 30 owner id (Task 7), for <see cref="Scope"/>; none is the package's top level.</summary>
     public Dictionary<string, SitePlace> Places { get; } = new(StringComparer.Ordinal);
 
@@ -438,6 +451,8 @@ internal sealed class Migrated
             Keys = keys,
             MacroBodies = MacroBodyFiles.Where(Sources.ContainsKey).ToList(),
             MacroIds30 = new Dictionary<string, string>(MacroIds30, StringComparer.Ordinal),
+            StripNodes = new Dictionary<string, string>(StripNodes, StringComparer.Ordinal),
+            HardBreaks = new Dictionary<string, int>(HardBreaks, StringComparer.Ordinal),
         };
     }
 }

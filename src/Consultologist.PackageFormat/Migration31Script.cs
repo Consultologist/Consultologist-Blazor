@@ -40,8 +40,9 @@ public sealed record Migration31Arguments(
 /// one raised through the chain in the same run, is migrated (<see cref="WorkflowPackageMigration30To31.Migrate"/>); with
 /// <c>--snapshot</c> a 31 folder gets its snapshot test (<see cref="WorkflowPackageMigration30To31.Snapshot"/>). It prints
 /// every notice and the file plan, and with <c>--write</c> leaves the folder holding exactly the result's files: what the
-/// result no longer names is deleted (30's <c>prompts/</c>, its flat macros, its <c>dag.mmd</c>, which 31 does not write
-/// here). Exits <see cref="Clean"/>, <see cref="HandEditsLeft"/> (with S10-001) or <see cref="Refused"/> (nothing written).
+/// result no longer names is deleted (30's <c>prompts/</c>, its flat macros). 30's <c>dag.mmd</c> is replaced by the 31
+/// drawing when the migrated package compiles, and deleted when it does not yet (#1510, D13). Exits <see cref="Clean"/>,
+/// <see cref="HandEditsLeft"/> (with S10-001) or <see cref="Refused"/> (nothing written).
 /// </summary>
 public static class Migration31Script
 {
@@ -57,9 +58,20 @@ public static class Migration31Script
     /// <summary>S10-001: the summary's word when the package was written with hand edits left.</summary>
     public const string HandEditsRemain = MigrationSentences.WrittenHandEditsRemain;
 
-    /// <summary>The one line that says 31's <c>dag.mmd</c> is not this script's (the 31 diagram is drawn by area 13's tools).</summary>
-    public const string NoDiagram =
-        "notice: dag.mmd is not written at specVersion 31 (area 13's tools draw the 31 diagram); a 30 dag.mmd is deleted.";
+    /// <summary>#1510 (area 13, D13): the line that says the migrated package compiled, so its <c>dag.mmd</c> is the 31 drawing.</summary>
+    public const string DiagramWritten =
+        "notice: dag.mmd is the specVersion 31 drawing of the migrated package's resolve.json.";
+
+    /// <summary>#1510 (area 13, D13): the line that says the migrated package does not compile yet, so no <c>dag.mmd</c> is written.</summary>
+    public const string DiagramWaits =
+        "notice: dag.mmd is not written yet: the migrated package does not compile until its hand edits are done; a 30 dag.mmd "
+        + "is deleted. Once they are, scripts/check-workflow-package-v31.cs <package-dir> --write-dag writes it.";
+
+    /// <summary>#1510 (final review): the line that says the migrated package does not compile though the migration named no hand edit.</summary>
+    public const string DiagramNotCompiled =
+        "notice: dag.mmd is not written: the migrated package does not compile, and scripts/check-workflow-package-v31.cs "
+        + "<package-dir> says why; a 30 dag.mmd is deleted. Once it compiles, scripts/check-workflow-package-v31.cs <package-dir> "
+        + "--write-dag writes it.";
 
     /// <summary>The usage line of <c>--to 31</c>.</summary>
     public const string Usage =
@@ -215,8 +227,8 @@ public static class Migration31Script
             return Refused;
         }
 
-        // The diagram is a view, not read. A migration does not write one at 31, so a 30 one is deleted; a snapshot leaves
-        // a 31 folder's own diagram alone.
+        // The diagram is a view, not read. A migration writes the 31 one when the package compiles (below), so a 30 one is
+        // replaced or deleted; a snapshot leaves a 31 folder's own diagram alone.
         var files = before
             .Where(f => f.Key is not (Manifest or Diagram))
             .ToDictionary(f => f.Key, f => f.Value, StringComparer.Ordinal);
@@ -240,6 +252,10 @@ public static class Migration31Script
         }
 
         var after = new Dictionary<string, string>(result.Files, StringComparer.Ordinal) { [Manifest] = result.ManifestJson };
+        // #1510 (area 13, D13): a migrated package that compiles gets its 31 drawing; one that does not yet gets none (a 30
+        // dag.mmd is deleted) until its hand edits are done, or, when the migration named none, until it compiles.
+        if (!arguments.Snapshot && DiagramOf(result, chosen) is { } diagram)
+            after[Diagram] = diagram;
         if (OutsideOf(root, after.Keys) is { } outside)
         {
             error.WriteLine($"error: {outside} would be written outside {root}.");
@@ -255,7 +271,7 @@ public static class Migration31Script
         foreach (var path in added) output.WriteLine($"add:     {path}");
         foreach (var path in rewritten) output.WriteLine($"rewrite: {path}");
         if (!arguments.Snapshot)
-            output.WriteLine(NoDiagram);
+            output.WriteLine(after.ContainsKey(Diagram) ? DiagramWritten : result.HandEdits.Count > 0 ? DiagramWaits : DiagramNotCompiled);
 
         if (arguments.Write)
         {
@@ -287,6 +303,27 @@ public static class Migration31Script
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"{label}: specVersion {from} → 31, {plan}, {result.HandEdits.Count} hand edits{outcome}"));
         return result.HandEdits.Count > 0 ? HandEditsLeft : Clean;
+    }
+
+    /// <summary>
+    /// #1510 (area 13, D13): the 31 drawing of the migrated package (<see cref="V31.Diagram.PackageDiagram.Generate"/> of its
+    /// <c>resolve.json</c>), compiled as its snapshot publishes it, at the engine's default limits; <c>null</c> when it does
+    /// not compile (a hand edit left, or anything on the way faults: the migration never throws on package content).
+    /// </summary>
+    private static string? DiagramOf(Migration31Result result, Migration31Options options)
+    {
+        try
+        {
+            var upload = result.Files.ToDictionary(f => f.Key, f => Utf8.GetBytes(f.Value), StringComparer.Ordinal);
+            upload[Manifest] = Utf8.GetBytes(result.ManifestJson);
+            var (_, compiled) = V31.CompiledPackage.Publish(
+                upload, options.Registry, options.Toolchain, options.Limits ?? WorkflowPackageMigration30To31.EngineLimits);
+            return compiled is { Complete: true } ? V31.Diagram.PackageDiagram.Generate(compiled.Resolve) : null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

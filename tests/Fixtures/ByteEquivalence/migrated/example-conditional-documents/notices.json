@@ -1,7 +1,9 @@
 {
   "notices": [
     "nodes/sections_consult_note_section/consult_note_section.md, if: written so that the node runs only when deliverable consult_note applies, as 30 ran only what an applicable deliverable needed.",
-    "nodes/sections_progress_note_section/progress_note_section.md, if: written so that the node runs only when deliverable progress_note applies, as 30 ran only what an applicable deliverable needed."
+    "nodes/sections_progress_note_section/progress_note_section.md, if: written so that the node runs only when deliverable progress_note applies, as 30 ran only what an applicable deliverable needed.",
+    "Loop 'sections_consult_note_section' returns each item through the new node 'consult_note_section_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'sections_progress_note_section' returns each item through the new node 'progress_note_section_stripped', which strips the item's text as specVersion 30 did."
   ],
   "handEdits": [],
   "refusals": []

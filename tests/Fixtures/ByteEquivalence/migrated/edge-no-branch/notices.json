@@ -1,6 +1,7 @@
 {
   "notices": [
-    "deliverables/plan.md, if: written to skip the deliverable unless node.plan_gate ran, as 30 skipped a deliverable none of whose sources ran."
+    "deliverables/plan.md, if: written to skip the deliverable unless node.plan_gate ran, as 30 skipped a deliverable none of whose sources ran.",
+    "Loop 'problem_loop' returns each item through the new node 'problem_draft_stripped', which strips the item's text as specVersion 30 did."
   ],
   "handEdits": [],
   "refusals": []

@@ -36,7 +36,7 @@
       },
       "deliverable.problems": {
         "state": "released",
-        "text": "Seen at: \n\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\nReviewed today (fictional).\n\n\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\nReviewed today (fictional)."
+        "text": "Seen at: \n\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\nReviewed today (fictional).\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\nReviewed today (fictional)."
       }
     }
   }

@@ -6,7 +6,11 @@
    #686: it's the app's only modal, so it carries dialog semantics — a
    labelled role="dialog", Escape-to-close, and focus moved in on open,
    trapped while up, and restored to the trigger on close (the last three
-   via consultologistDialog, since a virtual DOM has no real focus). *@
+   via consultologistDialog, since a virtual DOM has no real focus).
+   #1510 (D12): a second way in, a storage 12 job's run diagram (Diagram31, RunDiagram31's text and anchors) in place
+   of a 5–30 Detail; the legend is the same, since its classes are RunDagDiagram's colours. A linked box (a call, on
+   History) is handed to OnCall with its anchor: the page closes the dialog and shows the row. *@
+@using Consultologist.PackageFormat.V31.Diagram
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Provenance
 @inject IJSRuntime JS
@@ -28,14 +32,21 @@
                           IconStart="@(new Icons.Regular.Size20.Dismiss())"
                           OnClick="@(() => OnClose.InvokeAsync())" />
         </div>
-        <WorkflowDagView Diagram="@RunDagDiagram.Build(Detail)" />
+        <WorkflowDagView Diagram="@(Diagram31?.Mermaid ?? RunDagDiagram.Build(Detail!))" Anchors="@Diagram31?.Anchors" OnAnchor="FollowAsync" />
     </div>
 </div>
 
 @code {
-    [Parameter, EditorRequired] public ConsultGenerationJobResponse Detail { get; set; } = default!;
+    /// <summary>A storage 2–11 job: its run diagram is <see cref="RunDagDiagram.Build"/>'s. Unused when <see cref="Diagram31"/> is given.</summary>
+    [Parameter] public ConsultGenerationJobResponse? Detail { get; set; }
 
     [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>A storage 12 job's run diagram (<c>RunDiagram31.Build</c>), drawn as given.</summary>
+    [Parameter] public DiagramText? Diagram31 { get; set; }
+
+    /// <summary>A linked box of <see cref="Diagram31"/> was followed, with its anchor (<c>row-&lt;key&gt;</c>).</summary>
+    [Parameter] public EventCallback<string> OnCall { get; set; }
 
     private ElementReference _panel;
 
@@ -46,6 +57,14 @@
         {
             await OnClose.InvokeAsync();
         }
+    }
+
+    // A linked box: focus goes back to the trigger now (deactivate's second call, on disposal, finds nothing to
+    // restore), so the row the page shows next keeps focus whichever renders first.
+    private async Task FollowAsync(string anchor)
+    {
+        await JS.InvokeVoidAsync("consultologistDialog.deactivate");
+        await OnCall.InvokeAsync(anchor);
     }
 
     // The parent renders this under an @if, so a fresh instance's first render

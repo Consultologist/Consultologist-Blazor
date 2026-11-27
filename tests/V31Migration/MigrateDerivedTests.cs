@@ -89,16 +89,17 @@ public class MigrateDerivedTests
     [Fact]
     public void AFlowsFormat_ComesFromItsRet()
     {
-        // Part 04 § 2.8, now exactly: the format a list of the ret's (a list of lists for a loop around a loop), and the flags.
+        // Part 04 § 2.8, now exactly: the format a list of the ret's, and the flags. #1510 (item 1): each loop's ret is the node
+        // that strips its items, so a loop around a loop is a list of the inner rendering's stripped text.
         var nested = MigratedPackagesTests.Migrated("example-nested-note");
         AssertExactly("""
             { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
-              "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "markdown_block" } } },
+              "format": { "type": "array", "items": { "$ref": "markdown_block" } },
               "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
               "in": "node.plan.value.sections",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": "title",
-              "nodes": ["outline", "paragraphs"], "ret": "node.sections.paragraphs" }
+              "nodes": ["outline", "paragraphs", "paragraphs_stripped"], "ret": "node.sections.paragraphs_stripped" }
             """, Json(nested, "nodes/sections/index.json"));
         AssertExactly("""
             { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
@@ -107,7 +108,7 @@ public class MigrateDerivedTests
               "in": "node.outline.value.points",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": null,
-              "nodes": ["draft_paragraph"], "ret": "node.sections.paragraphs.draft_paragraph" }
+              "nodes": ["draft_paragraph", "draft_paragraph_stripped"], "ret": "node.sections.paragraphs.draft_paragraph_stripped" }
             """, Json(nested, "nodes/sections/paragraphs/index.json"));
         AssertExactly("""
             { "kind": "for", "producer": "computed", "label": "Sections — drafting each requested section by its kind", "description": null,
@@ -116,7 +117,7 @@ public class MigrateDerivedTests
               "in": "input.sections.value",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": "title",
-              "nodes": ["route"], "ret": "node.sections_draft.route" }
+              "nodes": ["route", "route_stripped"], "ret": "node.sections_draft.route_stripped" }
             """, Json(MigratedPackagesTests.Migrated("example-conditional-sections"), "nodes/sections_draft/index.json"));
 
         // test/general has hand edits elsewhere (its parts' conditions, refused by the expressions): its flags are still derived.
@@ -127,8 +128,8 @@ public class MigrateDerivedTests
               "in": "snippet.standards",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": "title",
-              "nodes": ["section_instructions", "patient_section_draft", "standard_section_draft"],
-              "ret": "node.standards.section_instructions" }
+              "nodes": ["section_instructions", "patient_section_draft", "standard_section_draft", "section_instructions_stripped"],
+              "ret": "node.standards.section_instructions_stripped" }
             """, Json(MigratedPackagesTests.Migrated("test/general"), "nodes/standards/index.json"));
     }
 

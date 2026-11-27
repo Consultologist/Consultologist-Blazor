@@ -55,14 +55,14 @@ public class DeliverableComposeTests
     [Fact]
     public void PlainText_IsEscaped_PerItem()
     {
-        // Review Focus 3: each pass escapes its own item; a line end stays a line end; null writes nothing.
+        // Review Focus 3: each pass escapes its own item; a line end stays a line end (a hard break, G-D7); null writes nothing.
         var plan = RunFixture.Plan(WithNote("markdown_block", "## Items\n{{ for t in input.lines.value }}<{{ t }}>\n{{ end }}"));
         Assert.Equal("[{\"at\":\"2:34\",\"unit\":null}]", CanonicalJson.Write(plan.Entries[Note].Json["escapes"]));
 
         var outcome = Render(plan, BodyComposerTests.Scope(("input.lines.value", new JsonArray("# 1", "*bold*", "a\nb", null))));
 
         var text = Composed(outcome);
-        Assert.Equal("## Items\n<\\# 1>\n<\\*bold\\*>\n<a\nb>\n<>\n", text);
+        Assert.Equal("## Items\n<\\# 1>\n<\\*bold\\*>\n<a  \nb>\n<>\n", text);
         Assert.Equal(CanonicalJson.HashText(text), (string?)outcome.Detail!["inputHash"]);
     }
 
@@ -128,10 +128,10 @@ public class DeliverableComposeTests
 
         var outcome = Render(plan, BodyComposerTests.Scope(), BodyComposerTests.Placed("snippet.sign_off", "snippet.doctor", "snippet.clinic"));
 
-        Assert.Equal("## Plan\nSeen by Dr A\\. Sample\n&#32;Sample Oncology Clinic\n", Composed(outcome));
+        Assert.Equal("## Plan\nSeen by Dr A\\. Sample  \n&#32;Sample Oncology Clinic\n", Composed(outcome));
         Assert.Equal(
             CanonicalJson.Write(new JsonArray(
-                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Seen by Dr A\\. Sample\n&#32;Sample Oncology Clinic"), ["sent"] = true },
+                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Seen by Dr A\\. Sample  \n&#32;Sample Oncology Clinic"), ["sent"] = true },
                 new JsonObject { ["site"] = "snippet.doctor", ["hash"] = CanonicalJson.HashText(" Dr A\\. Sample"), ["sent"] = true },
                 new JsonObject { ["site"] = "snippet.clinic", ["hash"] = CanonicalJson.HashText("&#32;Sample Oncology Clinic"), ["sent"] = true })),
             CanonicalJson.Write(outcome.Detail!["units"]));
@@ -201,11 +201,11 @@ public class DeliverableComposeTests
 
         var outcome = Render(plan, scope);
 
-        Assert.Equal("## Seen\nSeen 2026\\-11\\-21 \\(clinic\\)\\.\n\n", Composed(outcome));
-        Assert.Equal("## Seen\nSeen {{run:1}} \\(clinic\\)\\.\n\n", outcome.NeutralText);
+        Assert.Equal("## Seen\nSeen 2026\\-11\\-21 \\(clinic\\)\\.  \n\n", Composed(outcome));
+        Assert.Equal("## Seen\nSeen {{run:1}} \\(clinic\\)\\.  \n\n", outcome.NeutralText);
         Assert.Equal(CanonicalJson.HashText(outcome.NeutralText!), (string?)outcome.Detail!["runNeutralHash"]);
         var spot = Assert.Single(outcome.Detail!["runSpots"]!.AsArray())!;
-        Assert.Equal(CanonicalJson.HashText("Seen 2026\\-11\\-21 \\(clinic\\)\\.\n"), (string?)spot["outputHash"]);
+        Assert.Equal(CanonicalJson.HashText("Seen 2026\\-11\\-21 \\(clinic\\)\\.  \n"), (string?)spot["outputHash"]);
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public class DeliverableComposeTests
 
         var text = Composed(Render(plan, BodyComposerTests.Scope(("node.summary.content", "    indented\n\tx"))));
 
-        Assert.Equal("&#32;   indented\n&#9;x\n", text);
+        Assert.Equal("&#32;   indented  \n&#9;x\n", text);
     }
 
     [Fact]
@@ -234,15 +234,15 @@ public class DeliverableComposeTests
         var outcome = Render(plan, scope, BodyComposerTests.Placed("snippet.sign_off"));
 
         var text = Composed(outcome);
-        Assert.Equal("## Plan\nSeen 2026\\-11\\-21\t\\(clinic\\)\\. by Dr A\\. Sample\n&#32;   Sample Oncology Clinic\n", text);
-        Assert.Equal("## Plan\nSeen {{run:1}}\t\\(clinic\\)\\. by Dr A\\. Sample\n&#32;   Sample Oncology Clinic\n", outcome.NeutralText);
+        Assert.Equal("## Plan\nSeen 2026\\-11\\-21\t\\(clinic\\)\\. by Dr A\\. Sample  \n&#32;   Sample Oncology Clinic\n", text);
+        Assert.Equal("## Plan\nSeen {{run:1}}\t\\(clinic\\)\\. by Dr A\\. Sample  \n&#32;   Sample Oncology Clinic\n", outcome.NeutralText);
         Assert.Equal(text, outcome.NeutralText!.Replace("{{run:1}}", "2026\\-11\\-21", StringComparison.Ordinal));
     }
 
     [Theory]
     [InlineData("Seen by", " Dr A. Sample", " today.", "Seen by", " Dr A\\. Sample", " today\\.")]
-    [InlineData("Plan:\n", " FBC", "", "Plan\\:\n", "&#32;FBC", "")]
-    [InlineData("Plan:\n", "\tFBC\n", " review", "Plan\\:\n", "&#9;FBC\n", "&#32;review")]
+    [InlineData("Plan:\n", " FBC", "", "Plan\\:  \n", "&#32;FBC", "")]
+    [InlineData("Plan:\n", "\tFBC\n", " review", "Plan\\:  \n", "&#9;FBC  \n", "&#32;review")]
     [InlineData("", "  Margaret Okafor", "\tseen", "", "&#32; Margaret Okafor", "\tseen")]
     public void APlacedTextEscapedPieceByPiece_IsTheEscapeOfTheWholeText(
         string before, string output, string after, string escapedBefore, string escapedOutput, string escapedAfter)
@@ -264,9 +264,9 @@ public class DeliverableComposeTests
 
     [Theory]
     [InlineData("Seen {{run:1}} by Dr A. Sample", true, "Seen {{run:1}} by Dr A\\. Sample")]
-    [InlineData(" {{run:1}} (clinic)\n seen", true, "&#32;{{run:1}} \\(clinic\\)\n&#32;seen")]
+    [InlineData(" {{run:1}} (clinic)\n seen", true, "&#32;{{run:1}} \\(clinic\\)  \n&#32;seen")]
     [InlineData(" {{run:1}}\t(clinic)", false, " {{run:1}}\t\\(clinic\\)")]
-    [InlineData("{{run:1}}\n\t{{run:2}} x", true, "{{run:1}}\n&#9;{{run:2}} x")]
+    [InlineData("{{run:1}}\n\t{{run:2}} x", true, "{{run:1}}  \n&#9;{{run:2}} x")]
     public void ARunNeutralText_IsEscapedLineByLine_AroundItsMarkers(string neutral, bool startsLine, string expected)
     {
         // The piece after a marker continues the marker's line: its leading space or tab stays, as in the sent text.
@@ -288,8 +288,8 @@ public class DeliverableComposeTests
         var outcome = Render(plan, scope, BodyComposerTests.Placed("snippet.sign_off"));
 
         var text = Composed(outcome);
-        Assert.Equal("Margaret Okafor seen 2026\\-11\\-21\\.\n&#9;Seen 2026\\-11\\-21\\. by Dr A\\. Sample\n", text);
-        Assert.Equal("Margaret Okafor seen {{run:1}}\\.\n&#9;Seen {{run:1}}\\. by Dr A\\. Sample\n", outcome.NeutralText);
+        Assert.Equal("Margaret Okafor seen 2026\\-11\\-21\\.  \n&#9;Seen 2026\\-11\\-21\\. by Dr A\\. Sample\n", text);
+        Assert.Equal("Margaret Okafor seen {{run:1}}\\.  \n&#9;Seen {{run:1}}\\. by Dr A\\. Sample\n", outcome.NeutralText);
     }
 
     [Fact]

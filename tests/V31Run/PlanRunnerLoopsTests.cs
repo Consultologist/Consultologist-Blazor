@@ -561,7 +561,7 @@ public class PlanRunnerLoopsTests
             Assert.Equal(text, (string?)result.Values["node.drafts"]!["items"]![0]!["content"]); // .items keeps the text as it is
         }
 
-        Assert.Equal("## Plan \\#1 \\*urgent\\*\n\n\\# Letrozole \\*daily\\*\n\\* review in 6 weeks", $"## {MarkdownEscape.Escape(title)}\n\n{MarkdownEscape.Escape(text)}");
+        Assert.Equal("## Plan \\#1 \\*urgent\\*\n\n\\# Letrozole \\*daily\\*  \n\\* review in 6 weeks", $"## {MarkdownEscape.Escape(title)}\n\n{MarkdownEscape.Escape(text)}");
     }
 
     [Fact]

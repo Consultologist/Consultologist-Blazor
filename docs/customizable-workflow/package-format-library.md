@@ -44,6 +44,17 @@ stays with the engine.
   concept-list fixture the editor's renderer pane and the tests render). The
   engine and the editor render through the same functions, so the editor's
   sample is the engine's bytes.
+- `ConsultMarkdown` (#1256, #1510): the Markdown pipelines every surface
+  shares (the Web's `MarkdownPreview`, the Api's PDF), picked by the job's
+  specVersion through `For(int specVersion)`. `Pipeline`, for 5–30 and
+  unchanged until 30 is retired: HTML off, pipe tables, a single line ending a
+  hard break. `Pipeline31` (part 02 § 5.2), for 31: Markdig 0.41.3's
+  `UseAdvancedExtensions` built explicitly in its order, less GenericAttributes,
+  CustomContainers, MediaLinks, Mathematics, Diagrams, GridTables and the
+  emphasis extras other than superscript and inserted, with `DisableHtml` and
+  standard line handling (a single line ending is not a break).
+  `Extensions31` lists its 13 extensions as `constants.json` `markdig` names
+  them. Nothing else builds a Markdown pipeline at 31.
 
 ## With the engine
 
@@ -419,7 +430,7 @@ reader's when it has any, else the type rules', else the expressions'.
   `Print` itself writes: it parses, prints again and compares, and gives `false` for anything else.
   `Reason` words a decision's reason for the record. `Version` is 1.0.0.
 - **`PlainConversion.ToPlain(markdown)`**: the conversion `plain` applies (Markdig's plain text with
-  the advanced extensions, `\n` line breaks, no spaces, tabs or line breaks at the very end). It
+  `ConsultMarkdown.Pipeline31`, so raw HTML and a generic attribute's `{…}` stay as text, `\n` line breaks, no spaces, tabs or line breaks at the very end). It
   returns `null`, never the source, when Markdig cannot convert the text (Markdown nested too
   deeply, such as 200 nested `>`); it never throws. `Version` is 1.0.0.
 - **`JsonLogicFunctions`**: the meaning of each operation on values (`Apply`), truthiness (`Truthy`),
@@ -1099,9 +1110,9 @@ with its reason:
   against the in-memory `resolve.json`), the publish report, writing the folder and the stamp, storing only a pair
   that is `Complete`, `Toolchain.Current` with the release's names, `PublishLimits` from the engine's numbers, and
   § 4.4's corpus re-render (a script). The break points belong to the engine's configuration and are checked here.
-- **Area 13: `dag.mmd`.** Generating it, and failing a committed one that differs. `SourceHash`
-  leaves it out. `graph` has no edges inside a function; a diagram that needs them would add them
-  with function-prefixed keys.
+- **Area 13: `dag.mmd`, now built** ("specVersion 31: the diagram" below). Generating it, and failing a committed one
+  that differs. `SourceHash` leaves it out. `graph` has no edges inside a function; the diagram draws a function's
+  inside from its entry's `nodes` and `reads` instead (#1510, R1), and adding the edges is #1527 (Milestone 40).
 - **Area 09: the record.** Sub-row keys and recording run facts.
 - **The sentence review (#1483).** S07-003 for a break point names a caret range the package never
   declared, and an engine version that can look in range. The `unknown` and `none` fillers also
@@ -1712,7 +1723,18 @@ compiler embeds each built-in renderer an entry pipes into in the package's `ren
 with the registry's header and body (D6). The features follow from what is placed (D15): `macro-markers` when an
 agent places a macro, `parts` when an agent declares a non-empty `parts`, and `run-spots` when a body that runs
 (an agent's, a `rendered` node's, a deliverable's) has a run spot, its own or a placed unit's: an unplaced snippet
-that writes `run.*` does not count (#1508, R6). `warnings` gains the dialect's S05-060 and S05-061.
+that writes `run.*` does not count (#1508, R6). `warnings` gains the dialect's S05-060, S05-061 and S05-065.
+
+**S05-065 (W-3, #1510, G-D11)** is said by the nested `Context`'s `LineEndings` (`Context.LineEndings`, in
+`SourceTemplates.LineEndings.cs`), once after the folder routes, since it needs every body checked: once per line
+ending `MarkdownLineEndings.Find` names (the migration's finder, below) in a Markdown body a reader sees, at the
+body's own 1-based line. The sites are a `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro,
+snippet or renderer, every snippet folder's item, `checks/` and a function's own units included.
+A body whose text reaches a prompt (a snippet a prompt, a part or a macro's instruction places, a folder item it reads
+as `item.content`, a `rendered` node whose text it reads, and what those place or read in turn; never a macro's body,
+since a prompt reads its marker) is warned only when it is also shown, placed or read by a deliverable, a macro's body
+or a `rendered` node no prompt reaches. A prompt and a part are never sites. It is a warning: the package publishes.
+When no site has a hit it reads nothing more.
 
 ### Snippets, parts and macros at publish
 
@@ -1807,6 +1829,8 @@ At publish (part 05 § 5):
 - The renderer is looked up as the function's own, then the package's, then a built-in. One none of them has is
   S05-031.
 - A `markdown_block` renderer inside a line warns S05-061.
+- A single line ending inside a paragraph of a `markdown_block` or `markdown_inline` renderer's body warns S05-065
+  (W-3), as any Markdown body a reader sees does (`Context.LineEndings`, in `SourceTemplates.LineEndings.cs`, above).
 
 At run time a renderer's body renders with only `value` (the piped value) and the built-ins. Each step gives one
 `ComposedRender`: its number, the renderer, its `bodyHash`, the source (a path, or `render:<n>` in a chain), the
@@ -1917,8 +1941,8 @@ reply that does not fit, never reading it (Task 24's fix round 1).
 - **The body substituted.** It is the macro's body rendered in the prompt's data (`profile.*` readable, `run.*`
   filled directly), after dropping exactly one file-final line ending. A `plaintext` macro in a `markdown_block` or
   `markdown_inline` node is escaped first with `MarkdownEscape.Escape` (D14, D7: a backslash before each of the 32
-  ASCII punctuation characters, and since #1505's ruling R9 the first space or tab leading each line written `&#32;`
-  or `&#9;`, nothing else; version `1.0.0`). `contentHash` is of the text substituted. A snippet
+  ASCII punctuation characters, since #1505's ruling R9 the first space or tab leading each line written `&#32;`
+  or `&#9;`, and since #1510 two spaces before each line ending, nothing else; version `1.0.0`). `contentHash` is of the text substituted. A snippet
   a macro's body places is rendered when its decision holds.
 
 With faults, `Finish` returns the reply as it came, with `AgentOutcome.Invalid` set. The runner never reads that
@@ -1956,7 +1980,7 @@ No member carries a value, a reply or a profile field: only ids, keys, hashes an
 
 ### Sentences
 
-The dialect says part 05's rows S05-001 to S05-064, with these exceptions:
+The dialect says part 05's rows S05-001 to S05-065, with these exceptions:
 
 - S05-008 and S05-027 are the worked examples of S05-009 and S05-026;
 - S05-032 is said as the reader's S01-035 (`SourceSentences`, a package renderer named like a built-in one), with
@@ -2165,9 +2189,16 @@ once `PlanFormats.Read` has taken one trailing line ending off a `markdown_inlin
 `MarkdownEscape.Escape` writes a backslash before each of the 32 ASCII punctuation characters, and, since the owner's
 ruling R9, the first space or tab leading each line (at the text's start and after each `\n` or `\r`) as its
 character reference, `&#32;` or `&#9;`, so a line led by four spaces or a tab is not a code block. A line of white
-space only is no exception: `"  "` becomes `"&#32; "`. Nothing else changes: letters, digits, other white space,
-line breaks (hard breaks in the pipeline) and everything outside ASCII stay. `Escape(text, startsLine)` with
-`false` is for a piece that continues a line (the text after a run spot). The version stays 1.0.0.
+space only is no exception: `"  "` becomes `"&#32; "`. Since the owner's third fix-first group (#1510, G-D7), two
+spaces are written before each line ending (`\r\n` is one ending, a lone `\r` is one too, a blank line's ending gains
+them as well), so at 31's standard line handling each line stays a line: `"a\nb"` becomes `"a  \nb"`. Two spaces and
+not `\`, because a piece cannot know whether its line ending ends a paragraph, where a `\` would show. The rule is
+local, so escaping piece by piece is escaping whole, except for a cut inside one `\r\n`: `"x\r"` and `"\ny"` escape to
+a paragraph break (`"x  \r"` and `"  \ny"`) where `"x\r\ny"` escapes to a hard break (`"x  \r\ny"`), and there
+`BodyComposer.EscapedSubstitutions`, which compares the two, records the unit's text as one substitution. Nothing
+else changes: letters, digits, other white space, the line endings themselves and everything outside ASCII stay.
+`Escape(text, startsLine)` with `false` is for a piece that continues a line (the text after a run spot). The version
+stays 1.0.0.
 
 **`MarkdownEscape.IsBlank(text)`** is true when `text` holds only white space and the exact references `&#32;` and
 `&#9;`. Anything else is content: `&#32` with no semicolon, `&#x20;`, `&nbsp;` and `&#33;`. It exists so that an
@@ -2520,7 +2551,9 @@ line endings, a JSON Logic value in canonical order.
 | templates | `Migrate.Templates.cs`, `TemplateRewriter.cs` | every prompt, `rendered` body, snippet, folder item and macro body in the 31 dialect: bare reads to `.content` or `.value`, renderer pipes, a loop's `.items` and `state` (30's `!e.skipped` is `e.state == "completed"`), `item.label`, white-space marks (one A10-068 per file names the lines whose marks changed, since `~` keeps line endings that `-` removed). A simple body `if` is lifted into `parts`; an `if` around a placement is hoisted onto the placement, and a `for` over a macro folder unrolled (R6); the rest is a hand edit (A10-001, A10-005, A10-035 to A10-039, S10-004). Text outside tags is never touched; #1508 (R16): a `for` over a loop node whose body reads only each item's text loops over `.value` (`e.content` written `e`), any other keeps `.items` with its body inside `{{ if e.state == "completed" }} … {{ else }}{{ end }}` unless it already tests the state; (R17) an output reading a member through an object that can be null (`FormatReads.NullableSteps`: an input not required, a nullable field, a node that may not run) inside `{{ if <object> }} … {{ end }}` (its marks moved onto the guard; a `for` over such a list wrapped whole), A10-080 in a part's text whose `if` does not assert the object |
 | macros | `Migrate.Macros.cs` | each macro as `macros/<id>.md` (a folder as its index and one file per item), its `instruction` 30's lines then 30's mechanics sentence (D5); an optional macro offered by an optional boolean input (its id, else `<id>_macro`, A10-007; A10-067 when its `if` reads another boolean input too, so R7's start refuses a `MacroChoices` entry for it); a macro read only as fixed text as a snippet (D4); a `before` or `after` node macro placed at the end of the prompt with its instruction left for the operator (D3, A10-003); A10-004, A10-036, A10-040 to A10-042 and A10-045 for what it cannot decide; #1508 (R13): a macro 30's model chose (`ModelChosen`: a non-empty instruction that is no template, not placed by the engine, placements that agree) gets one `judgement` node `<macro id>_applies` per agent placing it (`ChoiceClassifiers`, in `Migrate.Nodes.cs`: the placing agent's sibling just before it, its `if` the macro's offer condition, its prompt the placing prompt's top-level reads of inputs, nodes, checks and the item, and an empty question line, A10-077), and the macro's `if` gains each one's answer (with more than one, the `if` is a hand edit, A10-078) |
 | checks | `Migrate.Checks.cs` | each `terms_subset` node as `checks/<id>.md`, `kind: computed`, `format: check_result`, its `failWith` the 30 sentence; a reader of `node.<id>` reads `check.<id>`. One 30 ran inside a flow is also A10-046 |
-| deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, `{{ profile.signature }}` for 30's `signature: true`, one blank line apart. An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim; #1508 (R15): a deliverable every source of which may not run (`AlwaysValued` false; a `while` counts as running, as 30 composed one with no pass) gets the `if` `<source>.state === "completed"` (`or` over the sources, after 30's by `and`), A10-079; when 30's `if` is a hand edit, a second hand edit on it names that term to join by `and`, A10-084 |
+| deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, one blank line apart, then for 30's `signature: true` `{{ profile.signature \| renderer.signature_after_blank_line }}` (#1510, F-D4: `Migrate.Signature.cs` writes the package renderer `renderers/signature_after_blank_line.md`, `input` and `format` `plaintext`, whose body writes the blank line and the signature only when the signature trimmed is not empty, so a blank one leaves both out as 30 did and a signature is 30's bytes, unescaped; A10-089; a deliverable whose only piece is the signature keeps `{{ profile.signature }}`). An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim, and when its trimmed body ends with the signature after one blank line or one line ending, the read goes through `signature_after_blank_line` or `signature_after_line_end` (each renderer written once into a package that needs it, listed in `renderers/index.json` in the order first used, the macros pass before this one); #1508 (R15): a deliverable every source of which may not run (`AlwaysValued` false; a `while` counts as running, as 30 composed one with no pass) gets the `if` `<source>.state === "completed"` (`or` over the sources, after 30's by `and`), A10-079; when 30's `if` is a hand edit, a second hand edit on it names that term to join by `and`, A10-084 |
+| loop items stripped | `Migrate.Flows.cs` (`StripLoopItems`) | #1510 (F-D1 to F-D3): after the deliverables, since a loop's readers are known only once they are written: each `for` whose `.content` is read anywhere in the migrated package (a regex over every file for the loop's rooted key or a suffix form that resolves to it, then `.content`) gets a `rendered` node `<ret id>_stripped` (fitted by `FreeNodeId`) as the last of its body and its `ret`: `producer: computed`, the old `ret`'s label, `.content`'s text format (`ScopeTree.RenderedContent`), `if` the old `ret`'s state `completed`, body `{{ node.<old ret id>.content \| string.strip }}`; A10-088. It repeats until no loop is left, so a loop returned by a loop is stripped at each level, and the formats of the loop and the flows returning it follow (`Reformat`). A loop whose items mix text formats gets no node, the hand edit A10-090 on its `ret`. `Migration31Result.StripNodes` (new key → old `ret` key) is what the case rule `loop-item-strip-node` reads |
+| hard breaks | `Migrate.HardBreaks.cs`, `V31/Templates/MarkdownLineEndings.cs` | #1510 (G-D8, G-D10): after the stripped loop items and before the derived flags. In the body of each `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro, snippet (one or a folder's item) and package renderer, `MarkdownLineEndings.WithHardBreaks` writes `\` before each line ending `MarkdownLineEndings.Find` names (the body parsed with `ConsultMarkdown.Pipeline31` after each tag and comment is masked: a soft line break inside a paragraph, not inside a tag, not one `~}}`, `-}}` or the next line's `{{-` removes, not beside a line of only tags), after any trailing spaces; A10-091 per file, `Migration31Result.HardBreaks` (file → count). A body a prompt reads or places (an agent's body, its `parts`, a macro's `instruction`, and what those read or place in turn; a deliverable a check's prompt reads stays a site) and the files the migration writes itself are left; one also shown (read or placed by a deliverable, a macro or a `rendered` node no prompt reads) with hits is A10-092. No fixture has a site with a hit |
 | derived flags | `Migrate.Derived.cs` | last: every node and check header's `reproducible`, `modelDerived`, `runDependent` and `profileCarrying` from `SourceDerived.Values`, the derivation without the header checks (D15). A 30 `reproducible` claim that differs is A10-010; a header made of a body the dialect refused is A10-049 |
 
 After the passes, #1508 (R11): the package as written is checked and counted as publish counts it (`PublishNotes.PastInstances`, A11-001's facts) at the options' `Limits` (by default the engine's starting values, `WorkflowPackageMigration30To31.EngineLimits`; the engine's configured limits in the bulk publish and the weekly summary); past their `JobInstances` it is a hand edit on the outermost loop's `max` on the heaviest path (A10-081), and no `max` is written. Then, with `WriteSnapshot`, the snapshot test (below), published at those limits and run at the options' `RunLimits`. Other notices: A10-021 (a format's free-text field), A10-026 (a
@@ -2632,7 +2665,8 @@ credited rules' `Said` joined by `; `. A ruled difference beside an unexplained 
 | `failed-job-dispatch-order` | #1508 comment 5 item 7, #9 (both jobs failed at the same reply, refused by its node's `failIfEmpty` or format; a text only one side sent is the dispatch order's) | case |
 | `flag-becomes-retry` | #1508 comment 5 item 3 (a node 30 ran as `onInvalid: flag` asks once more at 31 and then fails: its prompt's retry text, the status, and what 30 ran on the kept reply) | case and bytes |
 | `reply-never-a-template` | #1508 comment 5 item 7, #5 (a reply 30 rendered as a template is kept as written at 31, or stripped, as a migrated deliverable reads a source) | case and bytes |
-| `escaped-plain-text` | part 06 § 6.4, D8; #1508 comment 5 items 7 (#13, a computed text value) and 8 (D23, plain-text items joined into a Markdown loop's `.content`, also where a prompt reads it) | bytes |
+| `escaped-plain-text` | part 06 § 6.4, D8; #1508 comment 5 items 7 (#13, a computed text value) and 8 (D23, plain-text items joined into a Markdown loop's `.content`, also where a prompt reads it); `ExpectedDifferences.Unescape` also drops the two spaces the escape writes before a line ending (#1510, G-D7) | bytes |
+| `explicit-hard-break` | #1509 comment 7209167166 item 4, #1510 G-D9 (a `\` directly before a line ending in 31's text, in any compared kind, only in a package whose sources hold a break the migration wrote: `Migration31Result.HardBreaks`, which `MigrationFixture.Overlay` recounts for each overlaid body) | bytes |
 | `item-ids-from-one` | #1506 ruling 2, D26 | bytes |
 | `position-names-from-the-loop` | part 04 § 2.7, D27; #1508 comment 5 item 4 (an empty `itemLabel` field falls back to the position name) | bytes |
 | `sent-format` | part 10 § 1.8, D26; R12 and #1508 comment 5 item 7 #3 (a format's descriptions sent; a classifier's answer format sent after 30's own line listing the same values, and nothing else) | bytes |
@@ -2642,6 +2676,7 @@ credited rules' `Said` joined by `; `. A ruled difference beside an unexplained 
 | `before-after-macro-marker` | #1508 comment 5 item 7, #10 (a macro 30's engine placed before or after the reply is a marker: only the white space between its body and the reply differs) | bytes |
 | `while-no-pass-separator` | the controller's ruling on #1508 for comment 7's Q3 (a `while` that ran no pass keeps the blank line beside another source, which 30 dropped) | bytes |
 | `macro-choice-classifier` | R13, R14 (#1508 comment 6 items 1 and 2: a classifier's prompt only 31 sends; the placing prompt's macro instruction, 30's or it with one "otherwise" clause removed where the classifier answered yes, absent where it answered no; the classifiers are read from the files, `ChoiceClassifiers.Of`: a `judgement` agent the macro's `if` reads, standing with the placing agent's other classifiers just before it, whose prompt places the macro itself or through the snippets it reads; `ByteEquivalence.RequestFor` answers each from the capture, `ChoiceAnswers`, yes when 30's reply held the marker under the macro's 30 id, `Migration31Result.MacroIds30`) | case and bytes |
+| `loop-item-strip-node` | #1509 comment 7207709261 item 1, #1510 F-D3 (a text of a stripping node the migration wrote, `Migration31Result.StripNodes` with `strip-nodes.json` laid over, that is the old `ret`'s text for that item trimmed; only 31 has it) | case |
 | `blank-conversion` | R1 (a gate of the text's own instance) | case |
 
 `ExpectedDifferences.ConditionReasons` holds the reasons a converted condition may answer otherwise than 30: `blank`
@@ -2680,11 +2715,15 @@ three are usage errors. `--options <file>` (#1508, R18; `Migration31Arguments.Op
 with `--snapshot` it is a usage error, and a file that cannot be read, is not strict JSON (A10-019), is not a JSON
 object or is refused (A10-070 to A10-072, A10-082) is exit 2, nothing read or written.
 
-`Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line that 31's `dag.mmd` is not this
-script's (`Migration31Script.NoDiagram`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
-exactly the result's files: 30's `prompts/`, flat macros and `dag.mmd` are deleted (`--snapshot` leaves a 31 folder's
-`dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files are written first, then changed ones
-with `manifest.json` last, then the deletes, so a write that fails part-way deletes no 30 file.
+`Run` prints every notice and the file plan (`delete:`, `add:`, `rewrite:`) and one line about `dag.mmd` (#1510, D13):
+when the migrated package compiles, its `dag.mmd` is the 31 drawing of its `resolve.json`
+(`Migration31Script.DiagramWritten`); when it does not yet, none is written until its hand edits are done
+(`Migration31Script.DiagramWaits`), or, when the migration named no hand edit, until it compiles, and
+`scripts/check-workflow-package-v31.cs <package-dir>` says why it does not (`Migration31Script.DiagramNotCompiled`). Without `--write` it is a dry run. With `--write` it leaves the folder holding
+exactly the result's files: 30's `prompts/` and flat macros are deleted, and so is 30's `dag.mmd` when no 31 one replaces
+it (`--snapshot` leaves a 31 folder's `dag.mmd` alone), and 30's `publish.json` is neither read nor touched. New files
+are written first, then changed ones with `manifest.json` last, then the deletes, so a write that fails part-way
+deletes no 30 file.
 
 | Exit | When |
 |---|---|
@@ -2764,9 +2803,11 @@ The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
 version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`): the bulk publish writes it into `owners.json` as the
 notice of each package it could not migrate; no publish says it. Every other notice, refusal and reason is an area
-sentence, A10-001 to A10-087 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-087 are #1508's:
+sentence, A10-001 to A10-092 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-087 are #1508's:
 an `options.json` that does not read or was not given, the conversions kept as 30 meant, the macro-choice classifiers,
-the migration's `if`s and guards, and the instances limit), listed in the plans' tables and in
+the migration's `if`s and guards, and the instances limit; A10-088 to A10-092 are #1510's: a loop's items stripped, the
+signature through a renderer, a loop whose items mix text formats, the explicit hard breaks written, and a body kept
+for a prompt that is also shown), listed in the plans' tables and in
 `V31Contract.MigrationAreaSentences`. Area 10's rulings also
 added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
 `markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
@@ -2793,7 +2834,9 @@ summary). No sentence, notice or report entry carries a value from an input, a m
   Running it against production, sending the owners' notices and moving production pins are the user's.
 - **Area 12:** the Create page, whose per-run choice sets the optional boolean input a migrated macro's `if` reads
   (area 07's three-state boolean); this area adds nothing to it.
-- **Area 13:** the 31 diagram (`dag.mmd`), which the script does not write.
+- **Area 13, now built** (#1510, D13): the script writes the 31 `dag.mmd` when the migrated package compiles
+  (`Migration31Script.DiagramWritten`, "The script" above), and otherwise says it waits: for the hand edits
+  (`DiagramWaits`), or, when the migration named none, for the package to compile (`DiagramNotCompiled`).
 - **Milestone 41:** the Editor's upgrade and the converter's page, on the same `FromScriban` and `Migrate`. Author
   documentation (part 10 § 6, #1473) and the satellites (§ 7) are not this build's.
 - **For the owner:** the unexpected differences no ruling covers, and the three packages whose edits are not made
@@ -2836,7 +2879,8 @@ public static Task<PublishOutcome> CheckAsync(IReadOnlyDictionary<string, byte[]
 `PublishOptions(Registry, Toolchain, Limits, PublishedBy, Clock, Templates = null, Diagram = null, MigrationReport =
 null, MigratedFrom = null, MatchTimeLimit = null, RunLimits = null)` holds what the caller decides: the published types, the toolchain
 `lock.json` records, the `PublishLimits`, the report's `publishedBy` (D4), the clock (the report's time and the tests'
-limit), the `dag.mmd` builder (D1: none is written while it is null, which it is until area 13), the operator's
+limit), the `dag.mmd` builder (D1: none is written while it is null; since area 13 the engine and the CI script pass
+`PackageDiagram.Generate`, #1510, D13), the operator's
 `migration-report.json` text and the stamp's old version (D5), and the time limit of `matches` and `has_word` in the
 tests' plan and the `RunLimits` the tests run at (null: the spec's starting values; the engine gives its configured ones).
 
@@ -2939,7 +2983,7 @@ test's text: a mismatch on text gives hashes, and S07-009's error a path and a k
 
 | # | Where | As built |
 |---|---|---|
-| D1 | `dag.mmd` | `PublishOptions.Diagram` is null in the engine and the script, so no `dag.mmd` is written; an uploaded one is never stored or served |
+| D1 | `dag.mmd` | `PublishOptions.Diagram` was null in the engine and the script until area 13, so no `dag.mmd` was written; since #1510 (D13) both pass `PackageDiagram.Generate`, so the version's `dag.mmd` is the drawing of its `resolve.json`. An uploaded one is never stored or served |
 | D2 | name and version | the engine assigns the next CalVer as at 5–30 and writes `name` and `version` into `manifest.json` in place (every other member and its order kept) before step 0; the script's `--version` replaces `version` only. A stamped version is never written; an unstamped folder is cleared and rewritten. A manifest without both as text is stored as uploaded and refused with A11-004 |
 | D3 | the request | the same route and record: `Manifest` null, every file in `Files`. The 31 branch is taken when `manifest.json` parses as an object whose `specVersion` is the integer 31. The response gains a trailing `Report`; a refused publish's 400 is `{ errors, error, report }` |
 | D4 | `publishedBy` | `operator-migration` when the request carries `MigrationReport`, else `editor` when it carries `Source`, else `api`; `ci <tag>` from the script |
@@ -2992,8 +3036,9 @@ another engine. Without `--publish` it is a dry run: the publish runs in memory 
   `RunScope`, filled by `RunInputsBuilder`), so a decision that reads it is `modelDerived`. S09-004 (*"migrated by the operator
   from …"*) is drawn from the content response's `MigratedFrom`. What the area decided in the build is in the plan's
   *Recorded in the build*; the pages' own sentences are `A12-001` to `A12-007`.
-- **Area 13:** the 31 diagram: it fills `PublishOptions.Diagram`, and the writer already stores `dag.mmd` as
-  `text/plain`.
+- **Area 13 (built, #1510):** the 31 diagram: the engine's `V31PackagePublisher` and the CI script fill
+  `PublishOptions.Diagram` with `PackageDiagram.Generate`, and the writer stores `dag.mmd` as `text/plain`
+  ("specVersion 31: the diagram" below).
 - **Milestone 41:** the Editor's "Run tests", on the same `PackageTests`.
 - **Not this build's:** the public repository's tag CI (it is to call `scripts/check-workflow-package-v31.cs`), Release
   assets, running the bulk publish against production with its notices and production pins, and the Azure settings
@@ -3019,3 +3064,142 @@ and A11-011 are not shipped as packages, as S07-014 is not); the content reposit
 `Current`, `Content`, job start) asks `SpecVersionAdmission` first, and without the preview setting answers S09-001 as
 a 400. The 5–30 publish, import and content paths keep their behaviour; the response records changed by trailing
 optional members only.
+
+## specVersion 31: the diagram (preview)
+
+*Area 13 of the Milestone 39 build (#1510). Built from
+[the engine and the pages](package-format-v31/09-engine-and-pages.md) (part 09) § 10, with
+[the plan](package-format-v31/plans/area-13-diagram.md) for the decisions (the owner's rulings R1 to R3 on #1510, the
+decisions D1 to D16; its *Recorded in the build* lists every choice a task took). Where the engine stores and serves the
+drawing is in [the engine at specVersion 31](engine-v31.md), "Publish" and "`Current/Diagram` at 31".*
+
+A 31 package is drawn the same way in three places, `dag.mmd`, the Editor's diagram and the run diagram, from one
+graph model built from its compiled `resolve.json` (part 09 § 10.1). The model and the writer are the library's
+(`V31/Diagram/`, namespace `Consultologist.PackageFormat.V31.Diagram`); no other code writes Mermaid for a 31 package.
+The 5–30 drawings (`WorkflowDagDiagram`, the Web's `RunDagDiagram`) keep their text.
+
+```csharp
+public enum BoxShape { Pill, Rectangle, DoubleBox, Parallelogram, Doc, TagRect, Hexagon }
+public enum EdgeStyle { Read, If, Reference, Gate }   // -->, -.->, -.-o, ==>
+public sealed record DiagramBox(string Id, string Key, BoxShape Shape, IReadOnlyList<string> Lines, bool ModelDerived);
+public sealed record DiagramFrame(string Id, string Title, IReadOnlyList<DiagramBox> Boxes,
+    IReadOnlyList<DiagramFrame> Frames, IReadOnlyList<DiagramEdge> Edges, int At);
+public sealed record DiagramEdge(string From, string To, EdgeStyle Style, string? Label);
+public sealed partial record DiagramModel(DiagramFrame Root, IReadOnlyList<DiagramEdge> Edges, bool HasChecks)
+{
+    public static DiagramModel Build(string resolve);
+    public IEnumerable<DiagramBox> AllBoxes();
+    public static string IdOf(string key);              // "node.a.b" → "node__a__b"
+}
+public sealed record BoxOverlay(IReadOnlyList<string> Lines, string? Class, string? Anchor);
+public sealed record DiagramText(string Mermaid, IReadOnlyDictionary<string, string> Anchors);
+public static class DiagramWriter
+{
+    public static string Write(DiagramModel model);
+    public static DiagramText Write(DiagramModel model, IReadOnlyDictionary<string, BoxOverlay> overlay,
+        IReadOnlyList<(string Name, string Style)> classDefs);
+}
+public static class PackageDiagram { public static string Generate(string resolve); }
+```
+
+### The model
+
+`DiagramModel.Build(resolve)` reads the canonical `resolve.json` text as a `JsonObject`, member by member, never through
+`RunPlan` or a loader, so a stored older document is drawn, not refused. What is missing or of another shape is left
+out: a missing `label` leaves the id line alone, an unknown kind is a plain rectangle, an older document without
+`renders` draws no renderer frame, and a text that is not a JSON object (or names a member twice at any depth) is an
+empty document, so `Generate` writes the frontmatter alone. It never throws on the document's content. The rules are
+split by construct: `DiagramModel.Production.cs` (nodes, loops, branches, pills, deliverables, edges),
+`DiagramModel.Uses.cs` (renderers and macros, D7), `DiagramModel.Functions.cs` (calls and functions, R1, D3) and
+`DiagramModel.Checks.cs` (checks, check loops and gates, D5).
+
+- **Boxes.** An agent and a `rendered` node are rectangles (`agent → <format> · <producer>`, `rendered → …`), a
+  `computed` node and a check double boxes (`computed → <format>`), a flow's summary box a rectangle carrying its loop
+  or condition line, a deliverable a hexagon, a call a `tag-rect` (`<id>` over `call <function>`), a renderer use a
+  parallelogram and a placed macro a `doc` box. Every condition, loop line and expression is printed by
+  `JsonLogicPrinter.Print`. A format is its `#/$defs/<id>` name, `?` for an inline schema.
+- **Keys and ids.** `DiagramBox.Key` is the rooted key a record row carries (`node.sections.paragraphs.draft`,
+  `check.coverage`, `deliverable.note`; a pill's is its read, `input.x`, `run.date`); a renderer box's is
+  `<owner key>#render:<n>`, a macro box's `<owner key>#macro:<macro id>`, and a function's box
+  `function.<function>#<local key>`, which no row carries. `IdOf` replaces every `.` with `__`; inside a function a
+  box's id is prefixed `fn_<function>__` and a parameter's pill is `fn_<function>__param__<id>` (D3).
+- **Pills.** One per distinct `input.*`, `run.*`, `profile.*` and `snippet.*` read, at the top level, in order of
+  first read (a loop's list and conditions before its body), then any input nothing reads, in `inputOrder`. A
+  function's pills are one per declared parameter, in `inputOrder`, read or not, inside its frame.
+- **Edges** are derived from the entries (`reads`, `in`, `ret`, `renders`, `placements`, `check`, `function`), not
+  copied from `graph.edges` (D6). A read is `-->` labelled with the member read (D4: `value`, `content`, `items`…; one
+  edge per source, reader and member); a read of `run.*`, `profile.*`, `param.*`, a snippet or a renderer's output is
+  unlabelled; reads of `item`, `pass` and `renderer.*` draw nothing. A condition's read is `-.->|if|`. An entry's
+  `reads` is one list, so `graph.edges` (which keeps content and condition reads apart per source key) decides whether a
+  path a condition reads also draws its data edge; where it has no word (an older document, or inside a function, R1)
+  the `if` edge is drawn alone. A loop's list is `-->|for|` into its frame, a body's result `-->|ret|` (`ret
+  (<branch>)` for an `if` or `case`) into the summary box. A function draws no `ret` edge of its own (D16).
+- **Frames.** A loop body (`for_`, `while_`) and each branch body that holds a node (`if_<id>_then`, `if_<id>_else`,
+  `case_<id>_branch_<n>`, `case_<id>_else`); `uses_<box id>` round any entry with a renderer step or a placed macro,
+  nodes, checks and deliverables alike, titled `<id> · <label>` (D7); `fn_<function>` per function, drawn once, called
+  or not, titled `function <id> (<inputs>) → <format>`; and `checks`, titled `Checks`, holding every check. A check loop
+  over a production loop's `.items` is titled `(aligned)` and draws `-.-o|aligned|` from its frame to that loop's frame;
+  a production loop over another loop's `.items` draws no such edge (D5). A gate is `==>|gates|` from the check to the
+  deliverable. Each frame's position is explicit (`DiagramFrame.At`): a flow's bodies just before its summary box, a
+  `uses_` frame in the place of the box it wraps, and at the top level the function frames, then Checks, after the
+  production boxes and before the deliverables, as § 10.5 writes them.
+- **Model-derived** (D9) is the entry's own `modelDerived`; pills and deliverables are never dashed.
+
+### The writer
+
+`DiagramWriter.Write(model)` opens every text with the frontmatter `---`, `config:`, `  layout: elk`, `---` and
+`flowchart TD` (D2), with `\n` line ends and four spaces of indent per level. Each frame writes its boxes and frames in
+the model's order, then its own edges (a `uses_` frame's, a function's); the model's edges follow every frame. At the
+top level a blank line parts the pills, each flow, each other frame, each run of plain boxes and the deliverables. Then
+come `classDef modelDerived stroke-dasharray: 5 5` and one `class … modelDerived` line when a box is model-derived, an
+overlay's `classDef` and `class` lines, and last, when the Checks frame is drawn, `style checks stroke-width:3px`. A
+label line escapes `#` as `#35;` first, then `"` as `#quot;`, `<` as `#lt;` and `>` as `#gt;`, and writes a line break as
+one space (D8), so the only markup a label holds is the writer's own `<br/>`.
+
+The overlay form, `Write(model, overlay, classDefs)`, is the run diagram's: the overlay is keyed by `DiagramBox.Key`,
+adds label lines after a box's own, a class and a History anchor, and never adds, removes or renames a box, a frame or
+an edge. `DiagramText.Anchors` names, by box id, the anchor of each box the overlay links. The Web's
+`RunDiagram31.Build(resolve, record, linkCalls)` (`Services/Provenance/V31/`) builds that overlay from a storage 12
+record (part 09 § 10.6; D10 to D12), with `RunDagDiagram`'s five colours.
+
+`PackageDiagram.Generate(resolve)` is `DiagramWriter.Write(DiagramModel.Build(resolve))`: the
+`Func<string, string>` that `PublishOptions.Diagram` takes.
+
+### Where it is called
+
+- **Publish** (D13): the engine's `V31PackagePublisher` and `scripts/check-workflow-package-v31.cs` pass
+  `PackageDiagram.Generate`, so step 4 lists `dag.mmd` after the source files. `dag.mmd` is outside `sourceHash`, the
+  lock and the report: nothing pinned moved.
+- **The CI script** compares a committed `dag.mmd` with the drawing of the in-memory `resolve.json` once the package
+  would publish, the committed side's `\r\n` read as `\n` (a `text=auto` checkout may write them): a difference is
+  exit 1 (`refused: dag.mmd differs …`, nothing written); `--write-dag` writes the fresh one into the folder instead,
+  and refuses (exit 2) a `dag.mmd` that is a symbolic link, never followed; a folder with none passes.
+- **The migration script** (`Migration31Script`, "The script" above) writes `dag.mmd` when the migrated package
+  compiles (`DiagramWritten`) and otherwise deletes a 30 one and says it waits: for the hand edits (`DiagramWaits`), or,
+  when the migration named none, for the package to compile (`DiagramNotCompiled`).
+- **The engine's `Current/Diagram`** at 31 and **the Editor's 31 view** (`V31PackageView`) draw `Generate` of the stored
+  `resolve.json` (D14); the Editor shows the stored `dag.mmd` only when the content holds no `resolve.json`.
+- **The run diagram** on History and the Create page draws `RunDiagram31.Build`. Mermaid stays at `securityLevel:
+  "strict"`, so a call box's link is bound by the app after rendering (`consultologistMermaid.bind`, D12).
+
+The vendored Mermaid is 12.3.0, the full build, with ELK, and `mermaid.initialize` sets `layout: "elk"` (D1).
+
+### The tests and the goldens
+
+`tests/V31Diagram/` holds the library's tests: `DiagramModelTests`, `DiagramWriterTests`, `DiagramUsesTests`,
+`DiagramFunctionsTests`, `DiagramChecksTests` and `DiagramGoldenTests`, whose `TheDiagram_IsTheGolden` holds seven
+drawings in `tests/V31Diagram/Golden/` (`nested-note`, `conditional`, `functions`, `checked-note`, `macros`, and the
+migrated `example-v12-constructs` and `composer-sources`, each compiled with its hand edits made; `GOLDEN_UPDATE_V31=1`
+writes them). `example-macros` is not drawn: its hand edits are not made, so publish refuses it.
+`EveryGraphEdgeBetweenDrawnBoxes_IsDrawn` holds D6 over every drawing, and `TheSpecsExample_IsDrawnAsTheSpecDrawsIt`
+holds § 10.5's first example. The browser suite renders each golden and § 10.5's three examples on Mermaid 12.3.0
+(`Mermaid12E2ETests`) and the run diagram with its call link (`RunDiagram31E2ETests`); the Web's are
+`RunDiagram31Tests`, `RunDiagram31PageTests` and `TemplatesV31Tests`. No conformance case and no hash moved, so the
+content repository did not change for the diagram.
+
+### Not wired in
+
+31 stays outside `AcceptedSpecVersions` and `SupportedSpecVersions`; `Current/Diagram`'s 31 branch asks
+`SpecVersionAdmission`, as `Current/Content`'s does. `graph.edges` still holds no edge inside a function (#1527,
+Milestone 40); the interactive graph (#1399) and Graphviz (#1454) are Milestone 40. How GitHub draws `doc`, `tag-rect`
+and `layout: elk` is not tested by this build (D15).

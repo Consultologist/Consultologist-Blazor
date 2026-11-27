@@ -5,10 +5,7 @@
   "format": {
     "type": "array",
     "items": {
-      "type": "array",
-      "items": {
-        "$ref": "markdown_block"
-      }
+      "$ref": "markdown_block"
     }
   },
   "reproducible": false,
@@ -24,7 +21,8 @@
   "itemLabel": "title",
   "nodes": [
     "outline",
-    "point_loop"
+    "point_loop",
+    "point_loop_stripped"
   ],
-  "ret": "node.section_loop.point_loop"
+  "ret": "node.section_loop.point_loop_stripped"
 }

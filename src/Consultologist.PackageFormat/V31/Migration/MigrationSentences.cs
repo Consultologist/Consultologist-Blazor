@@ -473,6 +473,45 @@ internal static class MigrationSentences
         $"{file}, if: written so that the node runs only when deliverable {string.Join(" or ", deliverables)} applies, as 30 ran only what an applicable deliverable needed.";
 
     /// <summary>
+    /// A10-088 (#1510; #1509 comment 7207709261, item 1; F-D1): the <c>for</c> <paramref name="loop"/>, whose <c>.content</c>
+    /// is read, returns each item through the new <c>rendered</c> node <paramref name="node"/>, whose body strips the old
+    /// <c>ret</c>'s text, as 30 trimmed each item of a loop it composed.
+    /// </summary>
+    public static string StripsLoopItems(string loop, string node) =>
+        $"Loop '{loop}' returns each item through the new node '{node}', which strips the item's text as specVersion 30 did.";
+
+    /// <summary>
+    /// A10-089 (#1510; #1509 comment 7207709261, item 2; F-D4): the signature is written through the new renderer
+    /// <paramref name="renderer"/>, whose body tests the signature trimmed, as 30 appended no empty signature block.
+    /// </summary>
+    public static string SignatureThroughRenderer(string renderer) =>
+        $"The signature is written through renderer '{renderer}', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.";
+
+    /// <summary>
+    /// A10-090 (#1510, F1 fix round 1): a reason: the <c>for</c> <paramref name="loop"/>, whose <c>.content</c> is read, returns
+    /// items of more than one text format (an <c>if</c> or a <c>case</c> of a Markdown and a plain branch), so no one node can
+    /// strip them and keep each as the engine writes it: the loop keeps its <c>ret</c>, and the operator strips each branch.
+    /// </summary>
+    public static string LoopItemsMixFormats(string loop) =>
+        $"loop '{loop}' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.";
+
+    /// <summary>
+    /// A10-091 (#1510; #1509 comment 7209167166, item 4; G-D8, G-D10): in the Markdown body <paramref name="file"/>, the
+    /// migration ended <paramref name="count"/> line endings inside a paragraph with <c>\</c>, where 30's pipeline broke a
+    /// single line ending and 31's does not. One per file.
+    /// </summary>
+    public static string ExplicitHardBreaks(string file, int count) =>
+        $"In '{file}', {count} line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.";
+
+    /// <summary>
+    /// A10-092 (#1510; #1509 comment 7209167166, item 4; G-D8, G-D10): the Markdown body <paramref name="file"/> is read or
+    /// placed by a prompt, so the migration wrote no <c>\</c> in it (one would change what the model reads), yet a
+    /// deliverable, a rendered node or a macro shows it, where its single line endings no longer break at 31.
+    /// </summary>
+    public static string LineEndingsKeptForAPrompt(string file) =>
+        $"'{file}' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\.";
+
+    /// <summary>
     /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
     /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
     /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is

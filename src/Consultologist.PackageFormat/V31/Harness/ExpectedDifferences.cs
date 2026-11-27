@@ -117,6 +117,12 @@ public static class ExpectedDifferences
         {
             Bytes = (c, old, now) => c.Kind == ComparedKind.Deliverable || (c.Kind is ComparedKind.Prompt or ComparedKind.Render && ReadsEscapedText(c)) ? EscapedReads(c, old, now) : null,
         },
+        new("explicit-hard-break",
+            "#1510, the owner's third fix-first group (2026-11-27), item 4 (an explicit hard break where 30's pipeline broke a single line ending); part 10 §§ 1.2, 3.2",
+            "a single line ending inside a paragraph of a Markdown body, which 30's pipeline broke and 31's does not, ends with \\ (an explicit hard break) the migration wrote: 31's text holds that \\ before the line ending, where 30's has none")
+        {
+            Bytes = ExplicitHardBreaks,
+        },
         new("item-ids-from-one",
             "ruled by the owner on #1506, 2026-11-21, 2 (item numbers are 1-based everywhere users see them; 30 counted an array input's from 0); D12",
             "an item of a loop over an input's list is numbered from 1, where 30 numbered it from 0")
@@ -189,6 +195,12 @@ public static class ExpectedDifferences
         {
             Case = ClassifierPrompt,
             Bytes = ChoiceInstruction,
+        },
+        new("loop-item-strip-node",
+            "#1509, comment 7207709261, item 1, ruled by the owner on 2026-11-27 (a rendered node for each such loop's ret strips each item); part 10 §§ 1.2, 3.2",
+            "a loop whose .content is read returns each item through a node the migration wrote, which strips the item's text as 30 trimmed it: that node's text is 31's alone, and it is the item's text trimmed")
+        {
+            Case = StripNodeText,
         },
         new("blank-conversion",
             "R1, ruled by the owner on #1507, 2026-11-20; part 10 §§ 2.3, 3.2",
@@ -265,6 +277,31 @@ public static class ExpectedDifferences
     private static bool ClassifierPrompt(DifferenceContext c) =>
         c.Kind == ComparedKind.Prompt && c.OldText is null && c.NewText is not null && c.Key31 is { } key
         && ChoiceClassifiers.Of(c.Migrated).Any(k => k.Key == EntryOf(key));
+
+    /// <summary>
+    /// #1510 (item 4; G-D9): in a package whose sources hold a hard break the migration wrote
+    /// (<see cref="Migration31Result.HardBreaks"/>), 31's text without one <c>\</c> directly before each line ending, in any
+    /// compared kind (a macro body or a rendered node read later reaches prompts). <see cref="Credit"/> keeps it only where
+    /// that brings the text nearer 30's.
+    /// </summary>
+    private static (string Old, string New)? ExplicitHardBreaks(DifferenceContext c, string old, string now) =>
+        c.Migrated.HardBreaks.Values.Any(n => n > 0) && now.Contains('\\', StringComparison.Ordinal)
+            ? (old, BackslashBeforeALineEnding.Replace(now, ""))
+            : null;
+
+    private static readonly System.Text.RegularExpressions.Regex BackslashBeforeALineEnding =
+        new(@"\\(?=\r?\n)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// #1510 (F-D3): a rendered text only 31 has, of a node the migration wrote to strip a loop's items
+    /// (<see cref="Migration31Result.StripNodes"/>), which is exactly the old <c>ret</c>'s text at the same item (its row's
+    /// <c>content</c>), trimmed. A text that 30 and 31 both have is never this rule's.
+    /// </summary>
+    private static bool StripNodeText(DifferenceContext c) =>
+        c.Kind == ComparedKind.Render && c.OldText is null && c.NewText is { } now && c.Key31 is { } key
+        && c.Migrated.StripNodes.TryGetValue(EntryOf(key), out var ret)
+        && c.Run31.Rows.FirstOrDefault(r => r.Key == ret + key[EntryOf(key).Length..]) is { } row
+        && SourceLayout.Text(row.Text?["content"]) is { } item && string.Equals(now, item.Trim(), StringComparison.Ordinal);
 
     /// <summary>
     /// #1508 (R13, R14): the prompt of an agent a macro-choice classifier stands before, at an instance where the classifier
@@ -442,7 +479,8 @@ public static class ExpectedDifferences
 
     /// <summary>
     /// Part 06 § 6.4's escape undone (<see cref="MarkdownEscape"/>): a backslash before an ASCII punctuation character
-    /// removed, <c>&amp;#32;</c> and <c>&amp;#9;</c> written as the space and the tab they stand for.
+    /// removed, <c>&amp;#32;</c> and <c>&amp;#9;</c> written as the space and the tab they stand for, and the two spaces
+    /// before a line ending dropped (#1510, G-D7).
     /// </summary>
     public static string Unescape(string escaped)
     {
@@ -464,6 +502,10 @@ public static class ExpectedDifferences
             {
                 text.Append('\t');
                 i += 3;
+            }
+            else if (string.CompareOrdinal(escaped, i, "  ", 0, 2) == 0 && i + 2 < escaped.Length && escaped[i + 2] is '\n' or '\r')
+            {
+                i += 1;
             }
             else
             {

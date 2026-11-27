@@ -115,10 +115,10 @@ public class MigratedPackagesTests
         var refused = Assert.Single(PublishAtTheEngine(result));
         Assert.Equal("A11-001", refused.Id);
 
-        const string reason = "up to 80,614 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, "
+        const string reason = "up to 120,814 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, "
             + "so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.";
         Assert.Equal("nodes/sections/index.json", refused.Path);
-        Assert.Equal("Up to 80,614 steps could run in one job, through node.sections; this engine runs at most 10,000 for one job. Lower a loop's max or split the workflow.", refused.Sentence);
+        Assert.Equal("Up to 120,814 steps could run in one job, through node.sections; this engine runs at most 10,000 for one job. Lower a loop's max or split the workflow.", refused.Sentence);
         var edit = Assert.Single(result.HandEdits);
         Assert.Equal($"Hand edit needed in {refused.Path}, max: {reason}", edit);
         V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, refused.Path));
@@ -130,7 +130,7 @@ public class MigratedPackagesTests
 
         // A package within the limit is no hand edit, and nested-note within a larger one neither.
         Assert.DoesNotContain(Migrated("composer-sources").HandEdits, e => e.Contains(", max: ", StringComparison.Ordinal));
-        Assert.Empty(CompiledPackage.Publish(Upload(result), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, WorkflowPackageMigration30To31.EngineLimits with { Instances = 100_000 }).Refusals);
+        Assert.Empty(CompiledPackage.Publish(Upload(result), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed, WorkflowPackageMigration30To31.EngineLimits with { Instances = 200_000 }).Refusals);
     }
 
     [Theory]

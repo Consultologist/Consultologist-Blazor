@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "applies"
+    "applies",
+    "applies_stripped"
   ],
-  "ret": "node.sections.applies"
+  "ret": "node.sections.applies_stripped"
 }

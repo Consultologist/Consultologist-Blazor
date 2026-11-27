@@ -31,12 +31,12 @@
   },
   "markdown_block": {
     "typeHash": "sha256:58c76228066bb97086313c812f807ebcfb90e04012b7782910d9d7c23ead6d5d",
-    "formatHash": "sha256:d45076bf91bdaac6c42faa9db854423f1f001a6454d6a2e6be7e564003a43b91",
+    "formatHash": "sha256:448546798808119491b86587a11cf2b8e975df7976978bc8e5f55768d743c0a1",
     "typeString": "markdown_block"
   },
   "markdown_inline": {
     "typeHash": "sha256:c240f737df040bf44a496670814b5cb881068b34b2b4a5757b97931fef91ac22",
-    "formatHash": "sha256:22384920161d352a5f5612e45c5fb9c4512c280f1e696043183b44cc7ff171f6",
+    "formatHash": "sha256:9a2fcac1b9f56694daf02104d919b0c192e0b7af5ab59c8203509203b004f1b8",
     "typeString": "markdown_inline"
   },
   "number": {

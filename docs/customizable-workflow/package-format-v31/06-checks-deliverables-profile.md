@@ -390,9 +390,19 @@ node with `plain`, or a renderer); the only automatic step is escaping
   conformance suite ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)).
   **Leading indentation is protected too:** the first space or tab of each line of the plain
   text is written as its character reference (`&#32;`, `&#9;`), so a line led by four spaces
-  or a tab is not a code block; the rest of the line is escaped as above, and a line break
-  stays a hard break. A line of white space only is escaped so too, and Markdown text that is only
+  or a tab is not a code block; the rest of the line is escaped as above. A line of white space only is escaped so too, and Markdown text that is only
   white space and these two references is still empty (`failIfEmpty`, `whenEmpty`) ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1505)).
+  **Each line ending stays a line ending:** at 31 a single line ending is not a break (part 02
+  § 5.2), so the escape writes **two spaces before each line ending** (a hard break; `\r\n` is
+  one ending, and a lone `\r` is one too): `"a\nb"` escapes to `"a  \nb"`. A blank line's ending
+  gains them as well (`"a\n\nb"` to `"a  \n  \nb"`), which Markdown still reads as a blank line,
+  so paragraphs stay paragraphs. Two spaces rather than `\`, because the escape works piece by
+  piece and a piece cannot know whether its line ending ends a paragraph, where a `\` would show
+  and two spaces are dropped. The rule is local to the line ending, so escaping piece by piece is
+  escaping whole, except where a cut falls inside one `\r\n`: `"x\r"` then `"\ny"` escape to a
+  paragraph break where `"x\r\ny"` escapes to a hard break (the composer then records the unit's
+  text as one substitution, as for any escape that reads across a cut). `markdown_escape` stays 1.0.0, as it is not yet frozen
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166), item 1).
 - **The template's own literal text is typed too:** a `plaintext` deliverable may not write
   Markdown syntax (a line starting `#`, `-`, `*` or `>`, or a `**` pair). A Markdown
   deliverable's literal text is the author's Markdown. An object deliverable allows nothing

@@ -3,7 +3,11 @@
     "Node 'scope' declared with at 30, which 31 has no member for; its values are the enum of its answer format, which 31 sends after its prompt.",
     "nodes/plan_sections/plan_section.md, if: written so that the node runs only when deliverable plan applies, as 30 ran only what an applicable deliverable needed.",
     "nodes/letter_decline_letter/decline_letter.md, if: written so that the node runs only when deliverable decline_letter applies, as 30 ran only what an applicable deliverable needed.",
-    "nodes/letter_information_request/information_request.md, if: written so that the node runs only when deliverable information_request applies, as 30 ran only what an applicable deliverable needed."
+    "nodes/letter_information_request/information_request.md, if: written so that the node runs only when deliverable information_request applies, as 30 ran only what an applicable deliverable needed.",
+    "The signature is written through renderer 'signature_after_blank_line', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
+    "Loop 'plan_sections' returns each item through the new node 'plan_section_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'letter_decline_letter' returns each item through the new node 'decline_letter_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'letter_information_request' returns each item through the new node 'information_request_stripped', which strips the item's text as specVersion 30 did."
   ],
   "handEdits": [],
   "refusals": []

@@ -19,13 +19,14 @@
 
     private void Follow()
     {
-        if (Links?.Reveal(Key) == true)
+        if (Links is { } links)
         {
+            links.Follow(Key, Navigation);
             return;
         }
 
         var current = Navigation.Uri;
         var hash = current.IndexOf('#');
-        Navigation.NavigateTo((hash < 0 ? current : current[..hash]) + "#row-" + Key);
+        Navigation.NavigateTo((hash < 0 ? current : current[..hash]) + "#" + RowLinks31.Anchor(Key));
     }
 }

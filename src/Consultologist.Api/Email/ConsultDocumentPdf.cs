@@ -1,7 +1,13 @@
 using System.Reflection;
 using Consultologist.PackageFormat;
-using Markdig;
+using Markdig.Extensions.Abbreviations;
+using Markdig.Extensions.Alerts;
+using Markdig.Extensions.DefinitionLists;
+using Markdig.Extensions.Figures;
+using Markdig.Extensions.Footers;
+using Markdig.Extensions.Footnotes;
 using Markdig.Extensions.Tables;
+using Markdig.Extensions.TaskLists;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MigraDoc.DocumentObjectModel;
@@ -10,6 +16,7 @@ using PdfSharp.Fonts;
 using PdfSharp.Pdf.Security;
 using Microsoft.Extensions.Logging;
 using MdTable = Markdig.Extensions.Tables.Table;
+using MdFootnote = Markdig.Extensions.Footnotes.Footnote;
 
 namespace Consultologist.Api.Email;
 
@@ -34,7 +41,26 @@ internal sealed record PdfRenderContext(string JobId, string ResultId);
 /// </summary>
 internal static class ConsultDocumentPdf
 {
-    private static readonly MarkdownPipeline Pipeline = ConsultMarkdown.Pipeline;
+    /// <summary>
+    /// #1510 (the owner's third fix-first group, item 3; G-D5): every block and inline type the 31 bundle
+    /// (<see cref="ConsultMarkdown.Pipeline31"/>) produces, each drawn by its own case. At 31 the walker draws these and
+    /// throws on anything else: there is no generic fallback for a 31 note. The parts a container's case lays out itself
+    /// (a list's items, a table's rows and cells, a definition's term) are named too; a
+    /// <see cref="LinkReferenceDefinitionGroup"/> is silent, so its definitions are never met. An unmatched <c>[</c> is
+    /// the one <see cref="DelimiterInline"/> left after the parse. A bare <see cref="ContainerInline"/> is the wrapper
+    /// Abbreviations writes round a literal it splits.
+    /// </summary>
+    internal static IReadOnlySet<Type> Drawn31 { get; } = new HashSet<Type>
+    {
+        typeof(HeadingBlock), typeof(ParagraphBlock), typeof(ListBlock), typeof(ListItemBlock), typeof(QuoteBlock),
+        typeof(AlertBlock), typeof(CodeBlock), typeof(FencedCodeBlock), typeof(ThematicBreakBlock),
+        typeof(MdTable), typeof(TableRow), typeof(TableCell),
+        typeof(DefinitionList), typeof(DefinitionItem), typeof(DefinitionTerm), typeof(Figure), typeof(FigureCaption),
+        typeof(FooterBlock), typeof(FootnoteGroup), typeof(MdFootnote), typeof(LinkReferenceDefinitionGroup),
+        typeof(LiteralInline), typeof(EmphasisInline), typeof(LineBreakInline), typeof(CodeInline), typeof(LinkInline),
+        typeof(AutolinkInline), typeof(HtmlEntityInline), typeof(TaskList), typeof(FootnoteLink), typeof(AbbreviationInline),
+        typeof(LinkDelimiterInline), typeof(ContainerInline),
+    };
 
     // A4 less the 2.2 cm side margins set in Render — what a table may span.
     private const double UsableWidthCm = 21.0 - 2 * 2.2;
@@ -43,12 +69,28 @@ internal static class ConsultDocumentPdf
     private static readonly object FontResolverLock = new();
     private static FontGlyphCoverage? _coverage;
 
+    /// <summary>The 5–30 rendering (<see cref="ConsultMarkdown.Pipeline"/>): the reply of a 5–30 job, whose payload carries no specVersion.</summary>
     internal static byte[] Render(
         string markdown,
         string password,
         ILogger? logger = null,
+        PdfRenderContext? context = null) =>
+        Render(markdown, specVersion: 30, password, logger, context);
+
+    /// <summary>
+    /// #1510 (G-D2): renders through the pipeline of the job's <paramref name="specVersion"/>, chosen by
+    /// <see cref="ConsultMarkdown.For"/>, the selector the Web's preview shares; at 31 the walker draws by the standard
+    /// (<see cref="Drawn31"/>).
+    /// </summary>
+    internal static byte[] Render(
+        string markdown,
+        int specVersion,
+        string password,
+        ILogger? logger = null,
         PdfRenderContext? context = null)
     {
+        var pipeline = ConsultMarkdown.For(specVersion);
+
         EnsureFontResolver();
 
         // #252: what the embedded font can actually draw. Characters it
@@ -109,10 +151,7 @@ internal static class ConsultDocumentPdf
         normal.Font.Size = 10.5;
         normal.ParagraphFormat.SpaceAfter = Unit.FromPoint(6);
 
-        foreach (var block in Markdig.Markdown.Parse(markdown, Pipeline))
-        {
-            AppendBlock(section, block, indentLevel: 0);
-        }
+        Draw(section, Markdig.Markdown.Parse(markdown, pipeline), standard: ReferenceEquals(pipeline, ConsultMarkdown.Pipeline31));
 
         var renderer = new PdfDocumentRenderer { Document = document };
         renderer.RenderDocument();
@@ -139,8 +178,24 @@ internal static class ConsultDocumentPdf
         return stream.ToArray();
     }
 
-    private static void AppendBlock(Section section, Block block, int indentLevel)
+    /// <summary>Draws a parsed note into <paramref name="section"/>; <paramref name="standard"/> is the 31 walker (G-D5).</summary>
+    internal static void Draw(Section section, MarkdownDocument document, bool standard)
     {
+        foreach (var block in document)
+        {
+            AppendBlock(section, block, indentLevel: 0, standard);
+        }
+    }
+
+    private static void AppendBlock(Section section, Block block, int indentLevel, bool standard)
+    {
+        // At 31 a type is drawn only by its own case: a type the bundle does not produce (a YamlFrontMatterBlock is a
+        // CodeBlock) must not be drawn by its base type's.
+        if (standard && !Drawn31.Contains(block.GetType()))
+        {
+            throw NotDrawn(block);
+        }
+
         switch (block)
         {
             case HeadingBlock heading:
@@ -154,7 +209,7 @@ internal static class ConsultDocumentPdf
                 };
                 headingParagraph.Format.SpaceBefore = Unit.FromPoint(10);
                 headingParagraph.Format.SpaceAfter = Unit.FromPoint(4);
-                AppendInlines(headingParagraph, heading.Inline);
+                AppendInlines(headingParagraph, heading.Inline, standard);
                 break;
 
             case ParagraphBlock paragraph:
@@ -164,29 +219,37 @@ internal static class ConsultDocumentPdf
                     bodyParagraph.Format.LeftIndent = Unit.FromCentimeter(0.5 * indentLevel);
                 }
 
-                AppendInlines(bodyParagraph, paragraph.Inline);
+                AppendInlines(bodyParagraph, paragraph.Inline, standard);
                 break;
 
             case ListBlock list:
                 foreach (var item in list.OfType<ListItemBlock>())
                 {
-                    var first = true;
-                    foreach (var child in item)
+                    if (standard && item.GetType() != typeof(ListItemBlock))
                     {
-                        if (first && child is ParagraphBlock itemParagraph)
-                        {
-                            var listParagraph = section.AddParagraph();
-                            listParagraph.Format.LeftIndent = Unit.FromCentimeter(0.5 * (indentLevel + 1));
-                            listParagraph.Format.SpaceAfter = Unit.FromPoint(2);
-                            listParagraph.AddText(list.IsOrdered ? $"{item.Order}. " : "• ");
-                            AppendInlines(listParagraph, itemParagraph.Inline);
-                            first = false;
-                        }
-                        else
-                        {
-                            AppendBlock(section, child, indentLevel + 1);
-                        }
+                        throw NotDrawn(item);
                     }
+
+                    var label = !list.IsOrdered ? "• " : standard ? $"{OrderedLabel(list.BulletType, item.Order)}. " : $"{item.Order}. ";
+                    AppendLabelled(section, item, label, indentLevel, standard);
+                }
+
+                break;
+
+            // #1510 (G-D5): an alert is a QuoteBlock, so it comes first: its kind as a bold title, its children indented.
+            case AlertBlock alert when standard:
+                var alertTitle = section.AddParagraph();
+                if (indentLevel > 0)
+                {
+                    alertTitle.Format.LeftIndent = Unit.FromCentimeter(0.5 * indentLevel);
+                }
+
+                alertTitle.Format.SpaceAfter = Unit.FromPoint(2);
+                var kind = alert.Kind.ToString();
+                AddText(alertTitle, kind.Length == 0 ? kind : char.ToUpperInvariant(kind[0]) + kind[1..].ToLowerInvariant(), new Look(Bold: true));
+                foreach (var child in alert)
+                {
+                    AppendBlock(section, child, indentLevel + 1, standard);
                 }
 
                 break;
@@ -194,7 +257,7 @@ internal static class ConsultDocumentPdf
             case QuoteBlock quote:
                 foreach (var child in quote)
                 {
-                    AppendBlock(section, child, indentLevel + 1);
+                    AppendBlock(section, child, indentLevel + 1, standard);
                 }
 
                 break;
@@ -206,10 +269,7 @@ internal static class ConsultDocumentPdf
                 break;
 
             case ThematicBreakBlock:
-                var ruleParagraph = section.AddParagraph();
-                ruleParagraph.Format.SpaceBefore = Unit.FromPoint(6);
-                ruleParagraph.Format.SpaceAfter = Unit.FromPoint(6);
-                ruleParagraph.AddText(new string('—', 12));
+                AppendRule(section);
                 break;
 
             // #1256: a pipe table a prose node drafted — laid out as a table, the
@@ -223,14 +283,109 @@ internal static class ConsultDocumentPdf
                 if (!table.IsValid())
                 {
                     // The source's pipes, kept rather than dropped.
-                    AppendTableAsText(section, table, indentLevel);
+                    AppendTableAsText(section, table, indentLevel, standard);
                     break;
                 }
 
-                AppendTable(section, table, indentLevel);
+                AppendTable(section, table, indentLevel, standard);
+                break;
+
+            // #1510 (G-D5): a definition list: each term bold, what defines it indented.
+            case DefinitionList definitions when standard:
+                foreach (var item in definitions)
+                {
+                    if (item is not DefinitionItem definition)
+                    {
+                        throw NotDrawn(item);
+                    }
+
+                    foreach (var child in definition)
+                    {
+                        if (child is DefinitionTerm term)
+                        {
+                            var termParagraph = section.AddParagraph();
+                            if (indentLevel > 0)
+                            {
+                                termParagraph.Format.LeftIndent = Unit.FromCentimeter(0.5 * indentLevel);
+                            }
+
+                            termParagraph.Format.SpaceAfter = Unit.FromPoint(2);
+                            AppendInlines(termParagraph, term.Inline, standard, new Look(Bold: true));
+                        }
+                        else
+                        {
+                            AppendBlock(section, child, indentLevel + 1, standard);
+                        }
+                    }
+                }
+
+                break;
+
+            // #1510 (G-D5): a figure's blocks as they are, its caption italic.
+            case Figure figure when standard:
+                foreach (var child in figure)
+                {
+                    if (child is FigureCaption caption)
+                    {
+                        var captionParagraph = section.AddParagraph();
+                        if (indentLevel > 0)
+                        {
+                            captionParagraph.Format.LeftIndent = Unit.FromCentimeter(0.5 * indentLevel);
+                        }
+
+                        AppendInlines(captionParagraph, caption.Inline, standard, new Look(Italic: true));
+                    }
+                    else
+                    {
+                        AppendBlock(section, child, indentLevel, standard);
+                    }
+                }
+
+                break;
+
+            // #1510 (G-D5): a footer's blocks, at 9 pt.
+            case FooterBlock footer when standard:
+                var before = section.Elements.Count;
+                foreach (var child in footer)
+                {
+                    AppendBlock(section, child, indentLevel, standard);
+                }
+
+                for (var i = before; i < section.Elements.Count; i++)
+                {
+                    if (section.Elements[i] is Paragraph footerParagraph)
+                    {
+                        footerParagraph.Format.Font.Size = 9;
+                    }
+                }
+
+                break;
+
+            // #1510 (G-D5): the footnotes, after a rule, each as "n. " and its blocks.
+            case FootnoteGroup footnotes when standard:
+                AppendRule(section);
+                foreach (var child in footnotes)
+                {
+                    if (child is not MdFootnote footnote)
+                    {
+                        throw NotDrawn(child);
+                    }
+
+                    AppendLabelled(section, footnote, $"{footnote.Order}. ", indentLevel, standard);
+                }
+
+                break;
+
+            // #1510 (G-D5): link reference definitions (and the footnotes' and headings' own) are definitions, not prose.
+            case LinkReferenceDefinitionGroup when standard:
                 break;
 
             default:
+                if (standard)
+                {
+                    throw NotDrawn(block);
+                }
+
                 // Conservative fallback for a block the walker does not know. Markdig's
                 // LinkReferenceDefinitionGroup lands here and must stay silent (its text
                 // is a definition, not prose); anything else is reported by the tests.
@@ -244,7 +399,87 @@ internal static class ConsultDocumentPdf
         }
     }
 
-    private static void AppendTable(Section section, MdTable table, int indentLevel)
+    /// <summary>
+    /// A list item or a footnote: its first paragraph after <paramref name="label"/>, its other blocks indented under it.
+    /// 5–30's list items, as they were.
+    /// </summary>
+    private static void AppendLabelled(Section section, ContainerBlock item, string label, int indentLevel, bool standard)
+    {
+        var first = true;
+        foreach (var child in item)
+        {
+            if (first && child is ParagraphBlock itemParagraph)
+            {
+                var listParagraph = section.AddParagraph();
+                listParagraph.Format.LeftIndent = Unit.FromCentimeter(0.5 * (indentLevel + 1));
+                listParagraph.Format.SpaceAfter = Unit.FromPoint(2);
+                listParagraph.AddText(label);
+                AppendInlines(listParagraph, itemParagraph.Inline, standard);
+                first = false;
+            }
+            else
+            {
+                AppendBlock(section, child, indentLevel + 1, standard);
+            }
+        }
+    }
+
+    /// <summary>
+    /// #1510 (G-D5): an ordered item's label at 31. ListExtras keeps the list's kind in <see cref="ListBlock.BulletType"/>
+    /// (<c>1</c>, <c>a</c>, <c>A</c>, <c>i</c>, <c>I</c>) and gives each item its number, counted from the list's start
+    /// as a number (<c>c.</c> is order 3, <c>iv.</c> order 4).
+    /// </summary>
+    private static string OrderedLabel(char kind, int order) => kind switch
+    {
+        'a' or 'A' when order >= 1 => Letters(order, kind),
+        'i' => Roman(order).ToLowerInvariant(),
+        'I' => Roman(order),
+        _ => order.ToString(System.Globalization.CultureInfo.InvariantCulture)
+    };
+
+    /// <summary>a … z, then aa, ab …, as an HTML <c>type="a"</c> list counts.</summary>
+    private static string Letters(int order, char first)
+    {
+        var letters = "";
+        for (var n = order; n > 0; n = (n - 1) / 26)
+        {
+            letters = (char)(first + (n - 1) % 26) + letters;
+        }
+
+        return letters;
+    }
+
+    private static string Roman(int order)
+    {
+        if (order < 1)
+        {
+            return order.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        var roman = new System.Text.StringBuilder();
+        foreach (var (value, numeral) in new[] { (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I") })
+        {
+            for (; order >= value; order -= value)
+            {
+                roman.Append(numeral);
+            }
+        }
+
+        return roman.ToString();
+    }
+
+    private static void AppendRule(Section section)
+    {
+        var ruleParagraph = section.AddParagraph();
+        ruleParagraph.Format.SpaceBefore = Unit.FromPoint(6);
+        ruleParagraph.Format.SpaceAfter = Unit.FromPoint(6);
+        ruleParagraph.AddText(new string('—', 12));
+    }
+
+    private static NotSupportedException NotDrawn(MarkdownObject node) =>
+        new($"The specVersion 31 PDF has no case for a Markdown {node.GetType().Name}; the 31 bundle is drawn type by type, with no fallback.");
+
+    private static void AppendTable(Section section, MdTable table, int indentLevel, bool standard)
     {
         var rows = table.OfType<TableRow>().ToList();
         var columnCount = rows.Max(row => row.Count);
@@ -333,20 +568,14 @@ internal static class ConsultDocumentPdf
                 cellParagraph.Format.SpaceAfter = 0;
                 if (i < row.Count && row[i] is TableCell cell)
                 {
-                    foreach (var child in cell)
-                    {
-                        if (child is ParagraphBlock cellBlock)
-                        {
-                            AppendInlines(cellParagraph, cellBlock.Inline);
-                        }
-                    }
+                    AppendCell(cellParagraph, cell, standard);
                 }
             }
         }
     }
 
     /// <summary>A malformed table's rows as text, pipes between the cells — kept, never dropped.</summary>
-    private static void AppendTableAsText(Section section, MdTable table, int indentLevel)
+    private static void AppendTableAsText(Section section, MdTable table, int indentLevel, bool standard)
     {
         foreach (var row in table.OfType<TableRow>())
         {
@@ -361,16 +590,26 @@ internal static class ConsultDocumentPdf
             {
                 paragraph.AddText(first ? "| " : " | ");
                 first = false;
-                foreach (var child in cell)
-                {
-                    if (child is ParagraphBlock cellBlock)
-                    {
-                        AppendInlines(paragraph, cellBlock.Inline);
-                    }
-                }
+                AppendCell(paragraph, cell, standard);
             }
 
             paragraph.AddText(" |");
+        }
+    }
+
+    /// <summary>A cell's text. A pipe table's cell holds paragraphs only; at 31 anything else is a type not drawn.</summary>
+    private static void AppendCell(Paragraph paragraph, TableCell cell, bool standard)
+    {
+        foreach (var child in cell)
+        {
+            if (child is ParagraphBlock cellBlock && (!standard || child.GetType() == typeof(ParagraphBlock)))
+            {
+                AppendInlines(paragraph, cellBlock.Inline, standard);
+            }
+            else if (standard)
+            {
+                throw NotDrawn(child);
+            }
         }
     }
 
@@ -378,7 +617,10 @@ internal static class ConsultDocumentPdf
         cell.Descendants<LiteralInline>().Sum(literal => literal.Content.Length)
         + cell.Descendants<CodeInline>().Sum(code => code.Content.Length);
 
-    private static void AppendInlines(Paragraph paragraph, ContainerInline? inlines)
+    /// <summary>How a run of text is set: 5–30 use bold and italic only; 31 adds superscript and underline (G-D5).</summary>
+    private readonly record struct Look(bool Bold = false, bool Italic = false, bool Superscript = false, bool Underline = false);
+
+    private static void AppendInlines(Paragraph paragraph, ContainerInline? inlines, bool standard, Look look = default)
     {
         if (inlines == null)
         {
@@ -387,26 +629,48 @@ internal static class ConsultDocumentPdf
 
         foreach (var inline in inlines)
         {
-            AppendInline(paragraph, inline, bold: false, italic: false);
+            AppendInline(paragraph, inline, look, standard);
         }
     }
 
-    private static void AppendInline(Paragraph paragraph, Inline inline, bool bold, bool italic)
+    private static void AppendInline(Paragraph paragraph, Inline inline, Look look, bool standard)
     {
+        if (standard && !Drawn31.Contains(inline.GetType()))
+        {
+            throw NotDrawn(inline);
+        }
+
         switch (inline)
         {
             case LiteralInline literal:
-                AddText(paragraph, literal.Content.ToString(), bold, italic);
+                AddText(paragraph, literal.Content.ToString(), look);
                 break;
 
-            case EmphasisInline emphasis:
-                var childBold = bold || emphasis.DelimiterCount >= 2;
-                var childItalic = italic || emphasis.DelimiterCount == 1;
-                foreach (var child in emphasis)
-                {
-                    AppendInline(paragraph, child, childBold, childItalic);
-                }
+            // #1510 (G-D5): at 31 an emphasis is read by its delimiter: "" (a citation) italic, ^ superscript, ++ underline.
+            case EmphasisInline { DelimiterChar: '"' } citation when standard:
+                AppendChildren(paragraph, citation, look with { Italic = true }, standard);
+                break;
 
+            case EmphasisInline { DelimiterChar: '^' } superscript when standard:
+                AppendChildren(paragraph, superscript, look with { Superscript = true }, standard);
+                break;
+
+            case EmphasisInline { DelimiterChar: '+' } inserted when standard:
+                AppendChildren(paragraph, inserted, look with { Underline = true }, standard);
+                break;
+
+            case EmphasisInline emphasis when !standard || emphasis.DelimiterChar is '*' or '_':
+                var childLook = look with
+                {
+                    Bold = look.Bold || emphasis.DelimiterCount >= 2,
+                    Italic = look.Italic || emphasis.DelimiterCount == 1
+                };
+                AppendChildren(paragraph, emphasis, childLook, standard);
+                break;
+
+            // #1510 (G-D5): at 31 a single line ending (soft) is one space; a hard break (\ or two spaces) is a line break.
+            case LineBreakInline { IsHard: false } when standard:
+                AddText(paragraph, " ", look);
                 break;
 
             case LineBreakInline:
@@ -414,38 +678,84 @@ internal static class ConsultDocumentPdf
                 break;
 
             case CodeInline code:
-                AddText(paragraph, code.Content, bold, italic);
+                AddText(paragraph, code.Content, look);
                 break;
 
             case LinkInline link:
-                // Text only — the PDF is a clinical document, not hypertext.
-                foreach (var child in link)
+                // Text only — the PDF is a clinical document, not hypertext. At 31 too: an image's children are its alt
+                // text, and an autolinked www. address its URL text.
+                AppendChildren(paragraph, link, look, standard);
+                break;
+
+            // #1510 (G-D5): the 31 inlines, each its text.
+            case AutolinkInline autolink when standard:
+                AddText(paragraph, autolink.Url, look);
+                break;
+
+            case HtmlEntityInline entity when standard:
+                // its character: the escape's &#32; is a space
+                AddText(paragraph, entity.Transcoded.ToString(), look);
+                break;
+
+            case TaskList task when standard:
+                // ASCII, which the embedded font draws; the literal after it starts with the space
+                AddText(paragraph, task.Checked ? "[x]" : "[ ]", look);
+                break;
+
+            case FootnoteLink footnoteLink when standard:
+                // a back link (the footnote's own, to its reference) draws nothing
+                if (!footnoteLink.IsBackLink)
                 {
-                    AppendInline(paragraph, child, bold, italic);
+                    AddText(paragraph, footnoteLink.Footnote.Order.ToString(System.Globalization.CultureInfo.InvariantCulture), look with { Superscript = true });
                 }
 
                 break;
 
-            case ContainerInline container:
-                foreach (var child in container)
-                {
-                    AppendInline(paragraph, child, bold, italic);
-                }
+            case AbbreviationInline abbreviation when standard:
+                AddText(paragraph, abbreviation.Abbreviation.Label ?? "", look);
+                break;
 
+            case DelimiterInline delimiter when standard:
+                // an unmatched [ : its literal, then what followed it
+                AddText(paragraph, delimiter.ToLiteral(), look);
+                AppendChildren(paragraph, delimiter, look, standard);
+                break;
+
+            // #1510 (G-D5, ruled in G2): the bare wrapper Abbreviations writes round a literal it splits (as in
+            // "HPI here"): its children. Only the exact type; a subclass reaches this only if named above.
+            case ContainerInline wrapper when standard && wrapper.GetType() == typeof(ContainerInline):
+                AppendChildren(paragraph, wrapper, look, standard);
+                break;
+
+            case ContainerInline container when !standard:
+                AppendChildren(paragraph, container, look, standard);
                 break;
 
             default:
+                if (standard)
+                {
+                    throw NotDrawn(inline);
+                }
+
                 var text = inline.ToString();
                 if (!string.IsNullOrEmpty(text))
                 {
-                    AddText(paragraph, text, bold, italic);
+                    AddText(paragraph, text, look);
                 }
 
                 break;
         }
     }
 
-    private static void AddText(Paragraph paragraph, string text, bool bold, bool italic)
+    private static void AppendChildren(Paragraph paragraph, ContainerInline container, Look look, bool standard)
+    {
+        foreach (var child in container)
+        {
+            AppendInline(paragraph, child, look, standard);
+        }
+    }
+
+    private static void AddText(Paragraph paragraph, string text, Look look)
     {
         if (text.Length == 0)
         {
@@ -453,8 +763,19 @@ internal static class ConsultDocumentPdf
         }
 
         var formatted = paragraph.AddFormattedText(text);
-        formatted.Bold = bold;
-        formatted.Italic = italic;
+        formatted.Bold = look.Bold;
+        formatted.Italic = look.Italic;
+
+        // set only when on, so 5–30's runs are formatted exactly as before
+        if (look.Superscript)
+        {
+            formatted.Superscript = true;
+        }
+
+        if (look.Underline)
+        {
+            formatted.Underline = Underline.Single;
+        }
     }
 
     private static void EnsureFontResolver()

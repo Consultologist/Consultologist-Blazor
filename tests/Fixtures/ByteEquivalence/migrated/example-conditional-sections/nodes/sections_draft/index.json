@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "route"
+    "route",
+    "route_stripped"
   ],
-  "ret": "node.sections_draft.route"
+  "ret": "node.sections_draft.route_stripped"
 }

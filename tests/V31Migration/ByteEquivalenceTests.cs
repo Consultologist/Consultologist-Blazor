@@ -35,7 +35,12 @@ public class ByteEquivalenceTests
         var (capture, run, texts) = await EquivalenceFixture.Compared("example-conditional-sections", "default");
 
         Assert.NotEmpty(texts);
-        Assert.All(texts, t => Assert.Equal((true, false, (string?)null), (t.Equal, t.Expected, t.Explanation)));
+        // #1510 (item 1): the nodes that strip each loop's items render texts 31 alone has, each credited to loop-item-strip-node;
+        // every text 30 also has is equal.
+        var stripped = texts.Where(t => t.Site.Contains("_stripped:", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(stripped);
+        Assert.All(stripped, t => Assert.Equal((false, true, "loop-item-strip-node"), (t.Equal, t.Expected, Assert.Single(t.Rules))));
+        Assert.All(texts.Except(stripped), t => Assert.Equal((true, false, (string?)null), (t.Equal, t.Expected, t.Explanation)));
         foreach (var prompt in capture["prompts"]!.AsArray().OfType<JsonObject>())
         {
             var key = KeyMap.To31((string)prompt["key"]!, EquivalenceFixture.Migrated("example-conditional-sections"), EquivalenceFixture.Plan("example-conditional-sections"))!;
@@ -406,14 +411,15 @@ public class ByteEquivalenceTests
     [Fact]
     public async Task AComparedText_NamesTheRulesCredited()
     {
-        // #1508 (R19): composer-sources' tally is a let of text escaped in a Markdown deliverable (escaped-plain-text), and
-        // its count differs too, because 30 trimmed the topics it counted (unexpected difference 4, not ruled): the rule is
-        // credited, and the text is unexplained, so not expected.
+        // #1508 (R19): composer-sources' tally is a let of text escaped in a Markdown deliverable (escaped-plain-text). #1510
+        // (#1509 comment 7207709261, item 1): its count is 30's now that the topics it counts are stripped as 30 trimmed them,
+        // so the rule explains it all.
         var (_, _, texts) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
         var tally = texts.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally");
 
         Assert.Equal(["escaped-plain-text"], tally.Rules);
-        Assert.Equal((false, false, true, (string?)null), (tally.Equal, tally.Expected, tally.Unexplained, tally.Explanation));
+        Assert.Equal((false, true, false), (tally.Equal, tally.Expected, tally.Unexplained));
+        Assert.StartsWith("escaped-plain-text: ", tally.Explanation, StringComparison.Ordinal);
 
         // An explained text names its rules and has nothing left; an equal text names none.
         var (_, _, letters) = await EquivalenceFixture.Compared("example-prior-letters", "default");
@@ -443,6 +449,168 @@ public class ByteEquivalenceTests
         Assert.Contains("escaped-plain-text", sources.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally").Rules);
         var (_, _, v12) = await EquivalenceFixture.Compared("example-v12-constructs", "tone-friendly");
         Assert.Contains("escaped-plain-text", v12.Single(t => t.Site == "example-v12-constructs/tone-friendly#deliverables/deliverable.consult").Rules);
+    }
+
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 1): 30 trimmed each item of a loop it composed; the migration returns each item
+    /// of composer-sources' topic loop through a node that strips it, so six of the seven sites the ruling names are 30's
+    /// bytes, with no rule, and the seventh, tally, differs only as a plain text escaped in Markdown (escaped-plain-text), its
+    /// count now 30's.
+    /// </summary>
+    [Fact]
+    public async Task ALoopsItems_AreTrimmedAs30Did()
+    {
+        var (_, _, texts) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
+        string[] sites =
+        [
+            "prompts/node.opening", "prompts/node.closing", "prompts/node.plan_gate.draft_plan", "prompts/node.tone_case.plain_line",
+            "deliverables/deliverable.topics", "deliverables/deliverable.topics_then_opening",
+        ];
+        foreach (var site in sites)
+        {
+            var text = texts.Single(t => t.Site == "composer-sources/awkward-texts#" + site);
+            Assert.True((text.Equal, text.Rules.Count, text.Unexplained) == (true, 0, false), $"{site}: equal {text.Equal}, rules {string.Join(",", text.Rules)}");
+        }
+
+        var tally = texts.Single(t => t.Site == "composer-sources/awkward-texts#deliverables/deliverable.tally");
+        Assert.Equal(["escaped-plain-text"], tally.Rules);
+        Assert.Equal((false, true, false), (tally.Equal, tally.Expected, tally.Unexplained));
+    }
+
+    /// <summary>
+    /// #1510 (F-D3): the stripping node's texts are 31's alone; each is credited to <c>loop-item-strip-node</c> exactly when its
+    /// node is one the migration wrote and its text is the old <c>ret</c>'s text for that item, trimmed. Never otherwise.
+    /// </summary>
+    [Fact]
+    public async Task AStrippingNodesText_IsCreditedOnlyWhenItIsTheItemTrimmed()
+    {
+        var (capture, run, texts) = await EquivalenceFixture.Compared("composer-sources", "awkward-texts");
+        var stripped = texts.Where(t => t.Site.Contains("#renders/node.topic_loop.topic_gate_stripped", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(stripped);
+        Assert.All(stripped, t => Assert.Equal((false, true, false), (t.Equal, t.Expected, t.Unexplained)));
+        Assert.All(stripped, t => Assert.Equal(["loop-item-strip-node"], t.Rules));
+        Assert.All(texts.Where(t => !t.Site.Contains("_stripped", StringComparison.Ordinal)), t => Assert.DoesNotContain("loop-item-strip-node", t.Rules));
+
+        var migrated = EquivalenceFixture.Migrated("composer-sources");
+        var plan = EquivalenceFixture.Plan("composer-sources");
+        var render = run.Renders.First(r => r.Key.StartsWith("node.topic_loop.topic_gate_stripped:", StringComparison.Ordinal));
+        DifferenceContext Context(string key, string? old, string now) =>
+            new("composer-sources", "awkward-texts", "composer-sources/awkward-texts#renders/" + key, ComparedKind.Render, null, key, old, now, capture, run, migrated, plan);
+
+        Assert.StartsWith("loop-item-strip-node: ", ExpectedDifferences.Explain(Context(render.Key, null, render.Text)));
+        // Another text at the same node, a text 30 also had, and a 31-only render of a node the migration did not write.
+        Assert.Null(ExpectedDifferences.Explain(Context(render.Key, null, render.Text + "\n")));
+        Assert.Null(ExpectedDifferences.Explain(Context(render.Key, render.Text, render.Text + " ")));
+        Assert.Null(ExpectedDifferences.Explain(Context("node.topic_loop.topic_gate" + render.Key[render.Key.IndexOf(':')..], null, render.Text)));
+        Assert.Null(ExpectedDifferences.Explain(Context(render.Key, null, render.Text) with { Migrated = migrated with { StripNodes = new Dictionary<string, string>() } }));
+    }
+
+    /// <summary>
+    /// #1510 (the owner's third fix-first group, item 4; G-D9): composer-macros' letterhead written as an address, one line
+    /// each, which 30 broke at each line ending (its capture is the address as written). The migration ends each line with
+    /// <c>\</c>, so every letter that places it differs from 30's only by those, and each is credited to
+    /// <c>explicit-hard-break</c> alone; against the same run, a result that says it wrote no break leaves them unexplained.
+    /// </summary>
+    [Fact]
+    public async Task AHardBreakTheMigrationWrote_IsExplainedByItsRule()
+    {
+        const string Package = "composer-macros";
+        const string Scenario = "new-visit-defaults";
+        const string Letterhead = "Riverside Clinic (fictional)";
+        const string Address = "Riverside Clinic (fictional)\n12 Sample Street\nSampletown";
+        var migrated = MigrationFixture.Overlay(
+            MigrateNodesTests.Migrated(Package, _ => { }, files => files["macros/letterhead.md"] = files["macros/letterhead.md"].Replace(Letterhead, Address, StringComparison.Ordinal)),
+            MigrationFixture.HandEditsOf(Package));
+        Assert.Equal(2, migrated.HardBreaks["snippets/letterhead.md"]);
+        var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(migrated), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed);
+        Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));
+        var (plan, refusal) = RunPlan.Build(compiled!.Resolve, compiled.ResolveHash, compiled.LockHash, null);
+        Assert.True(plan != null, refusal?.Sentence);
+
+        var capture = EquivalenceFixture.Capture(Package, Scenario);
+        var placed = new List<string>();
+        foreach (var row in capture["deliverables"]!.AsArray().OfType<JsonObject>())
+        {
+            if ((string?)row["text"] is not { } text || !text.Contains(Letterhead, StringComparison.Ordinal))
+                continue;
+            row["text"] = text.Replace(Letterhead, Address, StringComparison.Ordinal);
+            row["hash"] = CanonicalJson.HashText((string)row["text"]!);
+            placed.Add($"{Package}/{Scenario}#deliverables/deliverable.{(string)row["id"]!}");
+        }
+
+        Assert.NotEmpty(placed);
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(Package, Scenario), capture, migrated, plan!);
+        var run = await OfflineRun.RunAsync(plan!, request);
+        var texts = Equivalence.Compare(Package, Scenario, capture, run, migrated, plan!, request);
+        foreach (var site in placed)
+        {
+            var text = texts.Single(t => t.Site == site);
+            Assert.True((text.Equal, text.Expected, text.Unexplained) == (false, true, false), $"{site}: equal {text.Equal}, expected {text.Expected}, rules {string.Join(",", text.Rules)}");
+            Assert.Equal(["explicit-hard-break"], text.Rules);
+        }
+
+        Assert.All(texts.Where(t => !placed.Contains(t.Site)), t => Assert.DoesNotContain("explicit-hard-break", t.Rules));
+        var unsaid = Equivalence.Compare(Package, Scenario, capture, run, migrated with { HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal) }, plan!, request);
+        Assert.All(placed, site => Assert.True(unsaid.Single(t => t.Site == site).Unexplained, site));
+    }
+
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 2): composer-macros' profile in <c>no-signature</c> has no signature block, and
+    /// 30 left the signature and the line before it out; through the renderer that tests the trimmed signature, so does 31.
+    /// <c>authored</c> differs only as the plain text it holds is escaped in Markdown.
+    /// </summary>
+    [Fact]
+    public async Task ALetterWithNoSignature_EndsAs30Did()
+    {
+        var (_, _, texts) = await EquivalenceFixture.Compared("composer-macros", "no-signature");
+        ComparedText Site(string id) => texts.Single(t => t.Site == "composer-macros/no-signature#deliverables/deliverable." + id);
+
+        foreach (var id in new[] { "signed_letter", "signed_only" })
+            Assert.True((Site(id).Equal, Site(id).Rules.Count, Site(id).Unexplained) == (true, 0, false), $"{id}: equal {Site(id).Equal}, rules {string.Join(",", Site(id).Rules)}");
+        var authored = Site("authored");
+        Assert.Equal((false, true, false), (authored.Equal, authored.Expected, authored.Unexplained));
+        Assert.Equal(["escaped-plain-text"], authored.Rules);
+    }
+
+    /// <summary>
+    /// #1510 (F-D5′, ruled by the controller): with a signature, the letters end with the blank line (the line ending, for
+    /// <c>authored</c>'s snippet) and the signature in 30's own bytes, which the renderer writes unescaped; no text is
+    /// unexplained, and no rule is credited that the golden report did not already credit for it.
+    /// </summary>
+    [Fact]
+    public async Task ALetterWithASignature_HasThirtysSignatureBytes()
+    {
+        var letters = new (string Package, string Id, string Before)[]
+        {
+            ("composer-macros", "signed_letter", "\n\n"), ("composer-macros", "signed_only", "\n\n"), ("composer-macros", "authored", "\n"),
+            ("example-classifier-scope", "decline_letter", "\n\n"),
+        };
+        var compared = 0;
+        foreach (var (package, id, before) in letters)
+        {
+            var golden = JsonNode.Parse(ByteEquivalenceFixtures.ReadText(Path.Combine(ByteEquivalenceFixtures.Root, GoldenFolder, package + ".json")))!["texts"]!.AsArray();
+            foreach (var scenario in EquivalenceFixture.Scenarios(package))
+            {
+                if ((string?)EquivalenceFixture.Scenario(package, scenario)["profile"]?["signature"] is not { } signature)
+                    continue;
+                var (capture, run, texts) = await EquivalenceFixture.Compared(package, scenario);
+                var site = $"{package}/{scenario}#deliverables/deliverable.{id}";
+                if (texts.SingleOrDefault(t => t.Site == site) is not { } text)
+                    continue;
+                var old = (string?)capture["deliverables"]!.AsArray().Single(d => (string?)d!["id"] == id)!["text"];
+                var now = run.Deliverables.Single(d => d.Key == "deliverable." + id).Text;
+                Assert.False(text.Unexplained, site);
+                if (old is null)
+                    continue; // 30 skipped the letter here (its if, or a source that did not run)
+                Assert.EndsWith(before + signature, old, StringComparison.Ordinal);
+                Assert.EndsWith(before + signature, now, StringComparison.Ordinal);
+                var credited = golden.Single(t => (string?)t!["site"] == site)!["rules"]!.AsArray().Select(r => (string)r!).ToList();
+                Assert.All(text.Rules, rule => Assert.Contains(rule, credited));
+                compared++;
+            }
+        }
+
+        Assert.True(compared >= 8, $"{compared} letters with a signature compared");
     }
 
     [Fact]
@@ -484,6 +652,8 @@ public class ByteEquivalenceTests
         ["required-blank-refused"] = "no compared capture's 31 start refuses a required text input supplied blank.",
         ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
         ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
+        ["macro-trailing-whitespace"] = "the one compared macro whose body ends in more white space than one line ending, edge-unruled-whitespace's problem_close, ends each item of a loop whose .content is read, which the migration strips as 30 trimmed it (#1510); the rule's own tests hold it on hand-made texts.",
+        ["explicit-hard-break"] = "no migrated fixture writes a Markdown body a reader sees line per line (every single line ending inside a paragraph is a prompt's), so the migration writes no \\ in any (#1510, item 4); AHardBreakTheMigrationWrote_IsExplainedByItsRule holds it on composer-macros with its letterhead written as an address.",
     };
 
     [Fact]
@@ -505,9 +675,6 @@ public class ByteEquivalenceTests
         Assert.All(ExpectedDifferences.Rules, rule => Assert.True(hits.Contains(rule.Id) ^ RulesWithoutAHit.ContainsKey(rule.Id),
             hits.Contains(rule.Id) ? $"{rule.Id} has a golden hit and a reason." : $"{rule.Id} has no golden hit and no reason."));
         Assert.Contains("sent-format", hits);
-        // #1508 (Task 35 fix round 1): edge-unruled-whitespace's problem_close, placed after each paragraph by 30's engine,
-        // ends its body in more white space than one line ending.
-        Assert.Contains("macro-trailing-whitespace", hits);
         Assert.All(RulesWithoutAHit.Keys, id => Assert.Contains(id, ExpectedDifferences.Rules.Select(r => r.Id)));
     }
 

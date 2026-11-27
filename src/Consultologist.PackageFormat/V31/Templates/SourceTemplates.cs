@@ -163,6 +163,7 @@ public static partial class SourceTemplates
         context.PartsOffAgents();
         context.ProfileCarrying(bodies);
         context.FolderRoutes();
+        context.LineEndings(bodies);
 
         var said = context.Refusals.Distinct().OrderBy(r => r.Path, StringComparer.Ordinal).ToList();
         var warnings = context.Warnings.Distinct().OrderBy(w => w.Path, StringComparer.Ordinal).ToList();

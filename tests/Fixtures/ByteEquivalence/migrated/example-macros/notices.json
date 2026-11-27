@@ -17,6 +17,8 @@
     "Hand edit needed in deliverables/consult_note.md, body: macro 'followup_only' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/consult_note.md, body: macro 'brief_plan' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Hand edit needed in deliverables/consult_note.md, body: macro 'follow_up_reminder' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
+    "Loop 'standing_sections' returns each item through the new node 'standing_draft_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'requested_sections' returns each item through the new node 'route_stripped', which strips the item's text as specVersion 30 did.",
     "nodes/house_style_applies.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "nodes/red_flags_applies.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",
     "nodes/safety_net_applies.md: runDependent and profileCarrying are written false without the bodies that need a hand edit; check them once the edits are made.",

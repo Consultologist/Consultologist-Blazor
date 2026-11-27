@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Components;
+
 namespace Consultologist.Web.Shared.History31;
 
 /// <summary>
@@ -16,4 +18,23 @@ public sealed class RowLinks31
     /// or a copied link goes to the row, not to the home page; the click handler is the enhancement. Empty: a bare fragment.
     /// </summary>
     public string JobId { get; set; } = "";
+
+    /// <summary>
+    /// Follows a link to the row <paramref name="key"/>: its rows are opened (<see cref="Reveal"/>) or, when no section holds
+    /// it, the page goes to its fragment. A <c>RowLink31</c>'s click, and (#1510, D12) a run diagram's call box.
+    /// </summary>
+    public void Follow(string key, NavigationManager navigation)
+    {
+        if (Reveal(key))
+        {
+            return;
+        }
+
+        var current = navigation.Uri;
+        var hash = current.IndexOf('#');
+        navigation.NavigateTo((hash < 0 ? current : current[..hash]) + "#" + Anchor(key));
+    }
+
+    /// <summary>#1510 (D12): the element id of the row <paramref name="key"/> on History's record view (<c>row-&lt;key&gt;</c>), which a link's fragment names.</summary>
+    public static string Anchor(string key) => "row-" + key;
 }

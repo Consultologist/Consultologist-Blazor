@@ -1,10 +1,11 @@
 @using System.Text.Encodings.Web
 @using System.Text.Json
+@using Consultologist.PackageFormat.V31.Diagram
 @*
     #1509 (Task 23; part 09 § 8.1, § 8.2; D14): a specVersion 31 package in the Editor, read-only, drawn in place of the
     editing layout. The bar says so; an import's notices follow it. Left, the package's entries: manifest.json first,
     then every source file by path (ordinal), then resolve.json and lock.json when the content holds them and the
-    account owns the version, then "Publish report" and, for a migrated version, "Migration", then the diagram when the content holds dag.mmd. Right, the open entry: a file's text as
+    account owns the version, then "Publish report" and, for a migrated version, "Migration", then the diagram, drawn from resolve.json when the content holds it, else from dag.mmd. Right, the open entry: a file's text as
     stored in a <pre>, the two evidence files pretty-printed, the diagram drawn. Nothing here edits, and nothing reads
     the manifest as a 30 one. Another entry is one more line in Entries.
 *@
@@ -99,9 +100,14 @@
             list.Add(new("migration", "Migration", @<MigrationReport31 Report="@migration" OldVersion="@oldVersion" />));
         }
 
-        if (Content.Files.TryGetValue(DiagramFile, out var diagram))
+        // D14: drawn from the compiled document when the content holds one, the stored dag.mmd only when it does not
+        // (a version published before the diagram was stored with it, or an import, has no resolve.json).
+        var drawn = Content.Resolve is { } compiled
+            ? PackageDiagram.Generate(compiled.GetRawText())
+            : Content.Files.GetValueOrDefault(DiagramFile);
+        if (drawn is not null)
         {
-            list.Add(new("diagram", "Diagram", @<WorkflowDagView Diagram="@diagram" />));
+            list.Add(new("diagram", "Diagram", @<WorkflowDagView Diagram="@drawn" />));
         }
 
         return list;

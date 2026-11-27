@@ -304,6 +304,37 @@ public class MigrateMacrosTests
         Assert.Equal(2, standing.Split("{{ macro.counselling }}").Length);
     }
 
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 2; F-D4): 30 trimmed a deliverable macro's end, so a signature that ends one
+    /// left with the line ending before it when the profile had none. The snippet writes it through the renderer that tests
+    /// its trimmed value: after one line ending, <c>signature_after_line_end</c>; after a blank line,
+    /// <c>signature_after_blank_line</c>. A signature with text after it, which 30 did not trim away, is left as written.
+    /// </summary>
+    [Fact]
+    public void ASnippetsSignatureAfterALineEnd_UsesTheLineEndRenderer()
+    {
+        var result = MigrateNodesTests.Migrated("composer-macros");
+
+        Assert.Equal("Written by {{ profile.name }} on {{ run.date }}.{{ profile.signature | renderer.signature_after_line_end }}", MigrateNodesTests.Md(result, "snippets/author_line.md").Body);
+        var renderer = MigrateNodesTests.Md(result, "renderers/signature_after_line_end.md");
+        Assert.Equal(
+            """{"label":"Signature after a line end","kind":"rendered","description":null,"input":"plaintext","format":"plaintext"}""",
+            Header(result, "renderers/signature_after_line_end.md"));
+        Assert.Equal("{{ if value != null && (value | string.strip) != \"\" }}\n{{ value }}{{ end }}", renderer.Body);
+        Assert.Equal("""["signature_after_line_end","signature_after_blank_line"]""", MigrateNodesTests.Json(result, "renderers/index.json")["items"]!.ToJsonString());
+        Assert.Single(result.Notices, n => n == "The signature is written through renderer 'signature_after_line_end', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.");
+
+        // After a blank line (example-v12-constructs' closing).
+        var closing = MigrateNodesTests.Migrated("example-v12-constructs");
+        Assert.Equal("Sincerely,{{ profile.signature | renderer.signature_after_blank_line }}", MigrateNodesTests.Md(closing, "snippets/closing.md").Body);
+        Assert.Equal("""["signature_after_blank_line"]""", MigrateNodesTests.Json(closing, "renderers/index.json")["items"]!.ToJsonString());
+
+        // Text after the signature: as written, and no renderer.
+        var after = MigrateNodesTests.Migrated("example-v12-constructs", _ => { }, files => files["macros/closing.md"] += "\nWith thanks.");
+        Assert.Equal("Sincerely,\n\n{{ profile.signature }}\nWith thanks.", MigrateNodesTests.Md(after, "snippets/closing.md").Body);
+        Assert.Equal("[]", MigrateNodesTests.Json(after, "renderers/index.json")["items"]!.ToJsonString());
+    }
+
     [Fact]
     public void AMacroReadAsFixedText_BecomesASnippet()
     {
@@ -561,7 +592,7 @@ public class MigrateMacrosTests
         AssertHandEdit(result, File, "body", "A10-077",
             "node 'letrozole_prescription_text_applies' decides whether macro 'letrozole_prescription_text' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.");
         Assert.Equal(
-            """["letrozole_prescription_text_applies","section_instructions","patient_section_draft","standard_section_draft"]""",
+            """["letrozole_prescription_text_applies","section_instructions","patient_section_draft","standard_section_draft","section_instructions_stripped"]""",
             MigrateNodesTests.Json(result, "nodes/standards/index.json")["nodes"]!.ToJsonString());
         Assert.Equal(Answer("node.letrozole_prescription_text_applies"), MigrateNodesTests.Md(result, "macros/letrozole_prescription_text.md").Header["if"]!.ToJsonString());
 

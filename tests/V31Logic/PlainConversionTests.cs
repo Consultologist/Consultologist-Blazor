@@ -15,6 +15,15 @@ public class PlainConversionTests
     public void ToPlain_Goldens(string markdown, string plain) =>
         Assert.Equal(plain, PlainConversion.ToPlain(markdown));
 
+    // #1510 (G-D6): the conversion runs the 31 pipeline, which has HTML off and no generic attributes.
+    [Fact]
+    public void ToPlain_KeepsRawHtmlAsText() =>
+        Assert.Equal("a <b>bold</b> claim", PlainConversion.ToPlain("a <b>bold</b> claim"));
+
+    [Fact]
+    public void ToPlain_KeepsAGenericAttributeAsText() =>
+        Assert.Equal("Seen by Dr A. Sample {onclick=x}", PlainConversion.ToPlain("Seen by Dr A. Sample {onclick=x}"));
+
     [Fact]
     public void ToPlain_HasNoCarriageReturn()
     {

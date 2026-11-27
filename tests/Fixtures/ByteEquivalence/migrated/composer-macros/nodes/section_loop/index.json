@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": "title",
   "nodes": [
-    "section_draft"
+    "section_draft",
+    "section_draft_stripped"
   ],
-  "ret": "node.section_loop.section_draft"
+  "ret": "node.section_loop.section_draft_stripped"
 }

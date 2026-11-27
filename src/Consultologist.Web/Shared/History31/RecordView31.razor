@@ -4,6 +4,7 @@
 @inject IAIEndpointService AIService
 @inject IJSRuntime JS
 @inject TimeProvider Clock
+@inject NavigationManager Navigation
 @*
     #1509 (Task 16; part 09 §§ 6.1 to 6.4): History's view of a storage 12 job, in place of the 5–30 provenance list and
     node grid. The header (with the record's download and Verify, for a terminal job only), then one banner per deliverable
@@ -110,6 +111,10 @@
     }
 
     protected override void OnParametersSet() => _links.JobId = Detail.JobId;
+
+    /// <summary>#1510 (D12): follows <paramref name="anchor"/> (<c>row-&lt;key&gt;</c>) from outside the view, as a row link does: the run diagram's call box.</summary>
+    public void ShowRow(string anchor) =>
+        _links.Follow(anchor.StartsWith("row-", StringComparison.Ordinal) ? anchor["row-".Length..] : anchor, Navigation);
 
     [Parameter, EditorRequired]
     public ConsultGenerationJobResponse Detail { get; set; } = default!;

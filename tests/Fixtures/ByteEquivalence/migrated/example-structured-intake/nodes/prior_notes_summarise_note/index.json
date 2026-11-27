@@ -20,7 +20,8 @@
   "max": null,
   "itemLabel": null,
   "nodes": [
-    "summarise_note"
+    "summarise_note",
+    "summarise_note_stripped"
   ],
-  "ret": "node.prior_notes_summarise_note.summarise_note"
+  "ret": "node.prior_notes_summarise_note.summarise_note_stripped"
 }

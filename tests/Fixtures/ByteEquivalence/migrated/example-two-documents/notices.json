@@ -1,5 +1,7 @@
 {
-  "notices": [],
+  "notices": [
+    "Loop 'standards' returns each item through the new node 'section_instructions_stripped', which strips the item's text as specVersion 30 did."
+  ],
   "handEdits": [],
   "refusals": []
 }

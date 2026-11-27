@@ -20,10 +20,10 @@ public class ExpectedDifferencesTests
     private static readonly string[] RuleIds =
     [
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
-        "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "item-ids-from-one", "position-names-from-the-loop",
+        "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "explicit-hard-break", "item-ids-from-one", "position-names-from-the-loop",
         "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
         "while-no-pass-separator", "loop-item-not-run", "chosen-macro-final-line-ending", "empty-read-trailing-space",
-        "macro-choice-classifier", "blank-conversion",
+        "macro-choice-classifier", "loop-item-strip-node", "blank-conversion",
     ];
 
     [Fact]
@@ -286,6 +286,31 @@ public class ExpectedDifferencesTests
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, """Plan: {"summary":"x"}""", """Plan: {"support":"y","summary":"x"}""", "general", key31: "node.draft")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, """Plan: {"summary":"x"}""", """Plan: {"support":null,"summary":"x"}""", "general", key31: "deliverable.note")));
         Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Prompt, "Plan: [1]", "Plan: [1,null]", "general", key31: "node.draft")));
+    }
+
+    [Fact]
+    public void AnExplicitHardBreak_IsCreditedOnlyInAPackageWithOne()
+    {
+        // #1510 (the owner's third fix-first group, item 4; G-D9): the migration ended a line written line per line with \,
+        // where 30's pipeline broke the single line ending; 31's text holds the \ and is otherwise 30's. In a package whose
+        // sources hold such a break, in any compared kind (a body read later reaches prompts too).
+        var plain = EquivalenceFixture.Migrated("example-nested-note") with { HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal) };
+        var broken = plain with { HardBreaks = new Dictionary<string, int>(StringComparer.Ordinal) { ["snippets/letterhead.md"] = 2 } };
+        const string Old = "Margaret Okafor\n12 Sample Street\nSampletown\n\nSeen today by Dr A. Sample.";
+        const string Now = "Margaret Okafor\\\n12 Sample Street\\\nSampletown\n\nSeen today by Dr A. Sample.";
+        Assert.StartsWith("explicit-hard-break: ", Explain(Context(ComparedKind.Deliverable, Old, Now, migrated: broken, key31: "deliverable.note")));
+        Assert.StartsWith("explicit-hard-break: ", Explain(Context(ComparedKind.Prompt, Old, Now, migrated: broken, key31: "node.refine")));
+        Assert.StartsWith("explicit-hard-break: ", Explain(Context(ComparedKind.Render, Old, Now, migrated: broken, key31: "node.refine")));
+        // The \ is written after a line's trailing spaces (G-D8), which stay as 30 had them.
+        Assert.StartsWith("explicit-hard-break: ", Explain(Context(ComparedKind.Deliverable, "Margaret Okafor \nSampletown", "Margaret Okafor \\\nSampletown", migrated: broken, key31: "deliverable.note")));
+
+        // The other way: the same texts in a package whose sources hold no migration-written break.
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now, migrated: plain, key31: "deliverable.note")));
+
+        // Near: a \ that is not before a line ending; a line ending 31 joined (a \ in place of the ending); two \ at one end.
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Sampletown", "Sample\\town", StringComparison.Ordinal), migrated: broken, key31: "deliverable.note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, "Margaret Okafor\\ 12 Sample Street\\\nSampletown\n\nSeen today by Dr A. Sample.", migrated: broken, key31: "deliverable.note")));
+        Assert.Null(ExpectedDifferences.Explain(Context(ComparedKind.Deliverable, Old, Now.Replace("Okafor\\\n", "Okafor\\\\\n", StringComparison.Ordinal), migrated: broken, key31: "deliverable.note")));
     }
 
     [Fact]
@@ -753,11 +778,12 @@ public class ExpectedDifferencesTests
     {
         // #1508, 2026-11-26, item 5 (no migration change): clinic_line, a 30 macro written as a snippet (D4), ends its line
         // with a read of the unset clinic; 31's snippet keeps "Seen at: " where 30 trimmed the rendered macro. problem_close's
-        // white space in the same deliverable is R5's and the engine placement's, credited beside it.
+        // white space in the same deliverable is the engine placement's, credited beside it (its R5 remainder is stripped with
+        // each item of the loop since #1510).
         var (_, _, texts) = await EquivalenceFixture.Compared("edge-unruled-whitespace", "default");
         var problems = texts.Single(t => t.Site == "edge-unruled-whitespace/default#deliverables/deliverable.problems");
         Assert.Equal((false, true, false), (problems.Equal, problems.Expected, problems.Unexplained));
-        Assert.Equal(["macro-trailing-whitespace", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+        Assert.Equal(["before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
     }
 
     [Fact]

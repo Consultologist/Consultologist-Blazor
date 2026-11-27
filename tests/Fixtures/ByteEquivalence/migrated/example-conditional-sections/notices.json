@@ -1,5 +1,9 @@
 {
-  "notices": [],
+  "notices": [
+    "Loop 'sections_draft' returns each item through the new node 'route_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'patient_summaries' returns each item through the new node 'narrative_only_stripped', which strips the item's text as specVersion 30 did.",
+    "Loop 'standing_sections' returns each item through the new node 'applies_stripped', which strips the item's text as specVersion 30 did."
+  ],
   "handEdits": [],
   "refusals": []
 }

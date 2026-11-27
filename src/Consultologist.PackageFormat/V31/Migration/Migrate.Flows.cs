@@ -506,6 +506,175 @@ internal static partial class Migrate
             WriteNode(m, tree, child, cases);
     }
 
+    /// <summary>
+    /// #1510 (#1509 comment 7207709261, item 1; F-D1, F-D2): the stripping pass, after the deliverables (when every reader is
+    /// written) and before <see cref="Derived"/>. 30 trimmed each item of a loop it composed (<c>ConsultFlowCompletion</c>);
+    /// at 31 a <c>for</c>'s <c>.content</c> is the engine's rendering of its items as their <c>ret</c> gave them. So every
+    /// <c>for</c> whose <c>.content</c> a migrated file reads (<see cref="ContentRead"/>) gets one new <c>rendered</c> node as
+    /// the last of its body and its <c>ret</c>: <c>&lt;old ret id&gt;_stripped</c>, fitted (<see cref="FreeNodeId"/>), whose
+    /// body is <c>{{ node.&lt;old ret id&gt;.content | string.strip }}</c>, whose <c>if</c> holds only when the old <c>ret</c>
+    /// completed (an item's state is its <c>ret</c>'s), each read as the body sees its sibling (a reference resolves outward
+    /// by bare id, part 01 § 9: the rooted key is refused there, S03-014), and whose format is the old <c>ret</c>'s text kind
+    /// (<see cref="ContentKind"/>), so the engine escapes an item where it did. The reads of the loop's <c>.content</c> stay as
+    /// written. A new node reads its old <c>ret</c>'s <c>.content</c>, so a loop returned by a loop is stripped too, as 30
+    /// trimmed both: the pass runs until no loop is left. The loop's format and those of the flows that return it follow the
+    /// new <c>ret</c> (<see cref="Reformat"/>). Each is said (A10-088) and kept in <see cref="Migrated.StripNodes"/>. A loop whose
+    /// old <c>ret</c> has no one text kind (an <c>if</c> or a <c>case</c> of a Markdown and a plain branch) gets no node, since
+    /// one format would escape a branch the old <c>ret</c> did not: it keeps its <c>ret</c>, a hand edit (A10-090, fix round 1).
+    /// </summary>
+    public static void StripLoopItems(Migrated m)
+    {
+        ArgumentNullException.ThrowIfNull(m);
+        var tree = new NodeTree(m.Manifest30.Nodes ?? []);
+        var set = FormatSet.ForPackage(m.Options.Registry, m.PackageFormats());
+        var stripped = new HashSet<string>(StringComparer.Ordinal);
+        for (var changed = true; changed;)
+        {
+            changed = false;
+            foreach (var (id, node) in tree.ById)
+            {
+                if (node.For is null || stripped.Contains(id) || !m.Sources.TryGetValue(FlowFile(tree, id), out var loop)
+                    || SourceLayout.Text(loop.Json["ret"]) is not { } ret || HeaderAt(m, ret) is not { } old || !ContentRead(m, tree, id))
+                {
+                    continue;
+                }
+
+                stripped.Add(id);
+                if (ContentKind(m, ret, set, 0) is not { } kind)
+                {
+                    // Fix round 1: items of more than one text format, which no one node can strip as each was written.
+                    m.HandEdit(FlowFile(tree, id), "ret", MigrationSentences.LoopItemsMixFormats(id));
+                    continue;
+                }
+
+                changed = true;
+                var key = m.Keys[id];
+                var retId = ret[(ret.LastIndexOf('.') + 1)..];
+                var newId = FreeNodeId(m, tree, retId, "_stripped");
+                m.Put($"nodes/{key["node.".Length..].Replace('.', '/')}/{newId}.md", new JsonObject
+                {
+                    ["kind"] = "rendered",
+                    ["producer"] = "computed",
+                    ["label"] = old.Json["label"]?.DeepClone(),
+                    ["description"] = null,
+                    ["format"] = kind,
+                    ["reproducible"] = true,
+                    ["modelDerived"] = false,
+                    ["runDependent"] = false,
+                    ["profileCarrying"] = false,
+                    ["if"] = new JsonObject { ["==="] = new JsonArray(new JsonObject { ["var"] = $"node.{retId}.state" }, "completed") },
+                }, $"{{{{ node.{retId}.content | string.strip }}}}");
+                loop.Json["nodes"]!.AsArray().Add(newId);
+                loop.Json["ret"] = $"{key}.{newId}";
+                m.StripNodes[$"{key}.{newId}"] = ret;
+                m.Notice(MigrationSentences.StripsLoopItems(id, newId));
+                Reformat(m, tree, id, FormatTypes.ListOf(JsonValue.Create(kind)), set);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether a migrated file reads <c>.content</c> of the <c>for</c> <paramref name="id"/>: by its rooted key, or by a shorter
+    /// form of it that resolves outward (<c>node.&lt;id&gt;</c>, part 01 § 9), behind <c>pass.</c> or not; in a template, a
+    /// header (a condition, an expression, a hand edit's text) or a plain JSON file. 30's ids are unique, so the bare form
+    /// names this loop alone.
+    /// </summary>
+    private static bool ContentRead(Migrated m, NodeTree tree, string id)
+    {
+        string[] chain = [.. tree.Ancestors(id).Reverse(), id];
+        var forms = Enumerable.Range(0, chain.Length).Select(i => "node." + string.Join('.', chain[i..]));
+        var read = new System.Text.RegularExpressions.Regex(
+            $"(?<![A-Za-z0-9_])(?:{string.Join('|', forms.Select(System.Text.RegularExpressions.Regex.Escape))})\\.content(?![A-Za-z0-9_])",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        return m.Sources.Values.Any(f => read.IsMatch(f.Json.ToJsonString()) || (f.Body is { } body && read.IsMatch(body)));
+    }
+
+    /// <summary>The <c>ret</c>s a flow's migrated header names, in its bodies' order: a loop's own; an <c>if</c>'s <c>then</c> and <c>else</c>; a <c>case</c>'s branches and <c>else</c>.</summary>
+    private static List<string> RetsOf(JsonObject header)
+    {
+        IEnumerable<JsonNode?> bodies = SourceLayout.Text(header["kind"]) switch
+        {
+            "if" => [header["then"], header["else"]],
+            "case" => [.. header["branches"] as JsonArray ?? [], header["else"]],
+            _ => [header],
+        };
+        return bodies.Select(b => SourceLayout.Text(b?["ret"])).OfType<string>().ToList();
+    }
+
+    /// <summary>The migrated header of the node at rooted key <paramref name="key"/> (<c>node.a.b</c>): its leaf's file or its flow's <c>index.json</c>.</summary>
+    private static MigratedFile? HeaderAt(Migrated m, string key)
+    {
+        if (!key.StartsWith("node.", StringComparison.Ordinal))
+            return null;
+        var path = "nodes/" + key["node.".Length..].Replace('.', '/');
+        return m.Sources.GetValueOrDefault(path + ".md") ?? m.Sources.GetValueOrDefault($"{path}/{WorkflowDataResolver.IndexFileName}");
+    }
+
+    /// <summary>
+    /// F-D2: the text kind of <c>.content</c> of the node at <paramref name="key"/>, as the type checker types it
+    /// (<c>ScopeTree.RenderedContent</c>) and the engine writes it (<c>PlanRunner.WritesMarkdown</c>): a <c>for</c>'s is
+    /// <c>markdown_block</c>; a <c>while</c>'s its <c>ret</c>'s; an <c>if</c>'s or a <c>case</c>'s its <c>ret</c>s' when they are
+    /// one kind; a leaf's its format's when that is <c>markdown_block</c> or <c>markdown_inline</c>, else <c>plaintext</c> (plain
+    /// text, a value that is not text). Branches of more than one kind have none: <see langword="null"/> (fix round 1).
+    /// </summary>
+    private static string? ContentKind(Migrated m, string key, FormatSet set, int depth)
+    {
+        if (depth > SourceBounds.JsonDepth || HeaderAt(m, key)?.Json is not { } header)
+            return "plaintext";
+        switch (SourceLayout.Text(header["kind"]))
+        {
+            case "for":
+                return "markdown_block";
+            case "while" or "if" or "case":
+                var kinds = RetsOf(header).Select(r => ContentKind(m, r, set, depth + 1)).Distinct(StringComparer.Ordinal).ToList();
+                return kinds switch
+                {
+                    [] => "plaintext",
+                    [var one] => one,
+                    _ => null,
+                };
+            default:
+                var text = FormatTypes.TextKind(header["format"], set);
+                return text is "markdown_block" or "markdown_inline" ? text : "plaintext";
+        }
+    }
+
+    /// <summary>
+    /// F-D1: the flow <paramref name="id"/>, whose <c>ret</c> changed, takes <paramref name="format"/> (the 31 checker holds a
+    /// flow to the format its <c>ret</c>s give, part 02 § 2.2), and so does each flow that returns it, outward: a <c>for</c>
+    /// the list of it, a <c>while</c> it, an <c>if</c> or a <c>case</c> the union of its <c>ret</c>s' formats as now written.
+    /// A format that is unchanged stops it, and so does a flow whose format is a hand edit (R9's mixed branches, A10-053).
+    /// </summary>
+    private static void Reformat(Migrated m, NodeTree tree, string id, JsonNode format, FormatSet set)
+    {
+        var (at, written) = (id, format);
+        while (true)
+        {
+            var file = FlowFile(tree, at);
+            if (!m.Sources.TryGetValue(file, out var header) || JsonNode.DeepEquals(header.Json["format"], written)
+                || m.HandEditNotices.Any(n => n.StartsWith(MigrationSentences.HandEdit(file, "format", "")[..^1], StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            header.Json["format"] = written;
+            if (!tree.Owner.TryGetValue(at, out var owner) || !m.Sources.TryGetValue(FlowFile(tree, owner), out var outer))
+                return;
+            var key = m.Keys[at];
+            var json = outer.Json;
+            var rets = RetsOf(json);
+            if (!rets.Contains(key))
+                return;
+            written = SourceLayout.Text(json["kind"]) switch
+            {
+                "for" => FormatTypes.ListOf(written),
+                "while" => written.DeepClone(),
+                _ => FormatTypes.UnionOf([.. rets.Select(r => HeaderAt(m, r)?.Json["format"]).OfType<JsonNode>()], set) ?? JsonValue.Create("plaintext"),
+            };
+            at = owner;
+        }
+    }
+
     /// <summary>A 30 list of ids as a JSON array (<c>[]</c> for none).</summary>
     private static JsonArray Ids(IEnumerable<string>? ids) => new([.. (ids ?? []).Select(i => (JsonNode?)JsonValue.Create(i))]);
 

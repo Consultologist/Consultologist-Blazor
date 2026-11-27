@@ -22,4 +22,20 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- #1510 (area 13, Task 7): the library's one 31 drawing (PackageDiagram), so a test draws a document of its own, and
+       the golden dag.mmd files, linked as content, which the browser renders. Still no reference to the Web project. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Consultologist.PackageFormat\Consultologist.PackageFormat.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\V31Diagram\Golden\*.dag.mmd" Link="Golden\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- #1510 (area 13, Task 10): the functions resolve golden, which the mocked 31 History page answers as the job's
+       resolve.json so its run diagram has a call box. -->
+  <ItemGroup>
+    <None Include="..\V31Resolve\Golden\functions.resolve.json" Link="Golden\V31Resolve\functions.resolve.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

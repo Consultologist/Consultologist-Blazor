@@ -148,12 +148,13 @@ public class BundleByIdTests
     {
         // R2, "published formats keep their bytes": both hashes are over the format in its scope (full: everything
         // dereferenced; type: references by the format's name), so writing a reference as an $id moves neither. These
-        // are nested-note's, as published before the bundle referenced by $id.
+        // are nested-note's, as published before the bundle referenced by $id. markdown_block's formatHash is that of
+        // its description as #1510's G-D12 wrote it (its typeHash did not move).
         var golden = CompiledGoldenTests.Cases().Single(c => c.Name == "nested-note");
         var document = JsonNode.Parse(CompiledGoldenTests.Published(golden).Resolve)!;
 
         Assert.Equal(
-            "{\"markdown_block\":\"sha256:d45076bf91bdaac6c42faa9db854423f1f001a6454d6a2e6be7e564003a43b91\","
+            "{\"markdown_block\":\"sha256:448546798808119491b86587a11cf2b8e975df7976978bc8e5f55768d743c0a1\","
             + "\"number\":\"sha256:022c36612bbb1a825d84551f250176f2d737aaa723cd7b117729bd3d23c0a64c\","
             + "\"outline\":\"sha256:0349e6084c044acc6cadf0e91f533ad305085605433300d5592aed54a0f5f9f3\","
             + "\"plaintext\":\"sha256:657c017a5c11998ed8cbb8c6774e14c3b98a6ac9eefeaf2c2101413de8e3e4ea\","

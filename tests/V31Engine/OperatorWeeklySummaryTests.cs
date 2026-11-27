@@ -143,7 +143,8 @@ public class OperatorWeeklySummaryTests
     [Fact]
     public async Task TheMigrationLine_CountsAtTheConfiguredJobInstances()
     {
-        // example-nested-note opens 80,614 instances: past the default 10,000 (A10-081's hand edit), within 100,000
+        // example-nested-note opens 120,814 instances (its loops' items stripped by nodes of their own since #1510): past the
+        // default 10,000 (A10-081's hand edit), within 200,000
         const string pin = "example-nested-note@v2026.11.1";
         var (accounts, pins) = Accounts(("user-1", pin));
         var sources = Substitute.For<IWorkflowPackageSources>();
@@ -154,7 +155,7 @@ public class OperatorWeeklySummaryTests
         Assert.EndsWith("Outstanding migration hand edits: 1 in 1 packages; 0 packages do not migrate\n", SentBody(atTheDefault), StringComparison.Ordinal);
 
         var configured = new EngineLimitSettings(new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConsultGeneration:JobInstances"] = "100000" })
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConsultGeneration:JobInstances"] = "200000" })
             .Build());
         var atTheLimit = Substitute.For<IGraphMailClient>();
         Assert.True(await Summary(accounts, pins, sources, mail: atTheLimit, limits: configured).RunOnceAsync(Now, CancellationToken.None));

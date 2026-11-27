@@ -1,12 +1,15 @@
 @* The rendered workflow DAG (#114): the server's Mermaid text drawn client-side.
    Render failures degrade to a muted line — the details list below the view
-   always remains the fallback. *@
+   always remains the fallback. #1510 (D12): with Anchors, each box they name is
+   bound as a link once the SVG is drawn (Mermaid stays strict, so its own click
+   is off); following one calls OnAnchor with its anchor. *@
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <div class="dag-view">
     @if (_svg != null)
     {
-        <div class="dag-view__canvas">
+        <div class="dag-view__canvas" @ref="_canvas">
             @((MarkupString)_svg)
         </div>
     }
@@ -23,14 +26,24 @@
 @code {
     [Parameter] public string? Diagram { get; set; }
 
+    /// <summary>The boxes that are links: box id (as the Mermaid text writes it) → anchor. None: no box is a link.</summary>
+    [Parameter] public IReadOnlyDictionary<string, string>? Anchors { get; set; }
+
+    /// <summary>A linked box was followed (clicked, or Enter while it has focus), with its anchor.</summary>
+    [Parameter] public EventCallback<string> OnAnchor { get; set; }
+
     private string? _svg;
     private string? _renderError;
     private string? _renderedFor;
+    private ElementReference _canvas;
+    private string? _boundFor;
+    private DotNetObjectReference<WorkflowDagView>? _self;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Diagram == null || _renderedFor == Diagram)
         {
+            await BindAsync();
             return;
         }
 
@@ -48,5 +61,47 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Binds the drawn SVG's linked boxes once per drawing; binding a new drawing drops the old one's handlers.</summary>
+    private async Task BindAsync()
+    {
+        if (_svg == null || Anchors is not { Count: > 0 } anchors || ReferenceEquals(_boundFor, _svg))
+        {
+            return;
+        }
+
+        _boundFor = _svg;
+        _self ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("consultologistMermaid.bind", _canvas, anchors, _self);
+        }
+        catch (JSException)
+        {
+            // A browser holding an older mermaid-interop.js has no bind: the diagram stays drawn, without links.
+        }
+    }
+
+    [JSInvokable]
+    public Task Follow(string anchor) => OnAnchor.InvokeAsync(anchor);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_self is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("consultologistMermaid.unbind", _canvas);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The runtime is already gone, and the handlers with it.
+        }
+
+        _self.Dispose();
     }
 }
