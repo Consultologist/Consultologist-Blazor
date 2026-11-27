@@ -382,8 +382,9 @@ public class History31InputsTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ABannersLink_ToARowOutsideNodes_FollowsTheFragmentOnThisPage()
+    public void ABannersLink_ToADeliverable_OpensItsRowInDeliverables_WithoutLeavingThePage()
     {
+        // Task 20: a deliverable's row is now in Deliverables, so the link opens it there (RowLinks31) and the URI stays
         var page = Render<RecordView31>(parameters =>
         {
             var job = Record31Fixtures.Job();
@@ -394,9 +395,12 @@ public class History31InputsTests : ClientRenderTestContext
         });
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
 
+        var before = navigation.Uri;
         var link = page.FindAll(".history31-banner a").First(a => a.GetAttribute("href") == "/history/" + JobId + "#row-deliverable.refused");
         link.Click();
 
-        Assert.EndsWith("#row-deliverable.refused", navigation.Uri, StringComparison.Ordinal);
+        page.WaitForAssertion(() => Assert.Equal("true",
+            page.Find("#history31-deliverables [id=\"row-deliverable.refused\"] .history31-deliverable__toggle").GetAttribute("aria-expanded")));
+        Assert.Equal(before, navigation.Uri);
     }
 }

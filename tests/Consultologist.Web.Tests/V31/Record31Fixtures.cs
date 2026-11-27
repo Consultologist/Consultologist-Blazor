@@ -162,15 +162,15 @@ internal static class Record31Fixtures
             // deliverables: released (with sites, a substitution in a template loop, hashes), held, blocked, skipped, failed
             Row("deliverable.emr.note", PlanKind.Deliverable, RowState.Released, hash: "sha256:b1",
                 detail: """
-                { "label": "EMR note", "format": "markdown_block", "templateHash": "sha256:d1", "check": "check.gate_many",
+                { "label": "EMR note", "format": "markdown_block", "templateHash": "sha256:d1", "composedHash": "sha256:b1", "check": "check.gate_many",
                   "sites": [ { "site": 1, "at": "1:1", "expr": "node.plan.content", "loop": null }, { "site": 2, "at": "3:1", "expr": "item.title", "loop": "node.sections.items" } ],
                   "substitutions": [ { "site": 1, "pass": null, "reads": "node.plan.content", "hash": "sha256:s1", "start": 0, "size": 612, "renders": null },
                                      { "site": 2, "pass": [1], "reads": "item.title", "hash": "sha256:s2", "start": 614, "size": 8, "renders": null } ],
                   "delivery": ["delivery:deliverable.emr.note/email", "delivery:deliverable.emr.note/emr", "delivery:deliverable.emr.note/pdf"] }
                 """),
-            Row("deliverable.held_summary", PlanKind.Deliverable, RowState.Held, "held: empty", hash: "sha256:b2", detail: """{ "check": "check.gate_many" }"""),
+            Row("deliverable.held_summary", PlanKind.Deliverable, RowState.Held, "held: empty", hash: "sha256:b2", detail: """{ "composedHash": "sha256:b2", "check": "check.gate_many" }"""),
             Row("deliverable.refused", PlanKind.Deliverable, RowState.Blocked, "blocked: check 'gate' failed (The plan is not complete.)", hash: "sha256:b3",
-                detail: """{ "label": "Refused note", "check": "check.gate" }"""),
+                detail: """{ "label": "Refused note", "composedHash": "sha256:b3", "check": "check.gate" }"""),
             Row("deliverable.skipped_letter", PlanKind.Deliverable, RowState.Skipped, "skipped: input.kind.value = \"letter\" is false", hash: null),
             Row("deliverable.failed_note", PlanKind.Deliverable, RowState.Failed, "failed: the model service's limits were reached", hash: null),
 

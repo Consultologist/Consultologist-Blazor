@@ -51,6 +51,7 @@ public class SentenceMirror31Tests
         Assert.Equal(HistorySentences31.Stopped, Sentence("A12-001"));
         Assert.Equal(HistorySentences31.TextDeleted, Sentence("A12-002"));
         Assert.Equal(HistorySentences31.RunFactsDiffer, Sentence("A12-003"));
+        Assert.Equal(HistorySentences31.TemplateNotRead, Sentence("A12-007"));
     }
 
     [Fact]
@@ -85,7 +86,7 @@ public class SentenceMirror31Tests
     [Fact]
     public void TheAreaSentences_A12001ToA12005_AreInTheRegistry()
     {
-        foreach (var id in new[] { "A12-001", "A12-002", "A12-003", "A12-004", "A12-005", "A12-006" })
+        foreach (var id in new[] { "A12-001", "A12-002", "A12-003", "A12-004", "A12-005", "A12-006", "A12-007" })
         {
             Assert.False(string.IsNullOrWhiteSpace(Sentence(id)));
         }

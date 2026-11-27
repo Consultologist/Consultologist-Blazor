@@ -1,0 +1,49 @@
+@inherits DisclosureRow31<Deliverables31.View>
+@using System.Text.Json
+@using Consultologist.PackageFormat.V31.Run
+@using Consultologist.Web.Services.Provenance.V31
+@*
+    #1509 (Task 20; part 08 § 10, part 09 §§ 3.8, 6.4): one destination of a deliverable, always drawn in full inside its
+    deliverable's body: its kind, its result and reason as stored, S09-017 for a failed one, and each attempt (its time and
+    outcome as stored). It is a row of the section's disclosure so that a banner's link to it opens its deliverable and
+    lands on it; a delivery row has no text, so nothing is fetched.
+*@
+<li class="history31-delivery" id="row-@Node.Key" tabindex="-1" @ref="Element">
+    <code class="history31-delivery__kind">@Row?.Text("kind")</code>
+    <span class="history31-delivery__result">@Row?.Text("result")</span>
+    @if (Row?.Text("reason") is { Length: > 0 } reason)
+    {
+        <span class="history31-delivery__reason">@reason</span>
+    }
+    @if (Row?.Text("atUtc") is { Length: > 0 } at)
+    {
+        <span class="history31-delivery__at">at @at</span>
+    }
+    @if (Row?.Text("result") == "failed")
+    {
+        <span class="history31-delivery__could-not-send">@HistorySentences31.CouldNotSend(DeliveryPlan.KindWords(Row.Text("kind") ?? ""))</span>
+    }
+    @if (Attempts is { Count: > 0 } attempts)
+    {
+        <ol class="history31-delivery__attempts">
+            @foreach (var (attemptAt, outcome) in attempts)
+            {
+                <li class="history31-delivery__attempt"><span class="history31-delivery__attempt-at">@attemptAt</span> <span class="history31-delivery__outcome">@outcome</span></li>
+            }
+        </ol>
+    }
+</li>
+
+@code {
+    /// <summary>A delivery row has no retained text: opening it (a link's doing) fetches nothing.</summary>
+    protected override Task OnParametersSetAsync() => Task.CompletedTask;
+
+    private List<(string At, string Outcome)> Attempts =>
+        Row?.List("attempts")
+            .Where(attempt => attempt.ValueKind == JsonValueKind.Object)
+            .Select(attempt => (Str(attempt, "atUtc") ?? "", Str(attempt, "outcome") ?? ""))
+            .ToList() ?? [];
+
+    private static string? Str(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+}

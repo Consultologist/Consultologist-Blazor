@@ -27,6 +27,12 @@ public static class HistorySentences31
     /// <summary>A12-003: a body whose composed and stored hashes differ because a run fact is part of it.</summary>
     public const string RunFactsDiffer = "Part of this text comes from run facts, such as the date, so it differs from run to run.";
 
+    /// <summary>
+    /// A12-007 (part 09 § 6.4 "Deliverables"): a deliverable's template is shown from the pinned version only; this is said
+    /// when that version could not be read or its template's hash is not the row's <c>templateHash</c>.
+    /// </summary>
+    public const string TemplateNotRead = "The template this job ran couldn't be read, so it isn't shown.";
+
     private const string BlockedPrefix = "blocked: ";
     private const string HeldPrefix = "held: ";
     private const string FailedPrefix = "failed: ";
