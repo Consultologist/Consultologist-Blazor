@@ -123,6 +123,12 @@ public static class ExpectedDifferences
         {
             Bytes = ExplicitHardBreaks,
         },
+        new("block-read-own-line",
+            "#1543, ruling 2, ruled by the owner on 2026-11-27 (a markdown_block read moved to its own line after an explicit hard break); part 10 §§ 1.2, 3.2",
+            "a markdown_block read that had text beside it on its line, which 31 refuses, stands alone on its line, moved there by the migration: 31's text holds a line ending (after \\ where text stood before the read) that 30's has not")
+        {
+            Bytes = BlockReadOwnLine,
+        },
         new("item-ids-from-one",
             "ruled by the owner on #1506, 2026-11-21, 2 (item numbers are 1-based everywhere users see them; 30 counted an array input's from 0); D12",
             "an item of a loop over an input's list is numbered from 1, where 30 numbered it from 0")
@@ -282,12 +288,102 @@ public static class ExpectedDifferences
     /// #1510 (item 4; G-D9): in a package whose sources hold a hard break the migration wrote
     /// (<see cref="Migration31Result.HardBreaks"/>), 31's text without one <c>\</c> directly before each line ending, in any
     /// compared kind (a macro body or a rendered node read later reaches prompts). <see cref="Credit"/> keeps it only where
-    /// that brings the text nearer 30's.
+    /// that brings the text nearer 30's. #1543 (D8): a <c>\</c> after the text that stood before a read the migration moved
+    /// (<see cref="MovedReadAnchors"/>) is left for <c>block-read-own-line</c>, which deletes it with its line ending.
     /// </summary>
-    private static (string Old, string New)? ExplicitHardBreaks(DifferenceContext c, string old, string now) =>
-        c.Migrated.HardBreaks.Values.Any(n => n > 0) && now.Contains('\\', StringComparison.Ordinal)
-            ? (old, BackslashBeforeALineEnding.Replace(now, ""))
-            : null;
+    private static (string Old, string New)? ExplicitHardBreaks(DifferenceContext c, string old, string now)
+    {
+        if (!c.Migrated.HardBreaks.Values.Any(n => n > 0) || !now.Contains('\\', StringComparison.Ordinal))
+            return null;
+        // #1543 (D8): a \ after the text that stood before a moved read is that read's, credited to block-read-own-line.
+        var moved = MovedReadAnchors(c.Migrated)?.Before ?? [];
+        return (old, BackslashBeforeALineEnding.Replace(now, m => moved.Any(a => m.Index >= a.Length && string.CompareOrdinal(now, m.Index - a.Length, a, 0, a.Length) == 0) ? m.Value : ""));
+    }
+
+    /// <summary>
+    /// #1543 (ruling 2, D8): in a package whose sources hold a read the migration moved onto its own line
+    /// (<see cref="Migration31Result.MovedReads"/>), 31's text with line endings deleted, each with the <c>\</c> directly
+    /// before it if one stands there, and nothing else, only where a moved read's line ending stands: after the text that
+    /// stood before a moved read (in a moved file, the line's text before a <c>\</c> that ends it, the next line starting
+    /// with a tag), or before the text that stood after one (the next line's text up to its first tag, after a line that
+    /// ends with a tag). Each such line ending is deleted in turn and kept deleted only where that brings the text nearer
+    /// 30's (<see cref="Distance"/>). A word is never added or changed, so a lost one stays unexplained.
+    /// </summary>
+    private static (string Old, string New)? BlockReadOwnLine(DifferenceContext c, string old, string now)
+    {
+        if (!now.Contains('\n', StringComparison.Ordinal) || MovedReadAnchors(c.Migrated) is not { } anchors)
+            return null;
+        var undone = now;
+        var distance = Distance(old, now);
+        for (var p = 0; p < undone.Length && distance > 0; p++)
+        {
+            if (LineEndingAt(undone, p) is not (> 0 and var ending))
+                continue;
+            var from = p > 0 && undone[p - 1] == '\\' ? p - 1 : p;
+            var (text, at) = (undone, p + ending);
+            var moved = anchors.Before.Any(a => from >= a.Length && string.CompareOrdinal(text, from - a.Length, a, 0, a.Length) == 0)
+                || anchors.After.Any(a => at + a.Length <= text.Length && string.CompareOrdinal(text, at, a, 0, a.Length) == 0);
+            if (!moved)
+                continue;
+            var candidate = undone.Remove(from, p + ending - from);
+            var nearer = Distance(old, candidate);
+            if (nearer >= distance)
+                continue;
+            (undone, distance) = (candidate, nearer);
+            p = from - 1;
+        }
+
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// The texts beside the reads the migration moved, read from each file of <see cref="Migration31Result.MovedReads"/>
+    /// as written: <c>Before</c>, each line's text after its last tag that ends with a <c>\</c> the next line's tag
+    /// follows (<c>Seen at: </c> of <c>Seen at: \</c> then <c>{{ r }}</c>); <c>After</c>, each line's text up to its first
+    /// tag that follows a line ending in a tag (<c> (dictated)</c>). Texts of white space alone are left out; null when no
+    /// file holds one.
+    /// </summary>
+    private static (List<string> Before, List<string> After)? MovedReadAnchors(Migration31Result migrated)
+    {
+        var before = new List<string>();
+        var after = new List<string>();
+        foreach (var path in migrated.MovedReads.Where(r => r.Value > 0).Select(r => r.Key).Order(StringComparer.Ordinal))
+        {
+            if (!migrated.Files.TryGetValue(path, out var file) || FrontMatter.Split(file)?.Body is not { } body)
+                continue;
+            var lines = body.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+            for (var i = 0; i + 1 < lines.Length; i++)
+            {
+                var (line, next) = (lines[i], lines[i + 1]);
+                if (line.EndsWith('\\') && next.StartsWith("{{", StringComparison.Ordinal))
+                {
+                    var text = line[..^1];
+                    text = text[(text.LastIndexOf("}}", StringComparison.Ordinal) is var end and >= 0 ? end + 2 : 0)..];
+                    if (text.Trim().Length > 0)
+                        before.Add(text);
+                }
+
+                if (line.EndsWith("}}", StringComparison.Ordinal))
+                {
+                    var text = next.IndexOf("{{", StringComparison.Ordinal) is var tag and >= 0 ? next[..tag] : next;
+                    if (text.Trim().Length > 0)
+                        after.Add(text);
+                }
+            }
+        }
+
+        return before.Count + after.Count > 0 ? (before.Distinct().ToList(), after.Distinct().ToList()) : null;
+    }
+
+    /// <summary>The length of the line ending (<c>\n</c> or <c>\r\n</c>) at <paramref name="i"/> of <paramref name="text"/>; 0 for none.</summary>
+    private static int LineEndingAt(string text, int i) =>
+        i < text.Length && text[i] == '\n' ? 1
+        : i + 1 < text.Length && text[i] == '\r' && text[i + 1] == '\n' ? 2
+        : 0;
+
+    /// <summary>A <c>\</c> and the line ending after it, where a line of one tag follows (the form a moved read's text before it takes).</summary>
+    private static readonly System.Text.RegularExpressions.Regex MovedLine =
+        new(@"\\\r?\n(?=\{\{[^\n]*\}\}[ \t]*(?:\r?\n|$))", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     private static readonly System.Text.RegularExpressions.Regex BackslashBeforeALineEnding =
         new(@"\\(?=\r?\n)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
@@ -1240,6 +1336,9 @@ public static class ExpectedDifferences
             var path = "snippets/" + site["snippet.".Length..].Replace('.', '/') + ".md";
             if (!c.Migrated.MacroBodies.Contains(path) || !c.Migrated.Files.TryGetValue(path, out var file) || FrontMatter.Split(file)?.Body is not { } body)
                 continue;
+            // #1543 (D8): a read the migration moved off the line's text (Seen at: \ then the read) is read as 30 wrote it.
+            if (c.Migrated.MovedReads.GetValueOrDefault(path) > 0)
+                body = MovedLine.Replace(body, "");
             foreach (var raw in body.Split('\n'))
             {
                 var line = raw.TrimEnd('\r').TrimEnd(' ', '\t');
