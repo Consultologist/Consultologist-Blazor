@@ -520,8 +520,10 @@ public partial class RunDiagram31Tests
             Row("node.sections.paragraphs:1/2", PlanKind.For, RowState.Completed),
             Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Completed),
             Row("node.sections.paragraphs:2/2", PlanKind.For, RowState.Failed, null)));
-        // the first instance's own row is there: one own row, so the box is that row's, with that instance's items only
-        Assert.Equal(["Completed", "out sha256:aa…", "1: Completed", "2: Completed"], Added("nested-note", failed, "node__sections__paragraphs"));
+        // the first instance's own row is there, but the second instance's items are rows of the box too: it spans two
+        // instances, so a tally of the own row and the items of the instance with no own row, of the worst class (D10)
+        Assert.Equal(["2 Completed · 1 Failed"], Added("nested-note", failed, "node__sections__paragraphs"));
+        Assert.Equal("failed", ClassOf(failed, "node__sections__paragraphs"));
 
         var noOwnRow = Draw("nested-note", Record(
             Row("node.sections:1", PlanKind.For, RowState.Completed),
@@ -534,7 +536,7 @@ public partial class RunDiagram31Tests
     }
 
     [Fact]
-    public void ANestedLoopWithOneOwnRow_ListsOnlyThatInstancesItems()
+    public void ANestedLoopWithOneOwnRowAndAnotherInstancesItems_IsATally_RunningWhileTheJobRuns()
     {
         var run = Draw("nested-note", Running(
             Row("node.sections:1", PlanKind.For, RowState.Completed),
@@ -542,7 +544,37 @@ public partial class RunDiagram31Tests
             Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
             Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Failed, null),
             Row("node.sections.paragraphs:2/2", PlanKind.For, RowState.Completed)));
-        Assert.Equal(["Completed", "out sha256:aa…", "1: Completed"], Added("nested-note", run, "node__sections__paragraphs"));
+        Assert.Equal(["2 Completed · 1 Failed"], Added("nested-note", run, "node__sections__paragraphs"));
+        Assert.Equal("running", ClassOf(run, "node__sections__paragraphs"));
+    }
+
+    [Fact]
+    public void ANestedLoopWithTwoOwnRowsAndAThirdInstancesItems_TalliesThemAll()
+    {
+        var failed = Draw("nested-note", Record(
+            Row("node.sections:1", PlanKind.For, RowState.Completed),
+            Row("node.sections:2", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:2/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:3/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:3/2", PlanKind.For, RowState.Failed, null)));
+        // the two own rows, and the third instance's items (it has no own row); the first two's items are in their rows
+        Assert.Equal(["3 Completed · 1 Failed"], Added("nested-note", failed, "node__sections__paragraphs"));
+        Assert.Equal("failed", ClassOf(failed, "node__sections__paragraphs"));
+    }
+
+    [Fact]
+    public void ANestedLoopWithOneOwnRowAndOnlyItsItems_ListsThem()
+    {
+        var run = Draw("nested-note", Running(
+            Row("node.sections:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/1", PlanKind.For, RowState.Completed),
+            Row("node.sections.paragraphs:1/2", PlanKind.For, RowState.Failed, null)));
+        Assert.Equal(["Completed", "out sha256:aa…", "1: Completed", "2: Failed"], Added("nested-note", run, "node__sections__paragraphs"));
+        Assert.Equal("done", ClassOf(run, "node__sections__paragraphs"));
     }
 
     [Fact]
