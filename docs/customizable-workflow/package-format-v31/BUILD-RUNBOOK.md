@@ -28,6 +28,7 @@ Read the parts your area touches in full before you plan.
 | 11 | registry and publish | |
 | 12 | Create and History | |
 | 13 | diagram | #1398 |
+| 14 | end-of-build fixes | #1543; added after area 13. Its scope is the rulings in its issue, not a row of `index.md` § 5; where a ruling changes the spec, the area updates the part it names |
 
 ## Names
 
@@ -154,7 +155,7 @@ its tags.
 - **Goldens freeze ground truth.** Generate them with the code that the spec says produces them,
   read each one, and list every one under *Goldens to review*.
 
-## After area 13
+## After area 14
 
-The build ends at area 13. What follows in `index.md` § 5 (dev smoke runs, the go/no-go gate,
+The build ends at area 14. What follows in `index.md` § 5 (dev smoke runs, the go/no-go gate,
 the satellites, the bump, publishing, the migration and the pins) is the user's.
