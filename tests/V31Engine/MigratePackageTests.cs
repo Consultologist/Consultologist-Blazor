@@ -133,7 +133,7 @@ public class MigratePackageTests
         foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
-            if (relative is "README.md" or "keys.json" or MigrationOptionsFile.FileName)
+            if (relative is "README.md" or "keys.json" or "strip-nodes.json" or MigrationOptionsFile.FileName)
                 continue;
             if (relative.EndsWith(".deleted", StringComparison.Ordinal))
                 edits[relative[..^".deleted".Length]] = null;
@@ -313,12 +313,13 @@ public class MigratePackageTests
     [Fact]
     public async Task AtTheConfiguredLimits_APackageOverTheDefaultButWithinThem_Publishes()
     {
-        // Fix round 1, ruling (2): example-nested-note opens 80,614 instances, past the default 10,000. At a deployment's
-        // JobInstances of 100,000 the migration says no hand edit for it, and the package publishes as migrated.
+        // Fix round 1, ruling (2): example-nested-note opens 120,814 instances (each loop's items stripped by a node of their
+        // own since #1510), past the default 10,000. At a deployment's JobInstances of 200,000 the migration says no hand
+        // edit for it, and the package publishes as migrated.
         var rig = new Rig("example-nested-note", "v2026.11.2")
         {
             Limits = new(new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["ConsultGeneration:JobInstances"] = "100000" })
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["ConsultGeneration:JobInstances"] = "200000" })
                 .Build()),
         };
 

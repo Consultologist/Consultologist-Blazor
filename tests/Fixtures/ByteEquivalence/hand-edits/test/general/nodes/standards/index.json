@@ -23,7 +23,8 @@
     "letrozole_prescription_text_applies",
     "section_instructions",
     "patient_section_draft",
-    "standard_section_draft"
+    "standard_section_draft",
+    "section_instructions_stripped"
   ],
-  "ret": "node.standards.section_instructions"
+  "ret": "node.standards.section_instructions_stripped"
 }

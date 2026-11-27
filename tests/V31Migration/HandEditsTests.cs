@@ -210,6 +210,25 @@ public class HandEditsTests
         Assert.DoesNotContain(EquivalenceFixture.Report("example-problem-list").GetAwaiter().GetResult().Texts, t => t.Site.Contains("@30/", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task AStrippingNodeAnEditWrote_IsCreditedThroughItsRecord()
+    {
+        // #1510 (item 1): example-problem-list's edit returns the loop's items through applies_stripped, which strips the
+        // edit's own ret, applies, in place of the migration's section_draft_stripped (deleted); its strip-nodes.json lays
+        // that node over the migration's StripNodes, so each of its texts, 31's alone, is credited as the migration's are.
+        var edited = MigrationFixture.Edited("example-problem-list");
+        Assert.Equal("node.sections.section_draft", MigratedPackagesTests.Migrated("example-problem-list").StripNodes["node.sections.section_draft_stripped"]);
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["node.problems.draft_problem_stripped"] = "node.problems.draft_problem", ["node.sections.applies_stripped"] = "node.sections.applies",
+        }, edited.StripNodes);
+
+        var stripped = (await EquivalenceFixture.Report("example-problem-list")).Texts
+            .Where(t => t.Site.Contains("#renders/node.sections.applies_stripped:", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(stripped);
+        Assert.All(stripped, t => Assert.Equal((false, true, false, "loop-item-strip-node"), (t.Equal, t.Expected, t.Unexplained, Assert.Single(t.Rules))));
+    }
+
     [Theory]
     [MemberData(nameof(EditedPackages))]
     public void TheEditedPackage_GetsItsSnapshot(string package)

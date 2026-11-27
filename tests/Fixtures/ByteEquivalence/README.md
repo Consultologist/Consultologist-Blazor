@@ -121,7 +121,7 @@ or refusal a new 31 package gets without the migration's explicit thing (`tests/
 | `edge-unset-object` | `intake-unset` | the optional object input `intake`, unset; its `reason` is read by the problem prompt and by the note's prepended macro `intake_line` (a snippet at 31) |
 | `edge-answer-outside-set` | `answer-outside-set`, `answer-in-set` | the classifier `triage` (`routine`, `urgent`) answers `soon`: 30 refuses the reply (`onInvalid: fail`) and fails the job |
 | `edge-flag` | `reply-does-not-fit` | `summary` declares `onInvalid: flag` and its reply does not fit its format (`line` a number): 30 keeps it and runs on |
-| `edge-unruled-whitespace` | `default` | two differences no ruling covers, shown: the letter's reply places `follow_up` (a macro the model chose) whose body ends with a line ending, which 31 drops; the problems deliverable prepends `clinic_line`, `Seen at: {{ input.clinic }}` with the clinic unset, which 30 trimmed and 31's snippet keeps. Each paragraph is followed by `problem_close`, placed `after` by 30's engine, its body ending in two extra line endings (`macro-trailing-whitespace`'s hit) |
+| `edge-unruled-whitespace` | `default` | two differences no ruling covers, shown: the letter's reply places `follow_up` (a macro the model chose) whose body ends with a line ending, which 31 drops; the problems deliverable prepends `clinic_line`, `Seen at: {{ input.clinic }}` with the clinic unset, which 30 trimmed and 31's snippet keeps. Each paragraph is followed by `problem_close`, placed `after` by 30's engine, its body ending in two extra line endings, which the node that strips each item of the problem loop takes off as 30 trimmed them (#1510), so `macro-trailing-whitespace` has no hit here |
 
 `edge-tests/<package>.json` is each package's pinned test: an in-package test (part 07 § 8) of the edge scenario's
 capture, its replies under their 31 keys as the comparison replays them (`EdgeCasePackagesTests` holds the file to
@@ -331,7 +331,12 @@ with a choice. `MigrationFixture.Edited` lays a folder over `migrated/<package>/
 - `keys.json` is not a package file either: when an edit moves a node, it maps each moved 30 node id to its new 31
   rooted key (`{ "section_draft": "node.sections.applies.section_draft" }`), laid over the migration's `Keys` so the
   comparison maps 30's keys to the moved rows; each id must be one the migration keyed. Only `example-problem-list`
-  has one.
+  has one;
+- `strip-nodes.json` is not a package file either (#1510, item 1): when an edit writes its own node to strip a loop's
+  items in place of the migration's, it maps that node's rooted key to the rooted key of the `ret` it strips
+  (`{ "node.sections.applies_stripped": "node.sections.applies" }`), laid over the migration's `StripNodes` so the
+  comparison credits its texts as the migration's (`loop-item-strip-node`); a stripping node whose file a `.deleted`
+  removes leaves them. Only `example-problem-list` has one.
 
 The README is parsed by `HandEditsTests.EachNotice_IsAnswered`. Each hand-edit notice is one line that starts
 `- Hand edit needed in `, exactly as the migration says it, in `notices.json`'s `handEdits` order, and the line after
@@ -348,8 +353,8 @@ the `<path>` of a `<path>.deleted`), or, for a package not edited,
   - Not made: why.
 ```
 
-The notices must be exactly the package's hand edits, in order. Every file of an edited folder, `keys.json`
-included, must be named in backticks somewhere in its README. The edited package must publish with no refusal
+The notices must be exactly the package's hand edits, in order. Every file of an edited folder, `keys.json` and
+`strip-nodes.json` included, must be named in backticks somewhere in its README. The edited package must publish with no refusal
 (`TheEditedPackage_Publishes`) and get its snapshot test from `WorkflowPackageMigration30To31.Snapshot`
 (`TheEditedPackage_GetsItsSnapshot`); the snapshot is not stored here.
 

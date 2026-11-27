@@ -153,6 +153,14 @@ internal static class MigrationFixture
     /// </summary>
     public const string HandEditsKeys = "keys.json";
 
+    /// <summary>
+    /// #1510 (item 1): what a hand-edit folder may hold besides package files when an edit writes its own node to strip a
+    /// loop's items in place of the migration's: each such node's rooted key to the rooted key of the <c>ret</c> it strips
+    /// (an operator's fact, not a package file), laid over <see cref="Migration31Result.StripNodes"/> so the comparison credits
+    /// its texts as the migration's (<c>loop-item-strip-node</c>). A stripping node whose file the folder deletes leaves it.
+    /// </summary>
+    public const string HandEditsStripNodes = "strip-nodes.json";
+
     /// <summary>The suffix of a hand-edit file that removes the migrated file of its path without the suffix.</summary>
     public const string DeletedSuffix = ".deleted";
 
@@ -177,7 +185,8 @@ internal static class MigrationFixture
     /// the folder (<c>manifest.json</c> the manifest): a file named <c>&lt;path&gt;.deleted</c> removes <c>&lt;path&gt;</c>, any
     /// other replaces or adds its path. The folder's own <c>README.md</c> is not a package file, nor is its <c>options.json</c>
     /// (<see cref="MigrationOptionsFile"/>, the choices the package was migrated with), nor its <c>keys.json</c>
-    /// (<see cref="HandEditsKeys"/>), laid over the keys instead. A folder that does not exist
+    /// (<see cref="HandEditsKeys"/>), laid over the keys instead, nor its <c>strip-nodes.json</c> (<see cref="HandEditsStripNodes"/>),
+    /// laid over the stripping nodes. A folder that does not exist
     /// changes nothing.
     /// </summary>
     public static Migration31Result Overlay(Migration31Result migrated, string folder)
@@ -188,6 +197,7 @@ internal static class MigrationFixture
         var manifest = migrated.ManifestJson;
         var files = new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal);
         var keys = new Dictionary<string, string>(migrated.Keys, StringComparer.Ordinal);
+        var strip = new Dictionary<string, string>(migrated.StripNodes, StringComparer.Ordinal);
         foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
@@ -203,10 +213,18 @@ internal static class MigrationFixture
 
                 continue;
             }
+            if (relative == HandEditsStripNodes)
+            {
+                foreach (var (node, ret) in JsonNode.Parse(ByteEquivalenceFixtures.ReadText(path))!.AsObject())
+                    strip[node] = (string)ret!;
+                continue;
+            }
             if (relative.EndsWith(DeletedSuffix, StringComparison.Ordinal))
             {
                 var removed = relative[..^DeletedSuffix.Length];
                 Assert.True(files.Remove(removed), $"{relative} removes {removed}, which the migration did not write.");
+                foreach (var node in strip.Keys.Where(k => StripNodeFile(k) == removed).ToList())
+                    strip.Remove(node);
                 continue;
             }
 
@@ -217,8 +235,12 @@ internal static class MigrationFixture
                 files[relative] = text;
         }
 
-        return migrated with { ManifestJson = manifest, Files = files, Keys = keys };
+        Assert.All(strip.Keys, k => Assert.True(files.ContainsKey(StripNodeFile(k)), $"{HandEditsStripNodes} names {k}, which the edited package does not hold."));
+        return migrated with { ManifestJson = manifest, Files = files, Keys = keys, StripNodes = strip };
     }
+
+    /// <summary>The file of the stripping node at rooted key <paramref name="key"/> (<c>node.a.b</c> is <c>nodes/a/b.md</c>).</summary>
+    private static string StripNodeFile(string key) => "nodes/" + key["node.".Length..].Replace('.', '/') + ".md";
 
     /// <summary>The value <c>vectors.json</c> writes for a read that has none: an absent input, a node with no output.</summary>
     public const string Absent = "<absent>";

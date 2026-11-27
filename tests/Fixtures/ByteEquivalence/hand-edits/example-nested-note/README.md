@@ -9,5 +9,5 @@ Each notice of `notices.json`, in its order, with why it is not made.
 
 ## Notices
 
-- Hand edit needed in nodes/sections/index.json, max: up to 80,614 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.
+- Hand edit needed in nodes/sections/index.json, max: up to 120,814 steps could run in one job through node.sections, and this engine runs at most 10,000 for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.
   - Not made: the owner ruled that no max is guessed (#1508). Where the package's idea is still wanted, a new 31 package that does it within the format is written instead (content work, outside this build).
