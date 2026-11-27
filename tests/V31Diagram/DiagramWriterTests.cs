@@ -91,6 +91,27 @@ public class DiagramWriterTests
         Assert.Contains("    d ==>|\"gates\"| h", lines);
     }
 
+    [Fact]
+    public void TheDeliverables_StartANewPart_AfterTheProductionBoxes()
+    {
+        // § 10.5 parts the deliverables from what comes before, even when no frame stands between them.
+        var lines = Lines(Document(
+            ("node.summary", Agent("summary", "Summarising", "plaintext", "input.consult_draft.content")),
+            ("node.tally", Agent("tally", "Tallying", "plaintext", "node.summary.content")),
+            ("deliverable.note", Deliverable("note", "Consultation note", "node.tally.content")),
+            ("deliverable.letter", Deliverable("letter", "Letter", "node.summary.content"))));
+
+        var summary = At(lines, "    node__summary[\"summary<br/>Summarising<br/>agent → plaintext · generated\"]");
+        Assert.Equal(
+        [
+            "    node__summary[\"summary<br/>Summarising<br/>agent → plaintext · generated\"]",
+            "    node__tally[\"tally<br/>Tallying<br/>agent → plaintext · generated\"]",
+            "",
+            "    deliverable__note{{\"note<br/>Consultation note\"}}",
+            "    deliverable__letter{{\"letter<br/>Letter\"}}",
+        ], lines[summary..(summary + 5)]);
+    }
+
     /// <summary>The entry with one <c>renders</c> step: <paramref name="source"/> through <c>renderer.concept_bullets</c>.</summary>
     private static JsonObject Rendering(JsonObject entry, string source)
     {
