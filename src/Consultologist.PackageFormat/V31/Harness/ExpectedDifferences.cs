@@ -124,8 +124,8 @@ public static class ExpectedDifferences
             Bytes = ExplicitHardBreaks,
         },
         new("block-read-own-line",
-            "#1543, ruling 2, ruled by the owner on 2026-11-27 (a markdown_block read moved to its own line after an explicit hard break); part 10 §§ 1.2, 3.2",
-            "a markdown_block read that had text beside it on its line, which 31 refuses, stands alone on its line, moved there by the migration: 31's text holds a line ending (after \\ where text stood before the read) that 30's has not")
+            "#1543, ruling 2, ruled by the owner on 2026-11-27 (a markdown_block read separated from the text beside it by a blank line); part 10 §§ 1.2, 3.2",
+            "a markdown_block read that had text beside it on its line, which 31 refuses, or a line of text next to its line, is separated from that text by a blank line the migration wrote: 31's text holds the line endings of that blank line where 30's has the read inside the line, or one line ending")
         {
             Bytes = BlockReadOwnLine,
         },
@@ -265,9 +265,51 @@ public static class ExpectedDifferences
                 applied.Add(rule);
                 changed = true;
             }
+
+            // #1543 (D8): a run of white space is one token, so two rules whose differences share one run (the blank line
+            // the migration wrote beside a separated read, after the space an empty read left) each leave it a different
+            // run: neither alone brings the texts nearer. When no rule alone does, a pair is tried, the first's change not taking the
+            // texts further away, and kept only where the two together bring them nearer.
+            if (!changed && distance > 0 && Pair(context, old, now, distance, applied) is { } pair)
+            {
+                (old, now, distance) = (pair.Old, pair.New, pair.Distance);
+                applied.AddRange(pair.Rules);
+                changed = true;
+            }
         }
 
         return new Credited([.. Rules.Where(applied.Contains)], !string.Equals(old, now, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The first pair of rules not yet <paramref name="applied"/>, in <see cref="Rules"/>' order, whose changes in turn bring
+    /// <paramref name="old"/> and <paramref name="now"/> nearer than <paramref name="distance"/>, the first's alone not
+    /// taking them further away; none when no pair does.
+    /// </summary>
+    private static (string Old, string New, int Distance, Rule[] Rules)? Pair(DifferenceContext context, string old, string now, int distance, List<Rule> applied)
+    {
+        foreach (var first in Rules)
+        {
+            if (applied.Contains(first) || first.Bytes?.Invoke(context, old, now) is not { } once || (once.Old == old && once.New == now)
+                || Distance(once.Old, once.New) > distance)
+            {
+                continue;
+            }
+
+            foreach (var second in Rules)
+            {
+                if (second == first || applied.Contains(second) || second.Bytes?.Invoke(context, once.Old, once.New) is not { } twice
+                    || (twice.Old == once.Old && twice.New == once.New))
+                {
+                    continue;
+                }
+
+                if (Distance(twice.Old, twice.New) is var nearer && nearer < distance)
+                    return (twice.Old, twice.New, nearer, [first, second]);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -288,102 +330,135 @@ public static class ExpectedDifferences
     /// #1510 (item 4; G-D9): in a package whose sources hold a hard break the migration wrote
     /// (<see cref="Migration31Result.HardBreaks"/>), 31's text without one <c>\</c> directly before each line ending, in any
     /// compared kind (a macro body or a rendered node read later reaches prompts). <see cref="Credit"/> keeps it only where
-    /// that brings the text nearer 30's. #1543 (D8): a <c>\</c> after the text that stood before a read the migration moved
-    /// (<see cref="MovedReadAnchors"/>) is left for <c>block-read-own-line</c>, which deletes it with its line ending.
+    /// that brings the text nearer 30's.
     /// </summary>
-    private static (string Old, string New)? ExplicitHardBreaks(DifferenceContext c, string old, string now)
-    {
-        if (!c.Migrated.HardBreaks.Values.Any(n => n > 0) || !now.Contains('\\', StringComparison.Ordinal))
-            return null;
-        // #1543 (D8): a \ after the text that stood before a moved read is that read's, credited to block-read-own-line.
-        var moved = MovedReadAnchors(c.Migrated)?.Before ?? [];
-        return (old, BackslashBeforeALineEnding.Replace(now, m => moved.Any(a => m.Index >= a.Length && string.CompareOrdinal(now, m.Index - a.Length, a, 0, a.Length) == 0) ? m.Value : ""));
-    }
+    private static (string Old, string New)? ExplicitHardBreaks(DifferenceContext c, string old, string now) =>
+        c.Migrated.HardBreaks.Values.Any(n => n > 0) && now.Contains('\\', StringComparison.Ordinal)
+            ? (old, BackslashBeforeALineEnding.Replace(now, ""))
+            : null;
 
     /// <summary>
-    /// #1543 (ruling 2, D8): in a package whose sources hold a read the migration moved onto its own line
-    /// (<see cref="Migration31Result.MovedReads"/>), 31's text with line endings deleted, each with the <c>\</c> directly
-    /// before it if one stands there, and nothing else, only where a moved read's line ending stands: after the text that
-    /// stood before a moved read (in a moved file, the line's text before a <c>\</c> that ends it, the next line starting
-    /// with a tag), or before the text that stood after one (the next line's text up to its first tag, after a line that
-    /// ends with a tag). Each such line ending is deleted in turn and kept deleted only where that brings the text nearer
-    /// 30's (<see cref="Distance"/>). A word is never added or changed, so a lost one stays unexplained.
+    /// #1543 (ruling 2, D8, as the owner amended it on 2026-11-27, item 6): in a package whose sources hold a read the
+    /// migration separated from the text beside it (<see cref="Migration31Result.MovedReads"/>), 31's text with line endings
+    /// deleted, and nothing else, only at the places of those reads: each separated tag
+    /// (<see cref="Migration31Result.SeparatedReads"/>) is found in its file as written (hand edits laid over), and where a
+    /// blank line stands between it and a line of text (<see cref="MarkdownLineEndings.Separations"/>), that line of text,
+    /// read outward from the blank line to its first literal word, is the place in 31's text
+    /// (<see cref="SeparationPlace"/>): a tag on it, an inline read's among them, is any text of its line (on a line with no
+    /// literal word, any one of the run's values, <see cref="RunValues"/>). At each such
+    /// place one or two line endings (the blank line the migration wrote where the read stood inside the line, or one where
+    /// a line of text stood next to the read's line) are deleted, the nearer kept, and only where that brings the text nearer
+    /// 30's (<see cref="Distance"/>, or, where that is no nearer because a run of white space is one token, the same
+    /// distance with each line ending a token of its own, <see cref="LineDistance"/>; <see cref="Credit"/> then keeps it only
+    /// beside another rule's change that brings the texts nearer). A <c>\</c> or a word is never deleted, so a lost one stays
+    /// unexplained.
     /// </summary>
     private static (string Old, string New)? BlockReadOwnLine(DifferenceContext c, string old, string now)
     {
-        if (!now.Contains('\n', StringComparison.Ordinal) || MovedReadAnchors(c.Migrated) is not { } anchors)
+        if (!now.Contains('\n', StringComparison.Ordinal) || SeparationPlaces(c) is not { Count: > 0 } places)
             return null;
         var undone = now;
-        var distance = Distance(old, now);
-        for (var p = 0; p < undone.Length && distance > 0; p++)
+        var distance = (Distance(old, now), LineDistance(old, now));
+        foreach (var place in places)
         {
-            if (LineEndingAt(undone, p) is not (> 0 and var ending))
-                continue;
-            var from = p > 0 && undone[p - 1] == '\\' ? p - 1 : p;
-            var (text, at) = (undone, p + ending);
-            var moved = anchors.Before.Any(a => from >= a.Length && string.CompareOrdinal(text, from - a.Length, a, 0, a.Length) == 0)
-                || anchors.After.Any(a => at + a.Length <= text.Length && string.CompareOrdinal(text, at, a, 0, a.Length) == 0);
-            if (!moved)
-                continue;
-            var candidate = undone.Remove(from, p + ending - from);
-            var nearer = Distance(old, candidate);
-            if (nearer >= distance)
-                continue;
-            (undone, distance) = (candidate, nearer);
-            p = from - 1;
+            // From the text's end, so an earlier run keeps its offset when a later one is cut.
+            foreach (var run in place.Matches(undone).Reverse())
+            {
+                if (distance.Item1 == 0)
+                    break;
+                var best = (Text: undone, Distance: distance);
+                var cut = 0;
+                for (var deleted = 1; deleted <= 2; deleted++)
+                {
+                    // The run's line endings, the last ones first (\n or \r\n).
+                    cut += run.Value[..(run.Length - cut)].EndsWith("\r\n", StringComparison.Ordinal) ? 2 : 1;
+                    if (cut > run.Length)
+                        break;
+                    var candidate = undone.Remove(run.Index + run.Length - cut, cut);
+                    if ((Distance(old, candidate), LineDistance(old, candidate)) is var nearer && nearer.CompareTo(best.Distance) < 0)
+                        best = (candidate, nearer);
+                }
+
+                (undone, distance) = best;
+            }
         }
 
         return undone == now ? null : (old, undone);
     }
 
     /// <summary>
-    /// The texts beside the reads the migration moved, read from each file of <see cref="Migration31Result.MovedReads"/>
-    /// as written: <c>Before</c>, each line's text after its last tag that ends with a <c>\</c> the next line's tag
-    /// follows (<c>Seen at: </c> of <c>Seen at: \</c> then <c>{{ r }}</c>); <c>After</c>, each line's text up to its first
-    /// tag that follows a line ending in a tag (<c> (dictated)</c>). Texts of white space alone are left out; null when no
-    /// file holds one.
+    /// The places of the reads the migration separated (<see cref="BlockReadOwnLine"/>), as patterns over a compared text:
+    /// each a run of line endings beside the text a separated read's line of text ends (or starts) with. None for a package
+    /// whose sources hold no such read.
     /// </summary>
-    private static (List<string> Before, List<string> After)? MovedReadAnchors(Migration31Result migrated)
+    private static List<System.Text.RegularExpressions.Regex> SeparationPlaces(DifferenceContext c)
     {
-        var before = new List<string>();
-        var after = new List<string>();
-        foreach (var path in migrated.MovedReads.Where(r => r.Value > 0).Select(r => r.Key).Order(StringComparer.Ordinal))
+        var migrated = c.Migrated;
+        var places = new List<string>();
+        string? values = null;
+        foreach (var (path, reads) in migrated.SeparatedReads.Where(r => migrated.MovedReads.GetValueOrDefault(r.Key) > 0).OrderBy(r => r.Key, StringComparer.Ordinal))
         {
             if (!migrated.Files.TryGetValue(path, out var file) || FrontMatter.Split(file)?.Body is not { } body)
                 continue;
-            var lines = body.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-            for (var i = 0; i + 1 < lines.Length; i++)
+            foreach (var separation in MarkdownLineEndings.Separations(body, reads.ToHashSet(StringComparer.Ordinal)))
             {
-                var (line, next) = (lines[i], lines[i + 1]);
-                if (line.EndsWith('\\') && next.StartsWith("{{", StringComparison.Ordinal))
-                {
-                    var text = line[..^1];
-                    text = text[(text.LastIndexOf("}}", StringComparison.Ordinal) is var end and >= 0 ? end + 2 : 0)..];
-                    if (text.Trim().Length > 0)
-                        before.Add(text);
-                }
-
-                if (line.EndsWith("}}", StringComparison.Ordinal))
-                {
-                    var text = next.IndexOf("{{", StringComparison.Ordinal) is var tag and >= 0 ? next[..tag] : next;
-                    if (text.Trim().Length > 0)
-                        after.Add(text);
-                }
+                values ??= RunValues(c).Where(v => v.IndexOfAny(['\r', '\n']) < 0).Select(System.Text.RegularExpressions.Regex.Escape).ToList() is { Count: > 0 } one
+                    ? "(?:" + string.Join("|", one) + ")"
+                    : "(?!)";
+                places.Add(SeparationPlace(separation, values));
             }
         }
 
-        return before.Count + after.Count > 0 ? (before.Distinct().ToList(), after.Distinct().ToList()) : null;
+        return places.Distinct(StringComparer.Ordinal)
+            .Select(p => new System.Text.RegularExpressions.Regex(p, System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            .ToList();
     }
 
-    /// <summary>The length of the line ending (<c>\n</c> or <c>\r\n</c>) at <paramref name="i"/> of <paramref name="text"/>; 0 for none.</summary>
-    private static int LineEndingAt(string text, int i) =>
-        i < text.Length && text[i] == '\n' ? 1
-        : i + 1 < text.Length && text[i] == '\r' && text[i + 1] == '\n' ? 2
-        : 0;
+    /// <summary>
+    /// The pattern of a run of line endings beside <paramref name="separation"/>'s line of text: read from the blank line
+    /// outward, each literal is itself and each tag (or comment) any text of the line, up to and including the first literal
+    /// that holds more than white space. A line with no such literal (only inline reads) is read whole, from its start to
+    /// its end, each tag one of <paramref name="values"/> (an alternation of the run's values of one line, none empty; with none, no place).
+    /// </summary>
+    private static string SeparationPlace(Separation separation, string values)
+    {
+        var line = separation.Line;
+        var (tags, _) = TemplateTags.Scan(line);
+        var spans = tags.Concat(TemplateTags.Comments(line)).OrderBy(t => t.Start).Select(t => (t.Start, t.End)).ToList();
+        var pieces = new List<(bool Tag, string Text)>();
+        var at = 0;
+        foreach (var (start, end) in spans.Where(s => s.Start >= 0 && s.End <= line.Length))
+        {
+            if (start < at)
+                continue;
+            if (start > at)
+                pieces.Add((false, line[at..start]));
+            pieces.Add((true, line[start..end]));
+            at = end;
+        }
 
-    /// <summary>A <c>\</c> and the line ending after it, where a line of one tag follows (the form a moved read's text before it takes).</summary>
-    private static readonly System.Text.RegularExpressions.Regex MovedLine =
-        new(@"\\\r?\n(?=\{\{[^\n]*\}\}[ \t]*(?:\r?\n|$))", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        if (at < line.Length)
+            pieces.Add((false, line[at..]));
+        if (separation.Above)
+            pieces.Reverse();
+
+        var pattern = new List<string>();
+        var bounded = pieces.Any(p => !p.Tag && p.Text.Trim().Length > 0);
+        foreach (var (tag, text) in pieces)
+        {
+            pattern.Add(!tag ? System.Text.RegularExpressions.Regex.Escape(text) : bounded ? "[^\\r\\n]*?" : values);
+            if (!tag && text.Trim().Length > 0)
+                break;
+        }
+
+        if (separation.Above)
+        {
+            pattern.Reverse();
+            return "(?<=" + (bounded ? "" : "(?:^|\\n)") + string.Concat(pattern) + ")(?:\\r?\\n)+";
+        }
+
+        return "(?:\\r?\\n)+(?=" + string.Concat(pattern) + (bounded ? "" : "(?:\\r?\\n|$)") + ")";
+    }
 
     private static readonly System.Text.RegularExpressions.Regex BackslashBeforeALineEnding =
         new(@"\\(?=\r?\n)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
@@ -1336,9 +1411,13 @@ public static class ExpectedDifferences
             var path = "snippets/" + site["snippet.".Length..].Replace('.', '/') + ".md";
             if (!c.Migrated.MacroBodies.Contains(path) || !c.Migrated.Files.TryGetValue(path, out var file) || FrontMatter.Split(file)?.Body is not { } body)
                 continue;
-            // #1543 (D8): a read the migration moved off the line's text (Seen at: \ then the read) is read as 30 wrote it.
-            if (c.Migrated.MovedReads.GetValueOrDefault(path) > 0)
-                body = MovedLine.Replace(body, "");
+            // #1543 (D8): a read the migration separated from the line's text (Seen at: , a blank line, then the read) is
+            // read as 30 wrote it.
+            if (c.Migrated.MovedReads.GetValueOrDefault(path) > 0 && c.Migrated.SeparatedReads.TryGetValue(path, out var separated))
+            {
+                foreach (var joined in MarkdownLineEndings.Separations(body, separated.ToHashSet(StringComparer.Ordinal)).Where(s => s.Above).OrderByDescending(s => s.From))
+                    body = body.Remove(joined.From, joined.To - joined.From);
+            }
             foreach (var raw in body.Split('\n'))
             {
                 var line = raw.TrimEnd('\r').TrimEnd(' ', '\t');
@@ -2032,7 +2111,20 @@ public static class ExpectedDifferences
         return Edits(a, b, MaxEdits) ?? a.Count + b.Count;
     }
 
-    private static List<string> Tokens(string text)
+    /// <summary>
+    /// #1543 (D8): <see cref="Distance"/> with each line ending (<c>\n</c>, <c>\r\n</c>) a token of its own and the spaces and
+    /// tabs between them runs of their own, so a line ending taken out of a longer run of white space counts.
+    /// </summary>
+    private static int LineDistance(string old, string now)
+    {
+        if (string.Equals(old, now, StringComparison.Ordinal))
+            return 0;
+        var a = Tokens(old, lines: true);
+        var b = Tokens(now, lines: true);
+        return Edits(a, b, MaxEdits) ?? a.Count + b.Count;
+    }
+
+    private static List<string> Tokens(string text, bool lines = false)
     {
         var tokens = new List<string>();
         var i = 0;
@@ -2044,9 +2136,13 @@ public static class ExpectedDifferences
                 while (i < text.Length && char.IsLetterOrDigit(text[i]))
                     i++;
             }
+            else if (lines && text[i] is '\n' or '\r')
+            {
+                i += text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n' ? 2 : 1;
+            }
             else if (char.IsWhiteSpace(text[i]))
             {
-                while (i < text.Length && char.IsWhiteSpace(text[i]))
+                while (i < text.Length && char.IsWhiteSpace(text[i]) && !(lines && text[i] is '\n' or '\r'))
                     i++;
             }
             else
