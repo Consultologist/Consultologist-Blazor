@@ -9,9 +9,14 @@
    show it, so it is pinned by this note.
    Lists the account's completed runs, newest first; a run whose produced
    text the retention sweep deleted is listed and not choosable, saying so
-   in words (tell the user early). *@
+   in words (tell the user early).
+   #1543 (ruling 9): a run of record storage 12 (a specVersion 31 job) has no
+   AssembledDocuments; its released deliverables are read from its rows, as
+   History reads them, and a chosen one's text is fetched by its row key. *@
 @using Consultologist.Web.Services.Accounts
 @using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance.V31
+@using Consultologist.Web.Shared.History31
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @inject IAccountEndpointService AccountService
 @inject IAIEndpointService AIService
@@ -73,6 +78,26 @@
                         {
                             <FluentMenuItem Disabled="true"><SkeletonText Lines="2" /></FluentMenuItem>
                         }
+                        else if (released.TryGetValue(current.JobId, out var releasedRows))
+                        {
+                            @if (releasedRows.Count == 0)
+                            {
+                                <FluentMenuItem Disabled="true" class="muted-text">This run lists no deliverables.</FluentMenuItem>
+                            }
+                            @foreach (var row in releasedRows)
+                            {
+                                var chosenRow = row;
+                                <FluentMenuItem Class="run-picker__deliverable"
+                                                KeepOpen="true"
+                                                OnClick="() => ChooseReleasedAsync(current, detail, chosenRow)">
+                                    @chosenRow.Label
+                                </FluentMenuItem>
+                            }
+                            @if (droppedNotice != null && expanded == current.JobId)
+                            {
+                                <FluentMenuItem Disabled="true" Class="run-picker__deleted">@droppedNotice</FluentMenuItem>
+                            }
+                        }
                         else if (detail?.AssembledDocuments is not { Count: > 0 })
                         {
                             <FluentMenuItem Disabled="true" class="muted-text">This run lists no deliverables.</FluentMenuItem>
@@ -117,6 +142,8 @@
     private string? expanded;
     private string? continuationToken;
     private readonly List<AccountJobSummaryResponse> runs = new();
+    private readonly Dictionary<string, IReadOnlyList<ReleasedDeliverable>> released = new(StringComparer.Ordinal);
+    private string? droppedNotice;
     private readonly Dictionary<string, ConsultGenerationJobResponse?> details = new(StringComparer.Ordinal);
 
     private static string RunDate(AccountJobSummaryResponse run) =>
@@ -162,6 +189,7 @@
     private async Task ExpandAsync(string jobId)
     {
         expanded = expanded == jobId ? null : jobId;
+        droppedNotice = null;
         if (expanded == null || details.ContainsKey(jobId))
         {
             return;
@@ -169,7 +197,20 @@
 
         try
         {
-            details[jobId] = await AIService.GetConsultGenerationJobAsync(jobId);
+            var job = await AIService.GetConsultGenerationJobAsync(jobId);
+            // A storage 12 job is decided as History decides it: SchemaVersion >= 12.
+            if (job is { SchemaVersion: >= 12 })
+            {
+                var rows = await AIService.GetJobRowsAsync(jobId);
+                released[jobId] = Record31.From(job, rows).Deliverables
+                    .Where(row => string.Equals(row.Text("state"), "released", StringComparison.Ordinal)
+                        && row.Key.StartsWith(DeliverableRoot, StringComparison.Ordinal))
+                    .Select(row => new ReleasedDeliverable(row.Key, row.Key[DeliverableRoot.Length..],
+                        row.Text("label") is { Length: > 0 } label ? label : row.Key[DeliverableRoot.Length..]))
+                    .ToList();
+            }
+
+            details[jobId] = job;
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -195,5 +236,39 @@
         isOpen = false;
         expanded = null;
         await OnChosen.InvokeAsync(new LoadedDeliverable(run.JobId, document.ResultId, document.Label, run.CompletedAtUtc ?? detail.CompletedAtUtc, document.Text));
+    }
+
+    private const string DeliverableRoot = "deliverable.";
+
+    private sealed record ReleasedDeliverable(string Key, string ResultId, string Label);
+
+    private async Task ChooseReleasedAsync(AccountJobSummaryResponse run, ConsultGenerationJobResponse detail, ReleasedDeliverable deliverable)
+    {
+        string? text;
+        try
+        {
+            text = RowText31.Content(await AIService.GetJobRowAsync(run.JobId, deliverable.Key));
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+            return;
+        }
+        catch
+        {
+            droppedNotice = $"Could not load '{deliverable.Label}'.";
+            return;
+        }
+
+        if (text == null)
+        {
+            droppedNotice = $"The text of '{deliverable.Label}' was deleted; it cannot be loaded.";
+            return;
+        }
+
+        droppedNotice = null;
+        isOpen = false;
+        expanded = null;
+        await OnChosen.InvokeAsync(new LoadedDeliverable(run.JobId, deliverable.ResultId, deliverable.Label, run.CompletedAtUtc ?? detail.CompletedAtUtc, text));
     }
 }
