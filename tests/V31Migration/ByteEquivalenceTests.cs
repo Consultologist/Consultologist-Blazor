@@ -878,6 +878,23 @@ public class ByteEquivalenceTests
         Assert.DoesNotContain("count-over-accepted-name", credited.Rules.Select(r => r.Id));
     }
 
+    [Theory]
+    [InlineData("Seen 14 times; 4 topics.", "4", 15)]
+    [InlineData("4 topics, seen 14 times.", "4", 0)]
+    [InlineData("Seen 14 times.", "4", null)]
+    [InlineData("Seen 41 times.", "4", null)]
+    [InlineData("Length: 404 and 4040.", "Length: 404", 0)]
+    [InlineData("Length: 4040.", "Length: 404", null)]
+    [InlineData("Seen 4 and 4.", "4", null)]
+    [InlineData("1.4 and 4", "4", 8)]
+    public void ACountsOccurrence_StandsApartFromOtherDigits(string text, string value, int? at)
+    {
+        // #1543 (the final review, minor a): a count is found where no digit stands directly before or after it, and counted
+        // so: the 4 of "14" is no occurrence of 4, so a count 4 beside a 14 is credited at the stand-alone 4 alone, and a
+        // text holding only 14 is not credited. Two stand-alone occurrences are ambiguous (none).
+        Assert.Equal(at, ExpectedDifferences.TheOccurrenceOfACount(text, value));
+    }
+
     [Fact]
     public async Task ACountThatStandsTwice_IsNotCredited()
     {
