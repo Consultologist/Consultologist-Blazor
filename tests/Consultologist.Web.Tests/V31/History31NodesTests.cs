@@ -649,4 +649,106 @@ public class History31NodesTests : ClientRenderTestContext
 
         page.WaitForAssertion(() => Assert.True(HasRow(page, "node.refine.judge#2")));
     }
+
+    // ----- output used in a refused deliverable (#1543, ruling 4, D12) ----------------------------------------------------
+
+    private static RecordRowRef BlockedDeliverable(string key, params string[] reads) =>
+        Record31Fixtures.NodeRow(key, PlanKind.Deliverable, RowState.Blocked, "blocked: check 'gate' failed (no)",
+            detail: "{ \"label\": \"Refused\", \"sites\": [" + string.Join(", ", reads.Select((read, n) => $"{{ \"site\": {n + 1}, \"at\": \"1:1\", \"expr\": \"{read}\", \"loop\": null }}")) + "],"
+                    + " \"substitutions\": [" + string.Join(", ", reads.Select((read, n) => $"{{ \"site\": {n + 1}, \"pass\": null, \"reads\": \"{read}\", \"hash\": \"sha256:s\", \"start\": 0, \"size\": 1, \"renders\": null }}")) + "] }");
+
+    private static IEnumerable<RecordRowRef> WithDeliverables(params RecordRowRef[] deliverables) =>
+        Record31Fixtures.Job().Rows.Where(row => row.Section != "deliverable").Concat(deliverables).ToList();
+
+    private static string? MarkOf(IRenderedComponent<RecordView31> page, string key) =>
+        LineOf(page, key).QuerySelector(".history31-node__refused-use")?.TextContent.Trim();
+
+    [Fact]
+    public void ANodeABlockedDeliverableRead_IsMarked_AndItsOutputHasNoCopyControl()
+    {
+        TextOf("node.plan", "Plan for Margaret Okafor: letrozole 2.5 mg daily.");
+        var page = Render31(WithDeliverables(BlockedDeliverable("deliverable.refused", "node.plan.content")));
+
+        Assert.Equal("Used in a refused deliverable: refused", MarkOf(page, "node.plan"));
+        Assert.Null(MarkOf(page, "node.billing"));
+
+        Open(page, "node.plan");
+        page.WaitForAssertion(() => Assert.Contains("letrozole 2.5 mg", BodyOf(page, "node.plan").TextContent));
+
+        var wrap = BodyOf(page, "node.plan").QuerySelector(".history31-node__refused-text")!;
+        Assert.True(wrap.HasAttribute("blazor:oncopy:preventdefault"));
+        Assert.True(wrap.HasAttribute("blazor:oncut:preventdefault"));
+        Assert.NotNull(wrap.QuerySelector(".history31-node__text"));
+        Assert.DoesNotContain(BodyOf(page, "node.plan").QuerySelectorAll("button"), button => button.TextContent.Contains("Copy", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void TheMarkedOutput_CannotBeSelected()
+    {
+        var css = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Consultologist.Web", "Shared", "History31", "NodeRow31.razor.css"));
+
+        Assert.Matches(@"\.history31-node__refused-text\s*\{[^}]*user-select:\s*none", css);
+    }
+
+    [Fact]
+    public void TheOutputIsStillShown()
+    {
+        TextOf("node.plan", "Plan for Margaret Okafor: letrozole 2.5 mg daily.");
+        var page = Render31(WithDeliverables(BlockedDeliverable("deliverable.refused", "node.plan.content")));
+
+        Open(page, "node.plan");
+
+        page.WaitForAssertion(() => Assert.Equal("Plan for Margaret Okafor: letrozole 2.5 mg daily.",
+            BodyOf(page, "node.plan").QuerySelector(".history31-node__refused-text .history31-node__text")!.TextContent));
+    }
+
+    [Fact]
+    public void ALoopsItemRows_UnderAReadLoop_AreMarked()
+    {
+        TextOf("node.sections:1", "Background text", itemName: "Background");
+        var page = Render31(WithDeliverables(BlockedDeliverable("deliverable.refused", "node.sections.items")));
+
+        Assert.Equal("Used in a refused deliverable: refused", MarkOf(page, "node.sections"));
+        Open(page, "node.sections");
+        Assert.Equal("Used in a refused deliverable: refused", MarkOf(page, "node.sections:1"));
+        Open(page, "node.sections:1");
+        Assert.Equal("Used in a refused deliverable: refused", MarkOf(page, "node.sections.draft:1"));
+        Assert.Null(MarkOf(page, "node.plan"));
+    }
+
+    [Fact]
+    public void ANodeOnlyAReleasedDeliverableRead_IsNotMarked()
+    {
+        TextOf("node.plan", "Plan text");
+        var page = Render31();
+
+        Assert.Null(MarkOf(page, "node.plan"));
+        Open(page, "node.plan");
+        page.WaitForAssertion(() => Assert.Contains("Plan text", BodyOf(page, "node.plan").TextContent));
+        Assert.Empty(BodyOf(page, "node.plan").QuerySelectorAll(".history31-node__refused-text"));
+        Assert.Empty(page.FindAll(".history31-node__refused-use"));
+    }
+
+    [Fact]
+    public void ANodeTwoBlockedDeliverablesRead_NamesBoth()
+    {
+        var page = Render31(WithDeliverables(
+            BlockedDeliverable("deliverable.zeta", "node.plan.content"),
+            BlockedDeliverable("deliverable.alpha", "node.plan.content", "node.billing.content")));
+
+        Assert.Equal("Used in a refused deliverable: alpha, zeta", MarkOf(page, "node.plan"));
+        Assert.Equal("Used in a refused deliverable: alpha", MarkOf(page, "node.billing"));
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Consultologist.sln")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
 }
