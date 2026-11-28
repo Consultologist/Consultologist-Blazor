@@ -591,8 +591,11 @@ published before sending this list."*), then, when there is any, `account`: what
 itself, whatever became of its packages (#1543, ruling 2): an owner whose chosen signature block or closing has several
 lines that 31 would join into one is told, once, A11-018 *"Your signature has <n> lines. From specVersion 31, end each
 line with \\, or leave a blank line between them."* or A11-019, the same of *"Your closing"*. The engine says them with
-every answer once it has read the package (`accountNotices`; a dry run's too), with the count only: no signature or
-closing text is in the record or the list. A row of an engine that predates them has no `accountNotices`, and its owner
+every answer it gives for an owner whose account it could read (`accountNotices`; a dry run's too, and a pin that names
+another package, A11-016, or a package that cannot be read, A11-007: the account is read first), with the count only: no
+signature or closing text is in the record or the list. **It reaches only the accounts the run visits**, those with an
+active account package below 31: an account pinned to a public package (`general`, say) has no package for the route
+to migrate, so the script never calls it for that owner, and the owner is not told by the bulk publish (for the owner). A row of an engine that predates them has no `accountNotices`, and its owner
 no `account`.
 
 **An `unknown` row.** Check the package's version on the engine (its account's pin, and whether a 31 version of it is

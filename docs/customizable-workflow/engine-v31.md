@@ -1032,6 +1032,9 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
 
 **What it does,** in order; the first step that cannot go on answers `not migrated: <its sentence>`:
 
+0. **The account** (#1543, ruling 2, D9; the final review): read first, before the pin, so every answer for an owner
+   whose account the route could read carries its notices (below, under step 3), A11-016's and A11-007's included; a
+   fault of the account settings is a 500, as before.
 1. **The package the account's pin names**, as stored (`IWorkflowPackageSources`). A name that is not an account
    package, or that the pin does not name: A11-016. A stored package that cannot be read: A11-007 (the fault logged by
    its type).
@@ -1039,13 +1042,15 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
    said in the answer's `defaults` (A10-083).
 3. **The migration** (`WorkflowPackageMigration30To31.Migrate`, with the 24 → 25 rung's contract resolver): a refusal is
    its first sentence, A10-015 for a package at 31 already (a rerun after a publish).
-   Before it, once the package is read, **the account** (#1543, ruling 2, D9): the account's settings are read as a 31
+   **The account's notices** (#1543, ruling 2, D9; read at step 0): the account's settings are read as a 31
    start reads them (`profile.signatures` and its chosen block, `profile.closing`), and the chosen block's text and the
    closing are each judged by `MarkdownLineEndings.Find` (a profile text has no template tags: any tag is read as an
    inline read). One with a single line ending 31 would join is told with its count of lines that are not blank:
    A11-018 for the signature, A11-019 for the closing (`PackagePublishSentences.SignatureHasLines`, `ClosingHasLines`);
    a text whose lines end with `\` or are separated by a blank line is not told. These are about the owner, not the
-   package, so every later outcome carries them, a dry run's and a `not migrated` one's too. **A hand edit is left** unless the
+   package, so every outcome carries them, a dry run's and a `not migrated` one's too, A11-016 and A11-007 among them.
+   They reach only the owners the script visits, those with an active account package below 31; an account pinned to a
+   public package is not visited (for the owner). **A hand edit is left** unless the
    file its notice names (`Migration31Result.HandEditFiles`, one per notice) is among `handEdits`' paths, edited or null:
    any left is its first S10-002 notice, every left one in `handEditsLeft`. An operator who answers a notice in another
    file still sends the named file, unchanged if need be, as the acknowledgement. The migration counts its package
