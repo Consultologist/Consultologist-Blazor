@@ -928,7 +928,9 @@ public static class ExpectedDifferences
     /// <c>.content</c> of a row of the run, and takes its <c>size</c>; the row's value is what the expression gives on that
     /// row's text at 31 (so a number that is not the count of 31's text is left); and 30's text for that read is found and its
     /// own difference from 31's is wholly explained (<see cref="AcceptedText30"/>). The expression is evaluated with the plan's
-    /// own compiled rule. Nothing else in the text is touched.
+    /// own compiled rule. Only a value that stands exactly once in the text is credited, and only that occurrence is put back;
+    /// one that stands more than once is ambiguous, and the row credits nothing. It never credits a count over a text no
+    /// compared site holds whole (<see cref="AcceptedText30"/> finds none). Nothing else in the text is touched.
     /// </summary>
     private static (string Old, string New)? CountsOverAcceptedNames(DifferenceContext c, string old, string now)
     {
@@ -938,7 +940,8 @@ public static class ExpectedDifferences
         var undone = now;
         foreach (var row in c.Run31.Rows.Where(r => r.Kind == PlanKind.Computed))
         {
-            if (SourceLayout.Text(row.Text?["content"]) is not { Length: > 0 } value || !undone.Contains(value, StringComparison.Ordinal)
+            var at = -1;
+            if (SourceLayout.Text(row.Text?["content"]) is not { Length: > 0 } value || (at = undone.IndexOf(value, StringComparison.Ordinal)) < 0 || undone.LastIndexOf(value, StringComparison.Ordinal) != at
                 || !c.Plan.Entries.TryGetValue(row.EntryKey, out var entry) || entry.Expression is not { } expression
                 || !entry.Rules.TryGetValue("expression", out var rule) || rule.Reads is not [var read]
                 || !read.EndsWith(".content", StringComparison.Ordinal) || !TakesSize(rule.Json, read)
@@ -951,7 +954,7 @@ public static class ExpectedDifferences
                 continue;
             }
 
-            undone = undone.Replace(value, value30, StringComparison.Ordinal);
+            undone = string.Concat(undone.AsSpan(0, at), value30, undone.AsSpan(at + value.Length));
         }
 
         return undone == now ? null : (old, undone);
