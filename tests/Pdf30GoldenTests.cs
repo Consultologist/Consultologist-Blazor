@@ -43,13 +43,35 @@ public class Pdf30GoldenTests
                     continue;
                 }
 
-                inputs[$"{capture["package"]!.GetValue<string>()}/{capture["scenario"]!.GetValue<string>()}#{row["id"]!.GetValue<string>()}"] =
-                    row["text"]!.GetValue<string>();
+                AddInput(inputs, $"{capture["package"]!.GetValue<string>()}/{capture["scenario"]!.GetValue<string>()}#{row["id"]!.GetValue<string>()}",
+                    row["text"]!.GetValue<string>(), file);
             }
         }
 
-        inputs["every-block"] = File.ReadAllText(Path.Combine(TestsDirectory(), "Fixtures", "Markdown31", "every-block.md"));
+        AddInput(inputs, "every-block", File.ReadAllText(Path.Combine(TestsDirectory(), "Fixtures", "Markdown31", "every-block.md")), "every-block.md");
         return inputs;
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> under <paramref name="key"/> (#1543, the final review, minor d): a second capture that gives
+    /// the same key would overwrite the first and leave it undrawn, so it fails, naming the file.
+    /// </summary>
+    internal static void AddInput(IDictionary<string, string> inputs, string key, string text, string from)
+    {
+        if (!inputs.TryAdd(key, text))
+            throw new InvalidOperationException($"Two inputs have the key '{key}'; the second is from {from}.");
+    }
+
+    [Fact]
+    public void ASecondCaptureWithTheSameKey_Fails()
+    {
+        var inputs = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        AddInput(inputs, "general/default#letter", "first", "captures/a.json");
+
+        var thrown = Assert.ThrowsAny<Exception>(() => AddInput(inputs, "general/default#letter", "second", "captures/b.json"));
+        Assert.Contains("general/default#letter", thrown.Message, StringComparison.Ordinal);
+        Assert.Contains("captures/b.json", thrown.Message, StringComparison.Ordinal);
+        Assert.Equal("first", inputs["general/default#letter"]);
     }
 
     [Fact]
