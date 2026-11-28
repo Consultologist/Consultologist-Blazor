@@ -1736,7 +1736,7 @@ and a part are never sites. It is a warning: the package publishes. When no site
 The finder judges a line of only tags by each tag's **role** (#1543, ruling 2, D2; `TagRole` and `TagRoles`, in
 `V31/Templates/TagRoles.cs`): `Statement` (`if`, `for`, `else`, `end`, an assignment; a comment; any tag the checker did
 not type), `Placement`, `Renderer` (an output whose pipe ends in a renderer step), `BlockRead` (an output whose final
-type is `markdown_block`) or `InlineRead`. The roles are one map per run, `SiteRoles` (`TagRoles.Of(bodies, tree,
+type is `markdown_block`, with no renderer at its pipe's end) or `InlineRead`. The roles are one map per run, `SiteRoles` (`TagRoles.Of(bodies, tree,
 refused)`): every placed body is typed once from `CheckedBody.Writes` and `CheckedBody.Placements` and grouped by file
 and text, a file read at several places taking per tag the role that says least, a file refused before the line rules
 typing none. `Context.Roles` builds it after the other rules; `LineEndings` and `BlockReads` both read it, and the

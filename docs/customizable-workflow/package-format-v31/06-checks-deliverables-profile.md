@@ -411,8 +411,8 @@ node with `plain`, or a renderer); the only automatic step is escaping
 - **`profile.signature` and `profile.closing` are `markdown_block`**
   ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 2; #1408 had them
   `plaintext`), since a `markdown_inline` value cannot hold a line ending and these keep several lines. A Markdown
-  deliverable or macro body reads them **unescaped**, each on its own line (`Sincerely,`, then the closing on the next
-  line or after a blank line); a line break inside them is the author's `\` or a blank line, as in any Markdown body. A
+  deliverable or macro body reads them **unescaped**, each on its own line (`Sincerely,`, a blank line,
+  then the closing); a line break inside them is the author's `\` or a blank line, as in any Markdown body. A
   `plaintext` deliverable that reads either is refused by the rule above (any Markdown): no conversion is built (a
   decision of the build, for the owner). `name`, `credentials` and `organisation` stay `string`, escaped in Markdown.
 
