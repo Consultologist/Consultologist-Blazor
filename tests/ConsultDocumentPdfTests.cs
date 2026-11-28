@@ -435,4 +435,33 @@ public class ConsultDocumentPdfTests
         Assert.Contains("==x==", text);
         Assert.Contains(":::note", text);
     }
+
+    // #1543 (ruling 8, D16): both pipelines write a link of another scheme as its text; the walker draws a link's text
+    // either way, and what the rewrite leaves in the tree is drawn at 31 (an unknown type throws there).
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(31)]
+    public void Render_ALinkWithAnotherScheme_DrawsItsTextOnly(int specVersion)
+    {
+        var text = string.Join("\n", PageTexts(ConsultDocumentPdf.Render(
+            "See [the plan](javascript:alert(1)), [the **letter**][l] and ![the scan](data:text/html,x).\n\n[l]: vbscript:x",
+            specVersion,
+            Password)));
+
+        Assert.Contains("See the plan, the letter and the scan.", text);
+        Assert.DoesNotContain("javascript", text);
+        Assert.DoesNotContain("vbscript", text);
+        Assert.DoesNotContain("data:", text);
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(31)]
+    public void Render_AnAutolinkWithAnotherScheme_DrawsItsUrlAsText(int specVersion)
+    {
+        var text = string.Join("\n", PageTexts(ConsultDocumentPdf.Render("Call <vbscript:x> now.", specVersion, Password)));
+
+        Assert.Contains("Call vbscript:x now.", text);
+    }
 }

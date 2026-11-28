@@ -70,13 +70,20 @@ public class ConsultMarkdownTests
         Assert.Same(ConsultMarkdown.Pipeline31, ConsultMarkdown.For(32));
     }
 
+    /// <summary>#1543 (ruling 8, D16): <see cref="Pipeline31"/>'s extensions less the library's own, <see cref="ConsultLinkSchemes"/>, its last.</summary>
+    private static IEnumerable<IMarkdownExtension> MarkdigsExtensions31()
+    {
+        Assert.IsType<ConsultLinkSchemes>(ConsultMarkdown.Pipeline31.Extensions[^1]);
+        return ConsultMarkdown.Pipeline31.Extensions.Where(e => e is not ConsultLinkSchemes);
+    }
+
     [Fact]
     public void Pipeline31_IsTheAdvancedBundleLessTheExcluded()
     {
         // Pins Markdig 0.41.3's UseAdvancedExtensions: an extension added to or removed from it fails here.
         var advanced = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build().Extensions.Select(e => e.GetType());
 
-        Assert.Equal(advanced.Except(Excluded), ConsultMarkdown.Pipeline31.Extensions.Select(e => e.GetType()));
+        Assert.Equal(advanced.Except(Excluded), MarkdigsExtensions31().Select(e => e.GetType()));
         var emphasis = ConsultMarkdown.Pipeline31.Extensions.OfType<Markdig.Extensions.EmphasisExtras.EmphasisExtraExtension>().Single();
         Assert.Equal(
             Markdig.Extensions.EmphasisExtras.EmphasisExtraOptions.Superscript | Markdig.Extensions.EmphasisExtras.EmphasisExtraOptions.Inserted,
@@ -87,7 +94,7 @@ public class ConsultMarkdownTests
     public void Pipeline31_IsTheExtensionsTheContractNames()
     {
         var markdig = V31Source.V31Contract.Json("constants.json")["markdig"]!;
-        var names = ConsultMarkdown.Pipeline31.Extensions.Select(e => e.GetType().Name[..^"Extension".Length]).ToList();
+        var names = MarkdigsExtensions31().Select(e => e.GetType().Name[..^"Extension".Length]).ToList();
 
         Assert.Equal(names, ConsultMarkdown.Extensions31);
         Assert.Equal(names, markdig["extensions"]!.AsArray().Select(n => n!.GetValue<string>()));
@@ -135,5 +142,64 @@ public class ConsultMarkdownTests
         var html = Markdown.ToHtml(Attributes, new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build());
 
         Assert.Equal("<h1 id=\"id\" class=\"class\" key=\"value\">Plan</h1>\n<p onclick=\"x\">Seen by Dr A. Sample </p>\n", html);
+    }
+
+    // #1543 (ruling 8, D16): a link, an image or an autolink is written only when its scheme is http, https or mailto.
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("https://example.org/a")]
+    [InlineData("HTTP://example.org")]
+    [InlineData("mailto:clinic@example.org")]
+    [InlineData("/plan")]
+    [InlineData("plan.md")]
+    [InlineData("#plan")]
+    [InlineData("//example.org/x")]
+    [InlineData("?q=1")]
+    public void Writes_AllowsHttpHttpsMailtoAndNoScheme(string? url)
+    {
+        Assert.True(ConsultLinkSchemes.Writes(url));
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("JAVASCRIPT:x")]
+    [InlineData("java\tscript:x")]
+    [InlineData("java\nscript:x")]
+    [InlineData(" javascript:x")]
+    [InlineData("\u0001javascript:x")]
+    [InlineData("data:text/html,x")]
+    [InlineData("vbscript:x")]
+    [InlineData("file:///x")]
+    [InlineData("tel:5550100")]
+    [InlineData("ftp://x")]
+    [InlineData("C:x")]
+    public void Writes_RefusesEveryOtherScheme(string url)
+    {
+        Assert.False(ConsultLinkSchemes.Writes(url));
+    }
+
+    [Fact]
+    public void TheAllowedSchemes_AreTheContracts()
+    {
+        var markdig = V31Source.V31Contract.Json("constants.json")["markdig"]!;
+
+        Assert.Equal(["http", "https", "mailto"], ConsultLinkSchemes.Allowed);
+        Assert.Equal(ConsultLinkSchemes.Allowed, markdig["linkSchemes"]!.AsArray().Select(n => n!.GetValue<string>()));
+    }
+
+    [Fact]
+    public void BothPipelines_EndWithTheLinkSchemes()
+    {
+        Assert.IsType<ConsultLinkSchemes>(ConsultMarkdown.Pipeline.Extensions[^1]);
+        Assert.IsType<ConsultLinkSchemes>(ConsultMarkdown.Pipeline31.Extensions[^1]);
+    }
+
+    [Fact]
+    public void AnImageWithAnotherScheme_IsItsAltTextsInlines_AndPlainIsItsText()
+    {
+        // The alt text's inlines take the image's place as they are; plain text reads the same characters.
+        Assert.Equal("<p>Seen: <strong>the scan</strong></p>\n", Markdown.ToHtml("Seen: ![**the scan**](data:text/html,x)", ConsultMarkdown.Pipeline31));
+        Assert.Equal("Seen: the scan\n", Markdown.ToPlainText("Seen: ![**the scan**](data:text/html,x)", ConsultMarkdown.Pipeline31));
     }
 }
