@@ -44,17 +44,25 @@ stays with the engine.
   concept-list fixture the editor's renderer pane and the tests render). The
   engine and the editor render through the same functions, so the editor's
   sample is the engine's bytes.
-- `ConsultMarkdown` (#1256, #1510): the Markdown pipelines every surface
+- `ConsultMarkdown` (#1256, #1510, #1543): the Markdown pipelines every surface
   shares (the Web's `MarkdownPreview`, the Api's PDF), picked by the job's
   specVersion through `For(int specVersion)`. `Pipeline`, for 5–30 and
-  unchanged until 30 is retired: HTML off, pipe tables, a single line ending a
-  hard break. `Pipeline31` (part 02 § 5.2), for 31: Markdig 0.41.3's
+  unchanged until 30 is retired but for the link filter below: HTML off, pipe
+  tables, a single line ending a hard break. `Pipeline31` (part 02 § 5.2), for 31: Markdig 0.41.3's
   `UseAdvancedExtensions` built explicitly in its order, less GenericAttributes,
   CustomContainers, MediaLinks, Mathematics, Diagrams, GridTables and the
   emphasis extras other than superscript and inserted, with `DisableHtml` and
   standard line handling (a single line ending is not a break).
-  `Extensions31` lists its 13 extensions as `constants.json` `markdig` names
-  them. Nothing else builds a Markdown pipeline at 31.
+  `Extensions31` lists its 13 Markdig extensions as `constants.json` `markdig`
+  names them. Both pipelines end with the library's own extension,
+  `ConsultLinkSchemes` (#1543, ruling 8; part 02 § 5.2), which neither list
+  names: once a document is parsed it writes a link or an image (inline or by
+  reference) whose URL has a scheme other than `ConsultLinkSchemes.Allowed`
+  (`http`, `https`, `mailto`; `constants.json` `markdig.linkSchemes`) as its
+  text or alt text, and such an autolink as its URL text; `Writes(url)` is the
+  test (the scheme read after ASCII white space and control characters are
+  removed; a URL with no scheme stays). Nothing else builds a Markdown
+  pipeline at 31.
 
 ## With the engine
 
