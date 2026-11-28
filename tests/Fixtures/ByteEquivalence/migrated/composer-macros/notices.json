@@ -17,6 +17,7 @@
     "The signature is written through renderer 'signature_after_blank_line', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
     "Hand edit needed in deliverables/echoes.md, body: macro 'quoted_review' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
     "Loop 'section_loop' returns each item through the new node 'section_draft_stripped', which strips the item's text as specVersion 30 did.",
+    "In 'snippets/body_echo.md', the read node.letter_body.content now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.",
     "No snapshot test was written: hand edits remain."
   ],
   "handEdits": [
