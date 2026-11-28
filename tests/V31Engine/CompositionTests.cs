@@ -34,6 +34,9 @@ public class CompositionTests
         Assert.Same(services.GetRequiredService<V31JobStarter>(), v31);
         Assert.Same(drain, FieldOf<IEngineDrain>(starter));
         Assert.Same(drain, FieldOf<IEngineDrain>(v31));
+        // #1543 (D17): a reference to an earlier 31 run reads that run's record through the host's stores
+        Assert.Same(services.GetRequiredService<IRecordRowStore>(), FieldOf<IRecordRowStore>(starter));
+        Assert.Same(services.GetRequiredService<IRecordBlobStore>(), FieldOf<IRecordBlobStore>(starter));
 
         // the drain's endpoints read Operators__AppUserIds (no operator set of their own), and its activity resolves
         var admin = services.GetRequiredService<AdminDrain>();
