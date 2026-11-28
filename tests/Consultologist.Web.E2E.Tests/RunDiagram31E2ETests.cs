@@ -127,10 +127,49 @@ public class RunDiagram31E2ETests
     [Fact]
     public async Task TheDiagram_DrawsUnderTheProductionContentSecurityPolicy()
     {
-        var config = Path.Combine(BrowserFixture.RepoRoot(), "src", "Consultologist.Web", "staticwebapp.config.json");
-        var policy = JsonDocument.Parse(File.ReadAllText(config)).RootElement
-            .GetProperty("globalHeaders").GetProperty("content-security-policy").GetString()!;
+        var policy = ProductionPolicy();
+        var (page, document, violations) = await OpenUnderPolicyAsync(policy, draw: true);
 
+        Assert.Equal(policy, (await document.AllHeadersAsync())["content-security-policy"]);
+        Assert.Equal("elk", await page.EvaluateAsync<string>("() => window.mermaid.mermaidAPI.getConfig().layout"));
+        Assert.True(violations.Length == 0, "Content-Security-Policy violations: " + string.Join("; ", violations));
+
+        // A late violation (after the drawing) is not missed: read the list again once the network is idle
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        var late = await ReadViolationsAsync(page);
+        Assert.True(late.Length == 0, "Content-Security-Policy violations after settling: " + string.Join("; ", late));
+    }
+
+    /// <summary>
+    /// Proves the detector of the fact above: the same steps under a policy stricter than production's (its value with
+    /// <c>'unsafe-eval'</c> removed from <c>script-src</c>) must put at least one <c>securitypolicyviolation</c> on the list,
+    /// naming <c>script-src</c>. The app may not start under it, so the list is read after the navigation, not after the drawing.
+    /// </summary>
+    [Fact]
+    public async Task TheDetector_ReportsAViolation_UnderAStricterPolicy()
+    {
+        var policy = ProductionPolicy().Replace(" 'unsafe-eval'", "");
+        Assert.DoesNotContain("'unsafe-eval'", policy);
+        var (page, _, _) = await OpenUnderPolicyAsync(policy, draw: false);
+
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        var violations = await ReadViolationsAsync(page);
+        Assert.NotEmpty(violations);
+        Assert.Contains(violations, v => v.StartsWith("script-src", StringComparison.Ordinal));
+    }
+
+    private static string ProductionPolicy()
+    {
+        var config = Path.Combine(BrowserFixture.RepoRoot(), "src", "Consultologist.Web", "staticwebapp.config.json");
+        return JsonDocument.Parse(File.ReadAllText(config)).RootElement
+            .GetProperty("globalHeaders").GetProperty("content-security-policy").GetString()!;
+    }
+
+    private static Task<string[]> ReadViolationsAsync(IPage page) => page.EvaluateAsync<string[]>("() => window.__cspViolations");
+
+    // Navigates to the history page with the policy on the document response and the collector installed; with draw, also draws the diagram
+    private async Task<(IPage Page, IResponse Document, string[] Violations)> OpenUnderPolicyAsync(string policy, bool draw)
+    {
         var page = await _fixture.Browser.NewPageAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 } });
         await ApiMock.Install31Async(page, Api());
         await page.RouteAsync(request => true, async route =>
@@ -153,13 +192,13 @@ public class RunDiagram31E2ETests
             """);
 
         var document = await page.GotoAsync($"{_fixture.BaseUrl}/history/{Fixtures31.JobId}", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
-        await page.ClickAsync(".history31-run-diagram", new() { Timeout = 30_000 });
-        await page.WaitForSelectorAsync(".run-dag-panel .dag-view__canvas svg", new() { Timeout = 30_000 });
-        await page.WaitForSelectorAsync(".run-dag-panel [role=link]", new() { Timeout = 30_000 });
+        if (draw)
+        {
+            await page.ClickAsync(".history31-run-diagram", new() { Timeout = 30_000 });
+            await page.WaitForSelectorAsync(".run-dag-panel .dag-view__canvas svg", new() { Timeout = 30_000 });
+            await page.WaitForSelectorAsync(".run-dag-panel [role=link]", new() { Timeout = 30_000 });
+        }
 
-        Assert.Equal(policy, (await document!.AllHeadersAsync())["content-security-policy"]);
-        Assert.Equal("elk", await page.EvaluateAsync<string>("() => window.mermaid.mermaidAPI.getConfig().layout"));
-        var violations = await page.EvaluateAsync<string[]>("() => window.__cspViolations");
-        Assert.True(violations.Length == 0, "Content-Security-Policy violations: " + string.Join("; ", violations));
+        return (page, document!, await ReadViolationsAsync(page));
     }
 }
