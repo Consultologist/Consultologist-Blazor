@@ -193,7 +193,14 @@ the plan (`ConsultGenerationJobStarter.DeclaredInput31`): each input's id, wheth
 and whether its channel is `form`.
 
 - **`InputRefs`**, an earlier run's deliverable: the run must be this account's, completed, still holding its text, and
-  have the deliverable. Its text fills the input: a text input takes it as its text, an array of text as an element. A
+  have the deliverable. The earlier run may be a 5–30 job, whose deliverable is its `AssembledDocuments` entry, or a 31 job
+  (record storage 12; #1543, ruling 9, D17), whose deliverable is read from its record, only after the account and
+  completion checks: the row `deliverable.<resultId>` must be there (else *"…which has no deliverable '<id>'."*) and its
+  `state` `released` (else *"Input '<id>' refers to run <run>, whose deliverable '<result>' was not released."*, outcome
+  `InputRefNotFound`; a blocked deliverable is refused, not delivered, so its text is never read); the text is the row's
+  retained `content`, taken only when it hashes to the row's `composedHash` as the record's rows route offers it
+  (`RecordRoutes.OfferedText`), and a text dropped, missing or not matching is today's text-deleted refusal. Both starts,
+  5–30 and 31, read it so. Its text fills the input: a text input takes it as its text, an array of text as an element. A
   reference standing alone in an array of text is a list of one. Beside typed rows or documents in an array of text, each
   element takes its request `Position` among them, as at 30 (#1144); without positions the order is typed rows, then
   documents, then earlier runs.
@@ -840,7 +847,8 @@ admits 31 in production: the admission lists are untouched.*
   Only the latest ask counts: a newer ask, or a package switch (`ResetStartChecks31`), makes an older one stale, and a stale
   ask writes neither the signature blocks nor the pick, and starts nothing.
 - **References at a start.** `ConsultGenerationJobStarter.ExtractFor31Async` (private) reads `InputRefs`, `InputFormRefs` and `InputFormFiles` (above, "Inputs
-  sent by reference"). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
+  sent by reference"); `ResolveInputRefsAsync` reads a 31 source's deliverable through `IRecordRowStore` and
+  `IRecordBlobStore` (`RecordReads`, #1543). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
   the held inputs document's `modelDerived` member (written by `V31JobStarter`), read into `RunInputs.ModelDerivedInputs` by `ConsultGenerationOrchestratorV31`. The start also writes the lineage
   links (`IConsultGenerationLinkStore`).
 - **Rerun.** `ConsultGenerationJobs/{jobId}/Rerun` of a storage-12 job rebuilds its request from the held inputs

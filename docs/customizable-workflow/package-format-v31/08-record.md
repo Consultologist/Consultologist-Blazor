@@ -273,7 +273,9 @@ origin links to the job it came from. Typed text and uploaded documents start cl
 Such an element is recorded as `{ "origin": "previous-run", "jobId": "<source job>", "resultId": "<deliverable id>",
 "modelDerived": true }` (decided in the build, #1509, D7). On an input it alone filled, the three members sit beside `id`,
 `origin` and `hash`; in `elements`, beside the element's `origin`. A decision that reads an input holding such an element is
-`modelDerived: true` (§ 5.1).
+`modelDerived: true` (§ 5.1). The source may be a 31 job: its deliverable is read from its record, only when its row's
+`state` is `released`, and its text is the row's retained text that hashes to `composedHash` (§ 11; decided in the build,
+[#1543](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 9, D17).
 
 | Member (on a `previous-run` origin) | Type | Null | Meaning |
 |---|---|---|---|
