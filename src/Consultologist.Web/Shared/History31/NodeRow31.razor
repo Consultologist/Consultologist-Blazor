@@ -36,6 +36,10 @@
         {
             <span class="history31-node__reason">@HistorySentences31.StateReason(reason)</span>
         }
+        @if (RefusedUses.Count > 0)
+        {
+            <span class="history31-node__refused-use">@HistorySentences31.UsedInARefusedDeliverable(string.Join(", ", RefusedUses))</span>
+        }
     </div>
     @if (IsOpen)
     {
@@ -125,7 +129,16 @@
                 }
                 else if (Shown(Fetched) is { } text)
                 {
-                    <pre class="history31-node__text">@text</pre>
+                    if (RefusedUses.Count > 0)
+                    {
+                        <div class="history31-node__refused-text" @oncopy:preventDefault="true" @oncut:preventDefault="true">
+                            <pre class="history31-node__text">@text</pre>
+                        </div>
+                    }
+                    else
+                    {
+                        <pre class="history31-node__text">@text</pre>
+                    }
                 }
                 @if (FetchFailed)
                 {
@@ -155,6 +168,9 @@
 </li>
 
 @code {
+    /// <summary>#1543 (ruling 4): the blocked deliverables whose reads name this row's node; its output is then not selectable and cannot be copied.</summary>
+    private IReadOnlyList<string> RefusedUses => View.RefusedUses(Node.Key);
+
     /// <summary>An item retitled by the name its retained text holds, once fetched; any other row as the tree names it.</summary>
     private string Title =>
         Node.IsItem && Row is { } row ? NodeTree31.ItemTitle(row, RetainedName(Fetched), Node.LoopLabel) : Node.Title;

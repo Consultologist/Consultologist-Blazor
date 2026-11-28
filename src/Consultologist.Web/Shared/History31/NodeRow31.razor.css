@@ -1,0 +1,13 @@
+/*
+    #1543 (ruling 4, D12): the output of a node a refused deliverable used. It is still shown, but cannot be selected, as
+    the refused panel's text cannot (RefusedText31); copy and cut are cancelled in the markup.
+*/
+.history31-node__refused-text {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.history31-node__refused-use {
+    font-weight: 700;
+    color: var(--error, #b00020);
+}

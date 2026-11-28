@@ -18,6 +18,9 @@ public static class HistorySentences31
     /// <summary>R1: the heading over a blocked deliverable's text.</summary>
     public const string RefusedHeading = "Refused, not delivered";
 
+    /// <summary>#1543 (ruling 4): the mark on a node whose output a blocked deliverable used; <paramref name="ids"/> are the deliverables' ids, joined by ", ".</summary>
+    public static string UsedInARefusedDeliverable(string ids) => $"Used in a refused deliverable: {ids}";
+
     /// <summary>A12-001: a job that is not finished long after it began has no record.</summary>
     public const string Stopped = "This job stopped before it finished, so it has no record. Run the workflow again.";
 
