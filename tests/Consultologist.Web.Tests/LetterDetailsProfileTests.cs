@@ -216,4 +216,81 @@ public class LetterDetailsProfileTests : ClientRenderTestContext
         Assert.Equal(Consultologist.Api.Account.MaxOrganisationLength, LetterDetails.MaxOrganisationLength);
         Assert.Equal(Consultologist.Api.Account.MaxClosingLength, LetterDetails.MaxClosingLength);
     }
+
+    private const string Hint = "End a line with \\ or leave a blank line.";
+
+    private void WithChosenSignature(string text) =>
+        AccountService.GetSettingAsync(SignatureBlocks.SettingKey).Returns(new AccountSettingResponse(
+            SignatureBlocks.SettingKey,
+            SignatureBlocks.Serialize(new SignatureBlocks.SignatureBlockSet(
+                new List<SignatureBlocks.SignatureBlock> { new("clinic", "Clinic", text, DateTimeOffset.UtcNow) }, "clinic")),
+            SignatureBlocks.ContentType,
+            DateTimeOffset.UtcNow));
+
+    /// <summary>#1543 (ruling 2, D10): the closing's preview follows what is typed, through the 31 pipeline.</summary>
+    [Fact]
+    public void TheClosingsPreview_RendersWhatIsTyped_ThroughThe31Pipeline()
+    {
+        WithSaved();
+        var page = RenderProfile();
+
+        page.Find(".letter-closing-input").Change("Kind regards,\\\nDr A. Sample");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(page.Find(".letter-closing-preview").InnerHtml, "<br"));
+
+        page.Find(".letter-closing-input").Change("Kind regards,\nDr A. Sample");
+        Assert.DoesNotContain("<br", page.Find(".letter-closing-preview").InnerHtml);
+        Assert.Contains("Dr A. Sample", page.Find(".letter-closing-preview").TextContent);
+    }
+
+    [Fact]
+    public void TheSignaturesPreview_RendersTheChosenBlock()
+    {
+        WithSaved();
+        WithChosenSignature("Dr A. Sample\\\nSample Oncology Clinic");
+
+        var page = RenderProfile();
+
+        var preview = page.Find(".letter-signature-preview");
+        Assert.Contains("Sample Oncology Clinic", preview.TextContent);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(preview.InnerHtml, "<br"));
+    }
+
+    [Fact]
+    public void WithNoSignatureAndNoClosing_ThereIsNoPreview()
+    {
+        WithSaved();
+
+        var page = RenderProfile();
+
+        Assert.Empty(page.FindAll(".letter-closing-preview"));
+        Assert.Empty(page.FindAll(".letter-signature-preview"));
+        Assert.DoesNotContain("No content", page.Find(".letter-details-card").TextContent);
+    }
+
+    [Fact]
+    public void TheHint_SaysHowToBreakALine()
+    {
+        WithSaved();
+
+        var page = RenderProfile();
+
+        Assert.Equal(Hint, page.Find(".letter-details-card .letter-details-hint").TextContent.Trim());
+        Assert.Equal(Hint, page.Find(".signature-card .letter-details-hint").TextContent.Trim());
+    }
+
+    [Fact]
+    public void APreviewsLinkWithAnotherScheme_IsText()
+    {
+        WithSaved(closing: "[see here](javascript:alert(1))");
+        WithChosenSignature("[call](tel:+15550100) or [write](mailto:a@example.com)");
+
+        var page = RenderProfile();
+
+        var closing = page.Find(".letter-closing-preview");
+        Assert.Empty(closing.QuerySelectorAll("a"));
+        Assert.Contains("see here", closing.TextContent);
+        var signature = page.Find(".letter-signature-preview");
+        Assert.Equal(new[] { "mailto:a@example.com" }, signature.QuerySelectorAll("a").Select(a => a.GetAttribute("href")).ToArray());
+        Assert.Contains("call", signature.TextContent);
+    }
 }
