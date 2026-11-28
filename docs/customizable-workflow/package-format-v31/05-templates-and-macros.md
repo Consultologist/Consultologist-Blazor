@@ -240,6 +240,7 @@ author's: no rule on how it starts or ends
 | `{{~ x }}` inside a line | refused: it removes the space the author wrote before it |
 | `{{~ x }}` with text after it on its line | refused: a block placement stands alone on its line |
 | `{{ x }}` inside an `if` or a `for` | refused (A07-009): a placement's decision is recorded once, so it is made by the unit's own `if`, not by a tag around it; the migration unrolls or hoists what 30 wrote ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647); part 10 § 1.2) |
+| a `markdown_block` read (`{{ profile.closing }}`, `{{ node.x.content }}` of a `markdown_block` node) with text before or after it on its line | refused (S05-066, S05-067): a `markdown_block` read stands alone on its line; a `markdown_inline` read stands inside a line (*Block reads*, below) |
 
 Scriban's markers, as tested on 7.2.5: `~` removes spaces and tabs on its side, and on the right
 also the one newline ending the line; `-` removes all whitespace on its side, blank lines
@@ -256,13 +257,49 @@ information, not a warning.
 **Line endings.** At 31 a single line ending inside a paragraph is not a break: Markdown reads it as
 a space ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1509#issuecomment-7209167166), item 4). End such a line with `\` (an explicit hard
 break, which `~` does not strip) or leave a blank line. Publish warns (W-3) once for each
-such line ending in a Markdown body a reader sees: a deliverable, a `rendered` node, a macro, a snippet
-(one or a folder's item) or a renderer whose `format` is `markdown_block` or `markdown_inline`. A prompt
-and a part are never warned, nor is a body only prompts read or place, since its text is the model's to
-read; one a prompt reads that is also shown is warned. A line ending is not counted in a fence, indented
-code, a table or a heading, at a paragraph's last line, before a list item or a heading, inside a tag,
-where a tag's `~}}` removes it, or beside a line holding only tags (whose output may be empty or a block).
-The migration writes the `\` where 30 broke the line ([part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)).
+such line ending in every Markdown body: a deliverable, a `rendered` node, a macro, a snippet
+(one or a folder's item) or a package renderer whose `format` is `markdown_block` or `markdown_inline`,
+**a body a prompt reads or places included**
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 1): the engine sends a
+prompt as the template's text and never renders its Markdown, so the model sees exactly what the reader sees. A prompt
+and a part are never warned: they are not Markdown values (a node's format describes its reply), and nothing shows
+them. A line ending is not counted in a fence, indented code, a table or a heading, at a paragraph's last line, before
+a list item or a heading, inside a tag, or where a tag's `~}}` removes it.
+
+A line of only tags and white space is judged by its tags' **roles**, each from publish's own typing of the body
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 2): a *statement* (`if`, `for`,
+`else`, `end`, an assignment; a comment counts as one), a *placement* (above), a *renderer* (an output whose pipe ends
+in a renderer), a *block read* (an output of format `markdown_block`, no renderer at its end) or an *inline read* (any
+other output). A tag the checker did not type (a file it refused, or read nowhere) counts as a statement.
+
+- A line ending between a line of text (literal text, or an inline read among its tags) and a line whose only reads
+  are block reads, **on either side of it**, is counted, and wants a **blank line**, never `\`: `\` breaks only inside a
+  paragraph, and a block value may start or end with a list, a table, a heading or a code block
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543#issuecomment-7228887738), item 3).
+- Any other line ending after a line of only tags is not counted when any of them is not an inline read (after a
+  statement, a placement or a renderer the `\` could end a paragraph); nor one before a line of only tags when any of
+  them is a statement, a placement or a renderer (its output may be nothing, which would leave `\` at a paragraph's end).
+  So `Sincerely,` above a line of only `{{ profile.name }}` is counted, and so is each line but the last of a letterhead
+  of single inline reads.
+
+The migration writes the `\` where 30 broke the line, and the blank line beside a block read ([part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)).
+From 31 on, `\` is the author's choice. A `plaintext` body is what the author types: the engine never adds `\` there,
+and the escape keeps its lines when it is shown in Markdown ([part 06 § 6.4](06-checks-deliverables-profile.md#64-strict-formats)).
+
+**Block reads.** A `markdown_block` read stands at the start of its line and alone on it
+([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 2): in a Markdown body (the
+sites W-3 warns), a block read with text before it on its line is refused (S05-066), and one with text after it
+(S05-067), each naming the file, the read as written (without its pipes) and its line; a read with text on both sides
+gets both. **Text** is, on the read's own line, any character other than a space or a tab outside every tag and
+comment, or an inline read; a statement, a comment, a placement, a renderer-ended output or another block read beside
+it is not text and is stepped over, so `{{ value }}{{ end }}` and
+`{{ node.a.content | string.strip }}{{ profile.signature | renderer.signature_after_blank_line }}` are accepted, and
+`Referred for: {{ if x }}{{ read }}{{ end }} (…)` has text on both sides. An indent alone is not text; a Markdown
+marker is (`- {{ node.plan.content }}`, `> {{ … }}`, `**Plan:** {{ … }}` are refused). A `~` or `-` on the tag does
+not change the judgement: it is about the line as written. A prompt and a part are not judged. A renderer whose
+`format` is `markdown_block` piped inside a line is still only warned (W-2, § 5.4): its output begins with its own
+line endings. This is the mistake the two formats exist to catch: a letter puts `Sincerely,` and the signature each on
+its own line. The migration separates such a read from the text beside it by a blank line ([part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)).
 
 ## 3. What each template reads
 
@@ -457,6 +494,10 @@ Each text format carries `contentMediaType`, and Markdown carries `x-markdown: b
 ([Part 02](02-types-and-inputs.md)). Publish warns (W-2) when a `markdown_block` renderer is
 piped inside a line
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6878274999)).
+It stays a warning: a renderer's output begins with its own line endings. A `markdown_block` read whose pipe does not
+end in a renderer is refused there instead (S05-066, S05-067, § 2.6). The two signature renderers the migration
+writes take `input` and `format` `markdown_block` ([part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)),
+so each use of them that shares its line with the text before it is warned.
 
 ### 5.5 In the record and History
 
@@ -841,7 +882,8 @@ text is recorded by hash under the node that placed it.
 | `at: before`, `after`, `append`, item-level placements, deliverable macros | removed: fixed text is a snippet read in the deliverable template |
 | optional at most once, required exactly once | triggered exactly once, untriggered never |
 | prompt hashes vary with run facts and nothing says so | run spots, with a run-neutral hash beside the sent-text hash |
-| a single line ending in Markdown is a hard break (5–30's pipeline) | it is not a break: end the line with `\` or leave a blank line; publish warns where a body a reader sees has one (§ 2.6, W-3), and the migration writes the `\` ([part 10 § 1.2](10-migration-and-tools.md)) |
+| a single line ending in Markdown is a hard break (5–30's pipeline) | it is not a break: end the line with `\` or leave a blank line; publish warns where any Markdown body has one, a body a prompt reads or places included (§ 2.6, W-3), and the migration writes the `\`, or a blank line beside a `markdown_block` read ([part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)) |
+| a value read anywhere on a line (`Sincerely, {{ signature }}`) | a `markdown_block` read stands alone on its line, a `markdown_inline` read inside one (§ 2.6, S05-066, S05-067); the migration separates a block read from the text beside it by a blank line ([part 10 § 1.2](10-migration-and-tools.md#12-what-the-rewrite-does-mechanically)) |
 
 ## Refusals
 
@@ -875,6 +917,8 @@ rest are this part's wording.
 - R-W3: *"<Subject> places {{~ <unit> }} inside a line at line <n>; it removes the space before it. Use {{ <unit> }}."*
 - R-W4: *"<Subject> has text after {{~ <unit> }} at line <n>; a block placement stands alone on its line."*
 - R-W5 (§ 2.6): *"<Subject> uses - at line <n>; it removes blank lines between paragraphs. Use ~."*
+- R-W6 (§ 2.6, S05-066): *"<Subject> has text before {{ <read> }}, a markdown_block, at line <n>; a markdown_block read stands alone on its line."*
+- R-W7 (§ 2.6, S05-067): *"<Subject> has text after {{ <read> }}, a markdown_block, at line <n>; a markdown_block read stands alone on its line."*
 
 **Reads**
 - R-R1: *"<Subject> reads <root> at line <n>; <site> reads <allowed roots>."*

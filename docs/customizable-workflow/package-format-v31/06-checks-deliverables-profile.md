@@ -379,7 +379,7 @@ node with `plain`, or a renderer); the only automatic step is escaping
 
 | Deliverable `format` | May read | Refused |
 |---|---|---|
-| `markdown_block` | `markdown_block`; `markdown_inline` inside a line; plain-text formats (escaped); `string` and `number` data (escaped) | objects (use a renderer or a node) |
+| `markdown_block` | `markdown_block`, on its own line; `markdown_inline` inside a line; plain-text formats (escaped); `string` and `number` data (escaped) | objects (use a renderer or a node); a `markdown_block` read with text before or after it on its line (S05-066, S05-067, [part 05 § 2.6](05-templates-and-macros.md#26-placement-forms-and-whitespace)) |
 | `plaintext` | plain-text formats; `string` and `number` data | any Markdown (convert in a node) |
 | an object format | exactly that format, as `{{ node.x.value }}` and nothing else | everything else |
 
@@ -408,8 +408,13 @@ node with `plain`, or a renderer); the only automatic step is escaping
   deliverable's literal text is the author's Markdown. An object deliverable allows nothing
   but its single expression.
 - **An object deliverable's output** is canonical JSON (RFC 8785).
-- **`profile.signature` and `profile.closing` are `plaintext`,** so a Markdown deliverable reads
-  them escaped.
+- **`profile.signature` and `profile.closing` are `markdown_block`**
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 2; #1408 had them
+  `plaintext`), since a `markdown_inline` value cannot hold a line ending and these keep several lines. A Markdown
+  deliverable or macro body reads them **unescaped**, each on its own line (`Sincerely,`, then the closing on the next
+  line or after a blank line); a line break inside them is the author's `\` or a blank line, as in any Markdown body. A
+  `plaintext` deliverable that reads either is refused by the rule above (any Markdown): no conversion is built (a
+  decision of the build, for the owner). `name`, `credentials` and `organisation` stay `string`, escaped in Markdown.
 
 ### 6.5 Headings are the author's
 
@@ -680,9 +685,14 @@ it's recorded ([decided](https://github.com/Consultologist/Consultologist-Blazor
 | `profile.name` | `string` | never: a missing value refuses the job (§ 10.4) | `Dr A. Sample` |
 | `profile.credentials` | `string` | never | `MD, FRCPC` |
 | `profile.organisation` | `string` | never | `Sample Oncology Clinic` |
-| `profile.signature` | `plaintext` | never | the chosen signature block |
-| `profile.closing` | `plaintext` | never | a closing line or contact block |
+| `profile.signature` | `markdown_block` | never | the chosen signature block |
+| `profile.closing` | `markdown_block` | never | a closing line or contact block |
 
+- **`signature` and `closing` are `markdown_block`**
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 2; #1408 had them
+  `plaintext`): a `markdown_inline` value cannot hold a line ending, so `block` is the one format that keeps several
+  lines. They are read unescaped, each on its own line (§ 6.4), and the contract's `profile.json` and its schema say
+  so (the schema's `format` enum is `string`, `plaintext`, `markdown_block`).
 - **Adding a field later is compatible;** removing or retyping one is a format change.
 - `profile.closing` is the home of a clinician's fixed boilerplate (#1412). Personal macros are
   #1417.
@@ -756,6 +766,9 @@ registry** (the table in § 10.1), never the author's own profile.
   ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6957668236)),
   with limits of 120, 200 and 4,000 characters (the last the same as a signature block,
   [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)).
+  The closing, like a signature block, is stored as typed and read as `markdown_block` (§ 10.1): a line of it breaks
+  where the author ends it with `\` or leaves a blank line, since at 31 a single line ending is not a break
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 2).
 - **The account time zone** (an IANA name, for `run.date`) is an **account setting, not a profile
   field:** it's never read as `profile.*`. It's a select list that starts empty, with a "Use this
   browser's zone" button that fills it only when clicked. The zone is recorded beside

@@ -325,6 +325,14 @@ Two families of files have no 30 counterpart (#1510, Part F, the owner's second 
 `example-classifier-scope` and `example-v12-constructs`). The comparison credits a stripping node's texts by
 `loop-item-strip-node`.
 
+Area 14 (#1543) moved three things here, each regenerated once (its Task A9). The signature renderers' header takes
+`input` and `format` `markdown_block`, as the profile's signature now is (ruling 2). A `markdown_block` read with text
+beside it on its line is separated from that text by a blank line (A10-093; part 10 § 1.2's moved-read row):
+`composer-macros` `snippets/body_echo.md`, `edge-unruled-whitespace` `snippets/clinic_line.md` and `edge-unset-object`
+`snippets/intake_line.md` (whose snapshot test's `note` hash follows); no vendored package has the shape and none gets
+an A10-094. A10-079 says *"when a source did not run (…)"* (ruling 3), in `composer-sources` and `edge-no-branch`. No
+migrated body holds a `\` the migration wrote: no fixture has a single line ending inside a paragraph at a site.
+
 ## `hand-edits/`
 
 `hand-edits/<package>/` holds the edits an operator makes after the migration (part 10 §§ 1.4, 1.5): edits and a
@@ -385,6 +393,13 @@ notices (so an edited package's report still lists them), `notices` every other 
 with more than one deliverable, then the worst-case note when it is said; `texts` one entry per compared text, with
 `site`, `oldHash`, `newHash`, `equal`, `expected` and `explanation` (`null` unless expected). The report is never a
 gate: no test asserts how many texts differ. `example-macros` and `example-macros-warnings` have no report.
+
+Area 14's rules moved three reports' counts (explained / partly explained / unexplained), and raised no unexplained or
+partly explained count: `composer-macros` 38/0/0 → 42/0/0 (each scenario's `echoes`, by `block-read-own-line`),
+`edge-unset-object` 2/0/0 → 3/0/0 (`intake-unset`'s `note`, equal before, now differs by the blank lines alone),
+and `composer-sources` 80/1/0 → 81/0/0 (`item-names-and-bounds`' `tally`, by `count-over-accepted-name`); the new
+`edge-source-no-branch` is 4/0/0. `edge-unruled-whitespace` stays 8/0/0, its `problems` now credited by
+`block-read-own-line` with its other rules.
 
 ## Regenerating area 10's goldens
 
