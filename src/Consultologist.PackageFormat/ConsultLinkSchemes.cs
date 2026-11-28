@@ -49,7 +49,9 @@ public sealed partial class ConsultLinkSchemes : IMarkdownExtension
 
     private static void Rewrite(MarkdownDocument document)
     {
-        foreach (var link in document.Descendants<LinkInline>().ToList())
+        // Innermost first: Descendants lists a node before its descendants, so the list is walked in reverse and a
+        // link's own children are rewritten before it is spliced out (an outer-first splice leaves the sibling chain wrong).
+        foreach (var link in Enumerable.Reverse(document.Descendants<LinkInline>().ToList()))
         {
             // A heading's reference (AutoIdentifiers) carries its URL as GetDynamicUrl, as the HTML renderer reads it.
             if (Writes(link.GetDynamicUrl?.Invoke() ?? link.Url))
