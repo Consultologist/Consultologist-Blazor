@@ -252,6 +252,33 @@ public class MarkdownLineEndingsTests
         Assert.Equal((two, "", "{{ profile.closing }} {{ profile.signature }}"), Separated(two));
     }
 
+    [Theory]
+    [InlineData("| Plan | Note |\n|---|---|\n| Plan | {{ profile.signature }} |\n")]
+    [InlineData("- Seen at the clinic\n  with note: {{ profile.signature }}\n- second\n")]
+    [InlineData("1. First\n\n   Detail: {{ profile.signature }}\n\n2. Second\n")]
+    [InlineData("- item\n{{ profile.signature }}\n")]
+    [InlineData("> Seen at the clinic\nwith note: {{ profile.signature }}\n")]
+    public void WithBlockReadsSeparated_LeavesALineInsideAContainer(string body)
+    {
+        // #1543 (the final review, finding 1): the read's line lies in a table, a list item or a quote (the parse of the
+        // masked body places it there, whatever its line starts with): a blank line would end the table, move the value
+        // out of the item or split the list. Nothing on the line is separated, no blank line is written beside it, and the
+        // read is marked.
+        Assert.Equal((body, "", "{{ profile.signature }}"), Separated(body));
+    }
+
+    [Fact]
+    public void WithBlockReadsSeparated_SeparatesTopLevelTextBesideAContainer()
+    {
+        // A top-level paragraph after a list (a blank line between) is no container's: its read is separated.
+        Assert.Equal(
+            ("- item\n\nRegards, \n\n{{ profile.signature }}\n\n (dictated)\n", "{{ profile.signature }}", ""),
+            Separated("- item\n\nRegards, {{ profile.signature }} (dictated)\n"));
+        Assert.Equal(
+            ("- item\n\nSincerely,\n\n{{ profile.signature }}\n", "{{ profile.signature }}", ""),
+            Separated("- item\n\nSincerely,\n{{ profile.signature }}\n"));
+    }
+
     [Fact]
     public void WithBlockReadsSeparated_SeparatesOrdinaryText()
     {

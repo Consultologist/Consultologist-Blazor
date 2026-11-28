@@ -200,6 +200,29 @@ public class MigrateBlockReadsTests
     }
 
     [Theory]
+    [InlineData("| Plan | Note |\n|---|---|\n| Plan | {{ profile.signature }} |", "| Plan | Note |\n|---|---|\n| Plan | {{ profile.signature }} |", 3, "S05-066")]
+    [InlineData("- Seen at the clinic\n  with note: {{ profile.signature }}\n- second", "- Seen at the clinic\\\n  with note: {{ profile.signature }}\n- second", 2, "S05-066")]
+    [InlineData("1. First\n\n   Detail: {{ profile.signature }}\n\n2. Second", "1. First\n\n   Detail: {{ profile.signature }}\n\n2. Second", 3, "S05-066")]
+    [InlineData("- item\n{{ profile.signature }}", "- item\n{{ profile.signature }}", 2, "S05-065")]
+    public void AReadInsideAContainer_IsAHandEdit(string lines, string migrated, int line, string judged)
+    {
+        // #1543 (the final review, finding 1): the read's line lies in a table row or a list item (the parse places it
+        // there), so a blank line would end the table or move the value out of the item and split the list. Nothing on the
+        // read's line is separated and no blank line is written beside it (the list item's own single line ending is ruling
+        // 1's \, the hard-breaks pass's); the line is a hand edit (A10-094), and publish refuses it, or warns, until it is
+        // made.
+        var result = WithHouseStyle(lines);
+
+        Assert.Equal(Given(migrated), MigrateNodesTests.Md(result, HouseStyle).Body);
+        Assert.Empty(result.MovedReads);
+        Assert.Empty(result.SeparatedReads);
+        Assert.DoesNotContain(result.Notices, n => n.Contains("after a blank line", StringComparison.Ordinal));
+        var edit = Assert.Single(result.HandEdits, e => e.Contains(HouseStyle, StringComparison.Ordinal));
+        Assert.Equal(MigrationSentences.HandEdit(HouseStyle, "body", MigrationSentences.ReadBreaksItsBlock("profile.signature", line)), edit);
+        Assert.Contains(Judged(result, HouseStyle), r => r.Id == judged);
+    }
+
+    [Theory]
     [InlineData("Regards, {{ profile.signature }} (dictated)", "Regards, \n\n{{ profile.signature }}\n\n (dictated)")]
     [InlineData("Plan - see {{ profile.signature }}, then > below", "Plan - see \n\n{{ profile.signature }}\n\n, then > below")]
     [InlineData("-Seen {{ profile.signature }}   (dictated)", "-Seen \n\n{{ profile.signature }}\n\n   (dictated)")]
