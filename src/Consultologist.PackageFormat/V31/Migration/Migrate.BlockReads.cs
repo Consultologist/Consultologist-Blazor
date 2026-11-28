@@ -12,9 +12,11 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// line; and a line of text next to a line holding only a block read gets a blank line between them, never a <c>\</c>
 /// (<see cref="LineEndingKind.BesideABlockRead"/>). A blank line is right for every value, where <c>\</c> breaks only
 /// inside a paragraph and a value may start or end with any block. Where a blank line would break the read's line out of
-/// its Markdown block (the text before it starts a list item, a quote or a heading, <c>- Seen: {{ … }}</c>; the text after
-/// it would start one, or indented code), nothing on the line is moved and it is a hand edit (A10-094; the owner's item 4
-/// as the controller extended it in Task A5's review, for the owner). The sites are the
+/// its Markdown block (the line lies in a table, a list item, a quote, an alert, a footnote or a definition item, as the
+/// parse places it; the text before it starts a list item, a quote or a heading, <c>- Seen: {{ … }}</c>; the text after
+/// it would start one, or indented code), nothing on the line is moved, no blank line is written beside it, and it is a
+/// hand edit (A10-094; the owner's item 4 as the controller extended it in Task A5's review and in the final review,
+/// for the owner). The sites are the
 /// hard-breaks pass's, and the reads are found as publish finds them (<see cref="MarkdownLineEndings.BlockReadsBeside"/>,
 /// <see cref="MarkdownLineEndings.Find"/>, each tag's role publish's own, read from the 31 set written so far: every body
 /// the checker typed, a file refused before the line rules typing none), so a migrated package with no hand edit is

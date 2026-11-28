@@ -168,10 +168,15 @@ public static class MarkdownLineEndings
     /// finds text after it, two line endings directly after it and the tags that stay with it. Then each single line ending
     /// between a line of text and a line whose only reads are block reads (<see cref="LineEndingKind.BesideABlockRead"/>,
     /// either side) gets one more, so a blank line stands between them. A read on a line that a blank line would break out
-    /// of its Markdown block (<see cref="BreaksItsBlock"/>: the text before it starts a list item, a quote or a heading,
-    /// <c>- Seen: {{ r }}</c>; the text after it would start one on its new line, or indented code) is not moved, and
-    /// neither is anything else on that line: it is in <c>Marked</c> (#1543, the owner's item 4 as the controller extended
-    /// it in Task A5's review, for the owner). <c>Separated</c> is each block read with a blank line written
+    /// of its Markdown block is not moved, and neither is anything else on that line: it is in <c>Marked</c> (#1543, the
+    /// owner's item 4 as the controller extended it in Task A5's review, and the final review's finding 1, for the owner).
+    /// That is a line the parse of the masked body places inside a container other than the document's top level
+    /// (<see cref="InAContainer"/>: a table row, a list item, a quote, an alert, a footnote, a definition item), and, the
+    /// markers' test standing beside it (<see cref="BreaksItsBlock"/>), a line whose text before the read starts a list
+    /// item, a quote or a heading (<c>- Seen: {{ r }}</c>) or whose text after it would start one on its new line, or
+    /// indented code. A <see cref="LineEndingKind.BesideABlockRead"/> line ending inside a container's paragraph (a list
+    /// item's lazy line above the read's) gets no blank line either: the block reads on the read's line are marked, as
+    /// publish still warns there (S05-065). <c>Separated</c> is each block read with a blank line written
     /// beside it, in order; both lists hold the tags of <paramref name="body"/> as given. The line endings written are
     /// <c>\n</c> (the migration's bodies are normalised) but where one is doubled, which keeps its own. Written again, it
     /// writes nothing: a blank line already there is left.
@@ -190,8 +195,11 @@ public static class MarkdownLineEndings
             .Select(t => (Tag: t, Side: Beside(body, t, role, neighbours)))
             .Where(t => t.Side.Before || t.Side.After)
             .ToList();
-        // Nothing on a line that a blank line would break out of its block is moved, another read on it included.
-        var left = besides.Where(t => BreaksItsBlock(body, t.Side)).Select(t => LineStart(body, t.Tag.Start)).ToHashSet();
+        // Nothing on a line that a blank line would break out of its block is moved, another read on it included: a line
+        // the parse places inside a container (a table, a list item, a quote, ...), or whose markers say it would.
+        var parsed = Parsed(body);
+        var left = besides.Where(t => InAContainer(parsed, t.Tag.Start) == true || BreaksItsBlock(body, t.Side))
+            .Select(t => LineStart(body, t.Tag.Start)).ToHashSet();
         foreach (var (tag, beside) in besides)
         {
             if (left.Contains(LineStart(body, tag.Start)))
@@ -217,18 +225,81 @@ public static class MarkdownLineEndings
         TagRole Role(TemplateTag t) => index.TryGetValue(t.Start, out var i) && i < given.Count ? role(given[i]) : TagRole.Statement;
         var blankLines = new SortedDictionary<int, string>();
         var byStart = now.Concat(TemplateTags.Comments(moved)).GroupBy(t => t.Start).ToDictionary(g => g.Key, g => g.First());
+        var movedParsed = Parsed(moved);
         foreach (var hit in Find(moved, Role).Where(h => h.Kind == LineEndingKind.BesideABlockRead))
         {
-            blankLines[hit.At] = moved[hit.At] == '\r' && hit.At + 1 < moved.Length && moved[hit.At + 1] == '\n' ? "\r\n" : moved[hit.At].ToString();
             var next = NextLine(moved, hit.At);
             var line = OnlyTags(moved, byStart, LineStart(moved, hit.At), hit.At) is { } above && above.Any(t => Role(t) == TagRole.BlockRead) && !above.Any(t => Role(t) == TagRole.InlineRead)
                 ? above
                 : OnlyTags(moved, byStart, next, LineEnd(moved, next)) ?? [];
-            foreach (var read in line.Where(t => Role(t) == TagRole.BlockRead))
-                separated.Add(given[index[read.Start]]);
+            var reads = line.Where(t => Role(t) == TagRole.BlockRead).Select(t => given[index[t.Start]]).ToList();
+            // A blank line inside a container's paragraph (a list item's lazy line, a quote's) would end the container:
+            // none is written, and the read is marked, as publish still warns there (S05-065).
+            if (InAContainer(movedParsed, hit.At) == true)
+            {
+                marked.AddRange(reads);
+                continue;
+            }
+
+            blankLines[hit.At] = moved[hit.At] == '\r' && hit.At + 1 < moved.Length && moved[hit.At + 1] == '\n' ? "\r\n" : moved[hit.At].ToString();
+            foreach (var read in reads)
+                separated.Add(read);
         }
 
-        return (Written(moved, blankLines), separated.OrderBy(t => t.Start).ToList(), marked);
+        return (Written(moved, blankLines), separated.OrderBy(t => t.Start).ToList(), marked.Distinct().OrderBy(t => t.Start).ToList());
+    }
+
+    /// <summary>
+    /// <paramref name="body"/> parsed with <see cref="ConsultMarkdown.Pipeline31"/> after each tag and comment is masked
+    /// with <c>x</c> characters of its length, as <see cref="Find"/> reads it; none for a body whose tags do not close, or
+    /// that Markdig refuses to parse.
+    /// </summary>
+    private static MarkdownDocument? Parsed(string body)
+    {
+        var (scanned, unclosed) = TemplateTags.Scan(body);
+        if (unclosed is not null)
+            return null;
+        var masked = body.ToCharArray();
+        foreach (var tag in scanned.Concat(TemplateTags.Comments(body)))
+            Array.Fill(masked, 'x', tag.Start, tag.End - tag.Start);
+        try
+        {
+            return Markdown.Parse(new string(masked), ConsultMarkdown.Pipeline31);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// #1543 (the final review, finding 1): whether the offset <paramref name="at"/> of the parsed body lies inside a
+    /// container other than the document's top level: a table, a list item, a quote, an alert, a footnote, a definition
+    /// item (any <see cref="ContainerBlock"/> but the <see cref="MarkdownDocument"/>) between it and the document. A blank
+    /// line written there would end that container (a table at that row, a list item before its value) or split it. None
+    /// when the parse does not place the offset in any block (the caller then has only the block markers to go by).
+    /// </summary>
+    private static bool? InAContainer(MarkdownDocument? document, int at)
+    {
+        if (document is null)
+            return null;
+        Block? deepest = null;
+        foreach (var block in document.Descendants<Block>())
+        {
+            // Pre-order: siblings do not overlap, so the last block whose span holds the offset is the deepest.
+            if (block.Span.Start <= at && at <= block.Span.End)
+                deepest = block;
+        }
+
+        if (deepest is null)
+            return null;
+        for (Block? block = deepest; block is not null and not MarkdownDocument; block = block.Parent)
+        {
+            if (block is ContainerBlock)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary><paramref name="body"/> with each of <paramref name="writes"/> inserted at its offset.</summary>
@@ -249,8 +320,9 @@ public static class MarkdownLineEndings
     }
 
     /// <summary>
-    /// #1543 (the owner's item 4, as the controller extended it in Task A5's review, for the owner): whether separating the
-    /// read <paramref name="beside"/> describes would change the block structure of its line. Either the text before it,
+    /// #1543 (the owner's item 4, as the controller extended it in Task A5's review, for the owner): by the block markers
+    /// alone, beside <see cref="InAContainer"/>'s parse (and all there is when the parse does not place the line), whether
+    /// separating the read <paramref name="beside"/> describes would change the block structure of its line. Either the text before it,
     /// trimmed at its start, starts with a Markdown block marker (<see cref="StartsABlock"/>), whether or not more text
     /// follows the marker (<c>- Seen: {{ r }}</c>, <c>&gt; {{ r }}</c>): a blank line would move the read out of the list
     /// item, the quote or the heading. Or the text after it would itself start a block on its new line: after its leading

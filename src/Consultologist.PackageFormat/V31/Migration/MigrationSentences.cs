@@ -520,7 +520,8 @@ internal static class MigrationSentences
     /// A10-094 (#1543, ruling 2, D7, as the owner amended it on 2026-11-27, item 4, as the controller extended it in Task
     /// A5's review, for the owner): a reason: the <c>markdown_block</c> read <paramref name="read"/> at line
     /// <paramref name="line"/> of the body stands in a line that a blank line would break out of its Markdown block (the
-    /// text before it starts a list item, a quote or a heading; the text after it would start one, or indented code), so the
+    /// line lies in a table, a list item, a quote, an alert, a footnote or a definition item; the text before it starts a
+    /// list item, a quote or a heading; the text after it would start one, or indented code), so the
     /// migration leaves the line as 30 wrote it. S10-002 gives it.
     /// </summary>
     public static string ReadBreaksItsBlock(string read, int line) =>
