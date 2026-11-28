@@ -552,9 +552,11 @@ public class MigratePackageTests
     }
 
     [Fact]
-    public async Task TheNotice_IsSaidWhenThePackageIsNotMigrated_ButNotWhenItsPackageCannotBeRead()
+    public async Task TheNotice_IsSaidForEveryAnswer_ThePinsOtherPackageAndAnUnreadablePackageToo()
     {
-        // it is about the account, not the package: a package left at 30 is told it too
+        // it is about the account, not the package (#1543, the final review, finding 3): the account is read before the pin
+        // and the package, so a package left at 30, a pin that names another package (A11-016) and a package that cannot
+        // be read (A11-007) are each told it
         var rig = new Rig();
         rig.Profile(signature: ThreeLines);
 
@@ -563,14 +565,21 @@ public class MigratePackageTests
         Assert.StartsWith(MigratePackage.NotMigrated, (string)refused["outcome"]!, StringComparison.Ordinal);
         Assert.Single(Strings(refused["accountNotices"]));
 
-        // the engine failing before it reads the account: no notice
         rig.Sources.ReadSourceAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
             .Returns<WorkflowPackageSource>(_ => throw new InvalidOperationException());
 
         var failed = await rig.RunAsync(Request());
 
         Assert.Equal(MigratePackage.NotMigrated + PackagePublishSentences.EngineFailed().Sentence, (string?)failed["outcome"]);
-        Assert.False(failed.ContainsKey("accountNotices"));
+        Assert.Equal("accountNotices", failed.Last().Key);
+        Assert.StartsWith("Your signature has 3 lines.", Assert.Single(Strings(failed["accountNotices"])), StringComparison.Ordinal);
+
+        rig.Pins.ResolvePinAsync(OwnerId, Arg.Any<CancellationToken>()).Returns(new WorkflowPackageRef("acct-0123456789ab-other", "v2026.12.1"));
+
+        var other = await rig.RunAsync(Request());
+
+        Assert.Equal(MigratePackage.NotMigrated + PackagePublishSentences.NotTheActivePackage(Name), (string?)other["outcome"]);
+        Assert.StartsWith("Your signature has 3 lines.", Assert.Single(Strings(other["accountNotices"])), StringComparison.Ordinal);
         rig.AssertNothingWritten();
     }
 
