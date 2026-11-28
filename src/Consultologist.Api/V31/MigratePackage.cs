@@ -109,11 +109,12 @@ public sealed record AccountPackageBelow31(string Owner, string Name, string Ver
 /// at 31 already among them; a hand edit left, S10-002, which is every hand edit whose file is not among the edits given,
 /// edited or deleted; a publish refusal, A11-001 among them) is
 /// <c>not migrated: &lt;first sentence&gt;</c> and nothing is written: its 30 version and its pin are as they were
-/// (comment 8). #1543 (ruling 2's owners' notice, D9): once the package is read, the account's profile is read as a 31
-/// start reads it (the chosen signature block, the closing), and each that has a single line ending 31 would join
-/// (<see cref="MarkdownLineEndings.Find"/>) is told with its count of lines (A11-018, A11-019) as <c>accountNotices</c>,
-/// whatever the package's outcome, a dry run's too; the member is last, and absent when there is none (or when the engine
-/// failed before the account was read). The answer carries ids, versions, sentences, counts, the publish report and the
+/// (comment 8). #1543 (ruling 2's owners' notice, D9; the final review, finding 3): first, before the pin and the package
+/// are read, the account's profile is read as a 31 start reads it (the chosen signature block, the closing), and each that
+/// has a single line ending 31 would join (<see cref="MarkdownLineEndings.Find"/>) is told with its count of lines
+/// (A11-018, A11-019) as <c>accountNotices</c>, whatever the package's outcome (A11-016 and A11-007 included), a dry run's
+/// too; the member is last, and absent when there is none. It reaches only the owners the bulk publish visits: those
+/// with an active account package below 31 (<see cref="ListAsync"/>); an account pinned to a public package is not visited. The answer carries ids, versions, sentences, counts, the publish report and the
 /// choices only: no input, model or profile text. A failure reading the pin, the stored package, the type registry or the
 /// migration itself is answered (A11-007, logged by its type); a failure of the account settings (reading the profile), of
 /// the account store or of the registry's storage while publishing is not
@@ -167,6 +168,10 @@ public sealed class MigratePackage(
         ArgumentNullException.ThrowIfNull(request);
         var answer = new Answer(request.Owner, request.Name);
 
+        // the account's own notices: about the owner, not the package, so read first and said whatever the package's
+        // outcome (a pin that names another package and a package that cannot be read included)
+        answer.AccountNotices = await AccountNoticesAsync(request.Owner, ct);
+
         // the package the account's pin names, as stored
         WorkflowPackageSource source;
         try
@@ -183,9 +188,6 @@ public sealed class MigratePackage(
         }
 
         answer.OldVersion = Split(source.Ref).Version;
-
-        // the account's own notices: about the owner, not the package, so said whatever the package's outcome
-        answer.AccountNotices = await AccountNoticesAsync(request.Owner, ct);
 
         // the choices: the package's options.json, or the defaults (said)
         TypeRegistry types;
