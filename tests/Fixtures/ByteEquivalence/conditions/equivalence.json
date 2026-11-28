@@ -125,6 +125,15 @@
       "listed": []
     },
     {
+      "id": "edge-source-no-branch.letter_case.case",
+      "kind": "case",
+      "converted": true,
+      "noticeIds": [],
+      "cases": 2,
+      "agreed": 2,
+      "listed": []
+    },
+    {
       "id": "example-classifier-scope.plan.if",
       "kind": "condition",
       "converted": true,

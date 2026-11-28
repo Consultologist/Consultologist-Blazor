@@ -219,6 +219,19 @@ internal static partial class RefusalPackages
             Tone(),
             Tone().Edit(Plan, TonePlaced, TonePlaced + " Thank you."));
 
+        yield return new RefusalCase("S05-066",
+            "A markdown_block read stands alone on its line (chapter 5 § 5.2.6; #1543, ruling 2). The note, a markdown_block, ends "
+            + "with Sincerely, and the profile's closing after a blank line. Invalid: the closing on the line of Sincerely,. Valid: "
+            + "on its own line, after a blank line.",
+            Closed(),
+            Closed().Edit(Note, ClosingLines, "Sincerely, " + ClosingRead + "\n"));
+
+        yield return new RefusalCase("S05-067",
+            "Nothing follows a markdown_block read on its line (chapter 5 § 5.2.6; #1543, ruling 2). The note, a markdown_block, ends "
+            + "with Sincerely, and the profile's closing after a blank line. Invalid: text after the closing on its line. Valid: alone.",
+            Closed(),
+            Closed().Edit(Note, ClosingRead + "\n", ClosingRead + " (signed)\n"));
+
         yield return new RefusalCase("A07-009",
             "A unit is placed at the top level of its template; its own if decides it (chapter 5 § 5.2.6; this implementation's "
             + "sentence). The note places the snippet tone. Invalid: inside an if on the plan's state. Valid: at the top level.",
@@ -551,6 +564,15 @@ internal static partial class RefusalPackages
             .With("deliverables/consult.md", Md(SourceFixture.Deliverable("Consult", Plain, "null", "hold"),
                 "{{ for part in node.sections.items }}{{ if part.state == \"completed\" }}{{ part.value }}\n"
                 + "{{ else if part.state == \"skipped\" }}(skipped)\n{{ else }}(not run)\n{{ end }}{{ end }}"));
+
+    private const string ClosingRead = "{{ profile.closing }}";
+
+    private const string ClosingLines = "Sincerely,\n\n" + ClosingRead + "\n";
+
+    /// <summary>The note as a <c>markdown_block</c>, ending with <c>Sincerely,</c>, a blank line and the profile's closing on its own line.</summary>
+    private static Dictionary<string, byte[]> Closed() =>
+        Minimal().With(Note, Md(SourceFixture.Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"),
+            "{{ node.plan.content }}\n\n" + ClosingLines));
 
     /// <summary>The snippet <c>tone</c>, which the plan's prompt places as a block.</summary>
     private static Dictionary<string, byte[]> Tone() =>

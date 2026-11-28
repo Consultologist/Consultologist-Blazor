@@ -32,12 +32,13 @@ public class EdgeCasePackagesTests
         ["edge-items-not-run"] = "third-problem-not-run",
         ["edge-missing-marker"] = "reply-leaves-macro-out",
         ["edge-no-branch"] = "plan-left-out",
+        ["edge-source-no-branch"] = "no-branch",
         ["edge-unruled-whitespace"] = "default",
         ["edge-unset-object"] = "intake-unset",
     };
 
-    /// <summary>The five whose migrated package publishes with its pinned test: the other two pin a reply 31 refuses (D6).</summary>
-    private static readonly string[] Publishing = ["edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
+    /// <summary>The six whose migrated package publishes with its pinned test: the other two pin a reply 31 refuses (D6).</summary>
+    private static readonly string[] Publishing = ["edge-items-not-run", "edge-missing-marker", "edge-no-branch", "edge-source-no-branch", "edge-unruled-whitespace", "edge-unset-object"];
 
     /// <summary>The folder of the pinned tests, beside <c>scenarios/</c> and <c>captures/</c>.</summary>
     private const string TestsFolder = "edge-tests";
@@ -144,15 +145,18 @@ public class EdgeCasePackagesTests
     [Theory]
     [InlineData("edge-items-not-run")]
     [InlineData("edge-no-branch")]
+    [InlineData("edge-source-no-branch")]
     [InlineData("edge-unset-object")]
     public async Task TheMigratedPackage_IsByteForByte30s(string package)
     {
-        // The three Q3 to Q5 cases: the migration's if, the loop's .content and the object guard give 30's bytes, every text
+        // The three Q3 to Q5 cases and #1543's ruling 3 (edge-source-no-branch): the migration's if, the loop's .content and
+        // the object guard give 30's bytes, every text
         // equal but edge-items-not-run's template loop, Q4's difference, expected as the owner ruled (#1508, 2026-11-26,
         // item 4: loop-item-not-run), and the texts of the node that strips the problem loop's items, 31's alone (#1510,
-        // loop-item-strip-node).
+        // loop-item-strip-node). #1543 (ruling 2, D7, as amended on 2026-11-27): edge-unset-object's intake line is
+        // separated by a blank line from "Referred for: " and from the text after it, credited to block-read-own-line alone.
         Assert.All((await EquivalenceFixture.Report(package)).Texts, t => Assert.True(
-            t.Equal || (t.Expected && (t.Rules.Contains("loop-item-not-run") || t.Rules.SequenceEqual(["loop-item-strip-node"]))), t.Site));
+            t.Equal || (t.Expected && (t.Rules.Contains("loop-item-not-run") || t.Rules.SequenceEqual(["loop-item-strip-node"]) || t.Rules.SequenceEqual(["block-read-own-line"]))), t.Site));
     }
 
     // ---- edge-missing-marker -------------------------------------------------------------------------------------
@@ -207,7 +211,7 @@ public class EdgeCasePackagesTests
     {
         // R15 (Q3): the migration writes plan an if on its source flow having run (A10-079), so it is skipped as at 30.
         var migrated = EquivalenceFixture.Migrated("edge-no-branch");
-        Assert.Contains("deliverables/plan.md, if: written to skip the deliverable unless node.plan_gate ran, as 30 skipped a deliverable none of whose sources ran.", migrated.Notices);
+        Assert.Contains("deliverables/plan.md, if: written to skip the deliverable when a source did not run (node.plan_gate), as 30 skipped it.", migrated.Notices);
 
         // The new package, written without it: published, with A11-010 on the deliverable.
         var files = Upload(Edged("edge-no-branch"));
@@ -223,6 +227,37 @@ public class EdgeCasePackagesTests
         Assert.Equal(new TestMismatch("decisions", "deliverable.plan/if:self", "false", "not run"), outcome.Report.Tests.Single(t => t.Id == "edge").FirstMismatch);
         var plan = (await StrictRun(files)).Deliverables.Single(d => d.Key == "deliverable.plan");
         Assert.Equal((DeliverableState.Released, ""), (plan.State, plan.Text));
+    }
+
+    // ---- edge-source-no-branch -----------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ASourceThatTookNoBranch_SkipsTheDeliverable_As30Did()
+    {
+        // #1543 (ruling 3, D11): note reads summary, which always runs, and the case letter_case. 30 skipped note when the
+        // case took no branch, though summary had a source to give; the migration's if (letter_case's state) skips it at 31.
+        const string package = "edge-source-no-branch";
+        var (capture, run, texts) = await EquivalenceFixture.Compared(package, "no-branch");
+        var note30 = capture["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "note");
+        Assert.Equal(("skipped", "source node.letter_case took no branch"), ((string)note30["state"]!, (string?)note30["reason"]));
+        Assert.Equal(DeliverableState.Skipped, run.Deliverables.Single(d => d.Key == "deliverable.note").State);
+        Assert.DoesNotContain(texts, t => t.Site == $"{package}/no-branch#deliverables/deliverable.note");
+
+        // The branch taken: both compose note, and the texts are equal.
+        var (taken30, taken, takenTexts) = await EquivalenceFixture.Compared(package, "branch-taken");
+        var composed = (string)taken30["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "note")["text"]!;
+        var note31 = taken.Deliverables.Single(d => d.Key == "deliverable.note");
+        Assert.Equal((DeliverableState.Released, composed), (note31.State, note31.Text));
+        Assert.True(takenTexts.Single(t => t.Site == $"{package}/branch-taken#deliverables/deliverable.note").Equal);
+
+        // Without the migration's if, 31 releases note from summary alone where 30 skipped it: the pinned test fails.
+        var files = Upload(Edged(package));
+        Edit(files, "deliverables/note.md", "\"if\":{\"===\":[{\"var\":\"node.letter_case.state\"},\"completed\"]}", "\"if\":null");
+        var note = (await StrictRun(files)).Deliverables.Single(d => d.Key == "deliverable.note");
+        Assert.Equal(DeliverableState.Released, note.State);
+        var outcome = await PackagePublish.CheckAsync(files, Options());
+        Assert.Equal(new TestMismatch("decisions", "deliverable.note/if:self", "false", "not run"), outcome.Report.Tests.Single(t => t.Id == "edge").FirstMismatch);
+        Assert.All(outcome.Report.Refusals, r => Assert.Equal("S07-007", r.Id));
     }
 
     // ---- edge-items-not-run --------------------------------------------------------------------------------------
@@ -277,7 +312,9 @@ public class EdgeCasePackagesTests
 
         Assert.Equal(At30("letter").Replace("three months.\n\n", "three months.\n", StringComparison.Ordinal), At31("deliverable.letter"));
         Assert.StartsWith("Seen at:\n\n", At30("problems"), StringComparison.Ordinal);
-        Assert.StartsWith("Seen at: \n\n", At31("deliverable.problems"), StringComparison.Ordinal);
+        // #1543 (ruling 2, D7, as the owner amended it on 2026-11-27): the read is separated from "Seen at: " by a blank
+        // line at 31; the clinic is unset, so the blank lines meet, and no \ is written.
+        Assert.StartsWith("Seen at: \n\n\n\n## Problem list 1", At31("deliverable.problems"), StringComparison.Ordinal);
         Assert.Equal(["chosen-macro-final-line-ending"], texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.letter", StringComparison.Ordinal)).Rules);
 
         // problem_close, placed after each paragraph by 30's engine, ends its body in more white space than one line ending:
@@ -289,7 +326,7 @@ public class EdgeCasePackagesTests
         Assert.Equal((false, true, false), (letter.Equal, letter.Expected, letter.Unexplained));
         Assert.Equal(["before-after-macro-marker", "macro-choice-classifier"], letter.Rules);
         var problems = texts.Single(t => t.Site.EndsWith("#deliverables/deliverable.problems", StringComparison.Ordinal));
-        Assert.Equal(["before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
+        Assert.Equal(["block-read-own-line", "before-after-macro-marker", "empty-read-trailing-space"], problems.Rules);
         Assert.True(problems.Expected);
     }
 

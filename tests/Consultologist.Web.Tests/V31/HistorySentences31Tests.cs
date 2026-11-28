@@ -16,6 +16,13 @@ public class HistorySentences31Tests
     }
 
     [Fact]
+    public void UsedInARefusedDeliverable_NamesTheIds()
+    {
+        Assert.Equal("Used in a refused deliverable: note", HistorySentences31.UsedInARefusedDeliverable("note"));
+        Assert.Equal("Used in a refused deliverable: a, b", HistorySentences31.UsedInARefusedDeliverable("a, b"));
+    }
+
+    [Fact]
     public void Blocked_SaysTheLabelAndTheStoredReasonWithoutItsPrefix()
     {
         Assert.Equal(

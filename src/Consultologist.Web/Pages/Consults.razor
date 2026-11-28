@@ -21,6 +21,7 @@
 @inject ILogger<Consults> Logger
 @inject IWorkflowEndpointService WorkflowService
 @inject ConsultJobSession JobSession
+@inject TimeProvider Clock
 @inject IAccountEndpointService AccountService
 @attribute [Authorize]
 @implements IAsyncDisposable
@@ -1913,7 +1914,7 @@
   // ticker drives it — SSE renders are event-driven and can be minutes apart.
   private DateTimeOffset? runStartedAt;
   private CancellationTokenSource? elapsedTicker;
-  private TimeSpan RunElapsed => runStartedAt is { } start ? DateTimeOffset.UtcNow - start : TimeSpan.Zero;
+  private TimeSpan RunElapsed => runStartedAt is { } start ? Clock.GetUtcNow() - start : TimeSpan.Zero;
 
   // #1332: a re-attached job the server still calls Scheduled. It waits on a
   // timer, so it is not generating: no elapsed readout, no node running. The
@@ -5963,7 +5964,7 @@
   // readout counts up smoothly; the loop stops itself when the run ends.
   private void BeginElapsedReadout(DateTimeOffset? startedAt = null)
   {
-    runStartedAt = startedAt ?? DateTimeOffset.UtcNow;
+    runStartedAt = startedAt ?? Clock.GetUtcNow();
     elapsedTicker?.Cancel();
     elapsedTicker?.Dispose();
     elapsedTicker = new CancellationTokenSource();
@@ -6035,7 +6036,7 @@
   {
     try
     {
-      using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+      using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), Clock);
       while (isAiRequestLoading && await timer.WaitForNextTickAsync(token))
       {
         await InvokeAsync(StateHasChanged);

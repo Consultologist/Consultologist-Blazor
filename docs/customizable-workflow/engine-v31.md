@@ -193,7 +193,14 @@ the plan (`ConsultGenerationJobStarter.DeclaredInput31`): each input's id, wheth
 and whether its channel is `form`.
 
 - **`InputRefs`**, an earlier run's deliverable: the run must be this account's, completed, still holding its text, and
-  have the deliverable. Its text fills the input: a text input takes it as its text, an array of text as an element. A
+  have the deliverable. The earlier run may be a 5–30 job, whose deliverable is its `AssembledDocuments` entry, or a 31 job
+  (record storage 12; #1543, ruling 9, D17), whose deliverable is read from its record, only after the account and
+  completion checks: the row `deliverable.<resultId>` must be there (else *"…which has no deliverable '<id>'."*) and its
+  `state` `released` (else *"Input '<id>' refers to run <run>, whose deliverable '<result>' was not released."*, outcome
+  `InputRefNotFound`; a blocked deliverable is refused, not delivered, so its text is never read); the text is the row's
+  retained `content`, taken only when it hashes to the row's `composedHash` as the record's rows route offers it
+  (`RecordRoutes.OfferedText`), and a text dropped, missing or not matching is today's text-deleted refusal. Both starts,
+  5–30 and 31, read it so. Its text fills the input: a text input takes it as its text, an array of text as an element. A
   reference standing alone in an array of text is a list of one. Beside typed rows or documents in an array of text, each
   element takes its request `Position` among them, as at 30 (#1144); without positions the order is typed rows, then
   documents, then earlier runs.
@@ -840,7 +847,8 @@ admits 31 in production: the admission lists are untouched.*
   Only the latest ask counts: a newer ask, or a package switch (`ResetStartChecks31`), makes an older one stale, and a stale
   ask writes neither the signature blocks nor the pick, and starts nothing.
 - **References at a start.** `ConsultGenerationJobStarter.ExtractFor31Async` (private) reads `InputRefs`, `InputFormRefs` and `InputFormFiles` (above, "Inputs
-  sent by reference"). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
+  sent by reference"); `ResolveInputRefsAsync` reads a 31 source's deliverable through `IRecordRowStore` and
+  `IRecordBlobStore` (`RecordReads`, #1543). An element of an earlier run's deliverable is recorded with origin `previous-run` and its input's id is in
   the held inputs document's `modelDerived` member (written by `V31JobStarter`), read into `RunInputs.ModelDerivedInputs` by `ConsultGenerationOrchestratorV31`. The start also writes the lineage
   links (`IConsultGenerationLinkStore`).
 - **Rerun.** `ConsultGenerationJobs/{jobId}/Rerun` of a storage-12 job rebuilds its request from the held inputs
@@ -1024,13 +1032,25 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
 
 **What it does,** in order; the first step that cannot go on answers `not migrated: <its sentence>`:
 
+0. **The account** (#1543, ruling 2, D9; the final review): read first, before the pin, so every answer for an owner
+   whose account the route could read carries its notices (below, under step 3), A11-016's and A11-007's included; a
+   fault of the account settings is a 500, as before.
 1. **The package the account's pin names**, as stored (`IWorkflowPackageSources`). A name that is not an account
    package, or that the pin does not name: A11-016. A stored package that cannot be read: A11-007 (the fault logged by
    its type).
 2. **The choices:** `options` read with `Migration31Options.FromJson` (A10-070 to A10-072, A10-082), or the defaults,
    said in the answer's `defaults` (A10-083).
 3. **The migration** (`WorkflowPackageMigration30To31.Migrate`, with the 24 → 25 rung's contract resolver): a refusal is
-   its first sentence, A10-015 for a package at 31 already (a rerun after a publish). **A hand edit is left** unless the
+   its first sentence, A10-015 for a package at 31 already (a rerun after a publish).
+   **The account's notices** (#1543, ruling 2, D9; read at step 0): the account's settings are read as a 31
+   start reads them (`profile.signatures` and its chosen block, `profile.closing`), and the chosen block's text and the
+   closing are each judged by `MarkdownLineEndings.Find` (a profile text has no template tags: any tag is read as an
+   inline read). One with a single line ending 31 would join is told with its count of lines that are not blank:
+   A11-018 for the signature, A11-019 for the closing (`PackagePublishSentences.SignatureHasLines`, `ClosingHasLines`);
+   a text whose lines end with `\` or are separated by a blank line is not told. These are about the owner, not the
+   package, so every outcome carries them, a dry run's and a `not migrated` one's too, A11-016 and A11-007 among them.
+   They reach only the owners the script visits, those with an active account package below 31; an account pinned to a
+   public package is not visited (for the owner). **A hand edit is left** unless the
    file its notice names (`Migration31Result.HandEditFiles`, one per notice) is among `handEdits`' paths, edited or null:
    any left is its first S10-002 notice, every left one in `handEditsLeft`. An operator who answers a notice in another
    file still sends the named file, unchanged if need be, as the acknowledgement. The migration counts its package
@@ -1049,15 +1069,18 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
    runs once in memory (`V31PackagePublisher.CheckAsync`): no write, no pointer, no pin, no alert.
 
 A package that is not migrated has nothing written: its 30 version and its pin are as they were (comment 8 on #1508).
-A fault of the account store or the registry's storage is not answered as `not migrated`: it reaches the route as a 500.
-Before the stamp nothing is published; after it the version is stamped and the pointer or the pin may not have moved.
+A fault of the account store, the account settings or the registry's storage is not answered as `not migrated`: it reaches
+the route as a 500. Before the stamp nothing is published; after it the version is stamped and the pointer or the pin
+may not have moved.
 
 **The answer** (200): `{ "owner", "name", "oldVersion", "newVersion", "outcome", "handEditsLeft", "notices", "report",
-"options", "defaults" }`. `outcome` is `published`, `would publish` or `not migrated: <sentence>`; `newVersion` is the
+"options", "defaults", "accountNotices" }`, the last only when it has a sentence (an older engine's answer has none,
+and the script reads it so). `outcome` is `published`, `would publish` or `not migrated: <sentence>`; `newVersion` is the
 version published (or that would be), else null; `notices` the migration's notices that need no edit (A10-013, `flag`
 becoming `retry`, among them), as the migration report lists them; `report` the publish report (null when no publish
-ran); `options` the choices used, as `options.json` writes them; `defaults` A10-083 or null. No member carries input,
-model or profile text: ids, versions, sentences, hashes and the choices.
+ran); `options` the choices used, as `options.json` writes them; `defaults` A10-083 or null; `accountNotices` A11-018 and
+A11-019 as above. No member carries input, model or profile text: ids, versions, sentences, counts, hashes and the
+choices; the signature and the closing are read, never logged or answered.
 
 ## Sizing the deployment-wide limits (D10)
 

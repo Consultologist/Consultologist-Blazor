@@ -25,7 +25,8 @@ public sealed record BulkPublishArguments(string Folder, Uri Engine, bool Publis
 /// <see cref="Fault"/>, nothing sent), then sends each package (<c>POST Admin/MigratePackage</c>), one at a time, in the
 /// engine's order. After every row it writes <see cref="RecordFile"/> (one row per package: the engine's answer and the
 /// time) and <see cref="OwnersFile"/> (per owner: the packages published, each with the notices the owner must see; the
-/// packages not migrated, each with its reason, S10-005 and A11-015; the packages <c>unknown</c>, each with A11-017), each
+/// packages not migrated, each with its reason, S10-005 and A11-015; the packages <c>unknown</c>, each with A11-017; and,
+/// #1543, the account's own notices, A11-018 and A11-019, once), each
 /// through a temporary file moved over it, so an interruption loses at most the row of the package in flight. A package
 /// the engine does not answer for (a fault, a timeout, a lost answer) is recorded <c>unknown: &lt;fault&gt;</c> and stops
 /// the run: in a <c>--publish</c> run it may have been published. A rerun carries forward every row of the existing record
@@ -314,18 +315,27 @@ public static class BulkPublishScript
     /// a dry run, that would be) with the notices each owner must see (A10-013, <c>flag</c> becoming <c>retry</c>, among
     /// them), the packages not migrated, each with its reason (the refusal's sentence), S10-005 and A11-015, and the packages
     /// whose row is <c>unknown</c> (the engine did not answer for them, so a <c>--publish</c> run may have published them),
-    /// each with A11-017 for the operator, who settles it before the list is sent.
+    /// each with A11-017 for the operator, who settles it before the list is sent. #1543 (ruling 2, D9): then <c>account</c>,
+    /// the distinct sentences the engine said about the owner's account (A11-018, A11-019: a signature or a closing of several
+    /// lines) with any of its rows, in the order first said; absent when none. A row's <c>accountNotices</c> is read
+    /// tolerantly: an older engine's answer has none, and a member that is not an array of text names nothing.
     /// </summary>
     public static JsonObject Owners(JsonArray rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
-        var owners = new SortedDictionary<string, (JsonArray Published, JsonArray NotMigrated, JsonArray Unknown)>(StringComparer.Ordinal);
+        var owners = new SortedDictionary<string, (JsonArray Published, JsonArray NotMigrated, JsonArray Unknown, List<string> Account)>(StringComparer.Ordinal);
         foreach (var row in rows)
         {
             if (Text(row?["owner"]) is not { } owner || Text(row?["name"]) is not { } name || Text(row?["outcome"]) is not { } outcome)
                 continue;
             if (!owners.TryGetValue(owner, out var lists))
-                owners[owner] = lists = ([], [], []);
+                owners[owner] = lists = ([], [], [], []);
+            if (row!["accountNotices"] is JsonArray accountNotices)
+            {
+                foreach (var notice in accountNotices.Select(Text).OfType<string>())
+                    if (!lists.Account.Contains(notice, StringComparer.Ordinal))
+                        lists.Account.Add(notice);
+            }
 
             if (outcome.StartsWith(UnknownPrefix, StringComparison.Ordinal))
             {
@@ -357,8 +367,14 @@ public static class BulkPublishScript
         }
 
         var json = new JsonObject();
-        foreach (var (owner, (published, notMigrated, unknown)) in owners)
-            json[owner] = new JsonObject { ["published"] = published, ["notMigrated"] = notMigrated, ["unknown"] = unknown };
+        foreach (var (owner, (published, notMigrated, unknown, account)) in owners)
+        {
+            var lists = new JsonObject { ["published"] = published, ["notMigrated"] = notMigrated, ["unknown"] = unknown };
+            if (account.Count > 0)
+                lists["account"] = new JsonArray([.. account.Select(n => (JsonNode?)JsonValue.Create(n))]);
+            json[owner] = lists;
+        }
+
         return json;
     }
 

@@ -8,6 +8,7 @@ using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Harness;
 using Consultologist.PackageFormat.V31.Migration;
 using Consultologist.PackageFormat.V31.Publish;
+using Consultologist.PackageFormat.V31.Templates;
 using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api.V31;
@@ -108,14 +109,21 @@ public sealed record AccountPackageBelow31(string Owner, string Name, string Ver
 /// at 31 already among them; a hand edit left, S10-002, which is every hand edit whose file is not among the edits given,
 /// edited or deleted; a publish refusal, A11-001 among them) is
 /// <c>not migrated: &lt;first sentence&gt;</c> and nothing is written: its 30 version and its pin are as they were
-/// (comment 8). The answer carries ids, versions, sentences, the publish report and the choices only: no input, model or
-/// profile text. A failure reading the pin, the stored package, the type registry or the migration itself is answered
-/// (A11-007, logged by its type); a failure of the account store or of the registry's storage while publishing is not
+/// (comment 8). #1543 (ruling 2's owners' notice, D9; the final review, finding 3): first, before the pin and the package
+/// are read, the account's profile is read as a 31 start reads it (the chosen signature block, the closing), and each that
+/// has a single line ending 31 would join (<see cref="MarkdownLineEndings.Find"/>) is told with its count of lines
+/// (A11-018, A11-019) as <c>accountNotices</c>, whatever the package's outcome (A11-016 and A11-007 included), a dry run's
+/// too; the member is last, and absent when there is none. It reaches only the owners the bulk publish visits: those
+/// with an active account package below 31 (<see cref="ListAsync"/>); an account pinned to a public package is not visited. The answer carries ids, versions, sentences, counts, the publish report and the
+/// choices only: no input, model or profile text. A failure reading the pin, the stored package, the type registry or the
+/// migration itself is answered (A11-007, logged by its type); a failure of the account settings (reading the profile), of
+/// the account store or of the registry's storage while publishing is not
 /// caught here, and reaches the route as a 500: before the stamp nothing is published (an unstamped folder does not
 /// exist for any reader); after it the version is stamped, and the pointer or the pin may not have moved.
 /// </summary>
 public sealed class MigratePackage(
     IAccountStore accounts,
+    IAccountSettingsStore settings,
     IWorkflowPackagePinResolver pins,
     IWorkflowPackageSources sources,
     V31PackagePublisher publisher,
@@ -159,6 +167,10 @@ public sealed class MigratePackage(
     {
         ArgumentNullException.ThrowIfNull(request);
         var answer = new Answer(request.Owner, request.Name);
+
+        // the account's own notices: about the owner, not the package, so read first and said whatever the package's
+        // outcome (a pin that names another package and a package that cannot be read included)
+        answer.AccountNotices = await AccountNoticesAsync(request.Owner, ct);
 
         // the package the account's pin names, as stored
         WorkflowPackageSource source;
@@ -292,6 +304,35 @@ public sealed class MigratePackage(
     }
 
     /// <summary>
+    /// #1543 (D9): A11-018 for the account's chosen signature block and A11-019 for its closing, each when its stored text
+    /// has a single line ending that 31 would join (a text whose lines end with <c>\</c>, or are separated by a blank line,
+    /// has none), with the text's count of lines that are not blank. The texts are read as a 31 start reads them
+    /// (<see cref="V31StartChecks.Signature"/> with no block asked for: the chosen one) and are never kept, logged or answered.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> AccountNoticesAsync(string owner, CancellationToken ct)
+    {
+        var notices = new List<string>();
+        var blocks = SignatureBlocks.Parse((await settings.GetAsync(owner, AccountSettingKeys.ProfileSignatures, ct))?.Value);
+        if (SeveralLines(V31StartChecks.Signature(blocks, null).Block?.Text) is { } signature)
+            notices.Add(PackagePublishSentences.SignatureHasLines(signature));
+        if (SeveralLines((await settings.GetAsync(owner, AccountSettingKeys.ProfileClosing, ct))?.Value) is { } closing)
+            notices.Add(PackagePublishSentences.ClosingHasLines(closing));
+        return notices;
+    }
+
+    /// <summary>
+    /// The count of lines of <paramref name="text"/> that are not blank, when it has a line ending 31 would join (either kind
+    /// of <see cref="MarkdownLineEndings.Find"/>'s hits); otherwise null. A profile text is not a template: every tag in it,
+    /// if any, is read as an inline read, which is text.
+    /// </summary>
+    private static int? SeveralLines(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || MarkdownLineEndings.Find(text, _ => TagRole.InlineRead).Count == 0)
+            return null;
+        return text.Split('\n').Count(line => !string.IsNullOrWhiteSpace(line));
+    }
+
+    /// <summary>
     /// <paramref name="migrated"/> with <paramref name="edits"/> laid over it, as the fixtures' <c>hand-edits/</c> are: text
     /// replaces or adds its path (<c>manifest.json</c> the manifest), null removes it (a path the migration did not write
     /// is left absent).
@@ -323,7 +364,7 @@ public sealed class MigratePackage(
         return at < 0 ? (reference, "") : (reference[..at], reference[(at + 1)..]);
     }
 
-    /// <summary>The answer as it is built: every member present, in the order the route writes them.</summary>
+    /// <summary>The answer as it is built: every member present (but <c>accountNotices</c>, absent when empty), in the order the route writes them.</summary>
     private sealed class Answer(string owner, string name)
     {
         public string? OldVersion { get; set; }
@@ -333,21 +374,30 @@ public sealed class MigratePackage(
         public JsonNode? Report { get; set; }
         public JsonObject? Options { get; set; }
         public string? Defaults { get; set; }
+        public IReadOnlyList<string> AccountNotices { get; set; } = [];
 
         public JsonObject NotMigrated(string sentence) => As(MigratePackage.NotMigrated + sentence);
 
-        public JsonObject As(string outcome) => new()
+        public JsonObject As(string outcome)
         {
-            ["owner"] = owner,
-            ["name"] = name,
-            ["oldVersion"] = OldVersion,
-            ["newVersion"] = outcome is Published or WouldPublish ? NewVersion : null,
-            ["outcome"] = outcome,
-            ["handEditsLeft"] = new JsonArray([.. HandEditsLeft.Select(s => (JsonNode?)JsonValue.Create(s))]),
-            ["notices"] = new JsonArray([.. Notices.Select(s => (JsonNode?)JsonValue.Create(s))]),
-            ["report"] = Report?.DeepClone(),
-            ["options"] = Options?.DeepClone(),
-            ["defaults"] = Defaults,
-        };
+            var answer = new JsonObject
+            {
+                ["owner"] = owner,
+                ["name"] = name,
+                ["oldVersion"] = OldVersion,
+                ["newVersion"] = outcome is Published or WouldPublish ? NewVersion : null,
+                ["outcome"] = outcome,
+                ["handEditsLeft"] = new JsonArray([.. HandEditsLeft.Select(s => (JsonNode?)JsonValue.Create(s))]),
+                ["notices"] = new JsonArray([.. Notices.Select(s => (JsonNode?)JsonValue.Create(s))]),
+                ["report"] = Report?.DeepClone(),
+                ["options"] = Options?.DeepClone(),
+                ["defaults"] = Defaults,
+            };
+
+            // #1543 (D9): last and optional, so an answer without it reads as before (the script reads it tolerantly)
+            if (AccountNotices.Count > 0)
+                answer["accountNotices"] = new JsonArray([.. AccountNotices.Select(s => (JsonNode?)JsonValue.Create(s))]);
+            return answer;
+        }
     }
 }

@@ -51,44 +51,41 @@ internal static partial class Migrate
     }
 
     /// <summary>
-    /// #1508 (ruled by the owner, Q3 of 2026-11-26; R15): the deliverable's <c>if</c>. 30 skipped a deliverable none of
-    /// whose sources ran; at 31 it would be composed empty and released (A11-010 warns of it in a new package). So when
-    /// every source may not run (30's always-valued false for each, <see cref="Migrated.AlwaysValued30"/>: an <c>if</c> with no
-    /// <c>else</c>, a <c>case</c> with an empty branch; a leaf gated by deliverables' conditions runs whenever this one
-    /// applies, F-D4), the <c>if</c> says that one ran: for each source the term
-    /// <see cref="RanTerm"/> gives, the first the deliverable's <c>if</c> can read, by asking its typing
-    /// (<see cref="ConditionTyping.ReadsAtDeliverableIf"/> over the top-level scope):
+    /// #1508 (ruled by the owner, Q3 of 2026-11-26; R15) and #1543 (ruling 3, D11): the deliverable's <c>if</c>. 30 skipped a
+    /// deliverable when <b>any</b> of its sources was a top-level <c>if</c> or <c>case</c> that took no branch
+    /// (<c>DecideFireSet</c>, "source node.&lt;flow&gt; took no branch"); at 31 it would be composed from the others and
+    /// released. So each source that may not run (not 30's always-valued, <see cref="Migrated.AlwaysValued30"/>: an <c>if</c>
+    /// with no <c>else</c>, a <c>case</c> with an empty branch; a leaf gated by deliverables' conditions runs whenever this one
+    /// applies, F-D4) gets one term, the first <see cref="RanTerm"/> gives that the deliverable's <c>if</c> can read, by asking
+    /// its typing (<see cref="ConditionTyping.ReadsAtDeliverableIf"/> over the top-level scope):
     /// <c>{ "===": [ { "var": "&lt;source&gt;.state" }, "completed" ] }</c>, else R15's fallback
-    /// <c>{ "!==": [ { "var": "&lt;source&gt;.value" }, null ] }</c> (#1508, 2026-11-26, item 8), joined by <c>or</c>, after
-    /// 30's own <paramref name="rule"/> by <c>and</c> (A10-079 says it). A source the migration does not read (no
+    /// <c>{ "!==": [ { "var": "&lt;source&gt;.value" }, null ] }</c> (#1508, 2026-11-26, item 8). The terms are joined by
+    /// <c>and</c>, after 30's own <paramref name="rule"/> (one <c>and</c>: a rule that is an <c>and</c> gains the terms),
+    /// and A10-079 says it. A source that always runs adds no term and cancels no other's; nor does a <c>while</c>: 30
+    /// composed a while that ran no pass as empty text and released the deliverable, as 31 does, so a term would skip what 30
+    /// released (beside another source the while's blank-line separator stays, which no <c>if</c> can drop: the expected
+    /// difference <c>while-no-pass-separator</c>, part 10 §§ 1.2, 3.2). A deliverable none of whose sources may not run keeps
+    /// <paramref name="rule"/> and is said nothing. A source that may not run and that the migration does not read (no
     /// <see cref="Migrated.NodeReads"/> entry, or a read where neither term types at a deliverable's <c>if</c>, as a
-    /// <c>check.*</c> read would not) leaves whether the deliverable is empty unread, so then, unless another source always
-    /// runs, the <c>if</c> keeps <paramref name="rule"/> and is a hand edit (A10-086, item 8) naming the unread sources and
-    /// the others' term, so nothing is released empty without a notice. A deliverable with no sources, or one with a source
-    /// that always runs (or is a <c>while</c>), keeps <paramref name="rule"/> and is said nothing: it is never empty. A rule
-    /// the converter refused (30's text with its
-    /// hand edit) is kept too, since nothing is joined to a condition not yet written; where every source may not run it
-    /// gets a second hand edit on the same <c>if</c> naming the term to join to it by <c>and</c>, verbatim (A10-084, the
-    /// final review of Part F), so the condition the operator writes still skips the deliverable as 30 did. A <c>while</c> source counts as one that runs: 30
-    /// composed a while that ran no pass as empty text and released the deliverable, as 31 does, so an <c>if</c> would skip
-    /// what 30 released. Beside another source the while's blank-line separator stays, which no <c>if</c> can drop: the
-    /// expected difference <c>while-no-pass-separator</c> (the controller's ruling on #1508; part 10 §§ 1.2, 3.2).
+    /// <c>check.*</c> read would not) leaves its term unwritten, so the <c>if</c> keeps <paramref name="rule"/> and is a hand
+    /// edit (A10-086, item 8) naming the unread sources and the others' terms, so nothing 30 skipped is released without a
+    /// notice. A rule the converter refused (30's text with its hand edit) is kept too, since nothing is joined to a condition
+    /// not yet written: it gets a second hand edit on the same <c>if</c> naming the terms to join to it by <c>and</c>,
+    /// verbatim (A10-084, the final review of Part F), so the condition the operator writes still skips the deliverable as 30
+    /// did.
     /// </summary>
     private static JsonNode? WhenASourceRan(Migrated m, WorkflowDeliverableSpec deliverable, string file, JsonNode? rule)
     {
-        var sources = (deliverable.Sources ?? []).Where(s => s is not null).ToList();
-        if (sources.Count == 0)
-            return rule;
         var reads = new List<string>();
         var ran = new List<JsonNode>();
         var unread = new List<string>();
         var scope = m.Scope((string?)null);
-        foreach (var source in sources)
+        foreach (var source in (deliverable.Sources ?? []).Where(s => s is not null))
         {
             var id = source.StartsWith("node.", StringComparison.Ordinal) ? source["node.".Length..] : source;
-            var known = m.NodeReads.TryGetValue(id, out var read);
             if (m.AlwaysValued30.Contains(id) || m.Manifest30.Nodes?.FirstOrDefault(n => n.Id == id)?.While is not null)
-                return rule;
+                continue;
+            var known = m.NodeReads.TryGetValue(id, out var read);
             if (known && RanTerm(read!.Path, t => ConditionTyping.ReadsAtDeliverableIf(t, scope)) is { } one)
             {
                 reads.Add(read.Path);
@@ -100,8 +97,10 @@ internal static partial class Migrate
             }
         }
 
-        JsonNode? term = ran.Count switch { 0 => null, 1 => ran[0], _ => new JsonObject { ["or"] = new JsonArray([.. ran]) } };
-        if (unread.Count > 0 || term is null)
+        if (ran.Count == 0 && unread.Count == 0)
+            return rule;
+        JsonNode? term = ran.Count switch { 0 => null, 1 => ran[0].DeepClone(), _ => new JsonObject { ["and"] = new JsonArray([.. ran.Select(r => r.DeepClone())]) } };
+        if (unread.Count > 0)
         {
             m.HandEdit(file, "if", MigrationSentences.SourceRunNotRead(unread, term?.ToJsonString()));
             return rule;
@@ -109,20 +108,18 @@ internal static partial class Migrate
 
         if (rule is JsonValue)
         {
-            m.HandEdit(file, "if", MigrationSentences.JoinASourceRan(term.ToJsonString()));
+            m.HandEdit(file, "if", MigrationSentences.JoinASourceRan(term!.ToJsonString()));
             return rule;
         }
 
         m.Notice(MigrationSentences.SkippedUnlessASourceRan(file, reads));
         if (rule is null)
             return term;
-        if (rule is JsonObject { Count: 1 } both && both["and"] is JsonArray terms)
-        {
-            terms.Add(term);
-            return both;
-        }
-
-        return new JsonObject { ["and"] = new JsonArray(rule, term) };
+        List<JsonNode?> terms = rule is JsonObject { Count: 1 } both && both["and"] is JsonArray own
+            ? [.. own.Select(t => t?.DeepClone())]
+            : new List<JsonNode?> { rule.DeepClone() };
+        terms.AddRange(ran.Select(r => r.DeepClone()));
+        return new JsonObject { ["and"] = new JsonArray([.. terms]) };
     }
 
     /// <summary>

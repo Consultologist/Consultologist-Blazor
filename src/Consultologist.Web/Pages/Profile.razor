@@ -860,6 +860,7 @@
                                       maxlength="@SignatureBlocks.MaxTextLength"
                                       placeholder="The signature text, exactly as it should appear"
                                       aria-label="Signature text"></textarea>
+                            <p class="muted-text letter-details-hint signature-hint">End a line with \ or leave a blank line.</p>
                             <div class="action-row">
                                 <FluentButton Appearance="Appearance.Accent"
                                               Class="signature-save"
@@ -883,7 +884,7 @@
             </section>
 
             @* #1509 (Task 21): the Letter details a 31 package reads (credentials, organisation, closing line). *@
-            <Consultologist.Web.Shared.Profile.LetterDetailsCard />
+            <Consultologist.Web.Shared.Profile.LetterDetailsCard Signature="@SignatureBlocks.Chosen(signatureSet)?.Text" />
 
             @* #543: how a pushed form response becomes a consult — empty until
                chosen, the unset line saying what unset means (the #518 rule). *@

@@ -37,14 +37,19 @@ public static partial class SourceTemplates
         /// when it is not one path or was not typed): in a renderer's body any renderer is S05-033; elsewhere a renderer
         /// given arguments is S05-030, and every other renderer step is typed and recorded. Gives what the tag writes
         /// (#1505, part 06 § 6.4): the chain's final value as written and its format, which is <c>null</c> when it cannot
-        /// be said (an untyped head, a step refused here, a renderer's own body).
+        /// be said (an untyped head, a step refused here, a renderer step in a renderer's own body).
         /// </summary>
         private WrittenOutput Pipes(TemplateOutput output, TypedRead? head)
         {
             if (host.Site == TemplateSite.Renderer)
             {
                 RendererPipes(output.Pipes);
-                return new WrittenOutput(output, output.Path ?? output.Head, null, false);
+                // #1543 (ruling 2, D5): what a renderer's own output writes, for its tags' roles: the value read, through its
+                // built-in steps; nothing to say after a renderer step (refused here, S05-033).
+                var own = output.Path is null && output.HeadType is { } literal ? new JsonObject { ["type"] = literal } : head?.Format;
+                foreach (var pipe in output.Pipes)
+                    own = RendererOf(pipe) is null ? BuiltInResult(pipe.Name, own) : null;
+                return new WrittenOutput(output, output.Path ?? output.Head, own, false);
             }
 
             // The head as read: its path, else its literal or test as written (typed by its built-in type), else a

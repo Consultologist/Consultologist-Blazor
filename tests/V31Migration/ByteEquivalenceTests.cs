@@ -555,6 +555,105 @@ public class ByteEquivalenceTests
     }
 
     /// <summary>
+    /// #1543 (ruling 1): example-two-documents' SNOMED tool guidance, a Markdown snippet four prompts place, written line per
+    /// line, which 30 sent as written. The migration ends its line with <c>\</c>, so each prompt that places it differs from
+    /// 30's by that <c>\</c> alone and is expected, credited to <c>explicit-hard-break</c>; with a word of 30's also lost
+    /// (a capture whose prompt holds one 31's does not), it is unexplained.
+    /// </summary>
+    [Fact]
+    public async Task ABackslashAPromptReads_IsExplainedByTheHardBreakRule()
+    {
+        const string Package = "example-two-documents";
+        const string Scenario = "default";
+        const string Sentence = "never a sentence or passage. If a tool returns";
+        const string Lines = "never a sentence or passage.\nIf a tool returns";
+        var migrated = MigrationFixture.Overlay(
+            MigrateNodesTests.Migrated(Package, _ => { }, files => files["snippets/snomed_tool_guidance.md"] = files["snippets/snomed_tool_guidance.md"].Replace(Sentence, Lines, StringComparison.Ordinal)),
+            MigrationFixture.HandEditsOf(Package));
+        Assert.Equal(1, migrated.HardBreaks["snippets/snomed_tool_guidance.md"]);
+        var (refusals, compiled) = CompiledPackage.Publish(MigratedPackagesTests.Upload(migrated), V31Contract.PublishedTypes(), CompiledGoldenTests.Fixed);
+        Assert.True(compiled != null, string.Join("\n", refusals.Select(r => r.Sentence)));
+        var (plan, refusal) = RunPlan.Build(compiled!.Resolve, compiled.ResolveHash, compiled.LockHash, null);
+        Assert.True(plan != null, refusal?.Sentence);
+
+        JsonObject Capture(string lost)
+        {
+            var capture = EquivalenceFixture.Capture(Package, Scenario);
+            foreach (var row in capture["prompts"]!.AsArray().OfType<JsonObject>())
+            {
+                if ((string?)row["text"] is not { } text || !text.Contains(Sentence, StringComparison.Ordinal))
+                    continue;
+                row["text"] = text.Replace(Sentence, Lines, StringComparison.Ordinal).Replace("and retry.", "and retry" + lost + ".", StringComparison.Ordinal);
+                row["hash"] = CanonicalJson.HashText((string)row["text"]!);
+            }
+
+            return capture;
+        }
+
+        string[] placed = ["extract_patient_concepts", "identify_problem", "create_typical_trajectory", "create_patient_trajectory"];
+        var sites = placed.Select(p => $"{Package}/{Scenario}#prompts/node.{p}").ToList();
+        var asWritten = Capture("");
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(Package, Scenario), asWritten, migrated, plan!);
+        var run = await OfflineRun.RunAsync(plan!, request);
+        foreach (var key in placed)
+            Assert.Contains("never a sentence or passage.\\\nIf a tool returns", run.Prompts.Single(p => p.Key == "node." + key).Text, StringComparison.Ordinal);
+
+        var texts = Equivalence.Compare(Package, Scenario, asWritten, run, migrated, plan!, request);
+        foreach (var site in sites)
+        {
+            var text = texts.Single(t => t.Site == site);
+            Assert.True((text.Equal, text.Expected, text.Unexplained) == (false, true, false), $"{site}: equal {text.Equal}, expected {text.Expected}, rules {string.Join(",", text.Rules)}");
+            Assert.Equal(["explicit-hard-break"], text.Rules);
+        }
+
+        var lost = Equivalence.Compare(Package, Scenario, Capture(" once"), run, migrated, plan!, request);
+        Assert.All(sites, site => Assert.True(lost.Single(t => t.Site == site).Unexplained, site));
+    }
+
+    /// <summary>
+    /// #1543 (ruling 2, D7, D8, as the owner amended them on 2026-11-27): edge-unset-object's intake line reads a field of
+    /// the object input, a <c>markdown_block</c> at 31, with text on both sides; the migration separates it from both by a
+    /// blank line (<c>Referred for: </c>, a blank line, the read, a blank line, then the text after it). The letter (the
+    /// intake unset, so the read is empty and the blank lines meet) differs from 30's by those line endings alone, holds no
+    /// <c>\</c>, and is expected, credited to <c>block-read-own-line</c> alone; against the same run, a result that says it
+    /// separated no read leaves it unexplained, and so does a capture whose letter holds a word 31's does not.
+    /// </summary>
+    [Fact]
+    public async Task AReadTheMigrationSeparated_IsExplainedByItsRule()
+    {
+        const string Package = "edge-unset-object";
+        const string Scenario = "intake-unset";
+        const string Site = $"{Package}/{Scenario}#deliverables/deliverable.note";
+        var migrated = EquivalenceFixture.Migrated(Package);
+        Assert.Equal(1, migrated.MovedReads["snippets/intake_line.md"]);
+        var (capture, run, texts) = await EquivalenceFixture.Compared(Package, Scenario);
+        var letter = run.Deliverables.Single(d => d.Key == "deliverable.note").Text;
+        Assert.StartsWith("Referred for: \n\n\n\n (from the intake form).", letter, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\", letter, StringComparison.Ordinal);
+
+        var text = texts.Single(t => t.Site == Site);
+        Assert.True((text.Equal, text.Expected, text.Unexplained) == (false, true, false), $"{Site}: equal {text.Equal}, expected {text.Expected}, rules {string.Join(",", text.Rules)}");
+        Assert.Equal(["block-read-own-line"], text.Rules);
+        Assert.All(texts.Where(t => t.Site != Site), t => Assert.DoesNotContain("block-read-own-line", t.Rules));
+
+        var plan = EquivalenceFixture.Plan(Package);
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario(Package, Scenario), capture, migrated, plan);
+        var unsaid = Equivalence.Compare(Package, Scenario, capture, run, migrated with { MovedReads = new Dictionary<string, int>(StringComparer.Ordinal) }, plan, request);
+        Assert.True(unsaid.Single(t => t.Site == Site).Unexplained);
+
+        var lost = capture.DeepClone().AsObject();
+        foreach (var row in lost["deliverables"]!.AsArray().OfType<JsonObject>().Where(r => (string?)r["id"] == "note"))
+        {
+            row["text"] = ((string)row["text"]!).Replace("(from the intake form)", "(from the referral intake form)", StringComparison.Ordinal);
+            row["hash"] = CanonicalJson.HashText((string)row["text"]!);
+        }
+
+        var partly = Equivalence.Compare(Package, Scenario, lost, run, migrated, plan, request).Single(t => t.Site == Site);
+        Assert.True((partly.Expected, partly.Unexplained) == (false, true), $"{Site}: expected {partly.Expected}, rules {string.Join(",", partly.Rules)}");
+        Assert.Equal(["block-read-own-line"], partly.Rules);
+    }
+
+    /// <summary>
     /// #1510 (#1509 comment 7207709261, item 2): composer-macros' profile in <c>no-signature</c> has no signature block, and
     /// 30 left the signature and the line before it out; through the renderer that tests the trimmed signature, so does 31.
     /// <c>authored</c> differs only as the plain text it holds is escaped in Markdown.
@@ -653,7 +752,7 @@ public class ByteEquivalenceTests
         ["explicit-null-for-optional"] = "no compared prompt or rendered text writes a reply's or an input's object with an optional member 30 left out.",
         ["blank-conversion"] = "no compared capture has a text only 31 has whose own gate is a converted blank(x) that held for empty text.",
         ["macro-trailing-whitespace"] = "the one compared macro whose body ends in more white space than one line ending, edge-unruled-whitespace's problem_close, ends each item of a loop whose .content is read, which the migration strips as 30 trimmed it (#1510); the rule's own tests hold it on hand-made texts.",
-        ["explicit-hard-break"] = "no migrated fixture writes a Markdown body a reader sees line per line (every single line ending inside a paragraph is a prompt's), so the migration writes no \\ in any (#1510, item 4); AHardBreakTheMigrationWrote_IsExplainedByItsRule holds it on composer-macros with its letterhead written as an address.",
+        ["explicit-hard-break"] = "no migrated fixture writes a Markdown body line per line (every single line ending inside a paragraph is a prompt's or a part's), so the migration writes no \\ in any (#1510, item 4); AHardBreakTheMigrationWrote_IsExplainedByItsRule holds it on composer-macros with its letterhead written as an address, and ABackslashAPromptReads_IsExplainedByTheHardBreakRule on a prompt that places example-two-documents' guidance written line per line (#1543, ruling 1).",
     };
 
     [Fact]
@@ -703,6 +802,141 @@ public class ByteEquivalenceTests
         // A package with no such macro gives none.
         Assert.Null(Equivalence.RequestFor(EquivalenceFixture.Scenario("example-nested-note", "default"), EquivalenceFixture.Capture("example-nested-note", "default"),
             EquivalenceFixture.Migrated("example-nested-note"), EquivalenceFixture.Plan("example-nested-note")).EnginePlaced);
+    }
+
+    // ---- a count over an accepted name (#1543, ruling 6; D13) -------------------------------------------------
+
+    private const string Tally = "composer-sources/item-names-and-bounds#deliverables/deliverable.tally";
+
+    [Fact]
+    public async Task ACountOverAnAcceptedName_FollowsTheName()
+    {
+        // #1543 (ruling 6, D13): composer-sources' topic_tally counts node.topic_loop.content (size), which holds "## Topics 4"
+        // at 31 where 30's had "## Requested topics 4" (position-names-from-the-loop): 30 wrote "Topic section length: 414",
+        // 31 writes 404. The count follows the accepted name.
+        var (capture, run, texts) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var topics = texts.Single(t => t.Site == "composer-sources/item-names-and-bounds#deliverables/deliverable.topics");
+        Assert.Equal((false, true, false), (topics.Equal, topics.Expected, topics.Unexplained));
+        Assert.Contains("position-names-from-the-loop", topics.Rules);
+
+        Assert.Equal("Topic section length: 414", TallyText30(capture));
+        Assert.Equal("Topic section length: 404", SourceLayout.Text(run.Rows.Single(r => r.Key == "node.topic_tally").Text?["content"]));
+        var tally = texts.Single(t => t.Site == Tally);
+        Assert.Equal((false, true, false), (tally.Equal, tally.Expected, tally.Unexplained));
+        Assert.Contains("count-over-accepted-name", tally.Rules);
+        Assert.Equal(tally.Rules, (await TallyCredited()).Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task ACountThatDiffersByMore_IsNotCredited()
+    {
+        // Ruling 5: 31's number one more than the count of 31's text is no count of the accepted name, whether only the
+        // compared text holds it or the computed row's value too.
+        var (_, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var now = TallyText31(run);
+        Assert.Contains("404", now, StringComparison.Ordinal);
+
+        var textOnly = await TallyCredited(now: now.Replace("404", "405", StringComparison.Ordinal));
+        Assert.True(textOnly.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", textOnly.Rules.Select(r => r.Id));
+
+        var rowToo = await TallyCredited(
+            r => r with { Rows = [.. r.Rows.Select(row => row.Key == "node.topic_tally" ? row with { Text = new JsonObject { ["content"] = "Topic section length: 405" } } : row)] },
+            now.Replace("404", "405", StringComparison.Ordinal));
+        Assert.True(rowToo.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", rowToo.Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task ACountOverATextWithAnUnexplainedRemainder_IsNotCredited()
+    {
+        // Ruling 5: the counted text also loses a word at 31 (in the loop's content and in the topics deliverable that holds
+        // it), and the count is that text's: the text's own difference is not wholly explained, so neither is the count.
+        var (_, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var counted = SourceLayout.Text(run.Rows.Single(r => r.Key == "node.topic_loop").Text?["content"])!;
+        Assert.Contains("Blank-titled ", counted, StringComparison.Ordinal);
+        var lost = counted.Replace("Blank-titled ", "", StringComparison.Ordinal);
+        var count = "Topic section length: " + lost.EnumerateRunes().Count().ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        var credited = await TallyCredited(
+            r => r with
+            {
+                Rows = [.. r.Rows.Select(row => row.Key switch
+                {
+                    "node.topic_loop" => row with { Text = new JsonObject { ["content"] = lost } },
+                    "node.topic_tally" => row with { Text = new JsonObject { ["content"] = count } },
+                    _ => row,
+                })],
+                Deliverables = [.. r.Deliverables.Select(d => d.Key switch
+                {
+                    "deliverable.topics" => d with { Text = d.Text!.Replace("Blank-titled ", "", StringComparison.Ordinal), ContentHash = null },
+                    "deliverable.tally" => d with { Text = d.Text!.Replace("404", count["Topic section length: ".Length..], StringComparison.Ordinal), ContentHash = null },
+                    _ => d,
+                })],
+            });
+        Assert.True(credited.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", credited.Rules.Select(r => r.Id));
+    }
+
+    [Theory]
+    [InlineData("Seen 14 times; 4 topics.", "4", 15)]
+    [InlineData("4 topics, seen 14 times.", "4", 0)]
+    [InlineData("Seen 14 times.", "4", null)]
+    [InlineData("Seen 41 times.", "4", null)]
+    [InlineData("Length: 404 and 4040.", "Length: 404", 0)]
+    [InlineData("Length: 4040.", "Length: 404", null)]
+    [InlineData("Seen 4 and 4.", "4", null)]
+    [InlineData("1.4 and 4", "4", 8)]
+    public void ACountsOccurrence_StandsApartFromOtherDigits(string text, string value, int? at)
+    {
+        // #1543 (the final review, minor a): a count is found where no digit stands directly before or after it, and counted
+        // so: the 4 of "14" is no occurrence of 4, so a count 4 beside a 14 is credited at the stand-alone 4 alone, and a
+        // text holding only 14 is not credited. Two stand-alone occurrences are ambiguous (none).
+        Assert.Equal(at, ExpectedDifferences.TheOccurrenceOfACount(text, value));
+    }
+
+    [Fact]
+    public async Task ACountThatStandsTwice_IsNotCredited()
+    {
+        // Ruling 5: the number stands twice in 31's text; one occurrence's 30 counterpart is a real, different number. The
+        // rule credits only a value that stands exactly once, so it credits nothing and the text stays unexplained.
+        var (capture, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var now = TallyText31(run);
+        var old = TallyText30(capture);
+        Assert.Contains("414", old, StringComparison.Ordinal);
+
+        var credited = await TallyCredited(now: now + "\n" + now, old: old + "\n" + old.Replace("414", "415", StringComparison.Ordinal));
+        Assert.True(credited.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", credited.Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task ACountWhoseThirtyTallyIsNotTheExpressions_IsNotCredited()
+    {
+        // Ruling 5: 31's number is right, but 30's tally (415) is not what the expression gives on 30's text (414): unexplained.
+        var (capture, _, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var old = TallyText30(capture);
+        Assert.Contains("414", old, StringComparison.Ordinal);
+
+        var credited = await TallyCredited(old: old.Replace("414", "415", StringComparison.Ordinal));
+        Assert.True(credited.Unexplained);
+    }
+
+    private static string TallyText30(JsonObject capture) =>
+        SourceLayout.Text((capture["deliverables"] as JsonArray)!.OfType<JsonObject>().Single(d => SourceLayout.Text(d["id"]) == "tally")["text"])!;
+
+    private static string TallyText31(OfflineResult run) => run.Deliverables.Single(d => d.Key == "deliverable.tally").Text!;
+
+    /// <summary>The rules credited in composer-sources' tally, on its run as <paramref name="change"/> alters it, with 31's text <paramref name="now"/> (the run's own when null).</summary>
+    private static async Task<ExpectedDifferences.Credited> TallyCredited(Func<OfflineResult, OfflineResult>? change = null, string? now = null, string? old = null)
+    {
+        var (capture, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var migrated = EquivalenceFixture.Migrated("composer-sources");
+        var plan = EquivalenceFixture.Plan("composer-sources");
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario("composer-sources", "item-names-and-bounds"), capture, migrated, plan);
+        run = change?.Invoke(run) ?? run;
+        return ExpectedDifferences.Credit(new DifferenceContext("composer-sources", "item-names-and-bounds", Tally, ComparedKind.Deliverable,
+            "deliverable.tally", "deliverable.tally", old ?? TallyText30(capture), now ?? TallyText31(run), capture, run, migrated, plan, request));
     }
 
     [Theory]

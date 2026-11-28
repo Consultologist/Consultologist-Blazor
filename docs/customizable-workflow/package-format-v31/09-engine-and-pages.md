@@ -450,6 +450,7 @@ in written order, each with its `label` and its `description` as help text:
   converter to Markdown is Milestone 40, #1442), and the parser's and OCR's versions are recorded
   with the input
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6924904289)).
+  An earlier run on a 31 package offers its released deliverables, by label, from its rows (#1543).
 - **`channel`** (`transcript`, `image`, `ambient-note`, `form`) does what `expectedContent` does
   today; only the name changes.
 - **No macro panel** for a 31 package: its per-run choices are ordinary boolean inputs.
@@ -569,7 +570,12 @@ for a deliverable its `composedHash`, for a macro its `contentHash`; a computed 
 - **retries** on the node's row: how many, for capacity or for a service failure, and the total
   wait (§ 3.4);
 - **a `call`** is one row that expands to its own rows, keyed under the call
-  (`node.hpi_section.standard_draft`, #1419); the run diagram's call box links here.
+  (`node.hpi_section.standard_draft`, #1419); the run diagram's call box links here;
+- **output used in a refused deliverable** is marked on the node's row: *"Used in a refused deliverable: <id>"*
+  (several ids joined by ", "), when a `blocked` deliverable's substitutions or sites read a path under that node's key
+  (the node itself and its item, pass and call rows, by the record's own parent and child rows; nodes further upstream
+  are not marked). The output is still shown, but as the refused panel's text is: it cannot be selected, copy and cut
+  are cancelled, and the row offers no copy control (#1543, ruling 4).
 
 **Checks** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311)).
 Each check row has four lines:
@@ -595,7 +601,8 @@ sent with the sentence. A deliverable whose gating check was skipped by its own 
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)). Profile reads show the field and its hash, never its text after the
 7-day drop; the signature read names the block's id. **A blocked deliverable's text** is shown under the heading
 *"Refused, not delivered"*, with the check that refused it and its sentence, so nobody copies it out by mistake: the
-panel has no copy control and cannot be selected, and the text is in no copy or download the page offers. It is shown
+panel has no copy control and cannot be selected, and the text is in no copy or download the page offers; the nodes it
+read are marked and their output cannot be selected either (Nodes, above). It is shown
 while it is retained (7 days); after that the heading and the hash remain, with A12-002 (ruled by the owner on #1507,
 item 3). There is no release button at 31: releasing after review is #1524, Milestone 40. The template is shown only when
 `CanonicalJson.HashText` of its body in `resolve.json` equals the row's `templateHash`; otherwise the row says A12-007: *"The
@@ -622,10 +629,17 @@ A new card on the Profile page for the profile fields that have no home today:
 |---|---|---|---|
 | `profile.credentials` | `string` | single-line field | not set |
 | `profile.organisation` | `string` | single-line field | not set |
-| `profile.closing` | `plaintext` | text area | not set |
+| `profile.closing` | `markdown_block` | text area | not set |
 
 - `profile.name` keeps its place (the account's name, as today), and `profile.signature` keeps the
   signature blocks card (up to 5 blocks, `ChosenId`).
+- **Previews (#1543, ruling 2):** under the closing's text area the card shows the closing as typed (the text
+  area's current value, not only what is saved), and under it the chosen signature block (passed in by the
+  page, so it follows a save), each rendered by `MarkdownPreview.Render(text, 31)`: the 31 pipeline, raw HTML
+  shown as text, a link of a scheme other than `http`, `https` or `mailto` written as its text. A blank value
+  has no preview. The hint *"End a line with \ or leave a blank line."* stands under the previews, and the
+  same hint under the signature block's text area, where the signature is typed (until the rich-text editor
+  writes the breaks itself).
 - **A blank value is not set:** an empty or whitespace-only value counts as not set
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), so saving whitespace clears the field, and a package reading it is
   refused at start rather than printing nothing (#1408: no empty substitute).

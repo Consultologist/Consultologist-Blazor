@@ -79,23 +79,34 @@ internal static partial class Migrate
     /// The derived values of the 31 set as written so far, by header file; empty when a step before the derivation's
     /// inputs refuses it (a hand edit there).
     /// </summary>
-    private static IReadOnlyDictionary<string, DerivedFlags> DerivedValues(Migrated m)
+    private static IReadOnlyDictionary<string, DerivedFlags> DerivedValues(Migrated m) =>
+        Read31(m) is { } read
+            ? SourceDerived.Values(read.Package, read.Resolution, read.Bodies, read.Bodies)
+            : new Dictionary<string, DerivedFlags>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The 31 set as written so far, read as the checker reads an upload: parsed, held to the shape and type rules,
+    /// resolved, and its bodies read by the dialect (<see cref="V31.Templates.SourceTemplates.Readable"/>, with its
+    /// refusals); null when the reader, the shape or type rules or the resolver refuse it (a hand edit there). For the
+    /// derived flags, and (#1543, ruling 2) for the roles of the tags the hard-breaks pass reads, and publish's own roles
+    /// (<c>Roles</c>), which the block-reads pass reads.
+    /// </summary>
+    private static (SourcePackage Package, Resolution Resolution, IReadOnlyList<SourceRefusal> Refusals, V31.Templates.PackageTemplates Bodies, V31.Templates.SiteRoles Roles)? Read31(Migrated m)
     {
-        var none = new Dictionary<string, DerivedFlags>(StringComparer.Ordinal);
         var upload = m.Files().ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
         upload["manifest.json"] = Encoding.UTF8.GetBytes(Migrated.Json(m.Manifest));
 
         var registry = m.Options.Registry;
         var parse = SourceParser.Parse(upload, registry.Names);
         if (parse.Package is not { } package || SourceChecks.Check(package, null).Count > 0)
-            return none;
+            return null;
         var types = SourceTypes.Check(package, registry);
         if (types.Types is not { } typed)
-            return none;
+            return null;
         var (_, resolution) = SourceResolve.Check(package, typed);
         if (resolution is null)
-            return none;
-        var (_, bodies) = V31.Templates.SourceTemplates.Readable(package, typed, resolution, registry);
-        return SourceDerived.Values(package, resolution, bodies, bodies);
+            return null;
+        var (refusals, bodies, roles) = V31.Templates.SourceTemplates.Readable(package, typed, resolution, registry);
+        return (package, resolution, refusals, bodies, roles);
     }
 }

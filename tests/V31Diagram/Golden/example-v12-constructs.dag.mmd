@@ -76,7 +76,7 @@ flowchart TD
     end
 
     subgraph uses_deliverable__consult["consult · Consultation note"]
-        deliverable__consult__render_1[/"renderer.signature_after_blank_line<br/>plaintext → plaintext"/]
+        deliverable__consult__render_1[/"renderer.signature_after_blank_line<br/>markdown_block → markdown_block"/]
         deliverable__consult{{"consult<br/>Consultation note"}}
         deliverable__consult__render_1 --> deliverable__consult
     end

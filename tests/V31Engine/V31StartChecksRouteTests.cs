@@ -286,12 +286,15 @@ public class V31StartChecksRouteTests
                 Settings.GetAsync(Arg.Any<string>(), key, Arg.Any<CancellationToken>()).Returns(new AccountSetting(key, value, "text/plain", DateTimeOffset.UnixEpoch));
         }
 
-        /// <summary>Publishes the minimal package with its note reading each <paramref name="profile"/> field.</summary>
+        /// <summary>
+        /// Publishes the minimal package with its note, a <c>markdown_block</c> (the signature and the closing are, #1543), reading
+        /// each <paramref name="profile"/> field on its own line.
+        /// </summary>
         public WorkflowPackageRef Put(params string[] profile)
         {
             var body = "{{ node.plan.content }}\n\n" + string.Concat(profile.Select(field => "{{ profile." + field + " }}\n"));
             var files = SourceFixture.Minimal().With("deliverables/note.md", SourceFixture.Md(
-                SourceFixture.Deliverable("Consultation note", TemplateFixture.Plain, "null", "hold"), body));
+                SourceFixture.Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"), body));
             var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed);
             Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Sentence}")));
             return Registry.Put(compiled!.Resolve, compiled.Lock);

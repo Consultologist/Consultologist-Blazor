@@ -33,8 +33,25 @@ public class RunDiagram31PageTests : ClientRenderTestContext
 
     public RunDiagram31PageTests()
     {
-        Services.AddSingleton<TimeProvider>(new FixedClock(Now));
+        Services.AddSingleton<TimeProvider>(new CountingClock(Now));
         JSInterop.Setup<string>(Draw, _ => true).SetResult("<svg id=\"workflow-dag-test\"></svg>");
+    }
+
+    private CountingClock Clock => (CountingClock)Services.GetRequiredService<TimeProvider>();
+
+    private sealed class CountingClock(DateTimeOffset now) : StillClock(now)
+    {
+        public List<TimeSpan> TimerPeriods { get; } = [];
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            lock (TimerPeriods)
+            {
+                TimerPeriods.Add(period);
+            }
+
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
     }
 
     private static string FunctionsResolve =>
@@ -179,6 +196,17 @@ public class RunDiagram31PageTests : ClientRenderTestContext
 
         page.Find(".run-dag-close").Click();
         Assert.Empty(page.FindAll(".run-dag-panel"));
+    }
+
+    [Fact]
+    public void TheCreatePagesTicker_IsTheInjectedClocks()
+    {
+        OnCreate(Header() with { Status = "Running", CompletedAtUtc = null }, FunctionsResolve);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+        page.WaitForElement(".run31-rail");
+
+        page.WaitForAssertion(() => Assert.Equal([TimeSpan.FromSeconds(1)], Clock.TimerPeriods.ToArray()), Settle);
     }
 
     [Fact]

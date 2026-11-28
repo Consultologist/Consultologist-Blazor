@@ -88,12 +88,18 @@ public class DeliverableFormatsTests
         Assert.Equal([(null, "5:1"), (null, "6:11"), (null, "7:9"), (null, "10:3")], check.Templates!.Escapes(NoteKey));
     }
 
-    [Fact]
-    public void ProfileText_InAMarkdownDeliverable_IsEscaped()
+    [Theory]
+    [InlineData("profile.signature")]
+    [InlineData("profile.closing")]
+    public void ProfileText_InAMarkdownDeliverable_IsNotEscaped(string read)
     {
-        var check = Accepted(WithNote("markdown_block", "## Plan\n\n{{ node.assessment.content }}\n\n{{ profile.signature }}\n"));
+        // #1543 ruling 2 (D3): the signature and the closing are markdown_block, read as they are; the name is a string,
+        // escaped as before.
+        var check = Accepted(WithNote("markdown_block", $"## Plan\n\n{{{{ node.assessment.content }}}}\n\n{{{{ {read} }}}}\n"));
+        Assert.Empty(check.Templates!.Escapes(NoteKey));
 
-        Assert.Equal([(null, "5:1")], check.Templates!.Escapes(NoteKey));
+        var named = Accepted(WithNote("markdown_block", "## Plan\n\n{{ node.assessment.content }}\n\n{{ profile.name }}\n"));
+        Assert.Equal([(null, "5:1")], named.Templates!.Escapes(NoteKey));
     }
 
     [Fact]
@@ -324,6 +330,15 @@ public class DeliverableFormatsTests
     public void APlaintextDeliverable_ReadingMarkdown_IsRefused(string body, string read) =>
         AssertRefusal(WithNote("plaintext", $"Dear Margaret Okafor,\n\n{body}\n"),
             "S06-021", $"Deliverable 'note' is plaintext, and reads {read} at line 3. Convert it in a node.");
+
+    [Theory]
+    [InlineData("profile.signature")]
+    [InlineData("profile.closing")]
+    public void APlaintextDeliverable_ReadingTheSignature_IsRefused(string read) =>
+        // #1543 ruling 2 (D3): the strict-format rule refuses a markdown_block profile field in a plain-text body; no
+        // conversion is built.
+        AssertRefusal(WithNote("plaintext", $"Dear Margaret Okafor,\n\n{{{{ {read} }}}}\n"),
+            "S06-021", $"Deliverable 'note' is plaintext, and reads {read} (markdown_block) at line 3. Convert it in a node.");
 
     [Fact]
     public void APlaintextDeliverable_PlacingAMarkdownSnippet_IsRefused() =>

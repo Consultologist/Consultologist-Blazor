@@ -25,6 +25,8 @@ public class AreaSentenceAudienceTests
     [InlineData("A11-015", "clinician")]
     [InlineData("A11-016", "operator")]
     [InlineData("A11-017", "operator")]
+    [InlineData("A11-018", "clinician")]
+    [InlineData("A11-019", "clinician")]
     public void TheBulkPublishsSentences_AreForTheOwnerAndTheOperator(string id, string audience)
     {
         // #1508 (Task 36): the deadline is told to the owner; a package no pin names is the operator's to see.

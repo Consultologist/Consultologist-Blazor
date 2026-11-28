@@ -10,13 +10,13 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | [02 Types and inputs](#02-types-and-inputs) | 56 |
 | [03 Expressions](#03-expressions) | 44 |
 | [04 Loops and functions](#04-loops-and-functions) | 80 |
-| [05 Templates and macros](#05-templates-and-macros) | 65 |
+| [05 Templates and macros](#05-templates-and-macros) | 67 |
 | [06 Checks, deliverables and the profile](#06-checks-deliverables-and-the-profile) | 38 |
 | [07 The compiled documents](#07-the-compiled-documents) | 17 |
 | [08 The record](#08-the-record) | 9 |
-| [09 The engine and the pages](#09-the-engine-and-the-pages) | 18 |
+| [09 The engine and the pages](#09-the-engine-and-the-pages) | 19 |
 | [10 Migration and tools](#10-migration-and-tools) | 6 |
-| **Total** | **375** |
+| **Total** | **378** |
 
 ## 01 Files and scopes
 
@@ -325,6 +325,8 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S05-063 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\>[\<n\>] at line \<n\>, a position in a list; lists are read whole, with a for, or by identity through .items."* | author | |
 | S05-064 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\> at line \<n\>, which carries profile text through macro '\<id\>'; a prompt or a part doesn't read profile text. Read it in a deliverable."* | author | |
 | S05-065 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> has a single line ending inside a paragraph at line \<n\>: a single line ending is not a break; end the line with \ or leave a blank line."* | author | |
+| S05-066 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> has text before {{ \<read\> }}, a markdown_block, at line \<n\>; a markdown_block read stands alone on its line."* | author | |
+| S05-067 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> has text after {{ \<read\> }}, a markdown_block, at line \<n\>; a markdown_block read stands alone on its line."* | author | |
 
 ### An engine fault in reading a template
 
@@ -484,6 +486,8 @@ The build's area sentences for area 11, which are not rows of `sentences.json` a
 | A11-015 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"This package stops working when specVersion 30 is retired."* | clinician | |
 | A11-016 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"\<package\> is not the account's active account package; the bulk publish migrates only the account package an account's pin names."* | operator | |
 | A11-017 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"The engine did not answer for this package; check whether it was published before sending this list."* | operator | |
+| A11-018 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"Your signature has \<n\> lines. From specVersion 31, end each line with \\, or leave a blank line between them."* | clinician | |
+| A11-019 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"Your closing has \<n\> lines. From specVersion 31, end each line with \\, or leave a blank line between them."* | clinician | |
 
 A11-013 is said of a `judgement` node whose prompt, with its parts' text, the text of the snippets it places and of the
 snippet folder items it reads as `item.content`, holds nothing outside its tags but white space: a question only an

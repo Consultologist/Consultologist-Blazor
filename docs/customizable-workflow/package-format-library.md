@@ -44,17 +44,25 @@ stays with the engine.
   concept-list fixture the editor's renderer pane and the tests render). The
   engine and the editor render through the same functions, so the editor's
   sample is the engine's bytes.
-- `ConsultMarkdown` (#1256, #1510): the Markdown pipelines every surface
+- `ConsultMarkdown` (#1256, #1510, #1543): the Markdown pipelines every surface
   shares (the Web's `MarkdownPreview`, the Api's PDF), picked by the job's
   specVersion through `For(int specVersion)`. `Pipeline`, for 5–30 and
-  unchanged until 30 is retired: HTML off, pipe tables, a single line ending a
-  hard break. `Pipeline31` (part 02 § 5.2), for 31: Markdig 0.41.3's
+  unchanged until 30 is retired but for the link filter below: HTML off, pipe
+  tables, a single line ending a hard break. `Pipeline31` (part 02 § 5.2), for 31: Markdig 0.41.3's
   `UseAdvancedExtensions` built explicitly in its order, less GenericAttributes,
   CustomContainers, MediaLinks, Mathematics, Diagrams, GridTables and the
   emphasis extras other than superscript and inserted, with `DisableHtml` and
   standard line handling (a single line ending is not a break).
-  `Extensions31` lists its 13 extensions as `constants.json` `markdig` names
-  them. Nothing else builds a Markdown pipeline at 31.
+  `Extensions31` lists its 13 Markdig extensions as `constants.json` `markdig`
+  names them. Both pipelines end with the library's own extension,
+  `ConsultLinkSchemes` (#1543, ruling 8; part 02 § 5.2), which neither list
+  names: once a document is parsed it writes a link or an image (inline or by
+  reference) whose URL has a scheme other than `ConsultLinkSchemes.Allowed`
+  (`http`, `https`, `mailto`; `constants.json` `markdig.linkSchemes`) as its
+  text or alt text, and such an autolink as its URL text; `Writes(url)` is the
+  test (the scheme read after ASCII white space and control characters are
+  removed; a URL with no scheme stays). Nothing else builds a Markdown
+  pipeline at 31.
 
 ## With the engine
 
@@ -1727,14 +1735,33 @@ that writes `run.*` does not count (#1508, R6). `warnings` gains the dialect's S
 
 **S05-065 (W-3, #1510, G-D11)** is said by the nested `Context`'s `LineEndings` (`Context.LineEndings`, in
 `SourceTemplates.LineEndings.cs`), once after the folder routes, since it needs every body checked: once per line
-ending `MarkdownLineEndings.Find` names (the migration's finder, below) in a Markdown body a reader sees, at the
-body's own 1-based line. The sites are a `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro,
-snippet or renderer, every snippet folder's item, `checks/` and a function's own units included.
-A body whose text reaches a prompt (a snippet a prompt, a part or a macro's instruction places, a folder item it reads
-as `item.content`, a `rendered` node whose text it reads, and what those place or read in turn; never a macro's body,
-since a prompt reads its marker) is warned only when it is also shown, placed or read by a deliverable, a macro's body
-or a `rendered` node no prompt reaches. A prompt and a part are never sites. It is a warning: the package publishes.
-When no site has a hit it reads nothing more.
+ending `MarkdownLineEndings.Find` names (the migration's finder, below) in every Markdown body, at the body's own
+1-based line. The sites are a `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro, snippet or
+renderer, every snippet folder's item, `checks/` and a function's own units included; **a body a prompt reads or places
+is a site like any other** (#1543, ruling 1: the exception for it, and the migration's A10-092, are retired). A prompt
+and a part are never sites. It is a warning: the package publishes. When no site has a hit it reads nothing more.
+
+The finder judges a line of only tags by each tag's **role** (#1543, ruling 2, D2; `TagRole` and `TagRoles`, in
+`V31/Templates/TagRoles.cs`): `Statement` (`if`, `for`, `else`, `end`, an assignment; a comment; any tag the checker did
+not type), `Placement`, `Renderer` (an output whose pipe ends in a renderer step), `BlockRead` (an output whose final
+type is `markdown_block`, with no renderer at its pipe's end) or `InlineRead`. The roles are one map per run, `SiteRoles` (`TagRoles.Of(bodies, tree,
+refused)`): every placed body is typed once from `CheckedBody.Writes` and `CheckedBody.Placements` and grouped by file
+and text, a file read at several places taking per tag the role that says least, a file refused before the line rules
+typing none. `Context.Roles` builds it after the other rules; `LineEndings` and `BlockReads` both read it, and the
+migration reads the same map. The finder's hits have a kind (`LineEndingHit(At, Kind)`): `Break`, skipped after a line
+of only tags any of which is not an `InlineRead` and before a line of only tags any of which is a `Statement`,
+`Placement` or `Renderer`; or `BesideABlockRead`, a line ending between a line of text (literal text, or an
+`InlineRead`) and a line whose only reads are `BlockRead`s, on either side (the owner's amendment of 2026-11-27, item 3).
+S05-065 warns at both kinds; the migration writes `\` at a `Break` and a blank line at a `BesideABlockRead`.
+
+**S05-066 and S05-067 (#1543, ruling 2, D5, D6)** are said by `Context.BlockReads` (`SourceTemplates.BlockReads.cs`),
+on the same sites with the same roles: a `BlockRead` with text before it on its line is S05-066, with text after it
+S05-067 (both, for text on both sides), naming the file, the read as written without its pipes (`SiteRoles.ReadOf`) and
+the tag's line. What is text is `MarkdownLineEndings.TextBeside`: on the tag's own line, any character but a space or a
+tab outside every tag and comment, or an `InlineRead`; a statement, a comment, a placement, a renderer-ended output or
+another block read is stepped over (a tag that spans lines ends the scan), and a `~` or `-` on the tag is not read.
+`MarkdownLineEndings.BlockReadsBeside` lists each block read with its two answers, for publish and the migration alike.
+They are refusals, audience `author`, each with its refusal packages.
 
 ### Snippets, parts and macros at publish
 
@@ -1830,7 +1857,9 @@ At publish (part 05 § 5):
   S05-031.
 - A `markdown_block` renderer inside a line warns S05-061.
 - A single line ending inside a paragraph of a `markdown_block` or `markdown_inline` renderer's body warns S05-065
-  (W-3), as any Markdown body a reader sees does (`Context.LineEndings`, in `SourceTemplates.LineEndings.cs`, above).
+  (W-3), as any Markdown body does (`Context.LineEndings`, in `SourceTemplates.LineEndings.cs`, above), and a
+  `markdown_block` read in it with text beside it on its line is S05-066 or S05-067 (`Context.BlockReads`): a renderer's
+  own outputs are typed for their roles (its `value` as its `input`, through its built-in steps).
 
 At run time a renderer's body renders with only `value` (the piped value) and the built-ins. Each step gives one
 `ComposedRender`: its number, the renderer, its `bodyHash`, the source (a path, or `render:<n>` in a chain), the
@@ -1980,7 +2009,7 @@ No member carries a value, a reply or a profile field: only ids, keys, hashes an
 
 ### Sentences
 
-The dialect says part 05's rows S05-001 to S05-065, with these exceptions:
+The dialect says part 05's rows S05-001 to S05-067, with these exceptions:
 
 - S05-008 and S05-027 are the worked examples of S05-009 and S05-026;
 - S05-032 is said as the reader's S01-035 (`SourceSentences`, a package renderer named like a built-in one), with
@@ -2551,9 +2580,10 @@ line endings, a JSON Logic value in canonical order.
 | templates | `Migrate.Templates.cs`, `TemplateRewriter.cs` | every prompt, `rendered` body, snippet, folder item and macro body in the 31 dialect: bare reads to `.content` or `.value`, renderer pipes, a loop's `.items` and `state` (30's `!e.skipped` is `e.state == "completed"`), `item.label`, white-space marks (one A10-068 per file names the lines whose marks changed, since `~` keeps line endings that `-` removed). A simple body `if` is lifted into `parts`; an `if` around a placement is hoisted onto the placement, and a `for` over a macro folder unrolled (R6); the rest is a hand edit (A10-001, A10-005, A10-035 to A10-039, S10-004). Text outside tags is never touched; #1508 (R16): a `for` over a loop node whose body reads only each item's text loops over `.value` (`e.content` written `e`), any other keeps `.items` with its body inside `{{ if e.state == "completed" }} … {{ else }}{{ end }}` unless it already tests the state; (R17) an output reading a member through an object that can be null (`FormatReads.NullableSteps`: an input not required, a nullable field, a node that may not run) inside `{{ if <object> }} … {{ end }}` (its marks moved onto the guard; a `for` over such a list wrapped whole), A10-080 in a part's text whose `if` does not assert the object |
 | macros | `Migrate.Macros.cs` | each macro as `macros/<id>.md` (a folder as its index and one file per item), its `instruction` 30's lines then 30's mechanics sentence (D5); an optional macro offered by an optional boolean input (its id, else `<id>_macro`, A10-007; A10-067 when its `if` reads another boolean input too, so R7's start refuses a `MacroChoices` entry for it); a macro read only as fixed text as a snippet (D4); a `before` or `after` node macro placed at the end of the prompt with its instruction left for the operator (D3, A10-003); A10-004, A10-036, A10-040 to A10-042 and A10-045 for what it cannot decide; #1508 (R13): a macro 30's model chose (`ModelChosen`: a non-empty instruction that is no template, not placed by the engine, placements that agree) gets one `judgement` node `<macro id>_applies` per agent placing it (`ChoiceClassifiers`, in `Migrate.Nodes.cs`: the placing agent's sibling just before it, its `if` the macro's offer condition, its prompt the placing prompt's top-level reads of inputs, nodes, checks and the item, and an empty question line, A10-077), and the macro's `if` gains each one's answer (with more than one, the `if` is a hand edit, A10-078) |
 | checks | `Migrate.Checks.cs` | each `terms_subset` node as `checks/<id>.md`, `kind: computed`, `format: check_result`, its `failWith` the 30 sentence; a reader of `node.<id>` reads `check.<id>`. One 30 ran inside a flow is also A10-046 |
-| deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, one blank line apart, then for 30's `signature: true` `{{ profile.signature \| renderer.signature_after_blank_line }}` (#1510, F-D4: `Migrate.Signature.cs` writes the package renderer `renderers/signature_after_blank_line.md`, `input` and `format` `plaintext`, whose body writes the blank line and the signature only when the signature trimmed is not empty, so a blank one leaves both out as 30 did and a signature is 30's bytes, unescaped; A10-089; a deliverable whose only piece is the signature keeps `{{ profile.signature }}`). An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim, and when its trimmed body ends with the signature after one blank line or one line ending, the read goes through `signature_after_blank_line` or `signature_after_line_end` (each renderer written once into a package that needs it, listed in `renderers/index.json` in the order first used, the macros pass before this one); #1508 (R15): a deliverable every source of which may not run (`AlwaysValued` false; a `while` counts as running, as 30 composed one with no pass) gets the `if` `<source>.state === "completed"` (`or` over the sources, after 30's by `and`), A10-079; when 30's `if` is a hand edit, a second hand edit on it names that term to join by `and`, A10-084 |
+| deliverables | `Migrate.Deliverables.cs` | each deliverable as `deliverables/<id>.md`: part 06 § 6.1's header, `format: markdown_block`, its `if` converted, `check` the gate's `check.<id>`, `whenEmpty` from the options; its body D8's template: the prepended macros, each source's `.content`, the appended macros, one blank line apart, then for 30's `signature: true` `{{ profile.signature \| renderer.signature_after_blank_line }}` (#1510, F-D4: `Migrate.Signature.cs` writes the package renderer `renderers/signature_after_blank_line.md`, `input` and `format` `markdown_block` (#1543, ruling 2, D4: the profile's signature is `markdown_block`; a use inside a line warns S05-061), whose body writes the blank line and the signature only when the signature trimmed is not empty, so a blank one leaves both out as 30 did and a signature is 30's bytes, unescaped; A10-089; a deliverable whose only piece is the signature keeps `{{ profile.signature }}`). An unconditional macro is a snippet read; a macro with a condition is A10-002, written `{{ macro.<id>.fixed_text }}`, which 31 refuses. A snippet only deliverables read keeps 30's trailing trim, and when its trimmed body ends with the signature after one blank line or one line ending, the read goes through `signature_after_blank_line` or `signature_after_line_end` (each renderer written once into a package that needs it, listed in `renderers/index.json` in the order first used, the macros pass before this one); #1508 (R15) as #1543 (ruling 3, D11) corrected it: 30 skipped a deliverable when **any** source was a top-level flow that took no branch, so each source that may not run (`AlwaysValued30` false; a `while` counts as running, as 30 composed one with no pass) gets one term, `<source>.state === "completed"` where the deliverable's `if` can read it, else `<source>.value !== null` (`WhenASourceRan`, `RanTerm`), the terms joined by `and` after 30's own `if` (an own `and` gains them); a source that always runs adds no term and cancels no other's; A10-079 names the reads; when 30's `if` is a hand edit, a second hand edit on it names the terms to join by `and`, A10-084; a source that may not run and that the migration cannot read is a hand edit, A10-086, naming the others' terms. `edge-source-no-branch` is the fixture |
 | loop items stripped | `Migrate.Flows.cs` (`StripLoopItems`) | #1510 (F-D1 to F-D3): after the deliverables, since a loop's readers are known only once they are written: each `for` whose `.content` is read anywhere in the migrated package (a regex over every file for the loop's rooted key or a suffix form that resolves to it, then `.content`) gets a `rendered` node `<ret id>_stripped` (fitted by `FreeNodeId`) as the last of its body and its `ret`: `producer: computed`, the old `ret`'s label, `.content`'s text format (`ScopeTree.RenderedContent`), `if` the old `ret`'s state `completed`, body `{{ node.<old ret id>.content \| string.strip }}`; A10-088. It repeats until no loop is left, so a loop returned by a loop is stripped at each level, and the formats of the loop and the flows returning it follow (`Reformat`). A loop whose items mix text formats gets no node, the hand edit A10-090 on its `ret`. `Migration31Result.StripNodes` (new key → old `ret` key) is what the case rule `loop-item-strip-node` reads |
-| hard breaks | `Migrate.HardBreaks.cs`, `V31/Templates/MarkdownLineEndings.cs` | #1510 (G-D8, G-D10): after the stripped loop items and before the derived flags. In the body of each `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro, snippet (one or a folder's item) and package renderer, `MarkdownLineEndings.WithHardBreaks` writes `\` before each line ending `MarkdownLineEndings.Find` names (the body parsed with `ConsultMarkdown.Pipeline31` after each tag and comment is masked: a soft line break inside a paragraph, not inside a tag, not one `~}}`, `-}}` or the next line's `{{-` removes, not beside a line of only tags), after any trailing spaces; A10-091 per file, `Migration31Result.HardBreaks` (file → count). A body a prompt reads or places (an agent's body, its `parts`, a macro's `instruction`, and what those read or place in turn; a deliverable a check's prompt reads stays a site) and the files the migration writes itself are left; one also shown (read or placed by a deliverable, a macro or a `rendered` node no prompt reads) with hits is A10-092. No fixture has a site with a hit |
+| block reads | `Migrate.BlockReads.cs`, `V31/Templates/MarkdownLineEndings.cs` | #1543 (ruling 2, D7, as the owner amended it on 2026-11-27): after the stripped loop items and directly before the hard breaks, on the same sites (`MarkdownSites`), with the roles publish gives (`Migrate.Read31`'s `SiteRoles`; nothing is written when the 31 set cannot be read). `MarkdownLineEndings.WithBlockReadsSeparated` writes a blank line between each `markdown_block` read and the text beside it on its line (two line endings directly before the read's tag, the stepped-over tags kept on its line; two directly after the read and the tags that stay with it), then one more line ending at each `BesideABlockRead` hit found again in the separated text; nothing is dropped, and a blank line already there is left. A read on a line a blank line would break out of its Markdown block (the text before it starts with `-`, `*`, `+`, `>`, `1.` or `1)` up to nine digits, `#` to `######`; the text after it would start one, or a tab or four spaces would make it indented code) is left whole, with the hand edit A10-094 on `body` (`MigrationSentences.ReadBreaksItsBlock`, its line the read's). A10-093 per file names each separated read once; `Migration31Result.MovedReads` (file → count) and `SeparatedReads` (file → the tags as written) are what `block-read-own-line` reads. `Migrate.LineEndings` runs this pass and the next on one reading of the 31 set, read again only where this pass wrote. Separated in the fixtures: `composer-macros` `body_echo`, `edge-unruled-whitespace` `clinic_line`, `edge-unset-object` `intake_line`; no A10-094 |
+| hard breaks | `Migrate.HardBreaks.cs`, `V31/Templates/MarkdownLineEndings.cs` | #1510 (G-D8, G-D10): after the block reads and before the derived flags. In the body of each `markdown_block` or `markdown_inline` deliverable, `rendered` node, macro, snippet (one or a folder's item) and package renderer, a body a prompt reads or places included (#1543, ruling 1, D1: the sites are publish's S05-065 sites, so a migrated package with no hand edit gets no S05-065), `MarkdownLineEndings.WithHardBreaks` writes `\` before each line ending `MarkdownLineEndings.Find` names a `Break` (the body parsed with `ConsultMarkdown.Pipeline31` after each tag and comment is masked: a soft line break inside a paragraph, not inside a tag, not one `~}}`, `-}}` or the next line's `{{-` removes; beside a line of only tags as the tags' roles say, D2, so `Sincerely,` above a line of only `{{ profile.name }}` gets its `\`), after any trailing spaces; never at a `BesideABlockRead` hit, which is the block-reads pass's. A10-091 per file (*"1 line ending … ends"*, *"\<n\> line endings … end"*, ruling 10), `Migration31Result.HardBreaks` (file → count). The files the migration writes itself (the stripping nodes, the signature renderers) are left. No fixture has a site with a hit |
 | derived flags | `Migrate.Derived.cs` | last: every node and check header's `reproducible`, `modelDerived`, `runDependent` and `profileCarrying` from `SourceDerived.Values`, the derivation without the header checks (D15). A 30 `reproducible` claim that differs is A10-010; a header made of a body the dialect refused is A10-049 |
 
 After the passes, #1508 (R11): the package as written is checked and counted as publish counts it (`PublishNotes.PastInstances`, A11-001's facts) at the options' `Limits` (by default the engine's starting values, `WorkflowPackageMigration30To31.EngineLimits`; the engine's configured limits in the bulk publish and the weekly summary); past their `JobInstances` it is a hand edit on the outermost loop's `max` on the heaviest path (A10-081), and no `max` is written. Then, with `WriteSnapshot`, the snapshot test (below), published at those limits and run at the options' `RunLimits`. Other notices: A10-021 (a format's free-text field), A10-026 (a
@@ -2666,15 +2696,18 @@ credited rules' `Said` joined by `; `. A ruled difference beside an unexplained 
 | `flag-becomes-retry` | #1508 comment 5 item 3 (a node 30 ran as `onInvalid: flag` asks once more at 31 and then fails: its prompt's retry text, the status, and what 30 ran on the kept reply) | case and bytes |
 | `reply-never-a-template` | #1508 comment 5 item 7, #5 (a reply 30 rendered as a template is kept as written at 31, or stripped, as a migrated deliverable reads a source) | case and bytes |
 | `escaped-plain-text` | part 06 § 6.4, D8; #1508 comment 5 items 7 (#13, a computed text value) and 8 (D23, plain-text items joined into a Markdown loop's `.content`, also where a prompt reads it); `ExpectedDifferences.Unescape` also drops the two spaces the escape writes before a line ending (#1510, G-D7) | bytes |
-| `explicit-hard-break` | #1509 comment 7209167166 item 4, #1510 G-D9 (a `\` directly before a line ending in 31's text, in any compared kind, only in a package whose sources hold a break the migration wrote: `Migration31Result.HardBreaks`, which `MigrationFixture.Overlay` recounts for each overlaid body) | bytes |
+| `explicit-hard-break` | #1509 comment 7209167166 item 4, #1510 G-D9 (a `\` directly before a line ending in 31's text, in any compared kind, only in a package whose sources hold a break the migration wrote: `Migration31Result.HardBreaks`, which `MigrationFixture.Overlay` recounts for each overlaid body); #1543 ruling 1: a prompt that places a body the pass broke holds its `\` too, and is credited the same way | bytes |
+| `block-read-own-line` | #1543 ruling 2, as the owner amended it on 2026-11-27, item 6 (a `markdown_block` read separated from the text beside it by a blank line): only deletes line endings from 31's text, two where the read stood inside a line or one beside its line, at the places of the separated reads (`MarkdownLineEndings.Separations` over the moved files, hand edits laid over; the line of text anchored outward from the blank line to its first literal word), only in a package with `Migration31Result.MovedReads`; never a `\` or another character. `Credit`'s pair step, for a text no single rule brings nearer, is scoped to a pair holding this rule (an empty read's trailing space and the blank line are one run of white space, with `empty-read-trailing-space`) | bytes |
 | `item-ids-from-one` | #1506 ruling 2, D26 | bytes |
 | `position-names-from-the-loop` | part 04 § 2.7, D27; #1508 comment 5 item 4 (an empty `itemLabel` field falls back to the position name) | bytes |
+| `count-over-accepted-name` | #1543 ruling 6 (a count computed from an accepted name follows the name): a number in 31's text that a `computed` row gives by `size` of one row's `.content` (the expression reading that path alone, evaluated with the plan's own compiled rule), the row's value standing exactly once in the text and being the expression on 31's counted text, put back as the expression gives it on 30's text, only where 30's text for that read (the capture's deliverable or `rendered` node whose 31 text is the counted one) is equal or wholly explained by `Credit` (which then never applies this rule itself) | bytes |
 | `sent-format` | part 10 § 1.8, D26; R12 and #1508 comment 5 item 7 #3 (a format's descriptions sent; a classifier's answer format sent after 30's own line listing the same values, and nothing else) | bytes |
 | `explicit-null-for-optional` | part 10 § 1.8 | bytes |
 | `macro-trailing-whitespace` | R5 (a macro the row's text can hold, from the plan's reads and placements) | bytes |
 | `input-trailing-whitespace` | #1508 comment 5 item 7, #6 (an input's text keeps its trailing white space) | bytes |
 | `before-after-macro-marker` | #1508 comment 5 item 7, #10 (a macro 30's engine placed before or after the reply is a marker: only the white space between its body and the reply differs) | bytes |
 | `while-no-pass-separator` | the controller's ruling on #1508 for comment 7's Q3 (a `while` that ran no pass keeps the blank line beside another source, which 30 dropped) | bytes |
+| `loop-item-not-run` | #1508 2026-11-26 item 4 (an item that did not run writes nothing at 31, where 30's template loop wrote its fixed text); #1543 ruling 5: in `ItemPattern` an identity read matches text on one line up to, not including, the next literal text of the guard body after it (white space counted), so it cannot swallow another item's result, and a body with no literal text after an identity read is credited nothing | bytes |
 | `macro-choice-classifier` | R13, R14 (#1508 comment 6 items 1 and 2: a classifier's prompt only 31 sends; the placing prompt's macro instruction, 30's or it with one "otherwise" clause removed where the classifier answered yes, absent where it answered no; the classifiers are read from the files, `ChoiceClassifiers.Of`: a `judgement` agent the macro's `if` reads, standing with the placing agent's other classifiers just before it, whose prompt places the macro itself or through the snippets it reads; `ByteEquivalence.RequestFor` answers each from the capture, `ChoiceAnswers`, yes when 30's reply held the marker under the macro's 30 id, `Migration31Result.MacroIds30`) | case and bytes |
 | `loop-item-strip-node` | #1509 comment 7207709261 item 1, #1510 F-D3 (a text of a stripping node the migration wrote, `Migration31Result.StripNodes` with `strip-nodes.json` laid over, that is the old `ret`'s text for that item trimmed; only 31 has it) | case |
 | `blank-conversion` | R1 (a gate of the text's own instance) | case |
@@ -2803,11 +2836,14 @@ The migration says S10-001 (the script), S10-002 (every hand edit), S10-003, S10
 `sentences.json` with its `<…>` filled, and the converter's refusals on type in the checker's words. S10-005 (*"stays at
 version 30"*) is area 11's (`PackagePublishSentences.StaysAt30`): the bulk publish writes it into `owners.json` as the
 notice of each package it could not migrate; no publish says it. Every other notice, refusal and reason is an area
-sentence, A10-001 to A10-092 (A10-009 unused, A10-032 retired by #1508 R12 and unused; A10-070 to A10-087 are #1508's:
-an `options.json` that does not read or was not given, the conversions kept as 30 meant, the macro-choice classifiers,
-the migration's `if`s and guards, and the instances limit; A10-088 to A10-092 are #1510's: a loop's items stripped, the
-signature through a renderer, a loop whose items mix text formats, the explicit hard breaks written, and a body kept
-for a prompt that is also shown), listed in the plans' tables and in
+sentence, A10-001 to A10-094 (A10-009 unused, A10-032 retired by #1508 R12 and unused, A10-092 retired by #1543 ruling 1
+and unused; A10-070 to A10-087 are #1508's: an `options.json` that does not read or was not given, the conversions kept
+as 30 meant, the macro-choice classifiers, the migration's `if`s and guards, and the instances limit; A10-088 to A10-091
+are #1510's: a loop's items stripped, the signature through a renderer, a loop whose items mix text formats, and the
+explicit hard breaks written (A10-092, a body kept for a prompt that is also shown, was #1510's too); A10-093 and A10-094
+are #1543's: a `markdown_block` read separated from the text beside it by a blank line, and the hand edit where a blank
+line would break the read's line out of its Markdown block; #1543 also reworded A10-079, A10-084 and A10-086 for
+ruling 3, and gave A10-091 a singular form), listed in the plans' tables and in
 `V31Contract.MigrationAreaSentences`. Area 10's rulings also
 added sentences said outside the migration: A10-043 and A10-044 at a 31 start (`MacroChoices`), A10-052 (a
 `markdown_inline` value that breaks a line), A10-054 to A10-057 (the link-only email), A10-058 and A10-059 (the weekly
@@ -2971,8 +3007,9 @@ from the CI script. `publish-report.schema.json` admits the four bare values or 
 ### The sentences
 
 `PackagePublishSentences` holds every sentence publish says that no earlier area says: S07-007 to S07-016 and S10-005,
-each the row of `sentences.json` with its `<…>` filled, and this area's A11-004 to A11-007, A11-015 and A11-016 (the
-bulk publish's). A11-001 to A11-003 and the warnings A11-010 and A11-011 are the compiler's (`ResolveSentences`),
+each the row of `sentences.json` with its `<…>` filled, and this area's A11-004 to A11-007, A11-015 to A11-017 (the
+bulk publish's) and, #1543, A11-018 and A11-019 (`SignatureHasLines`, `ClosingHasLines`: the owner's signature or
+closing has several lines, with their count only). A11-001 to A11-003 and the warnings A11-010 and A11-011 are the compiler's (`ResolveSentences`),
 A11-008 is the run's (`RunSentences.EngineFailedRendering`), A11-009, A11-012 and A11-013 the template checker's
 (`DialectSentences`), and A11-014 the reader's (`SourceSentences`). Each is in
 [refusal-sentences.md](package-format-v31/refusal-sentences.md) § 11, in `V31Contract.PublishAreaSentences`, and in
@@ -3021,8 +3058,11 @@ a migration refusal, a publish refusal, A11-001 among them) is `not migrated: <f
 its 30 version and its pin stay as they were. The script asks for the list, checks every folder before it sends
 anything (a folder of choices or edits that names no package is exit 2), sends each package, and after every row
 writes `bulk-publish-record.json` and `owners.json` (per owner, the packages published with the notices the owner must
-see, those not migrated with their reason, S10-005 and A11-015, and those `unknown` with A11-017), each through a
-temporary file. A package the engine did not answer for is `unknown: <fault>` and stops the run (exit 2). A rerun carries
+see, those not migrated with their reason, S10-005 and A11-015, and those `unknown` with A11-017; then, #1543, as
+`account`, the distinct sentences of the owner's rows' `accountNotices`, A11-018 and A11-019, omitted when none and read
+tolerantly, as an older engine's answer has none), each through a temporary file. The route says those two once it has
+read the package, whatever the outcome: it reads the account's chosen signature block and closing as a 31 start does
+and judges each with `MarkdownLineEndings.Find`. A package the engine did not answer for is `unknown: <fault>` and stops the run (exit 2). A rerun carries
 forward the earlier record's `published` and `unknown` rows, the latest for each package, and refuses a record of
 another engine. Without `--publish` it is a dry run: the publish runs in memory and nothing is written.
 

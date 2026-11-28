@@ -208,6 +208,21 @@ public sealed record Migration31Result(
     /// byte-equivalence comparison credits those <c>\</c> only in a package that holds one (<c>explicit-hard-break</c>).
     /// </summary>
     public IReadOnlyDictionary<string, int> HardBreaks { get; init; } = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1543 (ruling 2, D7, D8): each Markdown body in which the migration separated a <c>markdown_block</c> read from the
+    /// text beside it by a blank line (text on the read's line, or a line of text next to the read's own), its file to how
+    /// many reads it separated. The byte-equivalence comparison credits those blank lines only in a package that holds one
+    /// (<c>block-read-own-line</c>).
+    /// </summary>
+    public IReadOnlyDictionary<string, int> MovedReads { get; init; } = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1543 (ruling 2, D8): the reads of <see cref="MovedReads"/>, each file to the tags separated there as its body writes
+    /// them (one per tag, in order): the comparison takes the places it credits from these tags' positions in the file, so
+    /// a line ending elsewhere in a moved file is never credited to <c>block-read-own-line</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> SeparatedReads { get; init; } = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -341,7 +356,7 @@ public static class WorkflowPackageMigration30To31
             V31.Migration.Migrate.Checks(migrated);
             V31.Migration.Migrate.Deliverables(migrated);
             V31.Migration.Migrate.StripLoopItems(migrated);
-            V31.Migration.Migrate.HardBreaks(migrated);
+            V31.Migration.Migrate.LineEndings(migrated);
             V31.Migration.Migrate.Derived(migrated);
             PastTheInstanceLimit(migrated);
             return migrated.Result(at30.Notices);

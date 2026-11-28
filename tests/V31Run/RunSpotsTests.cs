@@ -132,12 +132,12 @@ public class RunSpotsTests
     {
         var plan = Agent("Dated {{ run.date | renderer.long_date }}; seen by {{ input.consult_draft.content | renderer.quote }}.",
             f => f.WithRenderer("long_date", "\"date\"", "{{ value | date.to_string \"%A %d %B %Y\" }}", "plaintext")
-                .WithRenderer("quote", "\"markdown_block\"", "> {{ value }}"));
+                .WithRenderer("quote", "\"markdown_block\"", ">\n{{ value }}"));
 
         var composition = Compose(plan, "node.dated", Scope(("run.date", "2026-11-21"), ("input.consult_draft.content", "Dr A. Sample")));
 
-        Assert.Equal("Dated Saturday 21 November 2026; seen by > Dr A. Sample.", Composed(composition));
-        Assert.Equal("Dated {{run:1}}; seen by > Dr A. Sample.", composition.NeutralText);
+        Assert.Equal("Dated Saturday 21 November 2026; seen by >\nDr A. Sample.", Composed(composition));
+        Assert.Equal("Dated {{run:1}}; seen by >\nDr A. Sample.", composition.NeutralText);
         var spot = Assert.Single(composition.Spots);
         Assert.Equal("Saturday 21 November 2026", spot.Output); // the marker stands for the pipeline's final output
         Assert.Equal([true, false], composition.Renders.Select(r => r.RunDependent));
@@ -168,16 +168,16 @@ public class RunSpotsTests
         // same pipeline; with no neutral text in the scope, the node's content stands.
         var plan = Agent("Note: {{ node.r.content }}\nLoud: {{ node.r.content | string.upcase }}\n{{ node.r.content | renderer.quote }}\n",
             f => f.WithRendered("r", "Seen {{ run.date | date.to_string \"%d %B %Y\" }}", "\"markdown_block\"").RunDependent("nodes/r.md")
-                .WithRenderer("quote", "\"markdown_block\"", "> {{ value }}"));
+                .WithRenderer("quote", "\"markdown_block\"", ">\n{{ value }}"));
 
         var composition = Compose(plan, "node.dated", Scope(("node.r.content", "Seen 21 November 2026"), ("node.r.neutral", "Seen {{run:1}}")));
 
-        Assert.Equal("Note: Seen 21 November 2026\nLoud: SEEN 21 NOVEMBER 2026\n> Seen 21 November 2026\n", Composed(composition));
-        Assert.Equal("Note: Seen {{run:1}}\nLoud: SEEN {{RUN:1}}\n> Seen {{run:1}}\n", composition.NeutralText);
+        Assert.Equal("Note: Seen 21 November 2026\nLoud: SEEN 21 NOVEMBER 2026\n>\nSeen 21 November 2026\n", Composed(composition));
+        Assert.Equal("Note: Seen {{run:1}}\nLoud: SEEN {{RUN:1}}\n>\nSeen {{run:1}}\n", composition.NeutralText);
         Assert.Equal([1, 2, 3], composition.Spots.Select(s => s.Site));
         var render = Assert.Single(composition.Renders); // the pipeline over the run-neutral text gives no sub-row
         Assert.True(render.RunDependent);
-        Assert.Equal(CanonicalJson.HashText("> Seen 21 November 2026"), render.OutputHash);
+        Assert.Equal(CanonicalJson.HashText(">\nSeen 21 November 2026"), render.OutputHash);
         Assert.All(composition.Spots, s => Assert.Null(s.Output));
         Assert.All(composition.Spots, s => Assert.Equal(CanonicalJson.Hash(JsonValue.Create("Seen 21 November 2026")), s.ValueHash));
         AssertEachSpotStandsWhereRecorded(composition);

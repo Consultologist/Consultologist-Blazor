@@ -7,9 +7,10 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// line before it out when the profile had none (its composer skipped an empty block; a deliverable macro's end was trimmed).
 /// 31 tests no read in a body <c>if</c> (S05-007) and no JSON Logic reads the profile (S03-018), so the one accepted form
 /// that tests the trimmed signature is a package renderer, whose body may test its own <c>value</c> (part 05 § 5.1): the
-/// signature is piped to it in place of the line before it and the read. Its <c>input</c> is the signature's
-/// <c>plaintext</c>; its <c>format</c> is <c>plaintext</c> (a renderer's text is never escaped, D7, so the signature is 30's
-/// bytes; a <c>markdown_block</c> one would warn S05-061 at each use, which shares its line). Each renderer is written once,
+/// signature is piped to it in place of the line before it and the read. Its <c>input</c> and its <c>format</c> are the
+/// signature's <c>markdown_block</c> (#1543 ruling 2, D4; a renderer's text is never escaped, D7, so the signature is 30's
+/// bytes); each use shares its line, so it warns S05-061, which stays a warning, as the renderer's output begins with its
+/// own line endings. Each renderer is written once,
 /// into a package that needs it, listed in <c>renderers/index.json</c> and said (A10-089).
 /// </summary>
 internal static partial class Migrate
@@ -39,8 +40,8 @@ internal static partial class Migrate
                 ["label"] = label,
                 ["kind"] = "rendered",
                 ["description"] = null,
-                ["input"] = "plaintext",
-                ["format"] = "plaintext",
+                ["input"] = "markdown_block",
+                ["format"] = "markdown_block",
             }, $"{{{{ if value != null && (value | string.strip) != \"\" }}}}{before}{{{{ value }}}}{{{{ end }}}}");
             m.Items("renderers").Add(id);
             m.Notice(MigrationSentences.SignatureThroughRenderer(id));

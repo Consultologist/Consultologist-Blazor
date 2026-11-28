@@ -119,7 +119,7 @@ public class FolderItemTests
         { "Title: {{ item.value.title | renderer.line }}\n", "pipes into renderer.line" },
         { "Written on {{ run.date }}.\n", "reads run.date" },
         { "Written on {{ node.today.value }}.\n", "reads node.today.value" },
-        { "Again: {{ item.content }}\n", "places item.content" },
+        { "Again:\\\n{{ item.content }}\n", "places item.content" },
     };
 
     [Theory]
@@ -168,7 +168,7 @@ public class FolderItemTests
     [Fact]
     public void AFolderItemReadDirectly_IsAPlacementAsBefore()
     {
-        var files = Folder("Open with {{ input.consult_draft.content }}.\n")
+        var files = Folder("Open with the draft:\\\n{{ input.consult_draft.content }}\n")
             .WithAgent("draft", "Draft.\n{{~ snippet.standards.hpi.content }}\n");
 
         var body = Body(Check(files), "nodes/draft.md");

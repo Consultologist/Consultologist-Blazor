@@ -20,6 +20,12 @@ namespace Consultologist.PackageFormat;
 /// <see cref="Pipeline31"/>, and every surface picks its pipeline by the job's specVersion through
 /// <see cref="For"/>. 5–30 keep <see cref="Pipeline"/>, unchanged, until 30 is retired.
 /// </para>
+/// <para>
+/// #1543 (the owner's ruling 8, D16): both pipelines end with the library's own extension,
+/// <see cref="ConsultLinkSchemes"/>: a link, an image or an autolink is written only when its scheme is <c>http</c>,
+/// <c>https</c> or <c>mailto</c> (a link with no scheme stays); any other is written as its text. It is the one change
+/// to <see cref="Pipeline"/>'s output.
+/// </para>
 /// </summary>
 public static class ConsultMarkdown
 {
@@ -27,6 +33,7 @@ public static class ConsultMarkdown
         .DisableHtml()
         .UsePipeTables()
         .UseSoftlineBreakAsHardlineBreak()
+        .Use<ConsultLinkSchemes>()
         .Build();
 
     /// <summary>
@@ -35,7 +42,8 @@ public static class ConsultMarkdown
     /// GenericAttributes (<c>{…}</c> writes any attribute name, an event handler included), CustomContainers (a
     /// <c>class</c> from the text), MediaLinks (an embed), Mathematics, Diagrams and GridTables (neither surface draws
     /// them), and emphasis extras other than superscript and inserted (the PDF has no strikethrough or highlight).
-    /// <c>constants.json</c> <c>markdig</c> lists the same extensions (<see cref="Extensions31"/>).
+    /// <c>constants.json</c> <c>markdig</c> lists the same extensions (<see cref="Extensions31"/>); last, the library's own
+    /// <see cref="ConsultLinkSchemes"/> (<c>markdig.linkSchemes</c>), which neither list names.
     /// </summary>
     public static readonly MarkdownPipeline Pipeline31 = new MarkdownPipelineBuilder()
         .UseAlertBlocks()
@@ -52,9 +60,10 @@ public static class ConsultMarkdown
         .UseTaskLists()
         .UseAutoLinks()
         .DisableHtml()
+        .Use<ConsultLinkSchemes>()
         .Build();
 
-    /// <summary>The names of <see cref="Pipeline31"/>'s extensions, each type's name less <c>Extension</c>, in order: <c>constants.json</c>'s <c>markdig.extensions</c>.</summary>
+    /// <summary>The names of <see cref="Pipeline31"/>'s Markdig extensions (all but <see cref="ConsultLinkSchemes"/>), each type's name less <c>Extension</c>, in order: <c>constants.json</c>'s <c>markdig.extensions</c>.</summary>
     public static IReadOnlyList<string> Extensions31 { get; } =
         ["Alert", "Abbreviation", "AutoIdentifier", "Citation", "DefinitionList", "EmphasisExtra", "Figure", "Footer", "Footnote", "PipeTable", "ListExtra", "TaskList", "AutoLink"];
 

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Consultologist.PackageFormat.V31.Publish;
 
 /// <summary>
@@ -90,6 +92,19 @@ public static class PackagePublishSentences
     /// have published it. The operator checks its version on the engine before the list is sent.
     /// </summary>
     public const string NotAnswered = "The engine did not answer for this package; check whether it was published before sending this list.";
+
+    /// <summary>
+    /// A11-018 (#1543, ruling 2's owners' notice, D9): the bulk publish tells the owner whose chosen signature block has
+    /// <paramref name="lines"/> lines that are not blank, with a single line ending 31 would join: from 31 a line ending
+    /// inside a paragraph is a space. The count only, never the text.
+    /// </summary>
+    public static string SignatureHasLines(int lines) => SeveralLines("signature", lines);
+
+    /// <summary>A11-019 (#1543, D9): <see cref="SignatureHasLines"/> for the account's closing.</summary>
+    public static string ClosingHasLines(int lines) => SeveralLines("closing", lines);
+
+    private static string SeveralLines(string what, int lines) =>
+        string.Create(CultureInfo.InvariantCulture, $"Your {what} has {lines} lines. From specVersion 31, end each line with \\, or leave a blank line between them.");
 
     private static string List(IEnumerable<string> items)
     {

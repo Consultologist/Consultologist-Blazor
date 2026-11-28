@@ -1,0 +1,46 @@
+{
+  "package": "edge-source-no-branch",
+  "tag": null,
+  "scenario": "no-branch",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "summary": "Summary: diabetes above target on metformin."
+  },
+  "prompts": [
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:f18562cbc553709b49dbfd31fa99d007b4b4ed4899208ef58102b7a9a080970f",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:c211938d63392c30c6c2d18b14d6af99f4a99ab59f63e15c2260d9248b705329",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    },
+    {
+      "key": "summary",
+      "hash": "sha256:04ddfeee3290960aba822149d1bc02fffb06faeb433149d79f6d3f6df4393ff8",
+      "text": "Write the summary of a clinic note from these problem paragraphs.\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "summary_note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e4fc6823b2635674fdf8f18f2910c15ddc4093e511bd979485983d40dfa1263a",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nSummary: diabetes above target on metformin."
+    },
+    {
+      "id": "note",
+      "state": "skipped",
+      "reason": "source node.letter_case took no branch",
+      "hash": null,
+      "text": null
+    }
+  ]
+}

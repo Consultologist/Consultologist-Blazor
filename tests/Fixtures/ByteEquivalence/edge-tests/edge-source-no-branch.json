@@ -1,0 +1,39 @@
+{
+  "description": [
+    "edge-source-no-branch, scenario no-branch (#1543, ruling 3): the 30 capture's replies under their 31 keys. The route is",
+    "none, so letter_case takes no branch; summary runs, but note's if, which the migration wrote on letter_case's state, does",
+    "not hold, so note is skipped as 30 skipped it, and summary_note is 30's text."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "route": "none"
+  },
+  "profile": {},
+  "run": {},
+  "outputs": {
+    "node.problem_loop.problem_draft:1": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "node.problem_loop.problem_draft:2": "Medication paragraph: metformin continued.",
+    "node.summary": "Summary: diabetes above target on metformin."
+  },
+  "expect": {
+    "skipped": [
+      "node.letter_case"
+    ],
+    "decisions": {
+      "deliverable.note/if:self": false
+    },
+    "deliverables": {
+      "deliverable.summary_note": {
+        "state": "released",
+        "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nSummary: diabetes above target on metformin."
+      },
+      "deliverable.note": {
+        "state": "skipped"
+      }
+    }
+  }
+}

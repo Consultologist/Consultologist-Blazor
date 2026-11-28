@@ -889,6 +889,188 @@ public class V31JobStartTests
         Assert.Empty(at31.Start.Scheduled);
     }
 
+    // ---- a 31 job's deliverable as a previous-run input (#1543, ruling 9, D17; part 08 § 3.1) ----------------------
+
+    [Fact]
+    public async Task AnInputRef_ToA31JobsReleasedDeliverable_FillsTheInput_AndIsRecordedPreviousRun()
+    {
+        var start = new Start(preview: "31");
+        start.SourceRun31();
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+
+        Assert.Null(outcome.Error);
+        var held = Assert.Single(start.Inputs.Documents).Value;
+        Assert.Equal(EarlierRead, (string?)held["inputs"]!["consult_draft"]!["value"]);
+        Assert.Equal("""["consult_draft"]""", held["modelDerived"]!.ToJsonString());
+        var input = Assert.Single(await RecordedInputsAsync(start))!.AsObject();
+        Assert.Equal("previous-run", (string?)input["origin"]);
+        Assert.Equal(SourceJob, (string?)input["jobId"]);
+        Assert.Equal("consult", (string?)input["resultId"]);
+        Assert.True((bool?)input["modelDerived"]);
+        Assert.Equal(CanonicalJson.Hash(JsonValue.Create(EarlierRead)), (string?)input["hash"]);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        var origin = Assert.Single(initialize.InputDocumentOrigins!["consult_draft"]);
+        Assert.Equal(
+            (ConsultInputOriginKinds.PreviousRun, ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(EarlierRead)), SourceJob, "consult"),
+            (origin.Kind, origin.TextSha256, origin.SourceJobId, origin.SourceResultId));
+        // the text was read from the source's record, under its account
+        _ = start.RecordBlobs.Received(1).ReadTextAsync(SignInKinds.Organisation, "user-1", SourceJob, "deliverable.consult", Arg.Any<CancellationToken>());
+
+        // the shared resolver: a 5–30 start reads the same deliverable from the same record
+        var package = ByteEquivalenceFixtures.Load("example-prior-letters");
+        var at30 = new Start(preview: null, package30: package);
+        at30.SourceRun31();
+        var outcome30 = await at30.RunAsync(new ConsultGenerationRequest(
+            null,
+            RefText(PackageRefOf(package)),
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["prior_letters"] = ConsultInputValue.OfArray([ConsultInputValue.OfText("Typed letter (fictional).")]),
+            },
+            InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+        Assert.Null(outcome30.Error);
+        var payload = Assert.IsType<ConsultGenerationOrchestrationInput>(Assert.Single(at30.Scheduled).Input);
+        Assert.Equal(ConsultInputOriginKinds.PreviousRun, Assert.Single(payload.InputDocumentOrigins!["consult_draft"]).Kind);
+    }
+
+    [Fact]
+    public async Task AnInputRef_ToA31JobsDeliverableInAFolder_Resolves()
+    {
+        var start = new Start(preview: "31");
+        start.SourceRun31(resultId: "emr.note");
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "emr.note"))));
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(EarlierRead, (string?)Assert.Single(start.Inputs.Documents).Value["inputs"]!["consult_draft"]!["value"]);
+        Assert.Equal("emr.note", (string?)Assert.Single(await RecordedInputsAsync(start))!["resultId"]);
+        _ = start.RecordRows.Received(1).ReadAsync(SourceJob, "deliverable.emr.note", Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("blocked")]
+    [InlineData("held")]
+    [InlineData("skipped")]
+    [InlineData("failed")]
+    public async Task AnInputRef_ToA31JobsDeliverableThatWasNotReleased_IsRefused(string state)
+    {
+        var start = new Start(preview: "31");
+        start.SourceRun31(state: state);
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, whose deliverable 'consult' was not released.", outcome.ErrorDetail);
+        Assert.Null(outcome.JobId);
+        Assert.Empty(start.Scheduled);
+        Assert.Empty(start.Inputs.Documents);
+        // refused, not delivered: its text is never read
+        _ = start.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task AnInputRef_ToA31JobWithNoSuchDeliverable_SaysSo()
+    {
+        var start = new Start(preview: "31");
+        start.SourceRun31();
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "letter"))));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, which has no deliverable 'letter'.", outcome.ErrorDetail);
+        Assert.Empty(start.Scheduled);
+        _ = start.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
+    }
+
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("")]
+    public async Task AnInputRef_ToA31JobWhoseRowCannotBeRead_HasNoSuchDeliverable(string stored)
+    {
+        // #1543 (the final review, minor b): a corrupt stored row is no deliverable, as the record's routes treat an
+        // unreadable row; the start is refused with the sentence, not failed by the parse.
+        var start = new Start(preview: "31");
+        start.SourceRun31();
+        start.RecordRows.ReadAsync(SourceJob, "deliverable.letter", Arg.Any<CancellationToken>()).Returns(new RecordRow("deliverable", "deliverable.letter", stored));
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "letter"))));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, which has no deliverable 'letter'.", outcome.ErrorDetail);
+        Assert.Empty(start.Scheduled);
+        _ = start.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task AnInputRef_ToA31JobWhoseTextWasDropped_IsRefusedAsDeleted()
+    {
+        var start = new Start(preview: "31");
+        start.SourceRun31(dropped: new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero));
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefTextDeleted, outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, whose produced text was deleted on 2026-11-03 under the retention policy.", outcome.ErrorDetail);
+        Assert.Empty(start.Scheduled);
+        _ = start.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
+
+        // a text that is not there at all (the record's text gone without the job's mark): the same refusal, with no date
+        var missing = new Start(preview: "31");
+        missing.SourceRun31(text: null);
+        var gone = await missing.RunAsync(new ConsultGenerationRequest(
+            null, RefText(missing.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+        Assert.Equal(ConsultGenerationJobStartError.InputRefTextDeleted, gone.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, whose produced text was deleted under the retention policy.", gone.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AnInputRef_ToA31JobsTextThatDoesNotMatchItsHash_IsRefusedAsDeleted()
+    {
+        // a text written after its row settled (a late write) is never taken as the deliverable's
+        var start = new Start(preview: "31");
+        start.SourceRun31(composedHash: CanonicalJson.HashText("Another letter (fictional)."));
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefTextDeleted, outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, whose produced text was deleted under the retention policy.", outcome.ErrorDetail);
+        Assert.Empty(start.Scheduled);
+        Assert.Empty(start.Inputs.Documents);
+    }
+
+    [Fact]
+    public async Task AnInputRef_ToAnotherAccounts31Job_IsRefusedAsNotFound()
+    {
+        var start = new Start(preview: "31");
+        start.SourceRun31(appUserId: "user-2");
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, which this account does not have.", outcome.ErrorDetail);
+        Assert.Empty(start.Scheduled);
+        _ = start.RecordRows.DidNotReceiveWithAnyArgs().ReadAsync(default!, default!, default);
+        _ = start.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
+
+        // a 31 run that did not complete: refused before its record is read
+        var failed = new Start(preview: "31");
+        failed.SourceRun31(status: ConsultGenerationJobStatuses.Failed);
+        var notCompleted = await failed.RunAsync(new ConsultGenerationRequest(
+            null, RefText(failed.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "consult"))));
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotCompleted, notCompleted.Error);
+        _ = failed.RecordRows.DidNotReceiveWithAnyArgs().ReadAsync(default!, default!, default);
+        _ = failed.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
+    }
+
     [Fact]
     public async Task AFormRef_FillsAFormChannelObjectInput()
     {
@@ -1445,7 +1627,51 @@ public class V31JobStartTests
                 TestFormats.Catalog,
                 null,
                 null,
-                new V31JobStarter(admission, Store, Inputs, limits, accounts, settings, engine, NullLogger<V31JobStarter>.Instance, null, Links));
+                new V31JobStarter(admission, Store, Inputs, limits, accounts, settings, engine, NullLogger<V31JobStarter>.Instance, null, Links),
+                recordRows: RecordRows,
+                recordBlobs: RecordBlobs);
+        }
+
+        /// <summary>#1543 (D17): the record rows an earlier 31 run's deliverable is read from.</summary>
+        public IRecordRowStore RecordRows { get; } = Substitute.For<IRecordRowStore>();
+
+        /// <summary>#1543 (D17): the retained text of those rows.</summary>
+        public IRecordBlobStore RecordBlobs { get; } = Substitute.For<IRecordBlobStore>();
+
+        /// <summary>
+        /// #1543 (D17): the earlier run every reference names is a storage 12 job (specVersion 31, no
+        /// <c>AssembledDocuments</c>) whose record holds the deliverable row <c>deliverable.</c><paramref name="resultId"/> in
+        /// <paramref name="state"/>, its <c>composedHash</c> that of <paramref name="text"/> unless <paramref name="composedHash"/>
+        /// says otherwise, and its retained text <paramref name="text"/> (none when null).
+        /// </summary>
+        public void SourceRun31(
+            string resultId = "consult", string state = "released", string? text = EarlierRead, string? composedHash = null,
+            string appUserId = "user-1", string status = ConsultGenerationJobStatuses.Completed, DateTimeOffset? dropped = null)
+        {
+            WithSourceRun(new ConsultGenerationJobState
+            {
+                JobId = SourceJob,
+                AppUserId = appUserId,
+                Status = status,
+                PackageSpecVersion = 31,
+                SchemaVersion = 12,
+                TextDroppedAtUtc = dropped,
+            });
+            var key = "deliverable." + resultId;
+            var row = new JsonObject
+            {
+                ["key"] = key,
+                ["state"] = state,
+                ["composedHash"] = composedHash ?? (state == "released" || state == "blocked" || state == "held" ? CanonicalJson.HashText(text ?? EarlierRead) : null),
+            };
+            RecordRows.ReadAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((RecordRow?)null);
+            RecordRows.ReadAsync(SourceJob, key, Arg.Any<CancellationToken>()).Returns(new RecordRow("deliverable", key, row.ToJsonString()));
+            RecordBlobs.ReadTextAsync(Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((JsonObject?)null);
+            if (text != null)
+            {
+                RecordBlobs.ReadTextAsync(Arg.Any<string?>(), appUserId, SourceJob, key, Arg.Any<CancellationToken>())
+                    .Returns(_ => new JsonObject { ["content"] = text });
+            }
         }
 
         /// <summary>#1509: the lineage index both starts write to.</summary>
@@ -1526,9 +1752,12 @@ public class V31JobStartTests
         /// <summary>Publishes <see cref="Choices"/>.</summary>
         public WorkflowPackageRef PutChoices() => Publish(Choices());
 
-        /// <summary>Publishes <see cref="SourceFixture.Minimal"/> with its note signed: it reads <c>profile.signature</c>.</summary>
+        /// <summary>
+        /// Publishes <see cref="SourceFixture.Minimal"/> with its note signed: it reads <c>profile.signature</c>, so it is a
+        /// <c>markdown_block</c> (the signature is, #1543).
+        /// </summary>
         public WorkflowPackageRef PutSigned() => Publish(SourceFixture.Minimal().With("deliverables/note.md", SourceFixture.Md(
-            SourceFixture.Deliverable("Consultation note", TemplateFixture.Plain, "null", "hold"),
+            SourceFixture.Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"),
             "{{ node.plan.content }}\n\n{{ profile.signature }}\n")));
 
         /// <summary>

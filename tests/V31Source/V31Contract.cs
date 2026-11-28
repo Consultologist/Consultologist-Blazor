@@ -136,7 +136,8 @@ internal static class V31Contract
     /// asks no question, #1508 comment 6 item 1, R13; A11-014, Task 35: an agent's onInvalid that is not retry or fail, 30's
     /// flag among them, comment 5 item 3 and comment 6 item 3; A11-015 and A11-016, Task 36: the bulk publish's deadline for a
     /// package it cannot publish, comment 8, R11, and a package that is not the account's active account package, R21; A11-017,
-    /// the final review of Part F: a package the engine did not answer for, in the bulk publish's owners' list).
+    /// the final review of Part F: a package the engine did not answer for, in the bulk publish's owners' list; A11-018 and
+    /// A11-019, #1543 Task B5: an owner whose signature or closing has several lines, in the owners' list, ruling 2, D9).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
@@ -157,13 +158,16 @@ internal static class V31Contract
         ["A11-015"] = "This package stops working when specVersion 30 is retired.",
         ["A11-016"] = "<package> is not the account's active account package; the bulk publish migrates only the account package an account's pin names.",
         ["A11-017"] = "The engine did not answer for this package; check whether it was published before sending this list.",
+        ["A11-018"] = "Your signature has <n> lines. From specVersion 31, end each line with \\, or leave a blank line between them.",
+        ["A11-019"] = "Your closing has <n> lines. From specVersion 31, end each line with \\, or leave a blank line between them.",
     };
 
     /// <summary>
     /// #1508 (R8 item 4): the audience of an area sentence whose audience is not the author's, as the refusal-sentences table
     /// gives it: A08-006 is logged for the operator; A11-008 is shown to the clinician, who is told to tell the operator;
     /// A11-015 is the owner's, in the bulk publish's owners' list, and A11-016 the operator's, in its record (Task 36); A11-017 the
-    /// operator's, in the owners' list, to check before it is sent (the final review of Part F).
+    /// operator's, in the owners' list, to check before it is sent (the final review of Part F); A11-018 and A11-019 the
+    /// owner's, in the owners' list (#1543, D9).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> AreaSentenceAudiences = new Dictionary<string, string>
     {
@@ -172,6 +176,8 @@ internal static class V31Contract
         ["A11-015"] = "clinician",
         ["A11-016"] = "operator",
         ["A11-017"] = "operator",
+        ["A11-018"] = "clinician",
+        ["A11-019"] = "clinician",
         ["A12-001"] = "clinician",
         ["A12-002"] = "clinician",
         ["A12-003"] = "clinician",
@@ -261,8 +267,14 @@ internal static class V31Contract
     /// new node that strips it, #1509 comment 7207709261 item 1, area 13 Task F1; A10-089: a signature written through a renderer
     /// that tests its trimmed value, #1509 comment 7207709261 item 2, area 13 Task F2; A10-090: a loop whose .content is read and whose
     /// items have more than one text format, a hand edit's reason, area 13 Task F1 fix round 1; A10-091: a Markdown body's single
-    /// line endings inside a paragraph ended with \ by the migration, and A10-092: a body a prompt reads, shown elsewhere, whose
-    /// line endings are kept, #1509 comment 7209167166 item 4, area 13 Task G5).
+    /// line endings inside a paragraph ended with \ by the migration, #1509 comment 7209167166 item 4, area 13 Task G5, its count
+    /// agreeing with its noun, #1543 ruling 10; A10-092, a body a prompt reads whose line endings were kept, retired by #1543
+    /// ruling 1 and unused; A10-093: a markdown_block read separated from the text beside it by a blank line, #1543 ruling 2
+    /// as the owner amended it on 2026-11-27, area 14 Task A5; A10-094: a markdown_block read on a line that a blank line
+    /// would break out of its Markdown block (a list item, a quote, a heading or indented text), a hand edit's reason, the
+    /// same amendment's item 4 as the controller extended it for the owner, area 14 Task A5 fix round 1; A10-079, A10-084 and
+    /// A10-086 reworded for a deliverable with any source that may not run, its terms joined by and, #1543 ruling 3, area 14
+    /// Task A6).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -342,20 +354,21 @@ internal static class V31Contract
         ["A10-076"] = "The condition '<expression>' compares <text>, read from an input, with blank text, which 30 and 31 read differently when the text is blank or not given; rewrite it by hand.",
         ["A10-077"] = "node '<id>' decides whether macro '<macro id>' is offered, which 30's model chose; write its yes-or-no question on the prompt's last line, and remove the \"otherwise\" clause from the macro's instruction.",
         ["A10-078"] = "macro '<id>' is placed by <n> nodes, with a classifier each (<ids>), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.",
-        ["A10-079"] = "<file>, if: written to skip the deliverable unless <reads> ran, as 30 skipped a deliverable none of whose sources ran.",
+        ["A10-079"] = "<file>, if: written to skip the deliverable when a source did not run (<reads>), as 30 skipped it.",
         ["A10-080"] = "the template reads <path> at line <n> through <object path>, which can be null, where no {{ if <object path> }} can enclose the read; move the read where that guard can stand.",
         ["A10-081"] = "up to <n> steps could run in one job through <loop key>, and this engine runs at most <limit> for one job, so publish refuses the package; the migration guesses no max: lower a loop's max or split the workflow.",
         ["A10-082"] = "options.json gives <renames | whenEmpty | folderFormats> an empty id or an empty choice; name each id and its choice.",
         ["A10-083"] = "No options.json was given, so the migration's defaults were used: a reserved id takes its kind as a suffix, every deliverable's whenEmpty is release, and a snippet folder's items take <folder>_item.",
-        ["A10-084"] = "every source may not run, and 30 skipped the deliverable when none ran; join <term> to 30's condition by and.",
+        ["A10-084"] = "a source may not run, and 30 skipped the deliverable when one did not; join <term> to 30's condition by and.",
         ["A10-085"] = "'<comparison>' compares an input's text with a literal that starts with white space, which 30 could match and 31's trim never can; write the comparison so that it keeps 30's answer.",
-        ["A10-086"] = "every source may not run, and the migration cannot read whether <sources> ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it<, joining <term> for the others>.",
+        ["A10-086"] = "a source may not run, and the migration cannot read whether <sources> ran; write the if that skips the deliverable when a source did not run, as 30 skipped it<, joining <term> for the others>.",
         ["A10-087"] = "<file>, if: written so that the node runs only when deliverable <ids> applies, as 30 ran only what an applicable deliverable needed.",
         ["A10-088"] = "Loop '<id>' returns each item through the new node '<new id>', which strips the item's text as specVersion 30 did.",
         ["A10-089"] = "The signature is written through renderer '<id>', which leaves it and the line before it out when the signature is blank, as specVersion 30 did.",
         ["A10-090"] = "loop '<id>' returns items of more than one text format, so its items are not stripped as specVersion 30 stripped them; strip each branch's text where it is written.",
         ["A10-091"] = "In '<file>', <n> line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.",
-        ["A10-092"] = "'<file>' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\.",
+        ["A10-093"] = "In '<file>', the read <read> now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.",
+        ["A10-094"] = "the read <read> at line <n> stands in a line that a blank line would break out of its Markdown block (a list item, a quote, a heading or indented text), and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.",
     };
 
     /// <summary>The repository's root: the folder holding <c>Consultologist.sln</c> above the build output.</summary>
@@ -566,6 +579,24 @@ internal static class V31Contract
             const string optional = " 31.+?\\.$";
             Assert.EndsWith(optional, pattern, StringComparison.Ordinal);
             pattern = pattern[..^optional.Length] + " 31(?:, and an input's text is trimmed at both ends first, where 30 trimmed its end)?\\.$";
+        }
+
+        // A10-091's count agrees with its noun (#1543, ruling 10): "1 line ending inside a paragraph ends", or "<n> line
+        // endings inside a paragraph end" for any other count.
+        if (refusal.Id == "A10-091")
+        {
+            var plural = ToPattern("<n> line endings inside a paragraph end ");
+            Assert.Contains(plural, pattern, StringComparison.Ordinal);
+            pattern = pattern.Replace(plural, "(?:" + Regex.Escape("1 line ending inside a paragraph ends ") + "|(?!1 )[0-9]+" + Regex.Escape(" line endings inside a paragraph end ") + ")", StringComparison.Ordinal);
+        }
+
+        // A10-093 names one read or several (#1543, ruling 2, D7): "the read <read> now starts its own line", or "the reads
+        // <reads> now start their own lines".
+        if (refusal.Id == "A10-093")
+        {
+            var one = ToPattern("the read <read> now starts its own line,");
+            Assert.Contains(one, pattern, StringComparison.Ordinal);
+            pattern = pattern.Replace(one, "(?:" + one + "|" + ToPattern("the reads <reads> now start their own lines,") + ")", StringComparison.Ordinal);
         }
 
         // A10-086's last clause (", joining <term> for the others") is said only when another source has a term.

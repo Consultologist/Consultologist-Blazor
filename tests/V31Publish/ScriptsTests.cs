@@ -295,6 +295,9 @@ public class ScriptsTests
         /// <summary>The outcome for each package name; one not named publishes.</summary>
         public Dictionary<string, string> Outcomes { get; } = new(StringComparer.Ordinal) { [Nested] = "not migrated: " + A11001 };
 
+        /// <summary>The account notices the engine says for each owner (#1543, D9); an owner not named has none, and its answer no member.</summary>
+        public Dictionary<string, string[]> AccountNotices { get; } = new(StringComparer.Ordinal);
+
         /// <summary>A name whose POST is answered with a 500.</summary>
         public string? Faulting { get; set; }
 
@@ -318,7 +321,7 @@ public class ScriptsTests
             var publish = (bool)body["publish"]!;
             var outcome = Outcomes.GetValueOrDefault(name) ?? (publish ? "published" : "would publish");
             var published = !outcome.StartsWith("not migrated: ", StringComparison.Ordinal);
-            return Json(HttpStatusCode.OK, new JsonObject
+            var answer = new JsonObject
             {
                 ["owner"] = body["owner"]!.DeepClone(),
                 ["name"] = name,
@@ -330,7 +333,10 @@ public class ScriptsTests
                 ["report"] = new JsonObject { ["outcome"] = published ? "published" : "refused" },
                 ["options"] = new JsonObject { ["renames"] = new JsonObject(), ["whenEmpty"] = new JsonObject(), ["folderFormats"] = new JsonObject() },
                 ["defaults"] = body["options"] is null ? MigrationOptionsFile.Defaults : null,
-            });
+            };
+            if (AccountNotices.TryGetValue((string)body["owner"]!, out var notices))
+                answer["accountNotices"] = new JsonArray([.. notices.Select(n => (JsonNode?)JsonValue.Create(n))]);
+            return Json(HttpStatusCode.OK, answer);
         }
 
         private static HttpResponseMessage Json(HttpStatusCode status, JsonObject body) =>
@@ -458,6 +464,53 @@ public class ScriptsTests
         {
             Directory.Delete(folder, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task TheOwnersList_NamesAnAccountsNoticesOnce()
+    {
+        // #1543 (ruling 2, D9): the engine says the account's notices with each of its packages, published or not; the list
+        // names them once for the owner, as account, after its packages. An owner the engine says none for (or an older
+        // engine, whose answer has no accountNotices) has no account member.
+        const string Signature = "Your signature has 3 lines. From specVersion 31, end each line with \\, or leave a blank line between them.";
+        const string Closing = "Your closing has 2 lines. From specVersion 31, end each line with \\, or leave a blank line between them.";
+        var engine = new FakeEngine();
+        engine.AccountNotices[Owner1] = [Signature, Closing];
+        var folder = OperatorFolder();
+        try
+        {
+            await BulkAsync(engine, folder, publish: true);
+
+            var owners = ReadJson(folder, BulkPublishScript.OwnersFile);
+            Assert.Equal(["published", "notMigrated", "unknown", "account"], owners[Owner1]!.AsObject().Select(p => p.Key));
+            Assert.Single(owners[Owner1]!["published"]!.AsArray());
+            Assert.Single(owners[Owner1]!["notMigrated"]!.AsArray());
+            Assert.Equal([Signature, Closing], owners[Owner1]!["account"]!.AsArray().Select(n => (string)n!));
+            Assert.Equal(["published", "notMigrated", "unknown"], owners[Owner2]!.AsObject().Select(p => p.Key));
+
+            // the record keeps each row's answer as the engine gave it
+            var rows = ReadJson(folder, BulkPublishScript.RecordFile)["rows"]!.AsArray();
+            Assert.All(rows.Where(r => (string?)r!["owner"] == Owner1), r => Assert.Equal(2, r!["accountNotices"]!.AsArray().Count));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TheOwnersList_ReadsAnAccountNoticeTolerantly()
+    {
+        // a row of an older engine has no accountNotices; a member that is not an array of text names nothing
+        var rows = new JsonArray(
+            new JsonObject { ["owner"] = Owner1, ["name"] = Letters, ["outcome"] = "published", ["accountNotices"] = "not a list" },
+            new JsonObject { ["owner"] = Owner1, ["name"] = Nested, ["outcome"] = "published", ["accountNotices"] = new JsonArray(3, null, "A sentence.") },
+            new JsonObject { ["owner"] = Owner2, ["name"] = Other, ["outcome"] = "published" });
+
+        var owners = BulkPublishScript.Owners(rows);
+
+        Assert.Equal(["A sentence."], owners[Owner1]!["account"]!.AsArray().Select(n => (string)n!));
+        Assert.False(owners[Owner2]!.AsObject().ContainsKey("account"));
     }
 
     private const string A11017 = "The engine did not answer for this package; check whether it was published before sending this list.";

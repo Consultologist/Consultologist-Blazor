@@ -122,7 +122,7 @@ public static partial class SourceTemplates
     /// </summary>
     public static TemplateCheck Check(SourcePackage package, PackageTypes types, Resolution resolution, TypeRegistry registry)
     {
-        var (said, warnings, bodies) = Run(package, types, resolution, registry);
+        var (said, warnings, bodies, _) = Run(package, types, resolution, registry);
         return new TemplateCheck(said, warnings, said.Count == 0 ? new PackageTemplates(bodies, warnings, package) : null);
     }
 
@@ -130,19 +130,20 @@ public static partial class SourceTemplates
     /// #1507 (specVersion 31, area 10; D15): what the dialect read of <paramref name="package"/> though it refuses something:
     /// every body <see cref="Check"/> would give, but for each template whose file is refused, and each snippet and macro
     /// whose file is refused, which are not known (<see cref="PackageTemplates.Of"/> is null for them), with the refusals.
-    /// For the migration's derived flags, which a hand edit elsewhere in the package does not change. A null argument is
-    /// the caller's error.
+    /// For the migration's derived flags, which a hand edit elsewhere in the package does not change. #1543 (ruling 2, D7):
+    /// with the roles of every site's tags exactly as publish's S05-066 and S05-067 read them (<see cref="Context.Roles"/>),
+    /// for the migration's block-reads pass. A null argument is the caller's error.
     /// </summary>
-    internal static (IReadOnlyList<SourceRefusal> Refusals, PackageTemplates Readable) Readable(
+    internal static (IReadOnlyList<SourceRefusal> Refusals, PackageTemplates Readable, SiteRoles Roles) Readable(
         SourcePackage package, PackageTypes types, Resolution resolution, TypeRegistry registry)
     {
-        var (said, warnings, bodies) = Run(package, types, resolution, registry);
+        var (said, warnings, bodies, roles) = Run(package, types, resolution, registry);
         var refused = said.Select(r => r.Path).ToHashSet(StringComparer.Ordinal);
         var kept = bodies.Where(b => !refused.Contains(b.Host.Path)).ToList();
-        return (said, new PackageTemplates(kept, warnings, package, refused));
+        return (said, new PackageTemplates(kept, warnings, package, refused), roles);
     }
 
-    private static (List<SourceRefusal> Said, List<SourceRefusal> Warnings, List<CheckedBody> Bodies) Run(
+    private static (List<SourceRefusal> Said, List<SourceRefusal> Warnings, List<CheckedBody> Bodies, SiteRoles Roles) Run(
         SourcePackage package, PackageTypes types, Resolution resolution, TypeRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(package);
@@ -163,11 +164,13 @@ public static partial class SourceTemplates
         context.PartsOffAgents();
         context.ProfileCarrying(bodies);
         context.FolderRoutes();
-        context.LineEndings(bodies);
+        var roles = context.Roles(bodies);
+        context.LineEndings(roles);
+        context.BlockReads(roles);
 
         var said = context.Refusals.Distinct().OrderBy(r => r.Path, StringComparer.Ordinal).ToList();
         var warnings = context.Warnings.Distinct().OrderBy(w => w.Path, StringComparer.Ordinal).ToList();
-        return (said, warnings, bodies);
+        return (said, warnings, bodies, roles);
     }
 
     /// <summary>

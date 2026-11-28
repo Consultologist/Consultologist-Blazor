@@ -1,6 +1,7 @@
 {
   "notices": [
-    "Loop 'problem_loop' returns each item through the new node 'problem_draft_stripped', which strips the item's text as specVersion 30 did."
+    "Loop 'problem_loop' returns each item through the new node 'problem_draft_stripped', which strips the item's text as specVersion 30 did.",
+    "In 'snippets/intake_line.md', the read input.intake.value.reason now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line."
   ],
   "handEdits": [],
   "refusals": []

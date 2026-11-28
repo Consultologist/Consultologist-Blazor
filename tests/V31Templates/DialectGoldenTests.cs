@@ -104,7 +104,8 @@ public class DialectGoldenTests
         ["output-text"] = "9d0787e9c5ae0a948c0b2991d6698447481727bc5c2e1802e7a5db28860fbefc",
         ["output-values"] = "8d9307391f0eee7a9a3fe47bef1909faf870a4c6709c7c27bd48f7ecb3e01f58",
         ["part"] = "e079534cecd2ccf227d17b64c8acf7ae86869edd0d3fde70c9dff9732f46f62a",
-        ["pipe-renderer"] = "a59f79d80683294bc6fe26396d9b6ef325b89d742536aa1288ddfe444ec8c099",
+        // #1543 (ruling 2, S05-066): the renderer quote reads its value on a line of its own; the case moved with it.
+        ["pipe-renderer"] = "407fcc9b0fa3bc4821fc0e6ef41564ad5ef62b07562be066b393e64e203aa1a5",
         ["placement-alone-absent"] = "3c842a48a4da5a2536de05ce28fb44fbb048b1c5f6874ab046f5909ad649766b",
         ["placement-alone-placed"] = "3a606919dff063a58a1c376e6b38057e4554fb884f85b43e894d7ed19851f6ce",
         ["placement-block-absent"] = "c6c73cb7f02e83f59c413d06bdc37d292571b03bc8234a31ad16b2be9b0c528b",

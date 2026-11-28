@@ -318,7 +318,7 @@ public class MigrateMacrosTests
         Assert.Equal("Written by {{ profile.name }} on {{ run.date }}.{{ profile.signature | renderer.signature_after_line_end }}", MigrateNodesTests.Md(result, "snippets/author_line.md").Body);
         var renderer = MigrateNodesTests.Md(result, "renderers/signature_after_line_end.md");
         Assert.Equal(
-            """{"label":"Signature after a line end","kind":"rendered","description":null,"input":"plaintext","format":"plaintext"}""",
+            """{"label":"Signature after a line end","kind":"rendered","description":null,"input":"markdown_block","format":"markdown_block"}""",
             Header(result, "renderers/signature_after_line_end.md"));
         Assert.Equal("{{ if value != null && (value | string.strip) != \"\" }}\n{{ value }}{{ end }}", renderer.Body);
         Assert.Equal("""["signature_after_line_end","signature_after_blank_line"]""", MigrateNodesTests.Json(result, "renderers/index.json")["items"]!.ToJsonString());
@@ -329,9 +329,10 @@ public class MigrateMacrosTests
         Assert.Equal("Sincerely,{{ profile.signature | renderer.signature_after_blank_line }}", MigrateNodesTests.Md(closing, "snippets/closing.md").Body);
         Assert.Equal("""["signature_after_blank_line"]""", MigrateNodesTests.Json(closing, "renderers/index.json")["items"]!.ToJsonString());
 
-        // Text after the signature: as written, and no renderer.
+        // Text after the signature: no renderer, and (#1543, ruling 2 as the owner amended it on 2026-11-27, item 3) the line
+        // of text below the signature's own line is separated from it by a blank line.
         var after = MigrateNodesTests.Migrated("example-v12-constructs", _ => { }, files => files["macros/closing.md"] += "\nWith thanks.");
-        Assert.Equal("Sincerely,\n\n{{ profile.signature }}\nWith thanks.", MigrateNodesTests.Md(after, "snippets/closing.md").Body);
+        Assert.Equal("Sincerely,\n\n{{ profile.signature }}\n\nWith thanks.", MigrateNodesTests.Md(after, "snippets/closing.md").Body);
         Assert.Equal("[]", MigrateNodesTests.Json(after, "renderers/index.json")["items"]!.ToJsonString());
     }
 

@@ -43,8 +43,8 @@ public static partial class SourceResolve
         ["name"] = "string",
         ["credentials"] = "string",
         ["organisation"] = "string",
-        ["signature"] = "plaintext",
-        ["closing"] = "plaintext",
+        ["signature"] = "markdown_block",
+        ["closing"] = "markdown_block",
     };
 
     /// <summary>

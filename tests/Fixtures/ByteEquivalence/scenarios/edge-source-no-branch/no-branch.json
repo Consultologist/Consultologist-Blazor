@@ -1,0 +1,25 @@
+{
+  "description": [
+    "route none: letter_case matches no branch, so the flow takes no branch and letter_text does not",
+    "run. summary runs and summary_note is composed from the problem loop and summary (so the start",
+    "is not refused), but note is skipped: one of its sources is a flow that took no branch."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "route": "none"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "summary": "Summary: diabetes above target on metformin."
+  }
+}

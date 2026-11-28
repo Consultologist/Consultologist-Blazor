@@ -185,6 +185,18 @@ internal sealed class Migrated
     /// </summary>
     public Dictionary<string, int> HardBreaks { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// #1543 (ruling 2, D7): each Markdown body in which the block-reads pass (<see cref="Migrate.BlockReads"/>) separated a
+    /// <c>markdown_block</c> read from the text beside it by a blank line, its file to how many reads it separated there.
+    /// </summary>
+    public Dictionary<string, int> MovedReads { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1543 (ruling 2, D8): the reads of <see cref="MovedReads"/>, each file to the tags it separated, as its body writes
+    /// them (one per tag, in order), so the comparison finds their places.
+    /// </summary>
+    public Dictionary<string, List<string>> SeparatedReads { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Each condition site's place, by the site's 30 owner id (Task 7), for <see cref="Scope"/>; none is the package's top level.</summary>
     public Dictionary<string, SitePlace> Places { get; } = new(StringComparer.Ordinal);
 
@@ -453,6 +465,8 @@ internal sealed class Migrated
             MacroIds30 = new Dictionary<string, string>(MacroIds30, StringComparer.Ordinal),
             StripNodes = new Dictionary<string, string>(StripNodes, StringComparer.Ordinal),
             HardBreaks = new Dictionary<string, int>(HardBreaks, StringComparer.Ordinal),
+            MovedReads = new Dictionary<string, int>(MovedReads, StringComparer.Ordinal),
+            SeparatedReads = SeparatedReads.ToDictionary(r => r.Key, r => (IReadOnlyList<string>)r.Value.ToList(), StringComparer.Ordinal),
         };
     }
 }

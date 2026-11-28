@@ -47,6 +47,12 @@ else
         /// <c>graph.edges</c> into the row's rooted key): empty when the graph was not read or names none.
         /// </summary>
         public IReadOnlyList<string> ModelSources(Row31 row) => sources(row);
+
+        /// <summary>The ids of the blocked deliverables that read a node row's output (#1543, ruling 4); empty for none.</summary>
+        public IReadOnlyList<string> RefusedUses(string nodeKey) =>
+            RefusedReaders.TryGetValue(nodeKey, out var ids) ? ids : [];
+
+        internal IReadOnlyDictionary<string, IReadOnlyList<string>> RefusedReaders { get; set; } = new Dictionary<string, IReadOnlyList<string>>();
     }
 
     private IReadOnlyList<TreeNode31> _tree = [];
@@ -69,6 +75,7 @@ else
             _built = Record;
             _tree = NodeTree31.Build(Record);
             _view.SetTree(Record, _tree);
+            _view.RefusedReaders = RefusedReaders31.Of(Record);
         }
 
         if (!Equals(_resolveRead, Resolve))

@@ -302,6 +302,8 @@ public class DialectRulesTests
     [InlineData("MarkerInBody", "S05-051")]
     [InlineData("ReadsProfileCarrying", "S05-064")]
     [InlineData("SingleLineEnding", "S05-065")]
+    [InlineData("TextBeforeBlockRead", "S05-066")]
+    [InlineData("TextAfterBlockRead", "S05-067")]
     [InlineData("InstructionPlaces", "A07-003")]
     [InlineData("EngineFailedReading", "A08-006")]
     public void EachSentenceMethod_SaysItsRow(string method, string id)

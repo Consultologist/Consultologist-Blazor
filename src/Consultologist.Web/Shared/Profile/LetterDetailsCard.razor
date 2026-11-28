@@ -1,3 +1,4 @@
+@using Consultologist.Web.Shared.WorkflowEditor
 @inject IAccountEndpointService AccountService
 @* #1509 (Task 21; part 09 § 7.1; D13): the profile fields a 31 package reads that have no home elsewhere. A blank value
    is not set: saving one deletes the setting. Only a field that changed is written. The Api's refusal of a value (a 400
@@ -66,6 +67,20 @@
                   disabled="@requestInProgress"
                   placeholder="The closing line, exactly as it should appear"
                   aria-label="Closing line"></textarea>
+        @if (!string.IsNullOrWhiteSpace(closingInput))
+        {
+            <div class="letter-closing-preview" aria-label="Closing preview">
+                @((MarkupString)MarkdownPreview.Render(closingInput, PreviewSpecVersion))
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Signature))
+        {
+            <span class="muted-text">Signature</span>
+            <div class="letter-signature-preview" aria-label="Signature preview">
+                @((MarkupString)MarkdownPreview.Render(Signature, PreviewSpecVersion))
+            </div>
+        }
+        <p class="muted-text letter-details-hint">End a line with \ or leave a blank line.</p>
 
         <div class="action-row">
             <FluentButton Appearance="Appearance.Accent"
@@ -79,6 +94,12 @@
 </section>
 
 @code {
+    // #1543 (ruling 2, D10): the previews go through the specVersion 31 pipeline.
+    private const int PreviewSpecVersion = 31;
+
+    /// <summary>The chosen signature block's text, as the signature blocks card holds it; none when no block is chosen.</summary>
+    [Parameter] public string? Signature { get; set; }
+
     private string? savedCredentials;
     private string? savedOrganisation;
     private string? savedClosing;

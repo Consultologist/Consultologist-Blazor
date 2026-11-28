@@ -1,0 +1,47 @@
+{
+  "name": "edge-source-no-branch",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Edge case: one source of two takes no branch",
+  "description": [
+    "An edge-case fixture (#1543, ruling 3): the deliverable note reads the node summary, which always runs, and the case letter_case, which takes no branch when the route is none, so 30 skips note though summary ran; summary_note, from the problem loop and summary, keeps the start from being refused. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "problems": {
+      "label": "Problem list",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "route": {
+      "label": "Route",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "letter",
+          "none"
+        ]
+      },
+      "required": true,
+      "channel": null
+    }
+  }
+}

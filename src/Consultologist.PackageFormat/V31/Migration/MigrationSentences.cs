@@ -457,12 +457,13 @@ internal static class MigrationSentences
         $"macro '{macro}' is placed by {nodes.Count.ToString(CultureInfo.InvariantCulture)} nodes, with a classifier each ({string.Join(", ", nodes)}), and its if needs every answer yes, where 30's model chose at each node on its own; split the macro into one per placing node, or choose its condition.";
 
     /// <summary>
-    /// A10-079 (#1508, comment 7, Q3; R15; part 10 § 1.2): the deliverable <paramref name="file"/> was given the <c>if</c>
-    /// that skips it unless one of its sources (<paramref name="reads"/>, the 31 reads, in <c>sources</c> order) ran: 30
-    /// skipped a deliverable none of whose sources ran, where 31 would compose it empty and release it.
+    /// A10-079 (#1508, comment 7, Q3; R15; #1543, ruling 3, D11; part 10 § 1.2): the deliverable <paramref name="file"/> was
+    /// given the <c>if</c> that skips it when one of its sources that may not run (<paramref name="reads"/>, the 31 reads, in
+    /// <c>sources</c> order) did not run: 30 skipped a deliverable when any source was a flow that took no branch, where 31
+    /// would compose it from the others and release it.
     /// </summary>
     public static string SkippedUnlessASourceRan(string file, IReadOnlyList<string> reads) =>
-        $"{file}, if: written to skip the deliverable unless {string.Join(" or ", reads)} ran, as 30 skipped a deliverable none of whose sources ran.";
+        $"{file}, if: written to skip the deliverable when a source did not run ({string.Join(", ", reads)}), as 30 skipped it.";
 
     /// <summary>
     /// A10-087 (#1508, 2026-11-26, item 1; F-D6; part 10 § 1.2): the leaf <paramref name="file"/> was given the <c>if</c> of
@@ -498,37 +499,53 @@ internal static class MigrationSentences
     /// <summary>
     /// A10-091 (#1510; #1509 comment 7209167166, item 4; G-D8, G-D10): in the Markdown body <paramref name="file"/>, the
     /// migration ended <paramref name="count"/> line endings inside a paragraph with <c>\</c>, where 30's pipeline broke a
-    /// single line ending and 31's does not. One per file.
+    /// single line ending and 31's does not. One per file; the count agrees with its noun (#1543, ruling 10). (A10-092, a body
+    /// a prompt reads whose line endings were kept, is retired by #1543, ruling 1: such a body is broken like any other.)
     /// </summary>
-    public static string ExplicitHardBreaks(string file, int count) =>
-        $"In '{file}', {count} line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.";
+    public static string ExplicitHardBreaks(string file, int count) => count == 1
+        ? $"In '{file}', 1 line ending inside a paragraph ends with \\ (an explicit hard break), where specVersion 30 broke the line."
+        : $"In '{file}', {count} line endings inside a paragraph end with \\ (an explicit hard break), where specVersion 30 broke the line.";
 
     /// <summary>
-    /// A10-092 (#1510; #1509 comment 7209167166, item 4; G-D8, G-D10): the Markdown body <paramref name="file"/> is read or
-    /// placed by a prompt, so the migration wrote no <c>\</c> in it (one would change what the model reads), yet a
-    /// deliverable, a rendered node or a macro shows it, where its single line endings no longer break at 31.
+    /// A10-093 (#1543, ruling 2, D7, as the owner amended it on 2026-11-27): in the Markdown body <paramref name="file"/>, the
+    /// migration separated each of <paramref name="reads"/> (a <c>markdown_block</c> read, as written without its pipes) from
+    /// the text beside it by a blank line: text on the read's line, or a line of text next to the read's own. One per file;
+    /// one read or several.
     /// </summary>
-    public static string LineEndingsKeptForAPrompt(string file) =>
-        $"'{file}' is read by a prompt, so its single line endings are kept as written; at specVersion 31 they do not break where it is shown: end such a line with \\.";
+    public static string BlockReadsMoved(string file, IReadOnlyList<string> reads) => reads.Count == 1
+        ? $"In '{file}', the read {reads[0]} now starts its own line, after a blank line: at specVersion 31 a markdown_block read stands alone on its line."
+        : $"In '{file}', the reads {string.Join(", ", reads)} now start their own lines, after a blank line: at specVersion 31 a markdown_block read stands alone on its line.";
 
     /// <summary>
-    /// A10-084 (#1508, the final review of Part F; Q3, R15): a reason: the deliverable's 30 condition is a hand edit (the
-    /// converter refused it), and every source may not run, so A10-079's <paramref name="term"/> (the canonical JSON Logic
-    /// that says a source ran: <c>&lt;source&gt;.state === "completed"</c>, <c>or</c> over the sources; node keys only) is
-    /// not joined to it: the operator writes 30's condition <c>and</c> the term, or 31 releases empty what 30 skipped.
+    /// A10-094 (#1543, ruling 2, D7, as the owner amended it on 2026-11-27, item 4, as the controller extended it in Task
+    /// A5's review, for the owner): a reason: the <c>markdown_block</c> read <paramref name="read"/> at line
+    /// <paramref name="line"/> of the body stands in a line that a blank line would break out of its Markdown block (the
+    /// line lies in a table, a list item, a quote, an alert, a footnote or a definition item; the text before it starts a
+    /// list item, a quote or a heading; the text after it would start one, or indented code), so the
+    /// migration leaves the line as 30 wrote it. S10-002 gives it.
+    /// </summary>
+    public static string ReadBreaksItsBlock(string read, int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"the read {read} at line {line} stands in a line that a blank line would break out of its Markdown block (a list item, a quote, a heading or indented text), and at specVersion 31 a markdown_block read stands alone on its line; rewrite the line.");
+
+    /// <summary>
+    /// A10-084 (#1508, the final review of Part F; Q3, R15; #1543, ruling 3, D11): a reason: the deliverable's 30 condition is
+    /// a hand edit (the converter refused it), and a source may not run, so A10-079's <paramref name="term"/> (the canonical
+    /// JSON Logic that says each source that may not run ran: <c>&lt;source&gt;.state === "completed"</c>, <c>and</c> over
+    /// those sources; node keys only) is not joined to it: the operator writes 30's condition <c>and</c> the term, or 31
+    /// releases what 30 skipped.
     /// </summary>
     public static string JoinASourceRan(string term) =>
-        $"every source may not run, and 30 skipped the deliverable when none ran; join {term} to 30's condition by and.";
+        $"a source may not run, and 30 skipped the deliverable when one did not; join {term} to 30's condition by and.";
 
     /// <summary>
-    /// A10-086 (#1508, 2026-11-26, item 8; R15, F-D13): a reason: every source of the deliverable may not run, and the
-    /// migration cannot read whether the <paramref name="unread"/> ones ran (a node it does not know, or one whose run the
-    /// deliverable's <c>if</c> cannot read), so it writes no <c>if</c> and the operator writes the one that skips the
-    /// deliverable as 30 did; <paramref name="others"/>, when given, is the term (canonical JSON Logic) that says one of the
-    /// other sources ran.
+    /// A10-086 (#1508, 2026-11-26, item 8; R15, F-D13; #1543, ruling 3, D11): a reason: a source of the deliverable may not
+    /// run, and the migration cannot read whether the <paramref name="unread"/> ones ran (a node it does not know, or one
+    /// whose run the deliverable's <c>if</c> cannot read), so it writes no <c>if</c> and the operator writes the one that skips
+    /// the deliverable as 30 did; <paramref name="others"/>, when given, is the term (canonical JSON Logic) that says the
+    /// other sources that may not run ran.
     /// </summary>
     public static string SourceRunNotRead(IReadOnlyList<string> unread, string? others) =>
-        $"every source may not run, and the migration cannot read whether {string.Join(", ", unread)} ran; write the if that skips the deliverable when none of its sources ran, as 30 skipped it"
+        $"a source may not run, and the migration cannot read whether {string.Join(", ", unread)} ran; write the if that skips the deliverable when a source did not run, as 30 skipped it"
         + (others is null ? "." : $", joining {others} for the others.");
 
     /// <summary>

@@ -101,7 +101,7 @@ public class FolderItemComposeTests
     {
         // The loop standards over the folder holds the loop pieces over the plan's sections; its agent reads the outer item's
         // body as item.parent.content, rendered where it is read (its item is the section).
-        var files = Folder("For '{{ item.value.title }}': {{ input.consult_draft.content }}\n")
+        var files = Folder("For '{{ item.value.title }}':\\\n{{ input.consult_draft.content }}\n")
             .Listed("nodes/index.json", "standards")
             .With("nodes/standards/index.json", SourceFixture.Json(SourceFixture.Node("for", "Standards", SourceFixture.ArrayOf(SourceFixture.ArrayOf(TemplateFixture.Plain)), false, true,
                 "\"in\": \"snippet.standards\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
@@ -120,7 +120,7 @@ public class FolderItemComposeTests
                 ["parent"] = new JsonObject
                 {
                     ["value"] = new JsonObject { ["title"] = "History of Present Illness" },
-                    ["content"] = "For '{{ item.value.title }}': {{ input.consult_draft.content }}\n",
+                    ["content"] = "For '{{ item.value.title }}':\\\n{{ input.consult_draft.content }}\n",
                 },
             },
             ["input"] = new JsonObject { ["consult_draft"] = new JsonObject { ["content"] = Draft } },
@@ -129,7 +129,7 @@ public class FolderItemComposeTests
         var composition = BodyComposer.Compose(plan, new ComposeRequest(
             "node.standards.pieces.part_draft", null, scope, new Dictionary<string, bool>(StringComparer.Ordinal), 100_000));
 
-        Assert.Equal($"Under 'History of Present Illness':\nFor 'Section 1': {Draft}\n\n", Composed(composition));
+        Assert.Equal($"Under 'History of Present Illness':\nFor 'Section 1':\\\n{Draft}\n\n", Composed(composition));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class FolderItemComposeTests
     {
         // The function draft_section loops over the folder steps: its own (the package's steps, of other text, unlisted),
         // or, holding none, the package's, listed in its uses.
-        const string step = "Use the draft: {{ param.draft.content }}\n";
+        const string step = "Use the draft:\\\n{{ param.draft.content }}\n";
         var files = ResolveFixture.Functions()
             .With("snippets/index.json", SourceFixture.Index(["standards", "steps"]))
             .With("snippets/steps/index.json", SourceFixture.Index(["one"], extra: ", \"format\": \"standard_section\""))
@@ -187,7 +187,7 @@ public class FolderItemComposeTests
         var composition = BodyComposer.Compose(plan, new ComposeRequest(
             "node.each.note", "draft_section", scope, new Dictionary<string, bool>(StringComparer.Ordinal), 100_000));
 
-        Assert.Equal($"Step:\nUse the draft: {Draft}\n\n", Composed(composition));
+        Assert.Equal($"Step:\nUse the draft:\\\n{Draft}\n\n", Composed(composition));
     }
 
     [Theory]

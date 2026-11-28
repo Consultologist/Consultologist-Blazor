@@ -166,8 +166,9 @@ public class MigrateDeliverablesTests
     [Fact]
     public void ADeliverableWhoseSourcesMayNotRun_GetsAnIf()
     {
-        // #1508 (ruled by the owner, Q3 of 2026-11-26; R15): 30 skipped a deliverable none of whose sources ran; at 31 it
-        // would be composed empty and released, so the migration writes the if that says "a source ran".
+        // #1508 (ruled by the owner, Q3 of 2026-11-26; R15) and #1543 (ruling 3, D11): 30 skipped a deliverable when a source
+        // was a flow that took no branch; at 31 it would be composed and released, so the migration writes the if that says
+        // each such source ran.
         var result = MigrateNodesTests.Migrated("composer-sources");
         static string Ran(string read) => $$"""{"===":[{"var":"{{read}}.state"},"completed"]}""";
 
@@ -183,13 +184,13 @@ public class MigrateDeliverablesTests
             Assert.Null(MigrateNodesTests.Md(result, $"deliverables/{always}.md").Header["if"]);
 
         // The notice, once per deliverable given an if.
-        const string notice = "deliverables/plan.md, if: written to skip the deliverable unless node.plan_gate ran, as 30 skipped a deliverable none of whose sources ran.";
+        const string notice = "deliverables/plan.md, if: written to skip the deliverable when a source did not run (node.plan_gate), as 30 skipped it.";
         Assert.Single(result.Notices, n => n == notice);
         V31Contract.AssertSentence(new SourceRefusal("A10-079", notice, ""));
-        Assert.Equal(2, result.Notices.Count(n => n.Contains(" as 30 skipped a deliverable none of whose sources ran.", StringComparison.Ordinal)));
+        Assert.Equal(2, result.Notices.Count(n => n.Contains(", if: written to skip the deliverable when a source did not run (", StringComparison.Ordinal)));
         Assert.DoesNotContain(result.HandEdits, e => e.Contains(", if: ", StringComparison.Ordinal));
 
-        // With 30's own condition, the two are joined by and; with two sources that may not run, they are joined by or.
+        // With 30's own condition and two sources that may not run, one and holds 30's condition and a term for each source.
         var joined = MigrateNodesTests.Migrated("composer-sources", root =>
         {
             var plan = root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan");
@@ -197,10 +198,10 @@ public class MigrateDeliverablesTests
             plan["sources"] = new JsonArray("node.plan_gate", "node.tone_case");
         });
         Assert.Equal(
-            """{"and":[{"===":[{"var":"input.tone.value"},"formal"]},{"or":[""" + Ran("node.plan_gate") + "," + Ran("node.tone_case") + "]}]}",
+            """{"and":[{"===":[{"var":"input.tone.value"},"formal"]},""" + Ran("node.plan_gate") + "," + Ran("node.tone_case") + "]}",
             MigrateNodesTests.Md(joined, "deliverables/plan.md").Header["if"]!.ToJsonString());
         Assert.Contains(
-            "deliverables/plan.md, if: written to skip the deliverable unless node.plan_gate or node.tone_case ran, as 30 skipped a deliverable none of whose sources ran.",
+            "deliverables/plan.md, if: written to skip the deliverable when a source did not run (node.plan_gate, node.tone_case), as 30 skipped it.",
             joined.Notices);
 
         // An if the converter refuses stays 30's text with its hand edit: nothing is joined to a condition not yet written.
@@ -228,7 +229,7 @@ public class MigrateDeliverablesTests
 
         Assert.Equal(unconvertible, (string?)MigrateNodesTests.Md(refused, "deliverables/plan.md").Header["if"]);
         const string term = """{"===":[{"var":"node.plan_gate.state"},"completed"]}""";
-        const string reason = "every source may not run, and 30 skipped the deliverable when none ran; join " + term + " to 30's condition by and.";
+        const string reason = "a source may not run, and 30 skipped the deliverable when one did not; join " + term + " to 30's condition by and.";
         var edits = refused.HandEdits.Where(e => e.StartsWith("Hand edit needed in deliverables/plan.md, if: ", StringComparison.Ordinal)).ToList();
         Assert.Equal(2, edits.Count);
         Assert.Equal("Hand edit needed in deliverables/plan.md, if: " + reason, edits[1]);
@@ -236,7 +237,7 @@ public class MigrateDeliverablesTests
         V31Contract.AssertSentence(new SourceRefusal("A10-084", reason, ""));
         Assert.DoesNotContain(refused.Notices, n => n.StartsWith("deliverables/plan.md, if: written to skip", StringComparison.Ordinal));
 
-        // Two sources that may not run: the term is their "or", as A10-079 joins it.
+        // Two sources that may not run: the term is their "and", as A10-079 joins them (#1543, ruling 3, D11).
         var two = MigrateNodesTests.Migrated("composer-sources", root =>
         {
             var plan = root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan");
@@ -244,16 +245,78 @@ public class MigrateDeliverablesTests
             plan["sources"] = new JsonArray("node.plan_gate", "node.tone_case");
         });
         Assert.Contains(
-            "Hand edit needed in deliverables/plan.md, if: every source may not run, and 30 skipped the deliverable when none ran; join "
-            + """{"or":[{"===":[{"var":"node.plan_gate.state"},"completed"]},{"===":[{"var":"node.tone_case.state"},"completed"]}]}"""
+            "Hand edit needed in deliverables/plan.md, if: a source may not run, and 30 skipped the deliverable when one did not; join "
+            + """{"and":[{"===":[{"var":"node.plan_gate.state"},"completed"]},{"===":[{"var":"node.tone_case.state"},"completed"]}]}"""
             + " to 30's condition by and.",
             two.HandEdits);
 
-        // The near miss: a source that always runs keeps today's single hand edit, unchanged.
+        // The near miss: a deliverable whose every source always runs keeps today's single hand edit, unchanged.
         var always = MigrateNodesTests.Migrated("composer-sources", root =>
             root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "single")["if"] = unconvertible);
         var only = Assert.Single(always.HandEdits, e => e.StartsWith("Hand edit needed in deliverables/single.md, if: ", StringComparison.Ordinal));
         Assert.DoesNotContain("30 skipped the deliverable", only, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADeliverableWithASourceThatMayNotRun_GetsATermForEachSuchSource_JoinedByAnd()
+    {
+        // #1543 (ruling 3, D11): 30 skipped a deliverable when ANY of its sources was a top-level if or case that took no
+        // branch (ConsultGenerationJobStarter.DecideFireSet), so each source that may not run gets its term and the terms
+        // are joined by and: 31 skips the deliverable when one of them did not run, as 30 did.
+        static string Ran(string read) => $$"""{"===":[{"var":"{{read}}.state"},"completed"]}""";
+        static Migration31Result WithPlan(string? condition, params string[] sources) => MigrateNodesTests.Migrated("composer-sources", root =>
+        {
+            var plan = root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan");
+            plan["if"] = condition;
+            plan["sources"] = new JsonArray([.. sources.Select(s => (JsonNode)s)]);
+        });
+
+        // Two sources that may not run, no condition of 30's: one and of the two terms.
+        var two = WithPlan(null, "node.plan_gate", "node.tone_case");
+        Assert.Equal(
+            """{"and":[""" + Ran("node.plan_gate") + "," + Ran("node.tone_case") + "]}",
+            MigrateNodesTests.Md(two, "deliverables/plan.md").Header["if"]!.ToJsonString());
+        const string notice = "deliverables/plan.md, if: written to skip the deliverable when a source did not run (node.plan_gate, node.tone_case), as 30 skipped it.";
+        Assert.Single(two.Notices, n => n == notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-079", notice, ""));
+        Assert.DoesNotContain(two.HandEdits, e => e.Contains("deliverables/plan.md, if: ", StringComparison.Ordinal));
+
+        // 30's own condition an and already: its and gains both terms, after its own.
+        var own = WithPlan("input.tone == \"formal\" && input.redraft == true", "node.plan_gate", "node.tone_case");
+        var condition = MigrateNodesTests.Md(own, "deliverables/plan.md").Header["if"]!;
+        var terms = condition["and"]!.AsArray();
+        Assert.Equal(4, terms.Count);
+        Assert.Equal([Ran("node.plan_gate"), Ran("node.tone_case")], terms.Skip(2).Select(t => t!.ToJsonString()));
+        Assert.DoesNotContain(".state", terms[0]!.ToJsonString() + terms[1]!.ToJsonString(), StringComparison.Ordinal);
+
+        // The checker accepts the and at a deliverable's if.
+        Assert.Empty(MigratedPackagesTests.Publish(two).Where(r => r.Path == "deliverables/plan.md"));
+    }
+
+    [Fact]
+    public void ASourceThatAlwaysRuns_AddsNoTerm_AndCancelsNoOther()
+    {
+        // #1543 (ruling 3, D11): a source that always runs (or a while: 30 released a while that ran no pass) adds no term,
+        // and no longer leaves the deliverable's if as 30 wrote it: the source beside it that may not run still gets its own.
+        static string Ran(string read) => $$"""{"===":[{"var":"{{read}}.state"},"completed"]}""";
+        foreach (var always in new[] { "node.opening", "node.refine" })
+        {
+            var result = MigrateNodesTests.Migrated("composer-sources", root =>
+                root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "plan")["sources"] = new JsonArray("node.plan_gate", always));
+            Assert.Equal(Ran("node.plan_gate"), MigrateNodesTests.Md(result, "deliverables/plan.md").Header["if"]!.ToJsonString());
+            Assert.Contains("deliverables/plan.md, if: written to skip the deliverable when a source did not run (node.plan_gate), as 30 skipped it.", result.Notices);
+        }
+
+        // The edge package that pins it: note reads summary, which always runs, and letter_case, which may take no branch.
+        var edge = MigrateNodesTests.Migrated("edge-source-no-branch");
+        Assert.Equal(Ran("node.letter_case"), MigrateNodesTests.Md(edge, "deliverables/note.md").Header["if"]!.ToJsonString());
+        const string notice = "deliverables/note.md, if: written to skip the deliverable when a source did not run (node.letter_case), as 30 skipped it.";
+        Assert.Single(edge.Notices, n => n == notice);
+        V31Contract.AssertSentence(new SourceRefusal("A10-079", notice, ""));
+
+        // The near miss: every source always runs, so no if and nothing said (summary_note, from the problem loop and summary).
+        Assert.Null(MigrateNodesTests.Md(edge, "deliverables/summary_note.md").Header["if"]);
+        Assert.DoesNotContain(edge.Notices, n => n.StartsWith("deliverables/summary_note.md, if: ", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -314,15 +377,16 @@ public class MigrateDeliverablesTests
     [Fact]
     public void ASourceTheMigrationDoesNotRead_IsAHandEdit()
     {
-        // #1508 (2026-11-26, item 8; F-D13): every source may not run and the migration cannot read whether one ran, so it
-        // writes no if that would leave it out: a hand edit (A10-086), so nothing is released empty without a notice. 30's
-        // condition is kept as converted, and the term of the sources it can read is named for the operator to join.
+        // #1508 (2026-11-26, item 8; F-D13) and #1543 (ruling 3, D11): a source may not run and the migration cannot read
+        // whether it ran, so it writes no if that would leave it out: a hand edit (A10-086), so nothing is released without
+        // a notice where 30 skipped it. 30's condition is kept as converted, and the term of the sources it can read is named
+        // for the operator to join.
         const string start = "Hand edit needed in deliverables/plan.md, if: ";
         var two = WithUnread("input.tone == \"formal\"", ["node.plan_gate", "node.tone_case"], "tone_case");
         Assert.Equal("""{"===":[{"var":"input.tone.value"},"formal"]}""", MigrateNodesTests.Md(two, "deliverables/plan.md").Header["if"]!.ToJsonString());
         AssertHandEdit(two, "deliverables/plan.md", "if", "A10-086",
-            "every source may not run, and the migration cannot read whether node.tone_case ran; write the if that skips the deliverable "
-            + """when none of its sources ran, as 30 skipped it, joining {"===":[{"var":"node.plan_gate.state"},"completed"]} for the others.""");
+            "a source may not run, and the migration cannot read whether node.tone_case ran; write the if that skips the deliverable "
+            + """when a source did not run, as 30 skipped it, joining {"===":[{"var":"node.plan_gate.state"},"completed"]} for the others.""");
         Assert.Single(two.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
         Assert.DoesNotContain(two.Notices, n => n.StartsWith("deliverables/plan.md, if: written to skip", StringComparison.Ordinal));
 
@@ -330,18 +394,26 @@ public class MigrateDeliverablesTests
         var all = WithUnread(null, ["node.plan_gate", "node.tone_case"], "plan_gate", "tone_case");
         Assert.Null(MigrateNodesTests.Md(all, "deliverables/plan.md").Header["if"]);
         AssertHandEdit(all, "deliverables/plan.md", "if", "A10-086",
-            "every source may not run, and the migration cannot read whether node.plan_gate, node.tone_case ran; write the if that "
-            + "skips the deliverable when none of its sources ran, as 30 skipped it.");
+            "a source may not run, and the migration cannot read whether node.plan_gate, node.tone_case ran; write the if that "
+            + "skips the deliverable when a source did not run, as 30 skipped it.");
 
-        // The near miss: beside a source that always runs, the deliverable is never empty: no if, no hand edit, as today.
+        // A source that always runs beside them changes nothing (#1543, ruling 3, D11): 30 skipped the deliverable when
+        // tone_case took no branch, whatever opening did, so the hand edit is said as without it.
         var always = WithUnread(null, ["node.plan_gate", "node.tone_case", "node.opening"], "tone_case");
         Assert.Null(MigrateNodesTests.Md(always, "deliverables/plan.md").Header["if"]);
-        Assert.DoesNotContain(always.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+        AssertHandEdit(always, "deliverables/plan.md", "if", "A10-086",
+            "a source may not run, and the migration cannot read whether node.tone_case ran; write the if that skips the deliverable "
+            + """when a source did not run, as 30 skipped it, joining {"===":[{"var":"node.plan_gate.state"},"completed"]} for the others.""");
 
-        // Every source read, through the same seam: today's if, no hand edit.
+        // Only a source that always runs left unread: no term is needed for it, so no hand edit.
+        var unreadAlways = WithUnread(null, ["node.plan_gate", "node.opening"], "opening");
+        Assert.Equal("""{"===":[{"var":"node.plan_gate.state"},"completed"]}""", MigrateNodesTests.Md(unreadAlways, "deliverables/plan.md").Header["if"]!.ToJsonString());
+        Assert.DoesNotContain(unreadAlways.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
+
+        // Every source read, through the same seam: a term for each, joined by and, no hand edit.
         var read = WithUnread(null, ["node.plan_gate", "node.tone_case"]);
         Assert.Equal(
-            """{"or":[{"===":[{"var":"node.plan_gate.state"},"completed"]},{"===":[{"var":"node.tone_case.state"},"completed"]}]}""",
+            """{"and":[{"===":[{"var":"node.plan_gate.state"},"completed"]},{"===":[{"var":"node.tone_case.state"},"completed"]}]}""",
             MigrateNodesTests.Md(read, "deliverables/plan.md").Header["if"]!.ToJsonString());
         Assert.DoesNotContain(read.HandEdits, e => e.StartsWith(start, StringComparison.Ordinal));
     }
@@ -403,7 +475,7 @@ public class MigrateDeliverablesTests
 
         var renderer = MigrateNodesTests.Md(result, "renderers/signature_after_blank_line.md");
         Assert.Equal(
-            """{"label":"Signature after a blank line","kind":"rendered","description":null,"input":"plaintext","format":"plaintext"}""",
+            """{"label":"Signature after a blank line","kind":"rendered","description":null,"input":"markdown_block","format":"markdown_block"}""",
             renderer.Header.ToJsonString(Unescaped));
         Assert.Equal("{{ if value != null && (value | string.strip) != \"\" }}\n\n{{ value }}{{ end }}", renderer.Body);
         Assert.Contains("signature_after_blank_line", MigrateNodesTests.Json(result, "renderers/index.json")["items"]!.AsArray().Select(i => (string?)i));
