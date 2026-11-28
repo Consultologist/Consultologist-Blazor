@@ -987,6 +987,26 @@ public class V31JobStartTests
         _ = start.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
     }
 
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("")]
+    public async Task AnInputRef_ToA31JobWhoseRowCannotBeRead_HasNoSuchDeliverable(string stored)
+    {
+        // #1543 (the final review, minor b): a corrupt stored row is no deliverable, as the record's routes treat an
+        // unreadable row; the start is refused with the sentence, not failed by the parse.
+        var start = new Start(preview: "31");
+        start.SourceRun31();
+        start.RecordRows.ReadAsync(SourceJob, "deliverable.letter", Arg.Any<CancellationToken>()).Returns(new RecordRow("deliverable", "deliverable.letter", stored));
+
+        var outcome = await start.RunAsync(new ConsultGenerationRequest(
+            null, RefText(start.Put("nested-note")), InputRefs: Refs("consult_draft", new ConsultInputRef(SourceJob, "letter"))));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, outcome.Error);
+        Assert.Equal("Input 'consult_draft' refers to run 01234567…, which has no deliverable 'letter'.", outcome.ErrorDetail);
+        Assert.Empty(start.Scheduled);
+        _ = start.RecordBlobs.DidNotReceiveWithAnyArgs().ReadTextAsync(default, default!, default!, default!, default);
+    }
+
     [Fact]
     public async Task AnInputRef_ToA31JobWhoseTextWasDropped_IsRefusedAsDeleted()
     {
