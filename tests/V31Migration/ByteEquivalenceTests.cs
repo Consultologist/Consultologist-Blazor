@@ -878,13 +878,40 @@ public class ByteEquivalenceTests
         Assert.DoesNotContain("count-over-accepted-name", credited.Rules.Select(r => r.Id));
     }
 
+    [Fact]
+    public async Task ACountThatStandsTwice_IsNotCredited()
+    {
+        // Ruling 5: the number stands twice in 31's text; one occurrence's 30 counterpart is a real, different number. The
+        // rule credits only a value that stands exactly once, so it credits nothing and the text stays unexplained.
+        var (capture, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var now = TallyText31(run);
+        var old = TallyText30(capture);
+        Assert.Contains("414", old, StringComparison.Ordinal);
+
+        var credited = await TallyCredited(now: now + "\n" + now, old: old + "\n" + old.Replace("414", "415", StringComparison.Ordinal));
+        Assert.True(credited.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", credited.Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task ACountWhoseThirtyTallyIsNotTheExpressions_IsNotCredited()
+    {
+        // Ruling 5: 31's number is right, but 30's tally (415) is not what the expression gives on 30's text (414): unexplained.
+        var (capture, _, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var old = TallyText30(capture);
+        Assert.Contains("414", old, StringComparison.Ordinal);
+
+        var credited = await TallyCredited(old: old.Replace("414", "415", StringComparison.Ordinal));
+        Assert.True(credited.Unexplained);
+    }
+
     private static string TallyText30(JsonObject capture) =>
         SourceLayout.Text((capture["deliverables"] as JsonArray)!.OfType<JsonObject>().Single(d => SourceLayout.Text(d["id"]) == "tally")["text"])!;
 
     private static string TallyText31(OfflineResult run) => run.Deliverables.Single(d => d.Key == "deliverable.tally").Text!;
 
     /// <summary>The rules credited in composer-sources' tally, on its run as <paramref name="change"/> alters it, with 31's text <paramref name="now"/> (the run's own when null).</summary>
-    private static async Task<ExpectedDifferences.Credited> TallyCredited(Func<OfflineResult, OfflineResult>? change = null, string? now = null)
+    private static async Task<ExpectedDifferences.Credited> TallyCredited(Func<OfflineResult, OfflineResult>? change = null, string? now = null, string? old = null)
     {
         var (capture, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
         var migrated = EquivalenceFixture.Migrated("composer-sources");
@@ -892,7 +919,7 @@ public class ByteEquivalenceTests
         var request = Equivalence.RequestFor(EquivalenceFixture.Scenario("composer-sources", "item-names-and-bounds"), capture, migrated, plan);
         run = change?.Invoke(run) ?? run;
         return ExpectedDifferences.Credit(new DifferenceContext("composer-sources", "item-names-and-bounds", Tally, ComparedKind.Deliverable,
-            "deliverable.tally", "deliverable.tally", TallyText30(capture), now ?? TallyText31(run), capture, run, migrated, plan, request));
+            "deliverable.tally", "deliverable.tally", old ?? TallyText30(capture), now ?? TallyText31(run), capture, run, migrated, plan, request));
     }
 
     [Theory]
