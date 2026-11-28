@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Documents;
 using Consultologist.Api.Auth;
@@ -203,6 +204,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IJobIntakeHold? _hold;
     private readonly V31.V31JobStarter? _v31;
     private readonly IEngineDrain? _drain;
+    private readonly V31.IRecordRowStore? _recordRows;
+    private readonly V31.IRecordBlobStore? _recordBlobs;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -229,10 +232,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // #1503 (specVersion 31): the 31 branch; null (a test) runs no 31 job.
         V31.V31JobStarter? v31 = null,
         // #1503 (D9): the drain before a deploy; null (a test) reads as never draining.
-        IEngineDrain? drain = null)
+        IEngineDrain? drain = null,
+        // #1543 (ruling 9, D17): a 31 job's record rows and retained text, which an earlier 31 run's deliverable is read
+        // from when a reference names it; null (a test) reads no record, so such a reference finds no deliverable.
+        V31.IRecordRowStore? recordRows = null,
+        V31.IRecordBlobStore? recordBlobs = null)
     {
         _v31 = v31;
         _drain = drain;
+        _recordRows = recordRows;
+        _recordBlobs = recordBlobs;
         _speechToText = speechToText;
         _hold = hold;
         _logger = logger;
@@ -412,7 +421,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // new kind of input.
         // #510: references to previous runs become text first, the way
         // documents do — the server copies, so the origin is observed.
-        var resolution = await ResolveInputRefsAsync(client.Entities, _outputsBlobs, request, appUserId, cancellationToken);
+        var resolution = await ResolveInputRefsAsync(
+            client.Entities, _outputsBlobs, new RecordReads(_recordRows, _recordBlobs, _accounts), request, appUserId, cancellationToken);
         if (resolution.Error != null)
         {
             _logger.LogWarning("Rejected job start: a previous-run reference was refused. Kind={Kind}", resolution.ErrorKind);
@@ -1197,7 +1207,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// <summary>
     /// #1503 (specVersion 31): a 31 request's documents read as today's start reads them — the account's OCR and
     /// speech-to-text gates, the door's wait — against <paramref name="manifest"/>, the plan's inputs. #1509 (area 12,
-    /// R2): its references first, as today's start reads them and in its order (<see cref="ResolveInputRefsAsync(DurableEntityClient, IJobOutputsBlobStore, ConsultGenerationRequest, string, IReadOnlyDictionary{string, DeclaredInput31}, CancellationToken)"/>,
+    /// R2): its references first, as today's start reads them and in its order (<see cref="ResolveInputRefsAsync(DurableEntityClient, IJobOutputsBlobStore, RecordReads, ConsultGenerationRequest, string, IReadOnlyDictionary{string, DeclaredInput31}, CancellationToken)"/>,
     /// then <see cref="VerifyInputFormRefsAsync(ConsultGenerationRequest, IReadOnlyDictionary{string, DeclaredInput31}, string, CancellationToken)"/> and
     /// <see cref="VerifyInputFormFiles(ConsultGenerationRequest, IReadOnlyDictionary{string, DeclaredInput31})"/>): each fills
     /// its input in the request's <c>Inputs</c>, an earlier run's elements combined with typed rows and documents at their
@@ -1209,7 +1219,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         CancellationToken cancellationToken)
     {
         var declared = DeclaredInput31.Of(manifest);
-        var resolution = await ResolveInputRefsAsync(entities, _outputsBlobs, request, appUserId, declared, cancellationToken);
+        var resolution = await ResolveInputRefsAsync(
+            entities, _outputsBlobs, new RecordReads(_recordRows, _recordBlobs, _accounts), request, appUserId, declared, cancellationToken);
         if (resolution.Error != null)
         {
             _logger.LogWarning("Rejected 31 job start: a previous-run reference was refused. Kind={Kind}", resolution.ErrorKind);
@@ -1952,11 +1963,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// where it came from. The run must be this account's (a foreign or
     /// unknown id is one answer: not found), completed, still holding its
     /// text, and have the deliverable. The reference itself leaves the
-    /// request, as the bytes of a document do.
+    /// request, as the bytes of a document do. #1543 (ruling 9, D17): a run
+    /// of record storage 12 (a 31 job) holds its deliverables in its record,
+    /// not in <c>AssembledDocuments</c>: see <see cref="DeliverableOf31Async"/>.
     /// </summary>
     internal static async Task<InputRefResolution> ResolveInputRefsAsync(
         DurableEntityClient entities,
         IJobOutputsBlobStore outputsBlobs,
+        RecordReads record,
         ConsultGenerationRequest request,
         string appUserId,
         CancellationToken cancellationToken)
@@ -2030,15 +2044,25 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                         ConsultGenerationJobStartError.InputRefNotCompleted);
                 }
 
-                var document = source.AssembledDocuments?.FirstOrDefault(d => string.Equals(d.ResultId, reference.ResultId, StringComparison.Ordinal));
-                if (document == null)
+                // #1543 (D17): only after the account and completion checks above is a 31 run's record read
+                var (found, released, text) = source.PackageSpecVersion >= 31
+                    ? await DeliverableOf31Async(record, source, reference.JobId, reference.ResultId, cancellationToken)
+                    : FromAssembled(source, reference.ResultId);
+                if (!found)
                 {
                     return new InputRefResolution(request, null,
                         $"Input '{id}' refers to run {run}, which has no deliverable '{reference.ResultId}'.",
                         ConsultGenerationJobStartError.InputRefNotFound);
                 }
 
-                if (source.TextDroppedAtUtc != null || document.Text == null)
+                if (!released)
+                {
+                    return new InputRefResolution(request, null,
+                        $"Input '{id}' refers to run {run}, whose deliverable '{reference.ResultId}' was not released.",
+                        ConsultGenerationJobStartError.InputRefNotFound);
+                }
+
+                if (source.TextDroppedAtUtc != null || text == null)
                 {
                     var when = source.TextDroppedAtUtc is { } dropped ? $" on {dropped:yyyy-MM-dd}" : string.Empty;
                     return new InputRefResolution(request, null,
@@ -2046,10 +2070,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                         ConsultGenerationJobStartError.InputRefTextDeleted);
                 }
 
-                texts.Add(ConsultInputValue.OfText(document.Text));
+                texts.Add(ConsultInputValue.OfText(text));
                 inputOrigins.Add(new ConsultInputOrigin(
                     ConsultInputOriginKinds.PreviousRun,
-                    TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(document.Text)),
+                    TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(text)),
                     SourceJobId: reference.JobId,
                     SourceResultId: reference.ResultId));
             }
@@ -2080,19 +2104,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     }
 
     /// <summary>
-    /// #1509 (specVersion 31, area 12; R2): <see cref="ResolveInputRefsAsync(DurableEntityClient, IJobOutputsBlobStore, ConsultGenerationRequest, string, CancellationToken)"/>
+    /// #1509 (specVersion 31, area 12; R2): <see cref="ResolveInputRefsAsync(DurableEntityClient, IJobOutputsBlobStore, RecordReads, ConsultGenerationRequest, string, CancellationToken)"/>
     /// for a 31 plan's <paramref name="declared"/> inputs: the same reads and refusals, and a reference standing alone in an
     /// input whose format is an array of text is a list of one, the value that format takes.
     /// </summary>
     internal static async Task<InputRefResolution> ResolveInputRefsAsync(
         DurableEntityClient entities,
         IJobOutputsBlobStore outputsBlobs,
+        RecordReads record,
         ConsultGenerationRequest request,
         string appUserId,
         IReadOnlyDictionary<string, DeclaredInput31> declared,
         CancellationToken cancellationToken)
     {
-        var resolution = await ResolveInputRefsAsync(entities, outputsBlobs, request, appUserId, cancellationToken);
+        var resolution = await ResolveInputRefsAsync(entities, outputsBlobs, record, request, appUserId, cancellationToken);
         if (resolution.Error != null || resolution.Origins is not { Count: > 0 } origins)
             return resolution;
 
@@ -2104,6 +2129,51 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         return resolution with { Request = resolution.Request with { Inputs = inputs } };
+    }
+
+    /// <summary>
+    /// #1543 (ruling 9, D17): where a reference reads a 31 run's deliverable from: its record rows and their retained text,
+    /// and the account store the text's container is named by. Null stores (a test) read no record, so a 31 run is found
+    /// to have no deliverable, as before.
+    /// </summary>
+    internal sealed record RecordReads(V31.IRecordRowStore? Rows, V31.IRecordBlobStore? Blobs, IAccountStore Accounts);
+
+    /// <summary>A 5–30 run's deliverable <paramref name="resultId"/>: there, and (always) released, with its text if it still holds it.</summary>
+    private static (bool Found, bool Released, string? Text) FromAssembled(ConsultGenerationJobState source, string resultId)
+    {
+        var document = source.AssembledDocuments?.FirstOrDefault(d => string.Equals(d.ResultId, resultId, StringComparison.Ordinal));
+        return document == null ? (false, false, null) : (true, true, document.Text);
+    }
+
+    /// <summary>
+    /// #1543 (ruling 9, D17; part 08 §§ 3.1, 11): a 31 run's deliverable <paramref name="resultId"/>, from its row
+    /// <c>deliverable.&lt;resultId&gt;</c>: found when the row is there, released when its <c>state</c> is <c>released</c>.
+    /// Only a released row's text is read (a blocked deliverable is refused, not delivered, and its text never reaches an
+    /// input), and not when the job's text was dropped; it is the retained <c>content</c> only when it hashes to the row's
+    /// <c>composedHash</c>, as <see cref="V31.RecordRoutes.OfferedText"/> offers it, else null (the text-deleted refusal).
+    /// </summary>
+    private static async Task<(bool Found, bool Released, string? Text)> DeliverableOf31Async(
+        RecordReads record, ConsultGenerationJobState source, string jobId, string resultId, CancellationToken cancellationToken)
+    {
+        if (record.Rows == null || record.Blobs == null)
+            return (false, false, null);
+
+        var key = "deliverable." + resultId;
+        var row = await record.Rows.ReadAsync(jobId, key, cancellationToken);
+        if (row == null || !string.Equals(row.Section, "deliverable", StringComparison.Ordinal)
+            || JsonNode.Parse(row.Json) is not JsonObject json)
+        {
+            return (false, false, null);
+        }
+
+        var released = json["state"] is JsonValue state && state.TryGetValue<string>(out var word)
+            && string.Equals(word, "released", StringComparison.Ordinal);
+        if (!released || source.TextDroppedAtUtc != null)
+            return (true, released, null);
+
+        var kind = V31.DurableRecordJobs.KindOfHeldInputs(source) ?? await record.Accounts.GetAccountKindAsync(source.AppUserId, cancellationToken);
+        var offered = V31.RecordRoutes.OfferedText(row.Section, json, await record.Blobs.ReadTextAsync(kind, source.AppUserId, jobId, key, cancellationToken));
+        return (true, true, offered?["content"] is JsonValue content && content.TryGetValue<string>(out var text) ? text : null);
     }
 
     private static string ShortRunId(string jobId) => jobId.Length > 8 ? jobId[..8] + "…" : jobId;
@@ -2662,9 +2732,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     /// <summary>Whether <paramref name="held"/> and <paramref name="submitted"/> are the same JSON value (members in any order).</summary>
     private static bool SameJson(System.Text.Json.JsonElement held, ConsultInputValue submitted) =>
-        System.Text.Json.Nodes.JsonNode.DeepEquals(
-            System.Text.Json.Nodes.JsonNode.Parse(held.GetRawText()),
-            System.Text.Json.Nodes.JsonNode.Parse(submitted.AsJson()));
+        JsonNode.DeepEquals(
+            JsonNode.Parse(held.GetRawText()),
+            JsonNode.Parse(submitted.AsJson()));
 
     private static ReadOnlyMemory<byte> StripUtf8Bom(byte[] bytes) =>
         bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? bytes.AsMemory(3) : bytes;
@@ -3728,7 +3798,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         try
         {
-            return ConsultGenerationProvenance.Sha256Hex(System.Text.Json.Nodes.JsonNode.Parse(body)!.ToJsonString());
+            return ConsultGenerationProvenance.Sha256Hex(JsonNode.Parse(body)!.ToJsonString());
         }
         catch (System.Text.Json.JsonException)
         {
