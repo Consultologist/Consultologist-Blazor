@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -112,5 +114,52 @@ public class RunDiagram31E2ETests
         await page.WaitForSelectorAsync(".run-dag-panel", new() { State = WaitForSelectorState.Detached, Timeout = 30_000 });
         await Assertions.Expect(CallRow(page)).ToBeFocusedAsync();
         await Assertions.Expect(CallRow(page)).ToBeInViewportAsync();
+    }
+
+    /// <summary>
+    /// #1543 (ruling 7, D15): the same diagram (Mermaid 12, ELK layout) drawn while the document carries the
+    /// <c>content-security-policy</c> of <c>src/Consultologist.Web/staticwebapp.config.json</c>, read from the file at run
+    /// time. The local server does not send that header, so the navigation request is fulfilled with it added (a
+    /// <c>&lt;meta http-equiv&gt;</c> would not be the same: it ignores some directives). Any <c>securitypolicyviolation</c>
+    /// fails the test. The Api calls are answered by Playwright routes; the app's own Api origin is listed in the
+    /// policy's <c>connect-src</c>, so the policy is used as it is.
+    /// </summary>
+    [Fact]
+    public async Task TheDiagram_DrawsUnderTheProductionContentSecurityPolicy()
+    {
+        var config = Path.Combine(BrowserFixture.RepoRoot(), "src", "Consultologist.Web", "staticwebapp.config.json");
+        var policy = JsonDocument.Parse(File.ReadAllText(config)).RootElement
+            .GetProperty("globalHeaders").GetProperty("content-security-policy").GetString()!;
+
+        var page = await _fixture.Browser.NewPageAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 } });
+        await ApiMock.Install31Async(page, Api());
+        await page.RouteAsync(request => true, async route =>
+        {
+            if (route.Request.ResourceType != "document" || !route.Request.IsNavigationRequest)
+            {
+                await route.FallbackAsync();
+                return;
+            }
+
+            var response = await route.FetchAsync();
+            var headers = response.Headers.ToDictionary(h => h.Key, h => h.Value, StringComparer.OrdinalIgnoreCase);
+            headers["content-security-policy"] = policy;
+            await route.FulfillAsync(new() { Response = response, Headers = headers });
+        });
+        await page.AddInitScriptAsync("""
+            window.__cspViolations = [];
+            document.addEventListener('securitypolicyviolation', e =>
+                window.__cspViolations.push(e.violatedDirective + ' blocked=' + e.blockedURI + ' source=' + e.sourceFile));
+            """);
+
+        var document = await page.GotoAsync($"{_fixture.BaseUrl}/history/{Fixtures31.JobId}", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await page.ClickAsync(".history31-run-diagram", new() { Timeout = 30_000 });
+        await page.WaitForSelectorAsync(".run-dag-panel .dag-view__canvas svg", new() { Timeout = 30_000 });
+        await page.WaitForSelectorAsync(".run-dag-panel [role=link]", new() { Timeout = 30_000 });
+
+        Assert.Equal(policy, (await document!.AllHeadersAsync())["content-security-policy"]);
+        Assert.Equal("elk", await page.EvaluateAsync<string>("() => window.mermaid.mermaidAPI.getConfig().layout"));
+        var violations = await page.EvaluateAsync<string[]>("() => window.__cspViolations");
+        Assert.True(violations.Length == 0, "Content-Security-Policy violations: " + string.Join("; ", violations));
     }
 }
