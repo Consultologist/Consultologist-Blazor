@@ -21,6 +21,26 @@ internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
     public override DateTimeOffset GetUtcNow() => now;
 }
 
+/// <summary>A clock whose time is fixed and whose timers never fire, so a page's ticker cannot re-render during a test.</summary>
+internal class StillClock(DateTimeOffset now) : TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => now;
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+        new NeverFiringTimer();
+
+    private sealed class NeverFiringTimer : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+
 /// <summary>
 /// Task 16 (#1509; part 09 §§ 6.2 to 6.4; D9, D10, R6, R7): History opens a storage 12 job through <c>RecordView31</c>:
 /// its header with the resolve and lock hashes and the ten limits, the migration line, the banners at the top, the five
