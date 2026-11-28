@@ -21,7 +21,7 @@ public class ExpectedDifferencesTests
     [
         "empty-input-list-runs", "skipped-deliverable-reads-null", "required-blank-refused", "all-refused-completes",
         "failed-job-dispatch-order", "flag-becomes-retry", "reply-never-a-template", "escaped-plain-text", "explicit-hard-break", "block-read-own-line", "item-ids-from-one", "position-names-from-the-loop",
-        "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
+        "count-over-accepted-name", "sent-format", "explicit-null-for-optional", "macro-trailing-whitespace", "input-trailing-whitespace", "before-after-macro-marker",
         "while-no-pass-separator", "loop-item-not-run", "chosen-macro-final-line-ending", "empty-read-trailing-space",
         "macro-choice-classifier", "loop-item-strip-node", "blank-conversion",
     ];

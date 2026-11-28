@@ -804,6 +804,97 @@ public class ByteEquivalenceTests
             EquivalenceFixture.Migrated("example-nested-note"), EquivalenceFixture.Plan("example-nested-note")).EnginePlaced);
     }
 
+    // ---- a count over an accepted name (#1543, ruling 6; D13) -------------------------------------------------
+
+    private const string Tally = "composer-sources/item-names-and-bounds#deliverables/deliverable.tally";
+
+    [Fact]
+    public async Task ACountOverAnAcceptedName_FollowsTheName()
+    {
+        // #1543 (ruling 6, D13): composer-sources' topic_tally counts node.topic_loop.content (size), which holds "## Topics 4"
+        // at 31 where 30's had "## Requested topics 4" (position-names-from-the-loop): 30 wrote "Topic section length: 414",
+        // 31 writes 404. The count follows the accepted name.
+        var (capture, run, texts) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var topics = texts.Single(t => t.Site == "composer-sources/item-names-and-bounds#deliverables/deliverable.topics");
+        Assert.Equal((false, true, false), (topics.Equal, topics.Expected, topics.Unexplained));
+        Assert.Contains("position-names-from-the-loop", topics.Rules);
+
+        Assert.Equal("Topic section length: 414", TallyText30(capture));
+        Assert.Equal("Topic section length: 404", SourceLayout.Text(run.Rows.Single(r => r.Key == "node.topic_tally").Text?["content"]));
+        var tally = texts.Single(t => t.Site == Tally);
+        Assert.Equal((false, true, false), (tally.Equal, tally.Expected, tally.Unexplained));
+        Assert.Contains("count-over-accepted-name", tally.Rules);
+        Assert.Equal(tally.Rules, (await TallyCredited()).Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task ACountThatDiffersByMore_IsNotCredited()
+    {
+        // Ruling 5: 31's number one more than the count of 31's text is no count of the accepted name, whether only the
+        // compared text holds it or the computed row's value too.
+        var (_, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var now = TallyText31(run);
+        Assert.Contains("404", now, StringComparison.Ordinal);
+
+        var textOnly = await TallyCredited(now: now.Replace("404", "405", StringComparison.Ordinal));
+        Assert.True(textOnly.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", textOnly.Rules.Select(r => r.Id));
+
+        var rowToo = await TallyCredited(
+            r => r with { Rows = [.. r.Rows.Select(row => row.Key == "node.topic_tally" ? row with { Text = new JsonObject { ["content"] = "Topic section length: 405" } } : row)] },
+            now.Replace("404", "405", StringComparison.Ordinal));
+        Assert.True(rowToo.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", rowToo.Rules.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task ACountOverATextWithAnUnexplainedRemainder_IsNotCredited()
+    {
+        // Ruling 5: the counted text also loses a word at 31 (in the loop's content and in the topics deliverable that holds
+        // it), and the count is that text's: the text's own difference is not wholly explained, so neither is the count.
+        var (_, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var counted = SourceLayout.Text(run.Rows.Single(r => r.Key == "node.topic_loop").Text?["content"])!;
+        Assert.Contains("Blank-titled ", counted, StringComparison.Ordinal);
+        var lost = counted.Replace("Blank-titled ", "", StringComparison.Ordinal);
+        var count = "Topic section length: " + lost.EnumerateRunes().Count().ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        var credited = await TallyCredited(
+            r => r with
+            {
+                Rows = [.. r.Rows.Select(row => row.Key switch
+                {
+                    "node.topic_loop" => row with { Text = new JsonObject { ["content"] = lost } },
+                    "node.topic_tally" => row with { Text = new JsonObject { ["content"] = count } },
+                    _ => row,
+                })],
+                Deliverables = [.. r.Deliverables.Select(d => d.Key switch
+                {
+                    "deliverable.topics" => d with { Text = d.Text!.Replace("Blank-titled ", "", StringComparison.Ordinal), ContentHash = null },
+                    "deliverable.tally" => d with { Text = d.Text!.Replace("404", count["Topic section length: ".Length..], StringComparison.Ordinal), ContentHash = null },
+                    _ => d,
+                })],
+            });
+        Assert.True(credited.Unexplained);
+        Assert.DoesNotContain("count-over-accepted-name", credited.Rules.Select(r => r.Id));
+    }
+
+    private static string TallyText30(JsonObject capture) =>
+        SourceLayout.Text((capture["deliverables"] as JsonArray)!.OfType<JsonObject>().Single(d => SourceLayout.Text(d["id"]) == "tally")["text"])!;
+
+    private static string TallyText31(OfflineResult run) => run.Deliverables.Single(d => d.Key == "deliverable.tally").Text!;
+
+    /// <summary>The rules credited in composer-sources' tally, on its run as <paramref name="change"/> alters it, with 31's text <paramref name="now"/> (the run's own when null).</summary>
+    private static async Task<ExpectedDifferences.Credited> TallyCredited(Func<OfflineResult, OfflineResult>? change = null, string? now = null)
+    {
+        var (capture, run, _) = await EquivalenceFixture.Compared("composer-sources", "item-names-and-bounds");
+        var migrated = EquivalenceFixture.Migrated("composer-sources");
+        var plan = EquivalenceFixture.Plan("composer-sources");
+        var request = Equivalence.RequestFor(EquivalenceFixture.Scenario("composer-sources", "item-names-and-bounds"), capture, migrated, plan);
+        run = change?.Invoke(run) ?? run;
+        return ExpectedDifferences.Credit(new DifferenceContext("composer-sources", "item-names-and-bounds", Tally, ComparedKind.Deliverable,
+            "deliverable.tally", "deliverable.tally", TallyText30(capture), now ?? TallyText31(run), capture, run, migrated, plan, request));
+    }
+
     [Theory]
     [MemberData(nameof(Packages))]
     public async Task TheReport_IsTheGolden(string package)
