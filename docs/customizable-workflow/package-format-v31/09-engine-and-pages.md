@@ -623,10 +623,17 @@ A new card on the Profile page for the profile fields that have no home today:
 |---|---|---|---|
 | `profile.credentials` | `string` | single-line field | not set |
 | `profile.organisation` | `string` | single-line field | not set |
-| `profile.closing` | `plaintext` | text area | not set |
+| `profile.closing` | `markdown_block` | text area | not set |
 
 - `profile.name` keeps its place (the account's name, as today), and `profile.signature` keeps the
   signature blocks card (up to 5 blocks, `ChosenId`).
+- **Previews (#1543, ruling 2):** under the closing's text area the card shows the closing as typed (the text
+  area's current value, not only what is saved), and under it the chosen signature block (passed in by the
+  page, so it follows a save), each rendered by `MarkdownPreview.Render(text, 31)`: the 31 pipeline, raw HTML
+  shown as text, a link of a scheme other than `http`, `https` or `mailto` written as its text. A blank value
+  has no preview. The hint *"End a line with \ or leave a blank line."* stands under the previews, and the
+  same hint under the signature block's text area, where the signature is typed (until the rich-text editor
+  writes the breaks itself).
 - **A blank value is not set:** an empty or whitespace-only value counts as not set
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), so saving whitespace clears the field, and a package reading it is
   refused at start rather than printing nothing (#1408: no empty substitute).
