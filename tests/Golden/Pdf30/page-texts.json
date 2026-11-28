@@ -1,0 +1,623 @@
+{
+  "generatedFrom": "8b2686813ad25ec1a2a4c71a313ca6a7f7fcb617",
+  "texts": {
+    "composer-gates/clinician-checks-pass#cover_letter": [
+      "Please find the clinic note enclosed."
+    ],
+    "composer-gates/clinician-checks-pass#note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued. Closing paragraph: review in three months."
+    ],
+    "composer-gates/clinician-checks-pass#record_copy": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued. Closing paragraph: review in three months."
+    ],
+    "composer-gates/note-check-fails#cover_letter": [
+      "Please find the clinic note enclosed."
+    ],
+    "composer-gates/note-check-fails#patient_copy": [
+      "Your sugar levels are high; we will review your tablets."
+    ],
+    "composer-gates/note-check-fails#record_copy": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued. Closing paragraph: review in three months."
+    ],
+    "composer-gates/patient-copy-check-fails#cover_letter": [
+      "Please find the clinic note enclosed."
+    ],
+    "composer-gates/patient-copy-check-fails#note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued. Closing paragraph: review in three months."
+    ],
+    "composer-gates/patient-copy-check-fails#patient_copy": [
+      "Your sugar levels are high; we will review your tablets."
+    ],
+    "composer-macros/empty-body#appended": [
+      "First closing paragraph."
+    ],
+    "composer-macros/empty-body#authored": [
+      "Written by Dr A. Sample on 2026-11-10. Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/empty-body#both": [
+      "Riverside Clinic (fictional) Reference: new visit First closing paragraph. Second closing paragraph."
+    ],
+    "composer-macros/empty-body#echoes": [
+      "Body as this macro reads it: [] New-visit note as this macro reads it: [First visit to this clinic. ]"
+    ],
+    "composer-macros/empty-body#gated": [
+      "First visit to this clinic. First closing paragraph."
+    ],
+    "composer-macros/empty-body#optional": [
+      "Afollow-up appointment will be offered."
+    ],
+    "composer-macros/empty-body#prepended": [
+      "Riverside Clinic (fictional)"
+    ],
+    "composer-macros/empty-body#sections_note": [
+      "History The History section follows. History paragraph: palpitations for two months. End of the History section. Plan The Plan section follows. Plan paragraph: apixaban started."
+    ],
+    "composer-macros/empty-body#signed_letter": [
+      "cc: the referring practice (fictional) Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/empty-body#signed_only": [
+      "Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/new-visit-defaults#appended": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph."
+    ],
+    "composer-macros/new-visit-defaults#authored": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Written by Dr A. Sample on 2026-11-10. Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/new-visit-defaults#both": [
+      "Riverside Clinic (fictional) Reference: new visit Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph. Second closing paragraph."
+    ],
+    "composer-macros/new-visit-defaults#echoes": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Body as this macro reads it: Letter body: palpitations from paroxysmal atrial fibrillation. ] New-visit note as this macro reads it: [First visit to this clinic. ]"
+    ],
+    "composer-macros/new-visit-defaults#gated": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. First visit to this clinic. First closing paragraph."
+    ],
+    "composer-macros/new-visit-defaults#optional": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. A follow-up appointment will be offered."
+    ],
+    "composer-macros/new-visit-defaults#prepended": [
+      "Riverside Clinic (fictional) Letter body: palpitations from paroxysmal atrial fibrillation."
+    ],
+    "composer-macros/new-visit-defaults#sections_note": [
+      "History The History section follows. History paragraph: palpitations for two months. End of the History section. Plan The Plan section follows. Plan paragraph: apixaban started."
+    ],
+    "composer-macros/new-visit-defaults#signed_letter": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. cc: the referring practice (fictional) Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/new-visit-defaults#signed_only": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/no-signature#appended": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph."
+    ],
+    "composer-macros/no-signature#authored": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Written by Dr A. Sample on 2026-11-10."
+    ],
+    "composer-macros/no-signature#both": [
+      "Riverside Clinic (fictional) Reference: new visit Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph. Second closing paragraph."
+    ],
+    "composer-macros/no-signature#echoes": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Body as this macro reads it: Letter body: palpitations from paroxysmal atrial fibrillation. ] New-visit note as this macro reads it: [First visit to this clinic. ]"
+    ],
+    "composer-macros/no-signature#gated": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. First visit to this clinic. First closing paragraph."
+    ],
+    "composer-macros/no-signature#optional": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. A follow-up appointment will be offered."
+    ],
+    "composer-macros/no-signature#prepended": [
+      "Riverside Clinic (fictional) Letter body: palpitations from paroxysmal atrial fibrillation."
+    ],
+    "composer-macros/no-signature#sections_note": [
+      "History The History section follows. History paragraph: palpitations for two months. End of the History section. Plan The Plan section follows. Plan paragraph: apixaban started."
+    ],
+    "composer-macros/no-signature#signed_letter": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. cc: the referring practice (fictional)"
+    ],
+    "composer-macros/no-signature#signed_only": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation."
+    ],
+    "composer-macros/review-visit-choices#appended": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph."
+    ],
+    "composer-macros/review-visit-choices#authored": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Written by Dr A. Sample on 2026-11-10. Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/review-visit-choices#both": [
+      "Riverside Clinic (fictional) Reference: review visit Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph. Second closing paragraph."
+    ],
+    "composer-macros/review-visit-choices#echoes": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Body as this macro reads it: Letter body: palpitations from paroxysmal atrial fibrillation. ] New-visit note as this macro reads it: [] Review summary as this macro reads it: [Letter body: palpitations from paroxysmal atrial fibrillation.]"
+    ],
+    "composer-macros/review-visit-choices#gated": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Seen again for review. Review leaflet enclosed. First closing paragraph."
+    ],
+    "composer-macros/review-visit-choices#optional": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. A leaflet on the condition is enclosed."
+    ],
+    "composer-macros/review-visit-choices#prepended": [
+      "Riverside Clinic (fictional) Letter body: palpitations from paroxysmal atrial fibrillation."
+    ],
+    "composer-macros/review-visit-choices#review_summary": [
+      "Riverside Clinic (fictional) Letter body: palpitations from paroxysmal atrial fibrillation."
+    ],
+    "composer-macros/review-visit-choices#sections_note": [
+      "History The History section follows. History paragraph: palpitations for two months. End of the History section. Plan The Plan section follows. Plan paragraph: apixaban started."
+    ],
+    "composer-macros/review-visit-choices#signed_letter": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. cc: the referring practice (fictional) Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/review-visit-choices#signed_only": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/skipped-deliverable-read#appended": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph."
+    ],
+    "composer-macros/skipped-deliverable-read#authored": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. Written by Dr A. Sample on 2026-11-10. Dr A. Sample Internal Medicine"
+    ],
+    "composer-macros/skipped-deliverable-read#both": [
+      "Riverside Clinic (fictional) Reference: new visit Letter body: palpitations from paroxysmal atrial fibrillation. First closing paragraph. Second closing paragraph."
+    ],
+    "composer-macros/skipped-deliverable-read#gated": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. First visit to this clinic. First closing paragraph."
+    ],
+    "composer-macros/skipped-deliverable-read#optional": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. A follow-up appointment will be offered."
+    ],
+    "composer-macros/skipped-deliverable-read#prepended": [
+      "Riverside Clinic (fictional) Letter body: palpitations from paroxysmal atrial fibrillation."
+    ],
+    "composer-macros/skipped-deliverable-read#sections_note": [
+      "History The History section follows. History paragraph: palpitations for two months. End of the History section. Plan The Plan section follows. Plan paragraph: apixaban started."
+    ],
+    "composer-macros/skipped-deliverable-read#signed_letter": [
+      "Letter body: palpitations from paroxysmal atrial fibrillation. cc: the referring practice (fictional) Dr A. Sample Internal Medicine"
+    ],
+    "composer-sources/awkward-texts#pair": [
+      "Closing line, after two blank lines and before three."
+    ],
+    "composer-sources/awkward-texts#plan": [
+      "Plan Medicines Repeat the echo in 6 months. The braces {{ and }} stay literal."
+    ],
+    "composer-sources/awkward-texts#sections": [
+      "Assessment Valve Not a block heading Apoint whose text holds its own heading."
+    ],
+    "composer-sources/awkward-texts#single": [
+      ""
+    ],
+    "composer-sources/awkward-texts#summary": [
+      ""
+    ],
+    "composer-sources/awkward-texts#summary_then_opening": [
+      ""
+    ],
+    "composer-sources/awkward-texts#tally": [
+      "Topic section length: 80"
+    ],
+    "composer-sources/awkward-texts#tone_line": [
+      "Any questions, just ask."
+    ],
+    "composer-sources/awkward-texts#topics": [
+      "History History paragraph. Examination Examination paragraph, indented."
+    ],
+    "composer-sources/awkward-texts#topics_then_opening": [
+      "History History paragraph. Examination Examination paragraph, indented."
+    ],
+    "composer-sources/branches-not-taken#pair": [
+      "Opening line for the note. Closing line for the note."
+    ],
+    "composer-sources/branches-not-taken#sections": [
+      ""
+    ],
+    "composer-sources/branches-not-taken#single": [
+      "Opening line for the note."
+    ],
+    "composer-sources/branches-not-taken#summary": [
+      ""
+    ],
+    "composer-sources/branches-not-taken#summary_then_opening": [
+      "Opening line for the note."
+    ],
+    "composer-sources/branches-not-taken#tally": [
+      "Topic section length: 0"
+    ],
+    "composer-sources/branches-not-taken#topics": [
+      ""
+    ],
+    "composer-sources/branches-not-taken#topics_then_opening": [
+      "Opening line for the note."
+    ],
+    "composer-sources/every-source#pair": [
+      "Opening line for the note. Closing line for the note."
+    ],
+    "composer-sources/every-source#plan": [
+      "Plan paragraph: repeat echo in six months."
+    ],
+    "composer-sources/every-source#sections": [
+      "Assessment Valve Valve paragraph for the assessment. Plan Review Review paragraph for the plan. Advice Advice paragraph for the plan."
+    ],
+    "composer-sources/every-source#single": [
+      "Opening line for the note."
+    ],
+    "composer-sources/every-source#summary": [
+      "Summary, second draft, naming the aortic valve."
+    ],
+    "composer-sources/every-source#summary_then_opening": [
+      "Summary, second draft, naming the aortic valve. Opening line for the note."
+    ],
+    "composer-sources/every-source#tally": [
+      "Topic section length: 131"
+    ],
+    "composer-sources/every-source#tone_line": [
+      "We remain at your disposal for any questions."
+    ],
+    "composer-sources/every-source#topics": [
+      "History History paragraph: breathless on exertion for a year. Examination Examination paragraph: ejection systolic murmur."
+    ],
+    "composer-sources/every-source#topics_then_opening": [
+      "History History paragraph: breathless on exertion for a year. Examination Examination paragraph: ejection systolic murmur. Opening line for the note."
+    ],
+    "composer-sources/failed-item#sections": [
+      "Assessment Valve Valve paragraph for the assessment. Plan Review Review paragraph for the plan. Advice Advice paragraph for the plan."
+    ],
+    "composer-sources/item-names-and-bounds#pair": [
+      "Opening line for the note. Closing line for the note."
+    ],
+    "composer-sources/item-names-and-bounds#sections": [
+      "Assessment Sections 2 Points 1 Blank-headed point paragraph. Plan Review Review paragraph for the plan."
+    ],
+    "composer-sources/item-names-and-bounds#single": [
+      "Opening line for the note."
+    ],
+    "composer-sources/item-names-and-bounds#summary": [
+      "Summary, pass three."
+    ],
+    "composer-sources/item-names-and-bounds#summary_then_opening": [
+      "Summary, pass three. Opening line for the note."
+    ],
+    "composer-sources/item-names-and-bounds#tally": [
+      "Topic section length: 414"
+    ],
+    "composer-sources/item-names-and-bounds#tone_line": [
+      "We remain at your disposal for any questions."
+    ],
+    "composer-sources/item-names-and-bounds#topics": [
+      "Padded history Padded history paragraph. A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu… Long-titled topic paragraph. A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again… Second long-titled topic paragraph. Requested topics 4 Blank-titled topic paragraph."
+    ],
+    "composer-sources/item-names-and-bounds#topics_then_opening": [
+      "Padded history Padded history paragraph. A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu… Long-titled topic paragraph. A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again… Second long-titled topic paragraph. Requested topics 4 Blank-titled topic paragraph. Opening line for the note."
+    ],
+    "composer-sources/unparseable-reply#sections": [
+      "stub 100f4302 stub a213ba25 Stub reply for draft_point:1/1 (91117478). stub eec677ff stub 5c8fb175 Stub reply for draft_point:2/1 (76850a19). stub a1908cc8 Stub reply for draft_point:2/2 (37b700e8). stub b7c32710 Stub reply for draft_point:2/3 (0038c34c). stub 746c715a stub 4fb8c2be Stub reply for draft_point:3/1 (7b80198f)."
+    ],
+    "composer-sources/unparseable-reply#summary": [
+      ""
+    ],
+    "composer-sources/unparseable-reply#tone_line": [
+      "Any questions, just ask."
+    ],
+    "composer-sources/unparseable-reply#topics": [
+      "History History paragraph. Examination Examination paragraph."
+    ],
+    "edge-answer-outside-set/answer-in-set#note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued."
+    ],
+    "edge-flag/reply-does-not-fit#note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued."
+    ],
+    "edge-items-not-run/third-problem-not-run#note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued."
+    ],
+    "edge-items-not-run/third-problem-not-run#problem_list": [
+      "• Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional): Diabetes paragraph: HbA1c 71 mmol/mol. • Metformin 1 g twice daily, continued (fictional): Medication paragraph: metformin continued. • Blood pressure of 148/92 (fictional):"
+    ],
+    "edge-missing-marker/reply-holds-macro#letter": [
+      "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol. A follow-up visit is booked in three months. Yours sincerely, Dr A. Sample"
+    ],
+    "edge-missing-marker/reply-leaves-macro-out#letter": [
+      "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol. Metformin is continued at 1 g twice daily. Yours sincerely, Dr A. Sample"
+    ],
+    "edge-no-branch/plan-included#note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued."
+    ],
+    "edge-no-branch/plan-included#plan": [
+      "Plan: repeat HbA1c in three months."
+    ],
+    "edge-no-branch/plan-left-out#note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued."
+    ],
+    "edge-source-no-branch/branch-taken#note": [
+      "Summary: diabetes above target on metformin. Dear Margaret Okafor, we will repeat your HbA1c in three months."
+    ],
+    "edge-source-no-branch/branch-taken#summary_note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued. Summary: diabetes above target on metformin."
+    ],
+    "edge-source-no-branch/no-branch#summary_note": [
+      "Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued. Summary: diabetes above target on metformin."
+    ],
+    "edge-unruled-whitespace/default#letter": [
+      "Margaret Okafor's diabetes was reviewed today; her HbA1c is 71 mmol/mol. A follow-up visit is booked in three months. Yours sincerely, Dr A. Sample"
+    ],
+    "edge-unruled-whitespace/default#problems": [
+      "Seen at: Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Reviewed today (fictional). Problem list 2 Medication paragraph: metformin continued. Reviewed today (fictional)."
+    ],
+    "edge-unset-object/intake-unset#note": [
+      "Referred for: (from the intake form). Problem list 1 Diabetes paragraph: HbA1c 71 mmol/mol. Problem list 2 Medication paragraph: metformin continued."
+    ],
+    "every-block": [
+      "Consult note for Margaret Okafor [!WARNING] Seen at Sample Oncology Clinic by Dr A. Sample. Quoted from the referral: a two-week history results pending. Margaret reports \"\"steady\"\" energy, a grade ^2^ rash on the ++left++ forearm and an HPI taken in full [^1]. This line ends with a single line ending and continues on the next. After a backslash break: ECOG 1, the plan, a scan of the forearm, https://example.org/referral, www.example.org and AMarkdig.Syntax.Inlines.HtmlEntityInlineE. HPI reviewed with Margaret at the visit. Plan • [x] Bloods taken • [ ] Echo booked a. Continue tamoxifen b. Review in clinic 1. Bloods in a week 2. Letter to the GP Echocardiogram : An ultrasound of the heart. Dose Drug Tamoxifen 20 mg ^^^ A photograph of the forearm, taken at the visit. ^^^ Figure 1: the rash at the visit FBC, U&E, LFT indented code line ———————————— ^^ Footer by Dr A. Sample *[HPI]: History of presenting illness [^1]: Taken at the visit on the ward."
+    ],
+    "example-classifier-scope/default#information_request": [
+      "Letter Stub reply for information_request:letter (f8b708c6)."
+    ],
+    "example-classifier-scope/in-scope#plan": [
+      "Assessment Stub reply for plan_section:assessment (736315ee). Plan Stub reply for plan_section:plan (318bfc78)."
+    ],
+    "example-classifier-scope/needs-information#information_request": [
+      "Letter Stub reply for information_request:letter (f8b708c6)."
+    ],
+    "example-classifier-scope/out-of-scope#decline_letter": [
+      "Letter Stub reply for decline_letter:letter (91c124b6). This determination (out_of_scope) was recorded on 2026-11-10. If the clinical picture changes, please send an updated referral. Dr A. Sample Internal Medicine"
+    ],
+    "example-conditional-documents/default#consult_note": [
+      "Assessment Stub reply for consult_note_section:assessment (3b21e0f5). Plan Stub reply for consult_note_section:plan (af0258fe)."
+    ],
+    "example-conditional-documents/follow-up#progress_note": [
+      "Assessment Stub reply for progress_note_section:assessment (91220ba0). Plan Stub reply for progress_note_section:plan (a1b2aa59)."
+    ],
+    "example-conditional-documents/follow-up-billing#progress_note": [
+      "Assessment Stub reply for progress_note_section:assessment (91220ba0). Plan Stub reply for progress_note_section:plan (a1b2aa59)."
+    ],
+    "example-conditional-documents/new-patient-billing#consult_note": [
+      "Assessment Stub reply for consult_note_section:assessment (3b21e0f5). Plan Stub reply for consult_note_section:plan (af0258fe)."
+    ],
+    "example-conditional-documents/new-patient-no-billing#consult_note": [
+      "Assessment Stub reply for consult_note_section:assessment (3b21e0f5). Plan Stub reply for consult_note_section:plan (af0258fe)."
+    ],
+    "example-conditional-sections/default#consult_note": [
+      "History Stub reply for narrative_draft:0 (7e956e10). Medications Stub reply for table_draft:1 (d93e3b25). Safety netting Stub reply for standing_draft:safety_netting (9945c35d). Follow-up Stub reply for standing_draft:follow_up (b11afebe). Stub reply for coverage (3f9826d8)."
+    ],
+    "example-conditional-sections/default#patient_summary": [
+      "History Stub reply for patient_summary:0 (c3a1262e)."
+    ],
+    "example-conditional-sections/exclude-billing#consult_note": [
+      "History Stub reply for narrative_draft:0 (7e956e10). Medications Stub reply for table_draft:1 (d93e3b25). Safety netting Stub reply for standing_draft:safety_netting (9945c35d). Follow-up Stub reply for standing_draft:follow_up (b11afebe). Stub reply for coverage (3f9826d8)."
+    ],
+    "example-conditional-sections/exclude-billing#patient_summary": [
+      "History Stub reply for patient_summary:0 (c3a1262e)."
+    ],
+    "example-conditional-sections/include-billing#consult_note": [
+      "History Stub reply for narrative_draft:0 (7e956e10). Medications Stub reply for table_draft:1 (d93e3b25). Safety netting Stub reply for standing_draft:safety_netting (9945c35d). Follow-up Stub reply for standing_draft:follow_up (b11afebe). Billing Stub reply for standing_draft:billing (bb2477b3). Stub reply for coverage (3f9826d8)."
+    ],
+    "example-conditional-sections/include-billing#patient_summary": [
+      "History Stub reply for patient_summary:0 (c3a1262e)."
+    ],
+    "example-macros-warnings/counselling-excluded#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros-warnings/counselling-excluded#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros-warnings/counselling-included#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros-warnings/counselling-included#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros-warnings/default#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros-warnings/default#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros-warnings/discharge-summary#consult_note": [
+      "Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as discharge_summary. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros-warnings/discharge-summary#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros-warnings/follow-up#consult_note": [
+      "Follow-up note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as follow_up. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros-warnings/follow-up#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros-warnings/follow-up-counselling-included#consult_note": [
+      "Follow-up note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as follow_up. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros-warnings/follow-up-counselling-included#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros-warnings/follow-up-reminder-chosen#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros-warnings/follow-up-reminder-chosen#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros-warnings/follow-up-reminder-refused#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded."
+    ],
+    "example-macros-warnings/follow-up-reminder-refused#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/counselling-excluded#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros/counselling-excluded#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/counselling-included#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros/counselling-included#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/default#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros/default#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/discharge-summary#consult_note": [
+      "Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as discharge_summary. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros/discharge-summary#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/follow-up#consult_note": [
+      "Follow-up note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as follow_up. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros/follow-up#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/follow-up-counselling-included#consult_note": [
+      "Follow-up note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as follow_up. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros/follow-up-counselling-included#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/follow-up-reminder-chosen#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded. A follow-up appointment will be arranged within three months."
+    ],
+    "example-macros/follow-up-reminder-chosen#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-macros/follow-up-reminder-refused#consult_note": [
+      "Consultation note Sections to produce 1 Stub reply for narrative_draft:0 (7e956e10). This section was drafted from the consult draft alone and should be read against the source documents. Sections to produce 2 Values are as documented in the consult draft; blanks mean not documented. Stub reply for table_draft:1 (d93e3b25). History of presenting illness Stub reply for standing_draft:hpi (6b1ac565). Medications Stub reply for standing_draft:medications (a8003672). Assessment and plan Stub reply for standing_draft:assessment_plan (ec5dded8). Discussed common side effects including hot flashes, joint or muscle pain, fatigue, headache and nausea. Advised to report any that persist. Summary of today's consultation. Stub reply for summary (0d262d29). Dictated by Dr A. Sample; not yet reviewed. End of note. Note type recorded as consult. Plan as above; no counselling recorded."
+    ],
+    "example-macros/follow-up-reminder-refused#patient_letter": [
+      "Stub reply for patient_line (8c2a9c14)."
+    ],
+    "example-nested-note/default#note": [
+      "Stub reply for draft_summary:1 (78b0fc65). stub 100f4302 Paragraphs 1 Stub reply for draft_paragraph:1/1 (a2dad8e1). stub eec677ff Paragraphs 1 Stub reply for draft_paragraph:2/1 (47b7f41d). Paragraphs 2 Stub reply for draft_paragraph:2/2 (a2bd5654). Paragraphs 3 Stub reply for draft_paragraph:2/3 (5bcb3112). stub 746c715a Paragraphs 1 Stub reply for draft_paragraph:3/1 (1842ab6a)."
+    ],
+    "example-nested-note/verdict-good-on-pass-2#note": [
+      "Stub reply for draft_summary:2 (44d060dd). Assessment Paragraphs 1 Stub reply for draft_paragraph:1/1 (a2dad8e1). Plan Paragraphs 1 Stub reply for draft_paragraph:2/1 (47b7f41d). Paragraphs 2 Stub reply for draft_paragraph:2/2 (a2bd5654). Paragraphs 3 Stub reply for draft_paragraph:2/3 (5bcb3112)."
+    ],
+    "example-nested-note/verdict-never-good#note": [
+      "Stub reply for draft_summary:3 (1671312e). Assessment Paragraphs 1 Stub reply for draft_paragraph:1/1 (a2dad8e1). Plan Paragraphs 1 Stub reply for draft_paragraph:2/1 (47b7f41d). Paragraphs 2 Stub reply for draft_paragraph:2/2 (a2bd5654). Paragraphs 3 Stub reply for draft_paragraph:2/3 (5bcb3112)."
+    ],
+    "example-prior-letters/answered-by-letter-3#note": [
+      "Stub reply for assessment (72d44b23). Prior letters 1 Stub reply for letter_summary:0 (ac776bfa). Prior letters 2 Stub reply for letter_summary:1 (41ef6f2f). Prior letters 3 Stub reply for letter_summary:2 (ba2ec318)."
+    ],
+    "example-prior-letters/default#note": [
+      "Stub reply for assessment (72d44b23). Prior letters 1 Stub reply for letter_summary:0 (ac776bfa). Prior letters 2 Stub reply for letter_summary:1 (41ef6f2f). Prior letters 3 Stub reply for letter_summary:2 (ba2ec318)."
+    ],
+    "example-prior-letters/never-answered#note": [
+      "Stub reply for assessment (72d44b23). Prior letters 1 Stub reply for letter_summary:0 (ac776bfa). Prior letters 2 Stub reply for letter_summary:1 (41ef6f2f). Prior letters 3 Stub reply for letter_summary:2 (ba2ec318)."
+    ],
+    "example-problem-list/default#note": [
+      "Overview Stub reply for section_draft:overview (41745024). Follow-up plan Stub reply for section_draft:follow_up_plan (273a1d2b). Problems 1 Stub reply for draft_problem:1 (9f5b33aa)."
+    ],
+    "example-problem-list/follow-up-no#note": [
+      "Overview Stub reply for section_draft:overview (41745024). Problems 1 Stub reply for draft_problem:1 (9f5b33aa). Problems 2 Stub reply for draft_problem:2 (d976cd83)."
+    ],
+    "example-problem-list/follow-up-yes#note": [
+      "Overview Stub reply for section_draft:overview (41745024). Follow-up plan Stub reply for section_draft:follow_up_plan (273a1d2b). Problems 1 Stub reply for draft_problem:1 (9f5b33aa). Problems 2 Stub reply for draft_problem:2 (d976cd83)."
+    ],
+    "example-structured-intake/default#note": [
+      "Assessment Stub reply for note_section:assessment (77d24528). Plan Stub reply for note_section:plan (1f0cd5de)."
+    ],
+    "example-structured-intake/default#notes_digest": [
+      "Prior notes 1 Stub reply for summarise_note:0 (32154d04). Prior notes 2 Stub reply for summarise_note:1 (ea270460)."
+    ],
+    "example-structured-intake/long-stay-at-8#long_stay_summary": [
+      "Assessment Stub reply for long_stay_section:assessment (20ae30d0). Plan Stub reply for long_stay_section:plan (167ed746)."
+    ],
+    "example-structured-intake/long-stay-at-8#note": [
+      "Assessment Stub reply for note_section:assessment (77d24528). Plan Stub reply for note_section:plan (1f0cd5de)."
+    ],
+    "example-structured-intake/long-stay-at-8#notes_digest": [
+      "Prior notes 1 Stub reply for summarise_note:0 (32154d04). Prior notes 2 Stub reply for summarise_note:1 (ea270460)."
+    ],
+    "example-structured-intake/notes-index-at-three#note": [
+      "Assessment Stub reply for note_section:assessment (77d24528). Plan Stub reply for note_section:plan (1f0cd5de)."
+    ],
+    "example-structured-intake/notes-index-at-three#notes_digest": [
+      "Prior notes 1 Stub reply for summarise_note:0 (32154d04). Prior notes 2 Stub reply for summarise_note:1 (ea270460). Prior notes 3 Stub reply for summarise_note:2 (4a993a05)."
+    ],
+    "example-structured-intake/notes-index-at-three#notes_index": [
+      "Prior notes 1 Stub reply for index_note:0 (e0ed780a). Prior notes 2 Stub reply for index_note:1 (50731efe). Prior notes 3 Stub reply for index_note:2 (68f95e73)."
+    ],
+    "example-structured-intake/optional-inputs-unset#note": [
+      "Assessment Stub reply for note_section:assessment (77d24528). Plan Stub reply for note_section:plan (1f0cd5de)."
+    ],
+    "example-structured-intake/optional-inputs-unset#notes_digest": [
+      "Prior notes 1 Stub reply for summarise_note:0 (32154d04). Prior notes 2 Stub reply for summarise_note:1 (ea270460)."
+    ],
+    "example-structured-intake/senior-review-at-65#note": [
+      "Assessment Stub reply for note_section:assessment (77d24528). Plan Stub reply for note_section:plan (1f0cd5de)."
+    ],
+    "example-structured-intake/senior-review-at-65#notes_digest": [
+      "Prior notes 1 Stub reply for summarise_note:0 (32154d04). Prior notes 2 Stub reply for summarise_note:1 (ea270460)."
+    ],
+    "example-structured-intake/senior-review-at-65#senior_review": [
+      "Assessment Stub reply for senior_review_section:assessment (1cb57388). Plan Stub reply for senior_review_section:plan (8c5a0695)."
+    ],
+    "example-two-documents/default#consult_note": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). Medications Stub reply for section_instructions:medications (be63b4b4). Allergies Stub reply for section_instructions:allergies (c5a88030). Social History Stub reply for section_instructions:social_history (0a8382a2). Family History Stub reply for section_instructions:family_history (df17442d). Physical Exam Stub reply for section_instructions:exam (9661031e). Investigations Stub reply for section_instructions:investigations (b4e40a7d). Assessment and Plan Stub reply for section_instructions:assessment_plan (c4ce8ee5)."
+    ],
+    "example-two-documents/default#patient_letter": [
+      "Stub reply for draft_patient_letter (7efcb963)."
+    ],
+    "example-two-documents/prior-notes-supplied#consult_note": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). Medications Stub reply for section_instructions:medications (be63b4b4). Allergies Stub reply for section_instructions:allergies (c5a88030). Social History Stub reply for section_instructions:social_history (0a8382a2). Family History Stub reply for section_instructions:family_history (df17442d). Physical Exam Stub reply for section_instructions:exam (9661031e). Investigations Stub reply for section_instructions:investigations (b4e40a7d). Assessment and Plan Stub reply for section_instructions:assessment_plan (c4ce8ee5)."
+    ],
+    "example-two-documents/prior-notes-supplied#patient_letter": [
+      "Stub reply for draft_patient_letter (7efcb963)."
+    ],
+    "example-v12-constructs/followup-chosen#ack_letter": [
+      "History of Present Illness Wehave received this referral and will be in touch with an appointment. Past Medical History We have received this referral and will be in touch with an appointment."
+    ],
+    "example-v12-constructs/followup-chosen#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). This document was generated with decision support; the signing clinician reviewed it. Prepared regarding the consultation of 09 Nov 2026. We remain at your disposal for any further questions. A follow-up appointment will be arranged within three months. Sincerely, Dr A. Sample Internal Medicine"
+    ],
+    "example-v12-constructs/followup-refused#ack_letter": [
+      "History of Present Illness Wehave received this referral and will be in touch with an appointment. Past Medical History We have received this referral and will be in touch with an appointment."
+    ],
+    "example-v12-constructs/followup-refused#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). This document was generated with decision support; the signing clinician reviewed it. Prepared regarding the consultation of 09 Nov 2026. We remain at your disposal for any further questions. Sincerely, Dr A. Sample Internal Medicine"
+    ],
+    "example-v12-constructs/letter-coverage-fails#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). This document was generated with decision support; the signing clinician reviewed it. Prepared regarding the consultation of 09 Nov 2026. We remain at your disposal for any further questions. A follow-up appointment will be arranged within three months. Sincerely, Dr A. Sample Internal Medicine"
+    ],
+    "example-v12-constructs/note-coverage-fails#ack_letter": [
+      "History of Present Illness Wehave received this referral and will be in touch with an appointment. Past Medical History We have received this referral and will be in touch with an appointment."
+    ],
+    "example-v12-constructs/optional-inputs-unset#ack_letter": [
+      "History of Present Illness Wehave received this referral and will be in touch with an appointment. Past Medical History We have received this referral and will be in touch with an appointment."
+    ],
+    "example-v12-constructs/optional-inputs-unset#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). This document was generated with decision support; the signing clinician reviewed it. Prepared regarding the consultation of 09 Nov 2026. We remain at your disposal for any further questions. A follow-up appointment will be arranged within three months. Sincerely, Dr A. Sample Internal Medicine"
+    ],
+    "example-v12-constructs/tone-formal#ack_letter": [
+      "History of Present Illness Wehave received this referral and will be in touch with an appointment. Past Medical History We have received this referral and will be in touch with an appointment."
+    ],
+    "example-v12-constructs/tone-formal#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). This document was generated with decision support; the signing clinician reviewed it. Prepared regarding the consultation of 09 Nov 2026. We remain at your disposal for any further questions. A follow-up appointment will be arranged within three months. Sincerely, Dr A. Sample Internal Medicine"
+    ],
+    "example-v12-constructs/tone-friendly#ack_letter": [
+      "History of Present Illness Wehave received this referral and will be in touch with an appointment. Past Medical History We have received this referral and will be in touch with an appointment."
+    ],
+    "example-v12-constructs/tone-friendly#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). This document was generated with decision support; the signing clinician reviewed it. Prepared regarding the consultation of 09 Nov 2026. Please reach out any time if anything changes. A follow-up appointment will be arranged within three months. Sincerely, Dr A. Sample Internal Medicine"
+    ],
+    "general/default#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). Medications Stub reply for section_instructions:medications (be63b4b4). Allergies Stub reply for section_instructions:allergies (c5a88030). Social History Stub reply for section_instructions:social_history (0a8382a2). Family History Stub reply for section_instructions:family_history (df17442d). Physical Exam Stub reply for section_instructions:exam (9661031e). Investigations Stub reply for section_instructions:investigations (b4e40a7d). Assessment and Plan Stub reply for section_instructions:assessment_plan (c4ce8ee5)."
+    ],
+    "test/general/consult-draft-three-entries#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). Medications Stub reply for section_instructions:medications (be63b4b4). Allergies Stub reply for section_instructions:allergies (c5a88030). Social History Stub reply for section_instructions:social_history (0a8382a2). Family History Stub reply for section_instructions:family_history (df17442d). Physical Exam Stub reply for section_instructions:exam (9661031e). Investigations Stub reply for section_instructions:investigations (b4e40a7d). Assessment and Plan Stub reply for section_instructions:assessment_plan (c4ce8ee5). test"
+    ],
+    "test/general/default#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). Medications Stub reply for section_instructions:medications (be63b4b4). Allergies Stub reply for section_instructions:allergies (c5a88030). Social History Stub reply for section_instructions:social_history (0a8382a2). Family History Stub reply for section_instructions:family_history (df17442d). Physical Exam Stub reply for section_instructions:exam (9661031e). Investigations Stub reply for section_instructions:investigations (b4e40a7d). Assessment and Plan Stub reply for section_instructions:assessment_plan (c4ce8ee5). test"
+    ],
+    "test/general/letrozole-placeholder-in-reply#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). Medications Stub reply for section_instructions:medications (be63b4b4). Allergies Stub reply for section_instructions:allergies (c5a88030). Social History Stub reply for section_instructions:social_history (0a8382a2). Family History Stub reply for section_instructions:family_history (df17442d). Physical Exam Stub reply for section_instructions:exam (9661031e). Investigations Stub reply for section_instructions:investigations (b4e40a7d). Assessment and Plan Margaret Okafor, 58, has grade 2 ER-positive, HER2-negative invasive ductal carcinoma of the left breast. Letrozole 2.5 mg daily started today. Discussed side effects including: hot flashes, joint or muscle pain, fatigue, headache, nausea, and bone thinning. Advised to monitor side effects. Review in clinic in three months. test"
+    ],
+    "test/general/note-type-follow-up#consult": [
+      "History of Present Illness Stub reply for section_instructions:hpi (66922c01). Past Medical History Stub reply for section_instructions:pmh (76d1da90). Medications Stub reply for section_instructions:medications (be63b4b4). Allergies Stub reply for section_instructions:allergies (c5a88030). Social History Stub reply for section_instructions:social_history (0a8382a2). Family History Stub reply for section_instructions:family_history (df17442d). Physical Exam Stub reply for section_instructions:exam (9661031e). Investigations Stub reply for section_instructions:investigations (b4e40a7d). Assessment and Plan Stub reply for section_instructions:assessment_plan (c4ce8ee5). test"
+    ]
+  }
+}
