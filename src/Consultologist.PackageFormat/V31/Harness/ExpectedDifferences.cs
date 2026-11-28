@@ -141,6 +141,12 @@ public static class ExpectedDifferences
         {
             Bytes = PositionNames,
         },
+        new("count-over-accepted-name",
+            "#1543, ruling 6, ruled by the owner on 2026-11-27 (a count computed from an accepted name follows the name); part 10 § 3.2",
+            "a number a computed node counts (size) from a text whose own difference from 30's the other rules wholly explain (an item's name, say) follows that text: 31's text holds the count of 31's text, where 30's holds the count of 30's")
+        {
+            Bytes = CountsOverAcceptedNames,
+        },
         new("sent-format",
             "part 10 § 1.8 (every property required, an optional one nullable); R12 and #1508, comment 5, item 7, #3, ruled by the owner on 2026-11-25 (a format's description sent; a classifier's answers sent as its format); #1508, 2026-11-26, item 7 (30's answer line dropped); part 10 § 3.2",
             "the format appended to the prompt is 30's as § 1.8 rewrites it: every property required, an optional one nullable, written in canonical order, with the descriptions 31 sends where 30's had none; or a classifier's answers sent as its format, where 30 listed them in its prompt's last line, which the migration drops")
@@ -914,6 +920,123 @@ public static class ExpectedDifferences
         }
 
         return changed ? (old, string.Join('\n', lines)) : null;
+    }
+
+    /// <summary>
+    /// #1543 (ruling 6, D13): in any compared text but the status, the value of a computed row of the 31 run, where it stands
+    /// in 31's text, put back as the row's expression gives it on 30's text, only where: the expression reads one path, the
+    /// <c>.content</c> of a row of the run, and takes its <c>size</c>; the row's value is what the expression gives on that
+    /// row's text at 31 (so a number that is not the count of 31's text is left); and 30's text for that read is found and its
+    /// own difference from 31's is wholly explained (<see cref="AcceptedText30"/>). The expression is evaluated with the plan's
+    /// own compiled rule. Nothing else in the text is touched.
+    /// </summary>
+    private static (string Old, string New)? CountsOverAcceptedNames(DifferenceContext c, string old, string now)
+    {
+        if (c.Kind == ComparedKind.Status || countingAcceptedNames)
+            return null;
+
+        var undone = now;
+        foreach (var row in c.Run31.Rows.Where(r => r.Kind == PlanKind.Computed))
+        {
+            if (SourceLayout.Text(row.Text?["content"]) is not { Length: > 0 } value || !undone.Contains(value, StringComparison.Ordinal)
+                || !c.Plan.Entries.TryGetValue(row.EntryKey, out var entry) || entry.Expression is not { } expression
+                || !entry.Rules.TryGetValue("expression", out var rule) || rule.Reads is not [var read]
+                || !read.EndsWith(".content", StringComparison.Ordinal) || !TakesSize(rule.Json, read)
+                || c.Run31.Rows.FirstOrDefault(r => r.Key == read[..^".content".Length]) is not { } counted
+                || SourceLayout.Text(counted.Text?["content"]) is not { } text31
+                || Evaluated(expression, read, text31) != value
+                || AcceptedText30(c, text31) is not { } text30
+                || Evaluated(expression, read, text30) is not { } value30)
+            {
+                continue;
+            }
+
+            undone = undone.Replace(value, value30, StringComparison.Ordinal);
+        }
+
+        return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>Set while <see cref="AcceptedText30"/> credits a counted text, so a count is never credited on a count's own credit.</summary>
+    [ThreadStatic]
+    private static bool countingAcceptedNames;
+
+    /// <summary>
+    /// 30's text of the value whose text at 31 is <paramref name="text31"/>: the capture's deliverable or rendered node whose
+    /// 31 text (<see cref="KeyMap.To31"/>) is exactly <paramref name="text31"/>, and only where its 30 text is the same, or
+    /// the difference between the two is wholly explained (<see cref="Credit"/>'s <see cref="Credited.Expected"/>); else
+    /// null.
+    /// </summary>
+    private static string? AcceptedText30(DifferenceContext c, string text31)
+    {
+        foreach (var (section, kind) in new[] { ("deliverables", ComparedKind.Deliverable), ("renders", ComparedKind.Render) })
+        {
+            foreach (var row in (c.Capture30[section] as JsonArray ?? []).OfType<JsonObject>())
+            {
+                var key30 = kind == ComparedKind.Deliverable ? "deliverable." + SourceLayout.Text(row["id"]) : SourceLayout.Text(row["key"]) ?? "";
+                if (SourceLayout.Text(row["text"]) is not { } text30 || KeyMap.To31(key30, c.Migrated, c.Plan) is not { } key31)
+                    continue;
+                var now = kind == ComparedKind.Deliverable
+                    ? c.Run31.Deliverables.FirstOrDefault(d => d.Key == key31 && d.State != DeliverableState.Blocked)?.Text
+                    : c.Run31.Renders.FirstOrDefault(r => r.Key == key31)?.Text;
+                if (now != text31)
+                    continue;
+                if (text30 == text31)
+                    return text30;
+
+                countingAcceptedNames = true;
+                try
+                {
+                    var site = $"{c.Package}/{c.Scenario}#{section}/{key31}";
+                    if (Credit(new DifferenceContext(c.Package, c.Scenario, site, kind, key30, key31, text30, text31, c.Capture30, c.Run31, c.Migrated, c.Plan, c.Request)).Expected)
+                        return text30;
+                }
+                finally
+                {
+                    countingAcceptedNames = false;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="rule"/> holds <c>size</c> of <c>{ "var": <paramref name="read"/> }</c> at any depth.</summary>
+    private static bool TakesSize(JsonNode? rule, string read) => rule switch
+    {
+        JsonObject { Count: 1 } op when op["size"] is { } operand
+            && (operand is JsonArray { Count: 1 } one ? one[0] : operand) is JsonObject { Count: 1 } v && VarPath(v["var"]) == read => true,
+        JsonObject members => members.Any(m => TakesSize(m.Value, read)),
+        JsonArray items => items.Any(i => TakesSize(i, read)),
+        _ => false,
+    };
+
+    private static string? VarPath(JsonNode? var) => var is JsonArray { Count: > 0 } path ? SourceLayout.Text(path[0]) : SourceLayout.Text(var);
+
+    /// <summary>
+    /// <paramref name="expression"/>'s value on data holding <paramref name="text"/> at <paramref name="read"/> alone: its text,
+    /// or a number as JSON writes it; null when it fails or gives another kind.
+    /// </summary>
+    private static string? Evaluated(IJsonLogicRule expression, string read, string text)
+    {
+        var segments = read.Split('.');
+        var data = new JsonObject();
+        var at = data;
+        foreach (var segment in segments[..^1])
+        {
+            var next = new JsonObject();
+            at[segment] = next;
+            at = next;
+        }
+
+        at[segments[^1]] = text;
+        return expression.Evaluate(data) switch
+        {
+            { Failure: not null } => null,
+            { Value: JsonValue value } when value.TryGetValue<string>(out var said) => said,
+            { Value: JsonValue number } when number.GetValueKind() == System.Text.Json.JsonValueKind.Number => number.ToJsonString(),
+            _ => null,
+        };
     }
 
     /// <summary>
