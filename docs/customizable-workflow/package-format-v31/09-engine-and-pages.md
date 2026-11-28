@@ -450,6 +450,7 @@ in written order, each with its `label` and its `description` as help text:
   converter to Markdown is Milestone 40, #1442), and the parser's and OCR's versions are recorded
   with the input
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6924904289)).
+  An earlier run on a 31 package offers its released deliverables, by label, from its rows (#1543).
 - **`channel`** (`transcript`, `image`, `ambient-note`, `form`) does what `expectedContent` does
   today; only the name changes.
 - **No macro panel** for a 31 package: its per-run choices are ordinary boolean inputs.
