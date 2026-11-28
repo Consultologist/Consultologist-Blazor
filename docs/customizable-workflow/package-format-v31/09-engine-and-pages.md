@@ -570,7 +570,12 @@ for a deliverable its `composedHash`, for a macro its `contentHash`; a computed 
 - **retries** on the node's row: how many, for capacity or for a service failure, and the total
   wait (§ 3.4);
 - **a `call`** is one row that expands to its own rows, keyed under the call
-  (`node.hpi_section.standard_draft`, #1419); the run diagram's call box links here.
+  (`node.hpi_section.standard_draft`, #1419); the run diagram's call box links here;
+- **output used in a refused deliverable** is marked on the node's row: *"Used in a refused deliverable: <id>"*
+  (several ids joined by ", "), when a `blocked` deliverable's substitutions or sites read a path under that node's key
+  (the node itself and its item, pass and call rows, by the record's own parent and child rows; nodes further upstream
+  are not marked). The output is still shown, but as the refused panel's text is: it cannot be selected, copy and cut
+  are cancelled, and the row offers no copy control (#1543, ruling 4).
 
 **Checks** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311)).
 Each check row has four lines:
@@ -596,7 +601,8 @@ sent with the sentence. A deliverable whose gating check was skipped by its own 
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)). Profile reads show the field and its hash, never its text after the
 7-day drop; the signature read names the block's id. **A blocked deliverable's text** is shown under the heading
 *"Refused, not delivered"*, with the check that refused it and its sentence, so nobody copies it out by mistake: the
-panel has no copy control and cannot be selected, and the text is in no copy or download the page offers. It is shown
+panel has no copy control and cannot be selected, and the text is in no copy or download the page offers; the nodes it
+read are marked and their output cannot be selected either (Nodes, above). It is shown
 while it is retained (7 days); after that the heading and the hash remain, with A12-002 (ruled by the owner on #1507,
 item 3). There is no release button at 31: releasing after review is #1524, Milestone 40. The template is shown only when
 `CanonicalJson.HashText` of its body in `resolve.json` equals the row's `templateHash`; otherwise the row says A12-007: *"The
