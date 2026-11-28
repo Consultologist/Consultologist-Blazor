@@ -136,7 +136,8 @@ internal static class V31Contract
     /// asks no question, #1508 comment 6 item 1, R13; A11-014, Task 35: an agent's onInvalid that is not retry or fail, 30's
     /// flag among them, comment 5 item 3 and comment 6 item 3; A11-015 and A11-016, Task 36: the bulk publish's deadline for a
     /// package it cannot publish, comment 8, R11, and a package that is not the account's active account package, R21; A11-017,
-    /// the final review of Part F: a package the engine did not answer for, in the bulk publish's owners' list).
+    /// the final review of Part F: a package the engine did not answer for, in the bulk publish's owners' list; A11-018 and
+    /// A11-019, #1543 Task B5: an owner whose signature or closing has several lines, in the owners' list, ruling 2, D9).
     /// </summary>
     private static readonly Dictionary<string, string> PublishAreaSentences = new()
     {
@@ -157,13 +158,16 @@ internal static class V31Contract
         ["A11-015"] = "This package stops working when specVersion 30 is retired.",
         ["A11-016"] = "<package> is not the account's active account package; the bulk publish migrates only the account package an account's pin names.",
         ["A11-017"] = "The engine did not answer for this package; check whether it was published before sending this list.",
+        ["A11-018"] = "Your signature has <n> lines. From specVersion 31, end each line with \\, or leave a blank line between them.",
+        ["A11-019"] = "Your closing has <n> lines. From specVersion 31, end each line with \\, or leave a blank line between them.",
     };
 
     /// <summary>
     /// #1508 (R8 item 4): the audience of an area sentence whose audience is not the author's, as the refusal-sentences table
     /// gives it: A08-006 is logged for the operator; A11-008 is shown to the clinician, who is told to tell the operator;
     /// A11-015 is the owner's, in the bulk publish's owners' list, and A11-016 the operator's, in its record (Task 36); A11-017 the
-    /// operator's, in the owners' list, to check before it is sent (the final review of Part F).
+    /// operator's, in the owners' list, to check before it is sent (the final review of Part F); A11-018 and A11-019 the
+    /// owner's, in the owners' list (#1543, D9).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> AreaSentenceAudiences = new Dictionary<string, string>
     {
@@ -172,6 +176,8 @@ internal static class V31Contract
         ["A11-015"] = "clinician",
         ["A11-016"] = "operator",
         ["A11-017"] = "operator",
+        ["A11-018"] = "clinician",
+        ["A11-019"] = "clinician",
         ["A12-001"] = "clinician",
         ["A12-002"] = "clinician",
         ["A12-003"] = "clinician",

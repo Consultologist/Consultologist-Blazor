@@ -90,6 +90,31 @@ public class MigratePackageTests
         public void Stored(WorkflowPackageSource source) =>
             Sources.ReadSourceAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>()).Returns(source);
 
+        /// <summary>
+        /// The owner's profile as the account settings keep it: the signature blocks (<paramref name="signature"/> the chosen
+        /// one's text, <paramref name="other"/> a second block's, not chosen) and the closing.
+        /// </summary>
+        public void Profile(string? signature = null, string? closing = null, string? other = null)
+        {
+            var blocks = new JsonArray();
+            if (signature is not null)
+                blocks.Add(Block("clinic-letters", signature));
+            if (other is not null)
+                blocks.Add(Block("ward-letters", other));
+            Settings.GetAsync(OwnerId, AccountSettingKeys.ProfileSignatures, Arg.Any<CancellationToken>()).Returns(new AccountSetting(
+                AccountSettingKeys.ProfileSignatures,
+                new JsonObject { ["Blocks"] = blocks, ["ChosenId"] = signature is null ? null : "clinic-letters" }.ToJsonString(),
+                "application/json", Now));
+            if (closing is not null)
+            {
+                Settings.GetAsync(OwnerId, AccountSettingKeys.ProfileClosing, Arg.Any<CancellationToken>())
+                    .Returns(new AccountSetting(AccountSettingKeys.ProfileClosing, closing, "text/plain", Now));
+            }
+        }
+
+        private static JsonObject Block(string id, string text) =>
+            new() { ["Id"] = id, ["Name"] = id, ["Text"] = text, ["UpdatedAtUtc"] = "2026-11-30T12:00:00+00:00" };
+
         public MigratePackage Operation()
         {
             var publisher = new V31PackagePublisher(
@@ -100,7 +125,7 @@ public class MigratePackageTests
                 Pipeline = (upload, options) => Pipeline?.Invoke(upload, options) ?? PackagePublish.RunAsync(upload, options),
             };
             return new MigratePackage(
-                Accounts, Pins, Sources, publisher, Types.Value, V31Job.Toolchain.Value, TestFormats.Catalog, OutputContractCatalog.Load(), Limits, Log);
+                Accounts, Settings, Pins, Sources, publisher, Types.Value, V31Job.Toolchain.Value, TestFormats.Catalog, OutputContractCatalog.Load(), Limits, Log);
         }
 
         public Task<JsonObject> RunAsync(MigratePackageRequest request) => Operation().RunAsync(request, CancellationToken.None);
@@ -436,6 +461,116 @@ public class MigratePackageTests
         Assert.Equal(MigratePackage.NotMigrated + PackagePublishSentences.EngineFailed().Sentence, (string?)answer["outcome"]);
         Assert.Contains(nameof(InvalidOperationException), rig.Log.Everything, StringComparison.Ordinal);
         Assert.DoesNotContain("Margaret Okafor", rig.Log.Everything, StringComparison.Ordinal);
+        rig.AssertNothingWritten();
+    }
+
+    // ---- the owner's account: a signature or a closing of several lines (#1543, ruling 2, D9) --------------------------
+
+    private const string ThreeLines = "Dr A. Sample\nInternal Medicine\nSample Oncology Clinic";
+
+    [Fact]
+    public async Task AnOwnerWhoseChosenSignatureHasSeveralLines_IsTold()
+    {
+        var rig = new Rig();
+        rig.Profile(signature: ThreeLines);
+
+        var answer = await rig.RunAsync(Request());
+
+        Assert.Equal(MigratePackage.Published, (string?)answer["outcome"]);
+        Assert.Equal("accountNotices", answer.Last().Key);
+        var notice = Assert.Single(Strings(answer["accountNotices"]));
+        Assert.Equal("Your signature has 3 lines. From specVersion 31, end each line with \\, or leave a blank line between them.", notice);
+        V31Contract.AssertSentence(new SourceRefusal("A11-018", notice, ""));
+
+        // the sentence and its count only: no line of the signature is answered or logged
+        foreach (var line in ThreeLines.Split('\n'))
+        {
+            Assert.DoesNotContain(line, answer.ToJsonString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(line, rig.Log.Everything, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task AnOwnerWhoseClosingHasSeveralLines_IsTold()
+    {
+        var rig = new Rig();
+        rig.Profile(signature: ThreeLines, closing: "Kind regards,\nThe Sample Oncology Clinic team");
+
+        var answer = await rig.RunAsync(Request());
+
+        var notices = Strings(answer["accountNotices"]);
+        Assert.Equal(2, notices.Length);
+        Assert.Equal("Your closing has 2 lines. From specVersion 31, end each line with \\, or leave a blank line between them.", notices[1]);
+        V31Contract.AssertSentence(new SourceRefusal("A11-019", notices[1], ""));
+        Assert.DoesNotContain("Kind regards", answer.ToJsonString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Kind regards", rig.Log.Everything, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Dr A. Sample")]
+    [InlineData("Dr A. Sample\n")]
+    [InlineData("Dr A. Sample\n\nInternal Medicine\n\nSample Oncology Clinic")]
+    [InlineData("Dr A. Sample\\\nInternal Medicine\\\nSample Oncology Clinic")]
+    [InlineData("Dr A. Sample\\\r\nInternal Medicine\\\r\nSample Oncology Clinic\r\n")]
+    public async Task ASignatureThatNeedsNoChange_IsNotTold(string text)
+    {
+        // Review Focus 5: one line, a trailing line ending, blank lines between, a \ at each line's end (\r\n too)
+        var rig = new Rig();
+        rig.Profile(signature: text, closing: text);
+
+        var answer = await rig.RunAsync(Request());
+
+        Assert.Equal(MigratePackage.Published, (string?)answer["outcome"]);
+        Assert.False(answer.ContainsKey("accountNotices"));
+    }
+
+    [Fact]
+    public async Task ABlockThatIsNotTheChosenOne_IsNotCounted()
+    {
+        var rig = new Rig();
+        rig.Profile(signature: "Dr A. Sample", other: ThreeLines);
+
+        Assert.False((await rig.RunAsync(Request())).ContainsKey("accountNotices"));
+
+        rig.Profile(signature: "Dr A. Sample\nInternal Medicine", other: ThreeLines);
+
+        var notice = Assert.Single(Strings((await rig.RunAsync(Request()))["accountNotices"]));
+        Assert.StartsWith("Your signature has 2 lines.", notice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheNotice_IsSaidInADryRunToo()
+    {
+        var rig = new Rig();
+        rig.Profile(signature: ThreeLines);
+
+        var answer = await rig.RunAsync(Request(publish: false));
+
+        Assert.Equal(MigratePackage.WouldPublish, (string?)answer["outcome"]);
+        Assert.StartsWith("Your signature has 3 lines.", Assert.Single(Strings(answer["accountNotices"])), StringComparison.Ordinal);
+        rig.AssertNothingWritten();
+    }
+
+    [Fact]
+    public async Task TheNotice_IsSaidWhenThePackageIsNotMigrated_ButNotWhenItsPackageCannotBeRead()
+    {
+        // it is about the account, not the package: a package left at 30 is told it too
+        var rig = new Rig();
+        rig.Profile(signature: ThreeLines);
+
+        var refused = await rig.RunAsync(Request(new JsonObject { ["renames"] = new JsonObject(), ["whenEmpty"] = new JsonObject() }));
+
+        Assert.StartsWith(MigratePackage.NotMigrated, (string)refused["outcome"]!, StringComparison.Ordinal);
+        Assert.Single(Strings(refused["accountNotices"]));
+
+        // the engine failing before it reads the account: no notice
+        rig.Sources.ReadSourceAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns<WorkflowPackageSource>(_ => throw new InvalidOperationException());
+
+        var failed = await rig.RunAsync(Request());
+
+        Assert.Equal(MigratePackage.NotMigrated + PackagePublishSentences.EngineFailed().Sentence, (string?)failed["outcome"]);
+        Assert.False(failed.ContainsKey("accountNotices"));
         rig.AssertNothingWritten();
     }
 
