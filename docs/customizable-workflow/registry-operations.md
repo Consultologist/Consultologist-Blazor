@@ -566,7 +566,8 @@ again until every package would publish or is to stay at 30; then run it with `-
 
 **The record.** `bulk-publish-record.json` is `{ "engine", "publish", "notRead", "rows" }`: one row per package, the
 engine's answer (`owner`, `name`, `oldVersion`, `newVersion`, `outcome`, `handEditsLeft`, `notices`, `report`, the
-`options` used and `defaults`, A10-083 when the package had no `options.json`) and the `time` it was answered (UTC).
+`options` used and `defaults`, A10-083 when the package had no `options.json`, then `accountNotices` when the engine
+said any, below) and the `time` it was answered (UTC).
 `notRead` counts the accounts' active packages the engine could not read; they are not in the record. **Both files are
 written after every row**, each to a temporary file beside it that is then moved over it, so an interruption loses at
 most the package in flight and never leaves half a file. **A package the engine did not answer for** (an error status,
@@ -586,7 +587,13 @@ each with its versions and the notices the owner must see, `flag` becoming `retr
 `notMigrated` (each with its version, the `reason`, S10-005 as the owner's `notice`, and the `deadline`, A11-015:
 *"This package stops working when specVersion 30 is retired."*), and the packages `unknown` (each with its `name` and,
 as its `notice`, A11-017 for the operator: *"The engine did not answer for this package; check whether it was
-published before sending this list."*).
+published before sending this list."*), then, when there is any, `account`: what the owner is told about the account
+itself, whatever became of its packages (#1543, ruling 2): an owner whose chosen signature block or closing has several
+lines that 31 would join into one is told, once, A11-018 *"Your signature has <n> lines. From specVersion 31, end each
+line with \\, or leave a blank line between them."* or A11-019, the same of *"Your closing"*. The engine says them with
+every answer once it has read the package (`accountNotices`; a dry run's too), with the count only: no signature or
+closing text is in the record or the list. A row of an engine that predates them has no `accountNotices`, and its owner
+no `account`.
 
 **An `unknown` row.** Check the package's version on the engine (its account's pin, and whether a 31 version of it is
 stamped), then rerun. A package the engine still lists is sent again, and its answer replaces the `unknown` row. One the

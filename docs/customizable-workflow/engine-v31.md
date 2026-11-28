@@ -1038,7 +1038,14 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
 2. **The choices:** `options` read with `Migration31Options.FromJson` (A10-070 to A10-072, A10-082), or the defaults,
    said in the answer's `defaults` (A10-083).
 3. **The migration** (`WorkflowPackageMigration30To31.Migrate`, with the 24 → 25 rung's contract resolver): a refusal is
-   its first sentence, A10-015 for a package at 31 already (a rerun after a publish). **A hand edit is left** unless the
+   its first sentence, A10-015 for a package at 31 already (a rerun after a publish).
+   Before it, once the package is read, **the account** (#1543, ruling 2, D9): the account's settings are read as a 31
+   start reads them (`profile.signatures` and its chosen block, `profile.closing`), and the chosen block's text and the
+   closing are each judged by `MarkdownLineEndings.Find` (a profile text has no template tags: any tag is read as an
+   inline read). One with a single line ending 31 would join is told with its count of lines that are not blank:
+   A11-018 for the signature, A11-019 for the closing (`PackagePublishSentences.SignatureHasLines`, `ClosingHasLines`);
+   a text whose lines end with `\` or are separated by a blank line is not told. These are about the owner, not the
+   package, so every later outcome carries them, a dry run's and a `not migrated` one's too. **A hand edit is left** unless the
    file its notice names (`Migration31Result.HandEditFiles`, one per notice) is among `handEdits`' paths, edited or null:
    any left is its first S10-002 notice, every left one in `handEditsLeft`. An operator who answers a notice in another
    file still sends the named file, unchanged if need be, as the acknowledgement. The migration counts its package
@@ -1057,15 +1064,18 @@ or gives a member of the wrong shape (or deletes `manifest.json`) is a 400 with 
    runs once in memory (`V31PackagePublisher.CheckAsync`): no write, no pointer, no pin, no alert.
 
 A package that is not migrated has nothing written: its 30 version and its pin are as they were (comment 8 on #1508).
-A fault of the account store or the registry's storage is not answered as `not migrated`: it reaches the route as a 500.
-Before the stamp nothing is published; after it the version is stamped and the pointer or the pin may not have moved.
+A fault of the account store, the account settings or the registry's storage is not answered as `not migrated`: it reaches
+the route as a 500. Before the stamp nothing is published; after it the version is stamped and the pointer or the pin
+may not have moved.
 
 **The answer** (200): `{ "owner", "name", "oldVersion", "newVersion", "outcome", "handEditsLeft", "notices", "report",
-"options", "defaults" }`. `outcome` is `published`, `would publish` or `not migrated: <sentence>`; `newVersion` is the
+"options", "defaults", "accountNotices" }`, the last only when it has a sentence (an older engine's answer has none,
+and the script reads it so). `outcome` is `published`, `would publish` or `not migrated: <sentence>`; `newVersion` is the
 version published (or that would be), else null; `notices` the migration's notices that need no edit (A10-013, `flag`
 becoming `retry`, among them), as the migration report lists them; `report` the publish report (null when no publish
-ran); `options` the choices used, as `options.json` writes them; `defaults` A10-083 or null. No member carries input,
-model or profile text: ids, versions, sentences, hashes and the choices.
+ran); `options` the choices used, as `options.json` writes them; `defaults` A10-083 or null; `accountNotices` A11-018 and
+A11-019 as above. No member carries input, model or profile text: ids, versions, sentences, counts, hashes and the
+choices; the signature and the closing are read, never logged or answered.
 
 ## Sizing the deployment-wide limits (D10)
 

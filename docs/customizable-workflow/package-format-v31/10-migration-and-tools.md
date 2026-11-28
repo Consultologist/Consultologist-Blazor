@@ -237,6 +237,14 @@ Each notice reads:
   notice also says that 31 jobs are refused until the account's time zone is set, and when a
   profile field the package reads is missing** (part 06 §§ 10.4, 10.7); those refusals apply to
   31 jobs only ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+  **An owner whose signature or closing has several lines is told** how to keep them
+  ([ruled](https://github.com/Consultologist/Consultologist-Blazor/issues/1543), ruling 2; part 06 § 10.3): from 31 a
+  single line ending inside a paragraph is a space, so the bulk publish reads the account's chosen signature block and
+  its closing and, for each that has one, lists once for the owner (`account` in the owners' list) A11-018: *"Your
+  signature has <n> lines. From specVersion 31, end each line with \\, or leave a blank line between them."*, or
+  A11-019, the same with *"Your closing"*, `<n>` the text's lines that are not blank. A text that already ends its
+  lines with `\` or separates them by blank lines is not told. It is said whatever became of the owner's packages, in
+  a dry run too; only the count is written, never the text.
 - **A package that can't be migrated faithfully may stay at 30** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): its pin is unchanged,
   and its owner is told why, until the Milestone 41 Editor lets them migrate it themselves. It
   keeps 30's load path until retirement (#1450).

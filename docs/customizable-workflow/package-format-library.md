@@ -3007,8 +3007,9 @@ from the CI script. `publish-report.schema.json` admits the four bare values or 
 ### The sentences
 
 `PackagePublishSentences` holds every sentence publish says that no earlier area says: S07-007 to S07-016 and S10-005,
-each the row of `sentences.json` with its `<…>` filled, and this area's A11-004 to A11-007, A11-015 and A11-016 (the
-bulk publish's). A11-001 to A11-003 and the warnings A11-010 and A11-011 are the compiler's (`ResolveSentences`),
+each the row of `sentences.json` with its `<…>` filled, and this area's A11-004 to A11-007, A11-015 to A11-017 (the
+bulk publish's) and, #1543, A11-018 and A11-019 (`SignatureHasLines`, `ClosingHasLines`: the owner's signature or
+closing has several lines, with their count only). A11-001 to A11-003 and the warnings A11-010 and A11-011 are the compiler's (`ResolveSentences`),
 A11-008 is the run's (`RunSentences.EngineFailedRendering`), A11-009, A11-012 and A11-013 the template checker's
 (`DialectSentences`), and A11-014 the reader's (`SourceSentences`). Each is in
 [refusal-sentences.md](package-format-v31/refusal-sentences.md) § 11, in `V31Contract.PublishAreaSentences`, and in
@@ -3057,8 +3058,11 @@ a migration refusal, a publish refusal, A11-001 among them) is `not migrated: <f
 its 30 version and its pin stay as they were. The script asks for the list, checks every folder before it sends
 anything (a folder of choices or edits that names no package is exit 2), sends each package, and after every row
 writes `bulk-publish-record.json` and `owners.json` (per owner, the packages published with the notices the owner must
-see, those not migrated with their reason, S10-005 and A11-015, and those `unknown` with A11-017), each through a
-temporary file. A package the engine did not answer for is `unknown: <fault>` and stops the run (exit 2). A rerun carries
+see, those not migrated with their reason, S10-005 and A11-015, and those `unknown` with A11-017; then, #1543, as
+`account`, the distinct sentences of the owner's rows' `accountNotices`, A11-018 and A11-019, omitted when none and read
+tolerantly, as an older engine's answer has none), each through a temporary file. The route says those two once it has
+read the package, whatever the outcome: it reads the account's chosen signature block and closing as a 31 start does
+and judges each with `MarkdownLineEndings.Find`. A package the engine did not answer for is `unknown: <fault>` and stops the run (exit 2). A rerun carries
 forward the earlier record's `published` and `unknown` rows, the latest for each package, and refuses a record of
 another engine. Without `--publish` it is a dry run: the publish runs in memory and nothing is written.
 

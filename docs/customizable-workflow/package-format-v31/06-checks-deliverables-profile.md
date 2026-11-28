@@ -729,6 +729,9 @@ it's recorded ([decided](https://github.com/Consultologist/Consultologist-Blazor
   Create page) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)). Packages never name blocks. There's no signature snapshot at
   31: the signature is a profile read, recorded by hash, and its text lives in the deliverable,
   under text retention.
+- **A block of several lines keeps them only when each ends with `\` or a blank line stands between them,** as
+  any `markdown_block` text (a single line ending inside a paragraph is a space at 31); the bulk publish tells an
+  owner whose chosen block or closing would be joined (A11-018, A11-019; [part 10 § 1.5](10-migration-and-tools.md#15-account-packages-by-the-operator)).
 
 ### 10.4 A missing field refuses the job
 

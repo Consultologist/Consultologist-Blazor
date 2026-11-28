@@ -486,6 +486,8 @@ The build's area sentences for area 11, which are not rows of `sentences.json` a
 | A11-015 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"This package stops working when specVersion 30 is retired."* | clinician | |
 | A11-016 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"\<package\> is not the account's active account package; the bulk publish migrates only the account package an account's pin names."* | operator | |
 | A11-017 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"The engine did not answer for this package; check whether it was published before sending this list."* | operator | |
+| A11-018 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"Your signature has \<n\> lines. From specVersion 31, end each line with \\, or leave a blank line between them."* | clinician | |
+| A11-019 | [1.5 Account packages, by the operator](10-migration-and-tools.md#15-account-packages-by-the-operator) | *"Your closing has \<n\> lines. From specVersion 31, end each line with \\, or leave a blank line between them."* | clinician | |
 
 A11-013 is said of a `judgement` node whose prompt, with its parts' text, the text of the snippets it places and of the
 snippet folder items it reads as `item.content`, holds nothing outside its tags but white space: a question only an
