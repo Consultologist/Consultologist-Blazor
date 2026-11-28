@@ -1,5 +1,6 @@
 using Consultologist.PackageFormat;
 using Markdig;
+using Markdig.Syntax;
 
 namespace Consultologist.Api.Tests;
 
@@ -193,6 +194,52 @@ public class ConsultMarkdownTests
     {
         Assert.IsType<ConsultLinkSchemes>(ConsultMarkdown.Pipeline.Extensions[^1]);
         Assert.IsType<ConsultLinkSchemes>(ConsultMarkdown.Pipeline31.Extensions[^1]);
+    }
+
+    public static TheoryData<string, bool> NestedRefused => new()
+    {
+        { "![a [b ![c](data:z)](javascript:y)](data:x)", false },
+        { "[a ![b](data:y)](javascript:x)", false },
+        { "![a ![b](data:y)](data:x)", false },
+        { "[a ![b](data:y) c](javascript:x) d", false },
+        { "[a ![b](data:y) c](javascript:x) d", true },
+    };
+
+    [Theory]
+    [MemberData(nameof(NestedRefused))]
+    public void ANestedRefusedLinkOrImage_LeavesNoRefusedUrlInTheDocument(string markdown, bool is31)
+    {
+        var document = Markdown.Parse(markdown, is31 ? ConsultMarkdown.Pipeline31 : ConsultMarkdown.Pipeline);
+
+        foreach (var node in document.Descendants())
+        {
+            if (node is Markdig.Syntax.Inlines.LinkInline link)
+            {
+                Assert.True(ConsultLinkSchemes.Writes(link.Url), link.Url);
+            }
+
+            Assert.False(node is Markdig.Syntax.Inlines.AutolinkInline auto && !ConsultLinkSchemes.Writes(auto.Url));
+        }
+
+        var html = Markdown.ToHtml(markdown, is31 ? ConsultMarkdown.Pipeline31 : ConsultMarkdown.Pipeline);
+        Assert.DoesNotContain("<img", html);
+        Assert.DoesNotContain("href=", html);
+        Assert.DoesNotContain("javascript", html);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnAllowedLinkAroundARefusedImage_Stays_AndAnAllowedImageInARefusedLink_Stays(bool is31)
+    {
+        var pipeline = is31 ? ConsultMarkdown.Pipeline31 : ConsultMarkdown.Pipeline;
+
+        var around = Markdown.ToHtml("[see ![x](data:y)](https://example.org/a)", pipeline);
+        Assert.Contains("<a href=\"https://example.org/a\">see x</a>", around);
+
+        var inside = Markdown.ToHtml("[a ![b](https://example.org/i.png) c](javascript:x) d", pipeline);
+        Assert.Contains("<img src=\"https://example.org/i.png\"", inside);
+        Assert.DoesNotContain("href=", inside);
     }
 
     [Fact]

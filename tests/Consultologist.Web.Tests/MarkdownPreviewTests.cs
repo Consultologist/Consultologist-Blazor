@@ -117,6 +117,51 @@ public class MarkdownPreviewTests
         specVersion == 31 ? MarkdownPreview.Render(markdown, 31) : MarkdownPreview.Render(markdown);
 
     [Theory]
+    [InlineData("![a [b ![c](data:z)](javascript:y)](data:x)", "a b c", 30)]
+    [InlineData("![a [b ![c](data:z)](javascript:y)](data:x)", "a b c", 31)]
+    [InlineData("[a ![b](data:y)](javascript:x)", "a b", 30)]
+    [InlineData("[a ![b](data:y)](javascript:x)", "a b", 31)]
+    [InlineData("![a ![b](data:y)](data:x)", "a b", 30)]
+    [InlineData("![a ![b](data:y)](data:x)", "a b", 31)]
+    [InlineData("[a ![b](data:y) c](javascript:x) d", "a b c d", 30)]
+    [InlineData("[a ![b](data:y) c](javascript:x) d", "a b c d", 31)]
+    public void ANestedRefusedLinkOrImage_IsItsWholeText(string markdown, string text, int specVersion)
+    {
+        var html = Render(markdown, specVersion);
+
+        Assert.DoesNotContain("href=", html);
+        Assert.DoesNotContain("<img", html);
+        Assert.DoesNotContain("javascript", html);
+        Assert.DoesNotContain("data:", html);
+        Assert.Equal(text, System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", "").Trim());
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(31)]
+    public void ARefusedImageInAnAllowedLink_LeavesTheLink(int specVersion)
+    {
+        var html = Render("[see ![x](data:y)](https://example.org/a)", specVersion);
+
+        Assert.Contains("<a href=\"https://example.org/a\">see x</a>", html);
+        Assert.DoesNotContain("<img", html);
+        Assert.DoesNotContain("data:", html);
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(31)]
+    public void AnAllowedImageInARefusedLink_LeavesTheImage(int specVersion)
+    {
+        var html = Render("[a ![b](https://example.org/i.png) c](javascript:x) d", specVersion);
+
+        Assert.Contains("<img src=\"https://example.org/i.png\"", html);
+        Assert.DoesNotContain("href=", html);
+        Assert.DoesNotContain("javascript", html);
+        Assert.Contains(" c d", html);
+    }
+
+    [Theory]
     [InlineData(30)]
     [InlineData(31)]
     public void ALinkWithAnotherScheme_IsItsText(int specVersion)

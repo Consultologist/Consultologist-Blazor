@@ -464,4 +464,16 @@ public class ConsultDocumentPdfTests
 
         Assert.Contains("Call vbscript:x now.", text);
     }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(31)]
+    public void Render_TextAfterANestedRefusedLink_IsKept(int specVersion)
+    {
+        var text = string.Join("\n", PageTexts(ConsultDocumentPdf.Render("[alpha ![beta](data:y) gamma](javascript:x) delta", specVersion, Password)));
+
+        Assert.Contains("alpha beta gamma delta", text);
+        Assert.DoesNotContain("javascript", text);
+        Assert.DoesNotContain("data:", text);
+    }
 }
