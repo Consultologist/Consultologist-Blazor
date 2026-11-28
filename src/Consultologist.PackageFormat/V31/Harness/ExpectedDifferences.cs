@@ -928,7 +928,8 @@ public static class ExpectedDifferences
     /// <c>.content</c> of a row of the run, and takes its <c>size</c>; the row's value is what the expression gives on that
     /// row's text at 31 (so a number that is not the count of 31's text is left); and 30's text for that read is found and its
     /// own difference from 31's is wholly explained (<see cref="AcceptedText30"/>). The expression is evaluated with the plan's
-    /// own compiled rule. Only a value that stands exactly once in the text is credited, and only that occurrence is put back;
+    /// own compiled rule. Only a value that stands exactly once in the text is credited, and only that occurrence is put back
+    /// (a number's occurrence stands apart from other digits, <see cref="TheOccurrenceOfACount"/>);
     /// one that stands more than once is ambiguous, and the row credits nothing. It never credits a count over a text no
     /// compared site holds whole (<see cref="AcceptedText30"/> finds none). Nothing else in the text is touched.
     /// </summary>
@@ -941,7 +942,7 @@ public static class ExpectedDifferences
         foreach (var row in c.Run31.Rows.Where(r => r.Kind == PlanKind.Computed))
         {
             var at = -1;
-            if (SourceLayout.Text(row.Text?["content"]) is not { Length: > 0 } value || (at = undone.IndexOf(value, StringComparison.Ordinal)) < 0 || undone.LastIndexOf(value, StringComparison.Ordinal) != at
+            if (SourceLayout.Text(row.Text?["content"]) is not { Length: > 0 } value || TheOccurrenceOfACount(undone, value) is not { } found || (at = found) < 0
                 || !c.Plan.Entries.TryGetValue(row.EntryKey, out var entry) || entry.Expression is not { } expression
                 || !entry.Rules.TryGetValue("expression", out var rule) || rule.Reads is not [var read]
                 || !read.EndsWith(".content", StringComparison.Ordinal) || !TakesSize(rule.Json, read)
@@ -958,6 +959,37 @@ public static class ExpectedDifferences
         }
 
         return undone == now ? null : (old, undone);
+    }
+
+    /// <summary>
+    /// #1543 (D13; the final review, minor a): where <paramref name="value"/> (a computed row's value) stands in
+    /// <paramref name="text"/>, when it stands there exactly once. A value that starts with a digit stands only where no
+    /// digit (nor a <c>.</c> or <c>,</c> after a digit) stands directly before it, and one that ends with a digit only where
+    /// no digit (nor a <c>.</c> or <c>,</c> before a digit) stands directly after it: the <c>4</c> of <c>14</c> or of
+    /// <c>1.4</c> is no occurrence of <c>4</c>, and occurrences are counted by the same rule. None when it stands nowhere or
+    /// more than once (ambiguous).
+    /// </summary>
+    internal static int? TheOccurrenceOfACount(string text, string value)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        bool Digit(int i) => i >= 0 && i < text.Length && char.IsAsciiDigit(text[i]);
+        bool Separator(int i) => i >= 0 && i < text.Length && text[i] is '.' or ',';
+        bool StandsApart(int at) =>
+            (!char.IsAsciiDigit(value[0]) || !(Digit(at - 1) || (Separator(at - 1) && Digit(at - 2))))
+            && (!char.IsAsciiDigit(value[^1]) || !(Digit(at + value.Length) || (Separator(at + value.Length) && Digit(at + value.Length + 1))));
+
+        int? found = null;
+        for (var at = text.IndexOf(value, StringComparison.Ordinal); at >= 0; at = text.IndexOf(value, at + 1, StringComparison.Ordinal))
+        {
+            if (!StandsApart(at))
+                continue;
+            if (found is not null)
+                return null;
+            found = at;
+        }
+
+        return found;
     }
 
     /// <summary>Set while <see cref="AcceptedText30"/> credits a counted text, so a count is never credited on a count's own credit.</summary>
