@@ -2161,7 +2161,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var key = "deliverable." + resultId;
         var row = await record.Rows.ReadAsync(jobId, key, cancellationToken);
         if (row == null || !string.Equals(row.Section, "deliverable", StringComparison.Ordinal)
-            || JsonNode.Parse(row.Json) is not JsonObject json)
+            || ParsedRow(row.Json) is not JsonObject json)
         {
             return (false, false, null);
         }
@@ -2174,6 +2174,22 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var kind = V31.DurableRecordJobs.KindOfHeldInputs(source) ?? await record.Accounts.GetAccountKindAsync(source.AppUserId, cancellationToken);
         var offered = V31.RecordRoutes.OfferedText(row.Section, json, await record.Blobs.ReadTextAsync(kind, source.AppUserId, jobId, key, cancellationToken));
         return (true, true, offered?["content"] is JsonValue content && content.TryGetValue<string>(out var text) ? text : null);
+    }
+
+    /// <summary>
+    /// A stored row's JSON, or null when it is not JSON (#1543, the final review, minor b): a corrupt row is no deliverable,
+    /// as the record's routes do not read one, and the start is refused with the sentence rather than failed by the parse.
+    /// </summary>
+    private static JsonNode? ParsedRow(string json)
+    {
+        try
+        {
+            return JsonNode.Parse(json);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     private static string ShortRunId(string jobId) => jobId.Length > 8 ? jobId[..8] + "…" : jobId;
